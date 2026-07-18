@@ -1,0 +1,153 @@
+# ALMSIVI protocol v1
+
+This document and `ALMSIVIserver/docs/PROTOCOL.md` must remain semantically identical. Canonical
+JSON Schemas and fixtures live in both repos and CI compares their SHA-256 manifest.
+
+## Transport
+
+- Base: `http://127.0.0.1:8089/ALMSIVIserver/api/v1` by default.
+- Authentication: `Authorization: Bearer <256-bit pairing token>` added by native code.
+- Requests and ordinary responses: `application/json; charset=utf-8`.
+- STT upload: bounded `audio/wav`, `audio/ogg`, or `audio/webm` body plus metadata headers/schema.
+- Response progress: `GET /events?session_id=...&after=<sequence>&wait_ms<=15000`, returning bounded
+  ordered JSON events. Long polling avoids exposing streaming parser complexity to Lua.
+- Media: authenticated fixed route by opaque media ID; descriptor supplies hash/size/codec. No
+  server-supplied absolute URL is followed.
+- Mutating POSTs require `Idempotency-Key` equal to the request/event ID.
+
+## Common envelope
+
+```json
+{
+  "schema": "almsivi.turn.v1",
+  "message_id": "019...",
+  "request_id": "019...",
+  "turn_id": "019...",
+  "installation_id": "019...",
+  "profile_id": "019...",
+  "playthrough_id": "019...",
+  "session_id": "019...",
+  "generation": 7,
+  "created_at": "2026-07-18T20:00:00Z",
+  "runtime": {
+    "game": "tes3",
+    "variant": "openmw",
+    "openmw_version": "0.51.0",
+    "openmw_commit": "f4bec41444214a7903bebd178389ca22ca13f646",
+    "lua_api_revision": 129,
+    "client_version": "0.1.0",
+    "platform": "windows-x86_64",
+    "capabilities": ["dialogue.text", "speech.say", "action.ai.follow"]
+  },
+  "content_fingerprint": "sha256:...",
+  "payload": {}
+}
+```
+
+Unknown top-level fields and unknown enum values are rejected in v1. IDs are UUIDs, timestamps are
+UTC RFC 3339, integers have schema bounds, strings are valid UTF-8 and payloads have endpoint caps.
+The server accepts only current sessions/generations for turns and results.
+
+## TES3/OpenMW identity
+
+```json
+{
+  "kind": "npc",
+  "record_id": "fargoth",
+  "refnum": {"index": 112, "content_file": 0},
+  "content_file": "Morrowind.esm",
+  "cell": {"kind": "exterior", "grid_x": -2, "grid_y": -9},
+  "display_name": "Fargoth"
+}
+```
+
+For generated/runtime identities, include the OpenMW FormId/RefNum representation supported by the
+pinned API. Record ID, content source/order, cell and runtime reference are jointly authoritative.
+Names and server profile IDs are metadata. A content fingerprint is the SHA-256 of normalized engine
+version/API plus the ordered content list and file identity metadata, never proprietary file bytes.
+
+## Endpoints and schemas
+
+| Method/path | Request schema | Response |
+| --- | --- | --- |
+| `GET /health` | none | `almsivi.health.v1` |
+| `POST /sessions` | `almsivi.session.init.v1` | accepted session/capabilities/config revision |
+| `DELETE /sessions/{id}` | current generation/reason | terminal status |
+| `POST /turns` | `almsivi.turn.v1` | accepted request + first event cursor |
+| `POST /stt` | metadata + audio | transcript event or typed failure |
+| `GET /events` | session/cursor/wait | `almsivi.events.v1` |
+| `POST /action-results` | `almsivi.action-result.v1` | persisted acknowledgement |
+| `POST /interruptions` | `almsivi.interrupt.v1` | cancellation acknowledgement |
+| `GET /media/{opaque_id}` | none | verified allowlisted audio bytes |
+
+## Turn payload
+
+A turn includes input `{kind: text|stt, text, language}`, resolved speaker/target/audience identities,
+bounded context snapshot/delta, recent terminal action results, and UI source. It never includes the
+pairing token, provider key, host file path, save bytes, proprietary assets, engine pointers, or raw
+unbounded logs.
+
+Server response events have a strictly increasing per-session `sequence` and one of:
+
+- `turn.accepted`, `turn.status`, `dialogue.delta`, `dialogue.complete`;
+- `speech.ready` with `{media_id, sha256, bytes, codec, duration_ms, expires_at}`;
+- `action.intent` with typed action schema/tier/identity/expiry;
+- `turn.complete`, `turn.failed`, `turn.cancelled`;
+- `session.config_changed`, `server.notice`.
+
+`dialogue.delta` is display-only incremental text. Only `dialogue.complete` is persisted as the final
+utterance and eligible for speech. Duplicate events by `(session_id, sequence, message_id)` are
+ignored. Cursor gaps force a bounded replay request or a typed resync, never guessed ordering.
+
+## Action intent and result
+
+```json
+{
+  "schema": "almsivi.action-intent.v1",
+  "action_id": "019...",
+  "turn_id": "019...",
+  "name": "ai.follow",
+  "tier": 1,
+  "actor": {},
+  "target": {},
+  "parameters": {"distance": 192},
+  "expires_at": "2026-07-18T20:00:10Z"
+}
+```
+
+```json
+{
+  "schema": "almsivi.action-result.v1",
+  "action_id": "019...",
+  "status": "succeeded",
+  "reason_code": "package_started",
+  "observed": {"package": "Follow"},
+  "completed_at": "2026-07-18T20:00:02Z"
+}
+```
+
+Terminal statuses are `succeeded`, `failed`, `rejected`, `timed_out`, or `cancelled`. One action ID
+has exactly one terminal result. Human-readable text is diagnostic only; server reasoning uses
+status/reason/observed typed fields.
+
+## Error model
+
+HTTP status communicates transport/auth class; JSON communicates a stable code:
+
+- `invalid_schema`, `payload_too_large`, `unauthorized`, `forbidden`, `rate_limited`;
+- `unknown_session`, `stale_generation`, `duplicate_conflict`, `cursor_expired`;
+- `provider_unavailable`, `provider_timeout`, `media_unavailable`;
+- `action_disabled`, `internal_error`.
+
+Client-facing messages are generic. Detailed provider/database errors enter structured redacted
+server logs with correlation IDs. Retriability and `retry_after_ms` are explicit.
+
+## Limits and compatibility
+
+Default server caps mirror or tighten native caps: 2 MiB JSON, 16 MiB STT, 32 MiB media, 128 KiB
+context, 12 audience actors, 4 actions/turn, 1 result-aware continuation/action, 15 s event wait,
+60 s turn and 120 s provider hard deadline. Negotiation may lower caps only.
+
+Breaking changes use `v2` schemas/routes. Additive fields still require schema changes and dual-repo
+fixture updates because v1 rejects unknown fields. Client/server refuse unsupported versions with a
+clear compatibility status; they never silently fall back to legacy tuple or file protocols.
