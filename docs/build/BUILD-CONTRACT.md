@@ -62,11 +62,11 @@ CI action dependencies are pinned to immutable 40-character commits. CI does not
 
 ## Current host outcome (2026-07-18 checkpoint)
 
-The real network prefetch and strict offline reconstruction passed for exact commit `f4bec41444214a7903bebd178389ca22ca13f646`: the verified content-addressed cache was 96 MiB and the materialized source was 133 MiB.
+Exact network prefetch and strict offline reconstruction commands are implemented for commit `f4bec41444214a7903bebd178389ca22ca13f646`. A successful reconstruction is claimed only when a durable run manifest records it.
 
-The warning-clean direct Clang pure-native suite compiled and passed. The recorded no-game checks also passed 44 Python tests, 7 loopback contract-harness cases, and 38 Lua structural/source-manifest checks. Deterministic archive checks passed, and both the package audit and source audit completed with zero findings.
+The pure-native, Python, loopback, Lua structural, packaging, and audit commands are implemented. Exact execution counts and outcomes are claimed only from committed run manifests produced by `scripts/evidence/record_local_validation.py`.
 
-The sanitizer configuration compiled, but its Apple-host runtime hung; this is not sanitizer runtime proof. CMake, Ninja, Lua, and PowerShell (`pwsh`) were unavailable locally. Consequently there is no local CMake/OpenMW control or patched-engine build, no Lua-runtime result, and no PowerShell/Windows result. The checked-in CI definitions are automation definitions only and are not evidence that any CI platform lane executed.
+No durable sanitizer-runtime, CMake/OpenMW control or patched-engine build, Lua-runtime, PowerShell, Windows, or CI-platform execution is recorded. Checked-in definitions are automation only.
 
 ## Deferred build and runtime gates
 

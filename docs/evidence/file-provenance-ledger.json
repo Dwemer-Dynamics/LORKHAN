@@ -18,6 +18,7 @@
         "scripts/bootstrap/prefetch-windows.ps1",
         "scripts/bootstrap/unix.sh",
         "scripts/bootstrap/windows.ps1",
+        "scripts/evidence/record_local_validation.py",
         "scripts/evidence/validate.py",
         "scripts/lib/almsivi_foundation.py",
         "scripts/lib/json_schema.py",
@@ -222,6 +223,40 @@
       "license": "GPL-3.0-only",
       "copyright_notice": "Copyright (C) 2026 ALMSIVI contributors",
       "transformation": "Original deterministic packaging, SPDX, ownership, source-tree and fail-closed compliance audit implementation; no external source code copied.",
+      "reviewer": "ALMSIVI maintainers"
+    },
+    {
+      "id": "almsivi-original-planning-and-evidence-documents",
+      "classification": "original",
+      "target_paths": [
+        "README.md",
+        "docs/ARCHITECTURE.md",
+        "docs/COMPATIBILITY-PLAN.md",
+        "docs/CONTENT-ADDON-DEFERRED.md",
+        "docs/ENGINE-INTEGRATION-PLAN.md",
+        "docs/FEATURE-PARITY-MATRIX.md",
+        "docs/LUA-MOD-ARCHITECTURE.md",
+        "docs/OPENMW-TOOLCHAIN.md",
+        "docs/PACKAGING-AND-LICENSE.md",
+        "docs/PACKAGING-COMPLIANCE.md",
+        "docs/PROGRAM-PLAN.md",
+        "docs/PROTOCOL-CONTRACTS.md",
+        "docs/PROTOCOL.md",
+        "docs/REFERENCE-STACK-DATAFLOW.md",
+        "docs/build/BUILD-CONTRACT.md",
+        "docs/evidence/completion-ledger.md",
+        "docs/evidence/component-ledger.json",
+        "docs/evidence/component-map.md",
+        "docs/evidence/proof-ledger.json",
+        "docs/evidence/source-ledger.json",
+        "docs/evidence/source-pins.md"
+      ],
+      "source_repository": null,
+      "source_commit": null,
+      "source_path": null,
+      "license": "GPL-3.0-only",
+      "copyright_notice": "Copyright (C) 2026 ALMSIVI contributors",
+      "transformation": "Original project planning, implementation status, build contract, and evidence documentation; no external source code copied.",
       "reviewer": "ALMSIVI maintainers"
     }
   ]

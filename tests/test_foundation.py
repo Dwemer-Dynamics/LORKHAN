@@ -17,7 +17,7 @@ from almsivi_foundation import (FoundationError, cache_index_path, canonical_jso
 from json_schema import SchemaError, validate
 
 sys.path.insert(0, str(ROOT / "scripts/evidence"))
-from validate import required_provenance_paths, validate_provenance_coverage
+from validate import required_provenance_paths, validate_proof_evidence, validate_provenance_coverage
 
 COMMIT = "f4bec41444214a7903bebd178389ca22ca13f646"
 PIN_PATH = ROOT / "config/source-pins/openmw.json"
@@ -113,6 +113,21 @@ class FoundationTests(unittest.TestCase):
         extra["records"][0]["target_paths"].append("untracked/implementation.cpp")
         with self.assertRaisesRegex(FoundationError, "untracked or out-of-scope"):
             validate_provenance_coverage(extra, required_provenance_paths(ROOT))
+        duplicate_id = json.loads(json.dumps(ledger))
+        duplicate_id["records"][1]["id"] = duplicate_id["records"][0]["id"]
+        with self.assertRaisesRegex(FoundationError, "unique and complete"):
+            validate_provenance_coverage(duplicate_id, required_provenance_paths(ROOT))
+
+        proof = read_json(ROOT / "docs/evidence/proof-ledger.json")
+        validate_proof_evidence(proof, ROOT)
+        duplicate_proof = json.loads(json.dumps(proof))
+        duplicate_proof["rows"][1]["id"] = duplicate_proof["rows"][0]["id"]
+        with self.assertRaisesRegex(FoundationError, "duplicate proof row ID"):
+            validate_proof_evidence(duplicate_proof, ROOT)
+        missing_evidence = json.loads(json.dumps(proof))
+        missing_evidence["rows"][0]["evidence"] = ["missing/evidence.json"]
+        with self.assertRaisesRegex(FoundationError, "does not exist"):
+            validate_proof_evidence(missing_evidence, ROOT)
 
     def test_ci_validator_rejects_inline_release_triggers_and_yaml(self):
         root = self.temp / "ci-root"

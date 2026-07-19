@@ -101,9 +101,8 @@ Python checks remain distinct from runtime proof.
 ./scripts/test/lua-windows.ps1
 ```
 
-At the recorded local checkpoint, the warning-clean direct Clang native suite passed. The Lua runtime
-was unavailable locally, so only 38 Lua structural/source-manifest checks passed; Lua runtime proof
-remains deferred.
+The native and Lua structural entry points are implemented. Durable execution evidence is recorded only
+through `scripts/evidence/record_local_validation.py`; Lua runtime and in-game proof remain deferred.
 
 ## OpenMW patch series
 
@@ -132,7 +131,7 @@ the manifest.
 
 Strict Draft 2020-12 schemas, canonical positive/negative/hostile fixtures, deterministic local hashes,
 a standard-library discipline validator, and the loopback fake-server contract harness live under
-`almsivi/`. Seven loopback harness cases passed at the recorded checkpoint. They prove the local
+`almsivi/`. The loopback harness is implemented; only a durable run manifest may prove a specific execution. It covers the local
 contract and fake server only, not the Beast live wire or cross-repository parity. See
 `docs/PROTOCOL-CONTRACTS.md` for commands, scope, and contracts deliberately deferred rather than
 invented.
@@ -141,6 +140,6 @@ invented.
 
 Deterministic fixture packaging, SPDX 2.3 SBOM generation, ownership dry-runs, compliance audits, and
 Unix/PowerShell commands are documented in `docs/PACKAGING-COMPLIANCE.md`. Deterministic archives and
-the package and source audits passed with zero findings at the recorded checkpoint. Release-named
+the package and source audit commands are implemented. Only durable run manifests may prove a zero-finding execution. Release-named
 packages still fail closed until the required built product and corresponding source exist; signing
 and publication remain deferred.

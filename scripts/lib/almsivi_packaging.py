@@ -33,11 +33,11 @@ RELEASE_NAME = re.compile(r"^ALMSIVI-(?:OpenMW|Lua|source|symbols)-", re.IGNOREC
 SAFE_FIXTURE_NAME = re.compile(r"^(?:fixture|test)-", re.IGNORECASE)
 PROVENANCE_PREFIXES = (
     ".github/workflows/", "apps/openmw/", "components/almsivi/", "almsivi/",
-    "config/source-pins/", "config/packaging/", "openmw-patches/", "scripts/",
+    "config/source-pins/", "config/packaging/", "docs/", "openmw-patches/", "scripts/",
     "schemas/evidence/", "tests/",
 )
 PROVENANCE_ROOT_FILES = {
-    "CMakeLists.txt", "CMakePresets.json", "docs/evidence/file-provenance-ledger.json",
+    "CMakeLists.txt", "CMakePresets.json", "README.md",
 }
 SOURCE_EXTENSIONS = {
     ".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".lua", ".py",

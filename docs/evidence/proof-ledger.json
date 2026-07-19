@@ -3,118 +3,129 @@
   "rows": [
     {
       "id": "foundation-pin",
-      "claim": "Exact OpenMW source pin and Lua API revision are machine-readable and enforced",
-      "state": "AUTOMATED",
-      "evidence": ["config/source-pins/openmw.json", "tests/test_foundation.py"]
+      "claim": "Exact OpenMW source pin and Lua API revision are machine-readable and have a repeatable validation command",
+      "state": "PLANNED",
+      "evidence": ["config/source-pins/openmw.json", "scripts/evidence/validate.py", "tests/test_foundation.py"],
+      "resume_when": "A durable run manifest records a successful evidence-validation execution against a clean commit"
     },
     {
       "id": "foundation-cache",
-      "claim": "Content-addressed source cache rejects absence, tampering, and the wrong Git commit",
-      "state": "AUTOMATED",
-      "evidence": ["scripts/lib/almsivi_foundation.py", "tests/test_foundation.py"]
+      "claim": "Content-addressed source cache validation has repeatable absence, tamper, and wrong-commit tests",
+      "state": "PLANNED",
+      "evidence": ["scripts/lib/almsivi_foundation.py", "tests/test_foundation.py"],
+      "resume_when": "A durable run manifest records a successful Python test execution against a clean commit"
     },
     {
       "id": "foundation-offline-real",
-      "claim": "Real prefetch and strictly offline reconstruction passed at f4bec41444214a7903bebd178389ca22ca13f646 with a 96 MiB cache and 133 MiB materialized source",
-      "state": "AUTOMATED",
-      "evidence": ["scripts/bootstrap/prefetch-unix.sh", "scripts/bootstrap/unix.sh", "tests/test_foundation.py"]
+      "claim": "Strict offline reconstruction is implemented for the pinned OpenMW source cache",
+      "state": "PLANNED",
+      "evidence": ["scripts/bootstrap/bootstrap.py", "scripts/bootstrap/unix.sh"],
+      "resume_when": "A durable run manifest records successful offline reconstruction from a verified cache against a clean commit"
     },
     {
       "id": "patch-machinery",
-      "claim": "Ordered exact-pin OpenMW patches and new-file overlays are generated, applied, verified, and audited against per-path provenance, tests, base blobs, and result hashes",
-      "state": "AUTOMATED",
-      "evidence": ["openmw-patches/patch-manifest.json", "scripts/lib/openmw_patches.py", "scripts/patches/openmw.py", "tests/test_openmw_patches.py"]
+      "claim": "Ordered exact-pin OpenMW patch and overlay validation has a repeatable test and audit command",
+      "state": "PLANNED",
+      "evidence": ["openmw-patches/patch-manifest.json", "scripts/patches/openmw.py", "tests/test_openmw_patches.py"],
+      "resume_when": "A durable run manifest records successful patch validation and tests against a clean commit"
     },
     {
       "id": "protocol-harness",
-      "claim": "Strict local v1 schemas, classified fixtures, deterministic manifests, structural validation, and 7 loopback fake-server contract cases passed",
-      "state": "AUTOMATED",
-      "evidence": ["almsivi/schemas/v1", "almsivi/fixtures/v1", "almsivi/MANIFEST.json", "scripts/protocol/validate.py", "tests/test_protocol.py", "almsivi/tests/test_contract_harness.py"]
+      "claim": "Strict local v1 schemas, classified fixtures, deterministic manifests, and a loopback fake-server harness are implemented",
+      "state": "PLANNED",
+      "evidence": ["almsivi/schemas/v1", "almsivi/fixtures/v1", "almsivi/MANIFEST.json", "scripts/protocol/validate.py", "almsivi/tests/test_contract_harness.py"],
+      "resume_when": "A durable run manifest records successful protocol and loopback test executions against a clean commit"
     },
     {
       "id": "native-pure",
-      "claim": "The warning-clean direct Clang pure native suite compiled and passed; this is automated library proof only and excludes integrated OpenMW",
-      "state": "AUTOMATED",
-      "evidence": ["components/almsivi", "components/almsivi/tests/native_tests.cpp", "scripts/test/native.sh"]
+      "claim": "The pure native bridge has a warning-clean direct compiler test entry point",
+      "state": "PLANNED",
+      "evidence": ["components/almsivi", "components/almsivi/tests/native_tests.cpp", "scripts/test/native.sh"],
+      "resume_when": "A durable run manifest records successful native compilation and execution against a clean commit"
     },
     {
       "id": "native-sanitizer-runtime",
-      "claim": "The sanitizer configuration compiled but completed no qualifying runtime result because the Apple-host execution hung",
+      "claim": "The native sanitizer runtime suite completes successfully on a supported host",
       "state": "DEFERRED",
       "evidence": ["scripts/test/native.sh"],
-      "resume_when": "Run the sanitizer suite to completion on a compatible host and record its result"
+      "resume_when": "Run the sanitizer suite to completion on a compatible host and record its durable result"
     },
     {
       "id": "lua-structural",
-      "claim": "38 Lua structural and source-manifest checks passed without claiming Lua execution or OpenMW behavior",
-      "state": "AUTOMATED",
-      "evidence": ["almsivi/files/scripts/ALMSIVI", "almsivi/MANIFEST.json", "tests/test_protocol.py"]
+      "claim": "The Lua architecture and pinned-source manifest declarations have a dedicated structural checker",
+      "state": "PLANNED",
+      "evidence": ["almsivi/files/scripts/ALMSIVI", "almsivi/files/ALMSIVI.omwscripts", "almsivi/tests/run.py"],
+      "resume_when": "A durable run manifest records a successful Lua structural-check execution against a clean commit"
     },
     {
       "id": "lua-runtime",
       "claim": "The Lua suite passes under an available Lua interpreter against the fake OpenMW harness",
       "state": "DEFERRED",
       "evidence": ["almsivi/files/scripts/ALMSIVI/tests/run.lua", "scripts/test/lua-unix.sh", "scripts/test/lua-windows.ps1"],
-      "resume_when": "A supported Lua runtime is available; Lua was unavailable on the recorded local host"
+      "resume_when": "A supported Lua runtime is available and a durable runtime result is recorded"
     },
     {
       "id": "python-suite",
-      "claim": "The current no-game Python suite passed 44 tests",
-      "state": "AUTOMATED",
-      "evidence": ["tests"]
+      "claim": "The no-game Python test suite is implemented",
+      "state": "PLANNED",
+      "evidence": ["tests"],
+      "resume_when": "A durable run manifest records a successful full Python test execution against a clean commit"
     },
     {
       "id": "packaging-fixtures",
-      "claim": "Clearly named fixture ZIP/TAR archives are normalized and deterministic with content/release/source manifests, SHA256SUMS, SPDX 2.3 SBOM, package linkage, and ownership dry-runs",
-      "state": "AUTOMATED",
-      "evidence": ["scripts/lib/almsivi_packaging.py", "tests/test_packaging.py", "docs/PACKAGING-COMPLIANCE.md"]
+      "claim": "Deterministic fixture ZIP/TAR, manifest, checksum, SPDX, linkage, and ownership tests are implemented",
+      "state": "PLANNED",
+      "evidence": ["scripts/lib/almsivi_packaging.py", "tests/test_packaging.py", "docs/PACKAGING-COMPLIANCE.md"],
+      "resume_when": "A durable run manifest records a successful packaging test execution against a clean commit"
     },
     {
       "id": "source-audit",
-      "claim": "Package and source audits passed with zero findings, including fail-closed provenance, license, notice, secret, proprietary-data/media, privacy, SBOM, suppression, and reproducibility checks",
-      "state": "AUTOMATED",
-      "evidence": ["scripts/audit/package_audit.py", "config/packaging/policy.json", "tests/test_packaging.py"]
+      "claim": "Fail-closed source, package, provenance, secret, proprietary-data, privacy, and reproducibility audits are implemented",
+      "state": "PLANNED",
+      "evidence": ["scripts/audit/package_audit.py", "config/packaging/policy.json", "tests/test_packaging.py"],
+      "resume_when": "Durable run manifests record successful audit and provenance executions against a clean commit"
     },
     {
       "id": "ci-platform-definitions",
-      "claim": "Immutable-action CI definitions describe foundation and standalone-native platform commands, record hosted compiler/CMake/Ninja identities, and have no recorded qualifying execution; hosted toolchains are not immutable release inputs",
+      "claim": "Immutable-action CI definitions describe foundation and standalone-native platform commands and record hosted tool identities",
       "state": "PLANNED",
-      "evidence": ["scripts/test/validate-ci.sh"]
+      "evidence": [".github/workflows", "scripts/test/validate-ci.sh"],
+      "resume_when": "Qualifying CI executions are recorded; hosted toolchains remain non-immutable release inputs"
     },
     {
       "id": "engine-integration",
       "claim": "Exact-pin OpenMW package registration and media VFS-versus-decoder patches plus patched-engine and unmodified control builds pass",
       "state": "DEFERRED",
       "evidence": ["docs/ENGINE-INTEGRATION-PLAN.md", "scripts/build/unix.sh", "scripts/build/windows.ps1"],
-      "resume_when": "Implement the exact pinned patches and run both integrated and control builds on a host with CMake, Ninja, and required OpenMW dependencies; CMake and Ninja were unavailable locally"
+      "resume_when": "Implement the exact pinned patches and record integrated plus control build evidence"
     },
     {
       "id": "beast-live",
       "claim": "The Beast serializer and authenticated loopback transport pass on the live wire",
       "state": "DEFERRED",
       "evidence": ["docs/PROTOCOL.md"],
-      "resume_when": "Implement the Beast serializer/transport and execute live-wire tests; the fake server alone is not this proof"
+      "resume_when": "Implement the Beast serializer/transport and record live-wire tests"
     },
     {
       "id": "final-synthserver-migration-crossrepo",
       "claim": "Final SYNTH and Synthserver SHAs are imported and migrated and cross-repository protocol/parity checks pass",
       "state": "DEFERRED",
       "evidence": [],
-      "resume_when": "Final tested SYNTH and Synthserver SHAs are supplied and import, migration, and cross-repository work is authorized; no deferred source has been read or imported"
+      "resume_when": "Final tested SYNTH and Synthserver SHAs are supplied and cross-repository work is authorized"
     },
     {
       "id": "windows-build-game-mod",
       "claim": "Windows x64 exact-pin control/product builds and legal-game/mod acceptance profiles pass",
       "state": "DEFERRED",
       "evidence": [],
-      "resume_when": "Run on a Windows build host with required dependencies, then in an exact acceptance environment with user-supplied legal Morrowind GOTY data; pwsh was unavailable locally"
+      "resume_when": "Run and durably record qualifying Windows builds and legal-data acceptance evidence"
     },
     {
       "id": "real-release-sign-publish",
       "claim": "The release-named runtime/Lua/source set passes exact-source audits and is signed and published",
       "state": "DEFERRED",
-      "evidence": ["tests/test_packaging.py"],
-      "resume_when": "Built product files, exact corresponding source and provenance, clean rebuild evidence, signing authority, and publication authorization are available"
+      "evidence": ["docs/PACKAGING-COMPLIANCE.md"],
+      "resume_when": "Built product, exact corresponding source, signing authority, and publication authorization are available"
     }
   ]
 }

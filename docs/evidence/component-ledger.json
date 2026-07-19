@@ -6,23 +6,23 @@
       "source": "OpenMW 0.51.0 release pin",
       "target": "config/source-pins/openmw.json",
       "owner": "client foundations",
-      "state": "AUTOMATED",
-      "proof": "tests/test_foundation.py"
+      "state": "PLANNED",
+      "proof": "config/source-pins/openmw.json and tests/test_foundation.py; durable execution evidence pending"
     },
     {
       "id": "bootstrap",
       "source": "exact pinned OpenMW Git bundle",
       "target": "scripts/bootstrap",
       "owner": "client foundations",
-      "state": "AUTOMATED",
-      "proof": "real prefetch and offline reconstruction at f4bec41444214a7903bebd178389ca22ca13f646; 96 MiB cache and 133 MiB materialized source"
+      "state": "PLANNED",
+      "proof": "strict offline bootstrap implementation exists; durable reconstruction evidence pending"
     },
     {
       "id": "patch-machinery",
       "source": "ordered exact-pin OpenMW patch specification",
       "target": "openmw-patches and scripts/patches/openmw.py",
       "owner": "engine foundations",
-      "state": "AUTOMATED",
+      "state": "PLANNED",
       "proof": "tests/test_openmw_patches.py"
     },
     {
@@ -30,16 +30,16 @@
       "source": "local v1 schemas and classified fixtures",
       "target": "almsivi schemas, manifests, validators, and fake-server harness",
       "owner": "protocol foundations",
-      "state": "AUTOMATED",
-      "proof": "tests/test_protocol.py and almsivi/tests/test_contract_harness.py; 7 loopback cases passed"
+      "state": "PLANNED",
+      "proof": "tests/test_protocol.py and almsivi/tests/test_contract_harness.py; durable execution evidence pending"
     },
     {
       "id": "native-pure",
       "source": "typed native client foundation",
       "target": "components/almsivi and components/almsivi/tests/native_tests.cpp",
       "owner": "native foundations",
-      "state": "AUTOMATED",
-      "proof": "scripts/test/native.sh; warning-clean direct Clang suite passed; this excludes OpenMW integration"
+      "state": "PLANNED",
+      "proof": "scripts/test/native.sh defines pure-native validation; durable execution evidence pending and OpenMW integration excluded"
     },
     {
       "id": "native-engine-integration",
@@ -64,8 +64,8 @@
       "source": "docs/LUA-MOD-ARCHITECTURE.md",
       "target": "almsivi/files/scripts/ALMSIVI and source manifest",
       "owner": "Lua foundations",
-      "state": "AUTOMATED",
-      "proof": "38 structural and source-manifest checks passed"
+      "state": "PLANNED",
+      "proof": "almsivi/tests/run.py defines structural and source-manifest checks; durable execution evidence pending"
     },
     {
       "id": "lua-runtime",
@@ -81,8 +81,8 @@
       "source": "docs/PACKAGING-AND-LICENSE.md",
       "target": "scripts/package, scripts/audit, and config/packaging",
       "owner": "packaging foundations",
-      "state": "AUTOMATED",
-      "proof": "tests/test_packaging.py; deterministic archives and zero-finding package/source audits passed"
+      "state": "PLANNED",
+      "proof": "tests/test_packaging.py and scripts/audit/package.sh define the checks; durable execution evidence pending"
     },
     {
       "id": "ci-definitions",

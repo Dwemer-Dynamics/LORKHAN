@@ -7,7 +7,7 @@
       "license": "GPL-3.0-only",
       "state": "PINNED",
       "pin": "openmw-0.51.0@f4bec41444214a7903bebd178389ca22ca13f646; Lua API 129",
-      "proof": "Current checkpoint: exact real prefetch and offline reconstruction passed; 96 MiB verified cache and 133 MiB materialized source; config/source-pins/openmw.json and openmw-patches/patch-manifest.json record the base"
+      "proof": "config/source-pins/openmw.json and openmw-patches/patch-manifest.json record the exact base; durable prefetch/reconstruction execution evidence pending"
     },
     {
       "id": "dialectic",
