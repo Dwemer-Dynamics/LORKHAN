@@ -18,12 +18,21 @@ def text(path):
     return path.read_text(encoding="utf-8")
 
 manifest = text(FILES / "ALMSIVI.omwscripts")
-check("non-engine manifest fixture declares intended contexts", manifest.splitlines() == [
-    "# NON-ENGINE TEST MANIFEST: syntax requires pinned OpenMW verification",
-    "GLOBAL: scripts/ALMSIVI/global.lua", "PLAYER: scripts/ALMSIVI/player.lua", "CUSTOM: scripts/ALMSIVI/actor.lua"])
+allowed_manifest_declarations = [
+    "GLOBAL: scripts/ALMSIVI/global.lua", "PLAYER: scripts/ALMSIVI/player.lua", "CUSTOM: scripts/ALMSIVI/actor.lua"]
+manifest_declarations = [line.strip() for line in manifest.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+check("production manifest has exact pinned-source-verified contexts and paths",
+      manifest_declarations == allowed_manifest_declarations)
+check("production manifest contains only comments or allowed declarations", all(
+    not line.strip() or line.lstrip().startswith("#") or line.strip() in allowed_manifest_declarations
+    for line in manifest.splitlines()))
 required = ["global.lua", "player.lua", "actor.lua", "orchestrator.lua", "player_state.lua", "actor_executor.lua",
             "protocol.lua", "identity.lua", "context.lua", "conversation.lua", "actions.lua", "storage.lua"]
 check("all architecture modules exist", all((SCRIPTS / name).is_file() for name in required))
+deferrals = text(ROOT / "almsivi" / "ENGINE-DEFERRALS.txt")
+check("manifest verification cites pinned source paths and commit", all(fragment in deferrals for fragment in [
+    "PINNED SOURCE VERIFIED", "f4bec41444214a7903bebd178389ca22ca13f646",
+    "files/data/builtin.omwscripts", "scripts/data/integration_tests/test_lua_api/test_lua_api.omwscripts"]))
 constants = text(SCRIPTS / "constants.lua")
 for name, value in [("MAX_AUDIENCE", "12"), ("MAX_INVENTORY_ROWS", "48"), ("MAX_NEARBY_OBJECTS", "32"),
                     ("MAX_ACTIVE_EFFECTS", "32"), ("MAX_JOURNAL_ENTRIES", "32"), ("MAX_CONTENT_FILES", "256"),
