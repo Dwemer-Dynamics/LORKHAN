@@ -90,3 +90,10 @@ stale blobs, patch fuzz/offset, traversal, artifact drift, extra generated/untra
 mismatches, and metadata that omits rationale, provenance, subsystem, or tests. Run `audit` before
 committing any real engine patch; relevant OpenMW subsystem tests remain mandatory and must be named by
 the manifest.
+
+## Protocol contracts
+
+Strict Draft 2020-12 schemas, canonical positive/negative/hostile fixtures, deterministic local hashes,
+a standard-library discipline validator, and the loopback fake-server contract harness live under
+`almsivi/`. See `docs/PROTOCOL-CONTRACTS.md` for commands, scope, and contracts deliberately deferred
+rather than invented.

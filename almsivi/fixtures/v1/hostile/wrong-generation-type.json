@@ -1,0 +1,5 @@
+{
+  "description": "Boolean is not an integer generation",
+  "instance": {"created_at": "2026-07-18T20:00:03Z", "generation": true, "message_id": "00000000-0000-4000-8000-000000000022", "reason": "halt", "request_id": "00000000-0000-4000-8000-000000000006", "schema": "almsivi.interrupt.v1", "session_id": "00000000-0000-4000-8000-000000000007", "turn_id": "00000000-0000-4000-8000-000000000008"},
+  "schema": "https://almsivi.invalid/schemas/v1/interrupt.schema.json"
+}

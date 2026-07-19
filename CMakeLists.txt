@@ -5,7 +5,9 @@ find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
 enable_testing()
 add_test(NAME foundation-unit
   COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_SOURCE_DIR}/tests" -v)
-set_tests_properties(foundation-unit PROPERTIES
+add_test(NAME protocol-contract-harness
+  COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_SOURCE_DIR}/almsivi/tests" -v)
+set_tests_properties(foundation-unit protocol-contract-harness PROPERTIES
   ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
 add_custom_target(check
   COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${CMAKE_BINARY_DIR}" --output-on-failure

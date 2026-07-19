@@ -1,0 +1,15 @@
+{
+  "$id": "https://almsivi.invalid/schemas/v1/error.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "code": {"enum": ["action_disabled", "cursor_expired", "duplicate_conflict", "forbidden", "internal_error", "invalid_schema", "media_unavailable", "payload_too_large", "provider_timeout", "provider_unavailable", "rate_limited", "stale_generation", "unauthorized", "unknown_session"], "type": "string"},
+    "correlation_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "message": {"maxLength": 256, "minLength": 1, "type": "string"},
+    "retriable": {"type": "boolean"},
+    "retry_after_ms": {"maximum": 120000, "minimum": 0, "type": "integer"},
+    "schema": {"const": "almsivi.error.v1", "type": "string"}
+  },
+  "required": ["schema", "code", "message", "correlation_id", "retriable"],
+  "type": "object"
+}

@@ -1,0 +1,5 @@
+{
+  "description": "Opaque media identity cannot contain a path",
+  "instance": {"bytes": 4, "codec": "wav", "duration_ms": 100, "expires_at": "2026-07-18T21:00:00Z", "media_id": "../../secret", "sha256": "e12e115acf4552b2568b55e93cbd39394c4ef81c82447faed7738adf06e9ba61"},
+  "schema": "https://almsivi.invalid/schemas/v1/media-descriptor.schema.json"
+}
