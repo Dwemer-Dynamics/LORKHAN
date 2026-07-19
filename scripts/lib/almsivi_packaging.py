@@ -92,6 +92,51 @@ def collect_tree(root: Path) -> list[tuple[str, Path, int]]:
     return sorted(entries, key=lambda item: item[0].encode("utf-8"))
 
 
+SOURCE_EXCLUDED_ROOTS = {
+    ".cache", ".runs", ".work", "build", "deps", "dist", "downloads", "engine", "out", "packages",
+}
+
+
+def collect_source_tree(root: Path) -> list[tuple[str, Path, int]]:
+    """Collect repository source while excluding only VCS and known generated roots.
+
+    Package staging and archive collection deliberately continue to use ``collect_tree`` so a .git
+    entry or generated-root-shaped path in an artifact is inspected and rejected by package policy.
+    """
+    root = root.resolve(strict=True)
+    if not root.is_dir():
+        raise PackagingError(f"source root is not a directory: {root}")
+    entries: list[tuple[str, Path, int]] = []
+    for parent, directories, files in os.walk(root, topdown=True, followlinks=False):
+        parent_path = Path(parent)
+        relative_parent = parent_path.relative_to(root)
+        kept_directories = []
+        for name in sorted(directories):
+            path = parent_path / name
+            if name in {".git", "__pycache__"}:
+                continue
+            if relative_parent == Path(".") and (name in SOURCE_EXCLUDED_ROOTS or name.startswith("build-")):
+                continue
+            if path.is_symlink():
+                raise PackagingError(f"symlink rejected: {path}")
+            if not stat.S_ISDIR(path.lstat().st_mode):
+                raise PackagingError(f"special file rejected: {path}")
+            kept_directories.append(name)
+        directories[:] = kept_directories
+        for name in sorted(files):
+            if name == ".git" or name == ".DS_Store" or name.endswith((".pyc", ".pyo")):
+                continue
+            path = parent_path / name
+            file_stat = path.lstat()
+            if path.is_symlink():
+                raise PackagingError(f"symlink rejected: {path}")
+            if not stat.S_ISREG(file_stat.st_mode):
+                raise PackagingError(f"special file rejected: {path}")
+            relative = normalize_path(path.relative_to(root).as_posix())
+            entries.append((relative, path, _mode(path)))
+    return sorted(entries, key=lambda item: item[0].encode("utf-8"))
+
+
 def content_manifest(root: Path) -> dict[str, Any]:
     files = []
     for relative, path, mode in collect_tree(root):
@@ -539,7 +584,7 @@ def audit_bytes(path: str, data: bytes, digest: str | None = None) -> list[dict[
 
 def audit_tree(root: Path) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
-    for relative, path, _ in collect_tree(root):
+    for relative, path, _ in collect_source_tree(root):
         data = path.read_bytes()
         findings.extend(audit_bytes(relative, data))
     return findings

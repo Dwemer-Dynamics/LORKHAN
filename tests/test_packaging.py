@@ -19,7 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
 from almsivi_foundation import read_json
 from almsivi_packaging import (PackagingError, apply_suppressions, archive_manifest, audit_archive_content,
-                               audit_bytes, audit_notices, audit_source_inputs, collect_tree, content_manifest,
+                               audit_bytes, audit_notices, audit_source_inputs, audit_tree, collect_source_tree,
+                               collect_tree, content_manifest,
                                create_tar, create_zip, generate_spdx, install_plan, load_suppressions,
                                normalized_archive_comparison, package_set_linkage, release_name_guard,
                                sha256sums, source_date_epoch, uninstall_plan, validate_package_set,
@@ -191,14 +192,20 @@ class PackagingTests(unittest.TestCase):
     def test_every_content_audit_has_a_seeded_canary_and_clean_fixture(self):
         clean = audit_bytes("docs/clean.txt", b"ordinary authored fixture text")
         self.assertEqual(clean, [])
+        provider_canary = b"api" + b"_key=" + b"Ab9Kz7Qw2Rt5" + b"Yu8Io1Pa4Sd6Fg0Hj3Kl"
+        master_name = "Morrow" + "ind." + "esm"
+        tes_signature = b"TE" + b"S3" + b"x" * 16
+        bsa_signature = b"BS" + b"A" + bytes((0,)) + b"x" * 16
+        host_path = b"/" + b"Users" + b"/alice/private/file"
+        entropy_canary = b"Qp7Zx2Vm9Ka4Rt8Y" + b"u3Wd6Hs1Nj5Lc0Bg"
         cases = {
-            "secrets": ("config/provider.txt", b"api_key=Ab9Kz7Qw2Rt5Yu8Io1Pa4Sd6Fg0Hj3Kl"),
-            "proprietary-extension": ("data/Morrowind.esm", b"fixture"),
-            "tes3-signature": ("data/blob.bin", b"TES3" + b"x" * 16),
-            "bsa-signature": ("data/blob.bin", b"BSA\x00" + b"x" * 16),
-            "privacy": ("docs/path.txt", b"/Users/alice/private/file"),
+            "secrets": ("config/provider.txt", provider_canary),
+            "proprietary-extension": ("data/" + master_name, b"fixture"),
+            "tes3-signature": ("data/blob.bin", tes_signature),
+            "bsa-signature": ("data/blob.bin", bsa_signature),
+            "privacy": ("docs/path.txt", host_path),
             "cache": ("cache/result.bin", b"fixture"),
-            "high-entropy": ("config/value.txt", b"Qp7Zx2Vm9Ka4Rt8Yu3Wd6Hs1Nj5Lc0Bg"),
+            "high-entropy": ("config/value.txt", entropy_canary),
         }
         expected = {"secrets": "secrets", "proprietary-extension": "proprietary-data",
                     "tes3-signature": "proprietary-data", "bsa-signature": "proprietary-data",
@@ -206,6 +213,29 @@ class PackagingTests(unittest.TestCase):
         for name, (path, data) in cases.items():
             audits = {item["audit"] for item in audit_bytes(path, data)}
             self.assertIn(expected[name], audits, name)
+
+    def test_source_tree_audit_excludes_vcs_and_generated_roots_only(self):
+        source = self.temp / "source"; source.mkdir()
+        (source / "src").mkdir(); (source / "src/clean.py").write_text("value = 1\n", encoding="utf-8")
+        (source / ".git").write_text("gitdir: /" + "Users" + "/operator/worktree\n", encoding="utf-8")
+        for generated in ("build", "build-debug", ".cache", ".runs", ".work", "dist", "engine"):
+            directory = source / generated; directory.mkdir()
+            (directory / "generated.txt").write_text("/" + "Users" + "/generated/path\n", encoding="utf-8")
+        self.assertEqual(audit_tree(source), [])
+        collected = {item[0] for item in collect_source_tree(source)}
+        self.assertEqual(collected, {"src/clean.py"})
+        (source / "src/path.txt").write_text("/" + "Users" + "/outside/git\n", encoding="utf-8")
+        findings = audit_tree(source)
+        self.assertEqual({item["audit"] for item in findings}, {"privacy"})
+        self.assertEqual(findings[0]["path"], "src/path.txt")
+
+    def test_archive_collection_does_not_exclude_vcs_metadata(self):
+        stage = self.temp / "stage"; stage.mkdir()
+        (stage / ".git").write_text("gitdir: /" + "Users" + "/operator/worktree\n", encoding="utf-8")
+        self.assertIn(".git", {item[0] for item in collect_tree(stage)})
+        archive = self.temp / "fixture-vcs.zip"; create_zip(stage, archive, EPOCH)
+        _, findings = audit_archive_content(archive, ["*"], [])
+        self.assertIn("privacy", {item["audit"] for item in findings})
 
     def test_archive_allowlist_notices_and_source_input_canaries(self):
         root = self.tree()
