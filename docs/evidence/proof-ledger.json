@@ -59,7 +59,7 @@
     },
     {
       "id": "python-suite",
-      "claim": "The current no-game Python suite passed 43 tests",
+      "claim": "The current no-game Python suite passed 44 tests",
       "state": "AUTOMATED",
       "evidence": ["tests"]
     },

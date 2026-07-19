@@ -48,6 +48,23 @@ class PackagingTests(unittest.TestCase):
         (root / "docs/README.txt").write_bytes(b"fixture docs\n")
         return root
 
+    def repository_fixture(self, *, commit: bool = True) -> Path:
+        repository = self.temp / "repository"
+        repository.mkdir()
+        tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files"], check=True, text=True,
+                                 stdout=subprocess.PIPE).stdout.splitlines()
+        for relative in tracked:
+            source = ROOT / relative
+            target = repository / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+        subprocess.run(["git", "init", "-q", str(repository)], check=True)
+        subprocess.run(["git", "-C", str(repository), "add", "-f", "--", *tracked], check=True)
+        if commit:
+            subprocess.run(["git", "-C", str(repository), "-c", "user.name=Fixture", "-c",
+                            "user.email=fixture@invalid", "commit", "-qm", "fixture"], check=True)
+        return repository
+
     def test_epoch_is_required_and_bounded(self):
         old = os.environ.pop("SOURCE_DATE_EPOCH", None)
         try:
@@ -142,8 +159,7 @@ class PackagingTests(unittest.TestCase):
         self.assertTrue(linkage["dependency_locks"])
 
     def test_missing_tampered_patch_manifest_and_provenance_fail_linkage(self):
-        repository = self.temp / "repository"
-        shutil.copytree(ROOT, repository, symlinks=True, ignore=shutil.ignore_patterns(".git", "build", "__pycache__"))
+        repository = self.repository_fixture()
         policy = read_json(repository / "config/packaging/policy.json")
         patch = repository / policy["patch_manifest"]
         original_patch = patch.read_bytes()
@@ -167,9 +183,24 @@ class PackagingTests(unittest.TestCase):
         with self.assertRaisesRegex(PackagingError, "incomplete provenance"):
             package_set_linkage(repository, policy)
 
+    def test_package_linkage_and_cli_reject_incomplete_tracked_provenance(self):
+        repository = self.repository_fixture()
+        policy = read_json(repository / "config/packaging/policy.json")
+        provenance = repository / policy["provenance_ledger"]
+        document = read_json(provenance)
+        removed = document["records"][0]["target_paths"].pop()
+        provenance.write_text(json.dumps(document), encoding="utf-8")
+        with self.assertRaisesRegex(PackagingError, "source provenance missing"):
+            package_set_linkage(repository, policy)
+        command = subprocess.run(
+            [sys.executable, str(repository / "scripts/audit/package_audit.py"),
+             "--repository", str(repository), "provenance"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(command.returncode, 2)
+        self.assertIn(removed, command.stderr)
+
     def test_release_guard_rechecks_authoritative_inputs_after_stage_is_complete(self):
-        repository = self.temp / "repository"
-        shutil.copytree(ROOT, repository, symlinks=True, ignore=shutil.ignore_patterns(".git", "build", "__pycache__"))
+        repository = self.repository_fixture(commit=False)
         policy = read_json(repository / "config/packaging/policy.json")
         stage = self.temp / "release-stage"
         for relative in policy["required_product_paths"]["runtime"] + policy["required_corresponding_source_paths"]:

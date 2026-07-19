@@ -58,13 +58,13 @@ The native command compiles the pure native scaffold directly; it does not confi
 
 Use clean, distinct roots; identical toolchain/dependency inputs; the same state and options; and the same epoch. Compare install trees only after both builds succeed. Normalize or exclude only artifacts documented by the eventual reproducibility implementation. A matching hash is artifact reproducibility evidence for those inputs, not platform portability, functional correctness, provenance, packaging, or signing proof.
 
-CI action dependencies are pinned to immutable 40-character commits. CI does not fetch or commit a generated source cache. The checked-in CI definitions automate declared foundation, native, Lua, packaging, audit, and platform-readiness commands. Their presence is automation, not execution proof: a platform row remains `PLANNED` until an actual qualifying run is recorded, and skipped or unavailable tools remain no-proof outcomes.
+CI action dependencies are pinned to immutable 40-character commits. CI does not fetch or commit a generated source cache. The checked-in CI definitions automate declared foundation, native, Lua, packaging, audit, and platform-readiness commands. Native lanes record their hosted compiler, CMake/Ninja or MSVC, runner image, and image version. Those hosted tools are mutable image inputs, not immutable release-toolchain pins: a qualifying job proves that recorded functional run, not byte-reproducible release provenance. Exact toolchain artifacts must be hash-locked before release reproducibility can be proven. Workflow presence alone is not execution proof; skipped or unavailable tools remain no-proof outcomes.
 
 ## Current host outcome (2026-07-18 checkpoint)
 
 The real network prefetch and strict offline reconstruction passed for exact commit `f4bec41444214a7903bebd178389ca22ca13f646`: the verified content-addressed cache was 96 MiB and the materialized source was 133 MiB.
 
-The warning-clean direct Clang pure-native suite compiled and passed. The recorded no-game checks also passed 43 Python tests, 7 loopback contract-harness cases, and 38 Lua structural/source-manifest checks. Deterministic archive checks passed, and both the package audit and source audit completed with zero findings.
+The warning-clean direct Clang pure-native suite compiled and passed. The recorded no-game checks also passed 44 Python tests, 7 loopback contract-harness cases, and 38 Lua structural/source-manifest checks. Deterministic archive checks passed, and both the package audit and source audit completed with zero findings.
 
 The sanitizer configuration compiled, but its Apple-host runtime hung; this is not sanitizer runtime proof. CMake, Ninja, Lua, and PowerShell (`pwsh`) were unavailable locally. Consequently there is no local CMake/OpenMW control or patched-engine build, no Lua-runtime result, and no PowerShell/Windows result. The checked-in CI definitions are automation definitions only and are not evidence that any CI platform lane executed.
 
