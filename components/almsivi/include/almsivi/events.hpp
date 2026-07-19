@@ -15,7 +15,7 @@ struct EventIdentity {
     MessageId message;
 };
 
-enum class EventDisposition { accepted, duplicate, gap };
+enum class EventDisposition { accepted, duplicate, gap, invalid };
 
 struct EventDecision {
     EventDisposition disposition{EventDisposition::accepted};

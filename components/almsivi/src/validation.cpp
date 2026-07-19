@@ -128,6 +128,22 @@ Result<std::string> requireValidUtf8(std::string_view input, std::size_t maximum
     return Result<std::string>::success(std::string(input));
 }
 
+bool isCanonicalUuid(std::string_view input) noexcept
+{
+    if (input.size() != 36)
+        return false;
+    for (std::size_t index = 0; index < input.size(); ++index) {
+        if (index == 8 || index == 13 || index == 18 || index == 23) {
+            if (input[index] != '-')
+                return false;
+        } else if (!std::isdigit(static_cast<unsigned char>(input[index]))
+            && !(input[index] >= 'a' && input[index] <= 'f')) {
+            return false;
+        }
+    }
+    return true;
+}
+
 std::string BaseUrl::authority() const
 {
     const std::string renderedHost = ipv6 ? "[" + host + "]" : host;

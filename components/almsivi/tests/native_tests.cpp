@@ -14,6 +14,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <type_traits>
 #include <vector>
 
 using namespace std::chrono_literals;
@@ -22,6 +23,14 @@ namespace {
 
 int failures = 0;
 #define CHECK(expression) do { if (!(expression)) { std::cerr << __FILE__ << ':' << __LINE__ << ": CHECK failed: " #expression "\n"; ++failures; } } while (false)
+
+constexpr const char* kInstallation = "01900000-0000-7000-8000-000000000001";
+constexpr const char* kProfile = "01900000-0000-7000-8000-000000000002";
+constexpr const char* kPlaythrough = "01900000-0000-7000-8000-000000000003";
+constexpr const char* kSession = "01900000-0000-7000-8000-000000000004";
+constexpr const char* kTurn = "01900000-0000-7000-8000-000000000005";
+constexpr const char* kMessage = "01900000-0000-7000-8000-000000000006";
+constexpr const char* kAction = "01900000-0000-7000-8000-000000000007";
 
 class FakeClock final : public almsivi::IClock {
 public:
@@ -57,11 +66,22 @@ private:
     std::shared_ptr<TransportState> m_state;
 };
 
+std::string uuidFor(unsigned value)
+{
+    std::string uuid = "01900000-0000-7000-8000-000000000000";
+    constexpr char hex[] = "0123456789abcdef";
+    uuid[34] = hex[(value >> 4U) & 0xFU];
+    uuid[35] = hex[value & 0xFU];
+    return uuid;
+}
+
 almsivi::OutboundRequest request(std::string id, almsivi::Generation generation)
 {
-    return {almsivi::RequestId(std::move(id)), almsivi::SessionId("session"), generation,
-        almsivi::RequestKind::turn,
-        almsivi::TurnRequest{almsivi::EnvelopeIds{{}, {}, {}, {}, {}, {}, {}, generation}, "{}"}};
+    almsivi::EnvelopeIds ids{almsivi::InstallationId(kInstallation), almsivi::ProfileId(kProfile),
+        almsivi::PlaythroughId(kPlaythrough), almsivi::SessionId(kSession), almsivi::RequestId(id),
+        almsivi::TurnId(kTurn), almsivi::MessageId(kMessage), generation};
+    return {almsivi::RequestId(std::move(id)), almsivi::SessionId(kSession), generation,
+        almsivi::RequestKind::turn, almsivi::TurnRequest{std::move(ids), "{}"}};
 }
 
 void testUtf8()
@@ -72,6 +92,10 @@ void testUtf8()
     CHECK(!almsivi::isValidUtf8(std::string("\xED\xA0\x80", 3)));
     CHECK(!almsivi::isValidUtf8(std::string("\xF4\x90\x80\x80", 4)));
     CHECK(!almsivi::requireValidUtf8("abcd", 3));
+    CHECK(almsivi::isCanonicalUuid(kSession));
+    CHECK(!almsivi::isCanonicalUuid("01900000-0000-7000-8000-00000000000"));
+    CHECK(!almsivi::isCanonicalUuid("01900000-0000-7000-8000-00000000000g"));
+    CHECK(!almsivi::isCanonicalUuid("01900000-0000-7000-8000-00000000000A"));
 }
 
 void testUrls()
@@ -131,12 +155,17 @@ void testLifecycleAndCancellation()
 void testEvents()
 {
     almsivi::EventTracker tracker;
-    const almsivi::SessionId session("s");
-    CHECK(tracker.observe({session, 1, almsivi::MessageId("m1")}).disposition == almsivi::EventDisposition::accepted);
-    CHECK(tracker.observe({session, 1, almsivi::MessageId("m1")}).disposition == almsivi::EventDisposition::duplicate);
-    auto gap = tracker.observe({session, 3, almsivi::MessageId("m3")});
+    const almsivi::SessionId session(kSession);
+    const almsivi::MessageId message1(kMessage);
+    const almsivi::MessageId message2("01900000-0000-7000-8000-000000000008");
+    const almsivi::MessageId message3("01900000-0000-7000-8000-000000000009");
+    CHECK(tracker.observe({session, 1, message1}).disposition == almsivi::EventDisposition::accepted);
+    CHECK(tracker.observe({session, 1, message1}).disposition == almsivi::EventDisposition::duplicate);
+    auto gap = tracker.observe({session, 3, message3});
     CHECK(gap.disposition == almsivi::EventDisposition::gap && gap.expectedSequence == 2);
-    CHECK(tracker.observe({session, 2, almsivi::MessageId("m2")}).disposition == almsivi::EventDisposition::accepted);
+    CHECK(tracker.observe({session, 2, message2}).disposition == almsivi::EventDisposition::accepted);
+    CHECK(tracker.observe({almsivi::SessionId("bad"), 3, message3}).disposition == almsivi::EventDisposition::invalid);
+    CHECK(tracker.observe({session, 3, almsivi::MessageId("BAD")}).disposition == almsivi::EventDisposition::invalid);
     CHECK(tracker.cursor(session) == 2);
 }
 
@@ -149,11 +178,29 @@ void testActions()
     CHECK(!almsivi::validateAiFollow(193));
     CHECK(!almsivi::validateAiFollow(std::numeric_limits<std::uint32_t>::max()));
     almsivi::ActionResultRegistry registry;
-    const almsivi::ActionId action("action");
+    const almsivi::ActionId action(kAction);
+    CHECK(!registry.registerAction(almsivi::ActionId("action"), almsivi::Generation(2)));
+    CHECK(!registry.registerAction(almsivi::ActionId("01900000-0000-7000-8000-00000000000A"), almsivi::Generation(2)));
     CHECK(registry.registerAction(action, almsivi::Generation(2)));
     CHECK(registry.finish({action, almsivi::ActionTerminalStatus::succeeded, "package_started"}));
     CHECK(!registry.finish({action, almsivi::ActionTerminalStatus::failed, "duplicate"}));
     CHECK(registry.terminal(action));
+}
+
+void testPairingToken()
+{
+    static_assert(!std::is_copy_constructible_v<almsivi::PairingToken>);
+    static_assert(!std::is_copy_assignable_v<almsivi::PairingToken>);
+    static_assert(std::is_move_constructible_v<almsivi::PairingToken>);
+    static_assert(std::is_constructible_v<almsivi::PairingToken, almsivi::PairingToken::Secret>);
+    static_assert(!std::is_constructible_v<almsivi::PairingToken, std::string>);
+    almsivi::PairingToken::Secret secret{};
+    secret[0] = std::byte{0x42};
+    almsivi::PairingToken token(secret);
+    CHECK(!token.empty() && token.redacted() == "<redacted>");
+    almsivi::PairingToken moved(std::move(token));
+    CHECK(token.empty() && token.redacted() == "<unset>");
+    CHECK(!moved.empty() && moved.redacted() == "<redacted>");
 }
 
 void testMedia()
@@ -179,31 +226,45 @@ void testBridge()
     auto clock = std::make_shared<FakeClock>();
     almsivi::BridgeService bridge(std::make_unique<FakeTransport>(state), clock);
     const auto generation = bridge.generation();
-    CHECK(bridge.enqueue(request("one", generation)));
     CHECK(!bridge.enqueue(request("one", generation)));
-    for (int tries = 0; tries < 1000 && bridge.poll(1).empty(); ++tries)
-        std::this_thread::yield();
-    CHECK(state->executions == 1);
-    state->block = true;
-    CHECK(bridge.enqueue(request("cancel-me", generation)));
+    CHECK(!bridge.enqueue(request("01900000-0000-7000-8000-00000000000A", generation)));
+    auto malformedSession = request(uuidFor(14), generation);
+    malformedSession.session = almsivi::SessionId("session");
+    CHECK(!bridge.enqueue(std::move(malformedSession)));
+    auto malformedEnvelope = request(uuidFor(15), generation);
+    std::get<almsivi::TurnRequest>(malformedEnvelope.payload).ids.profile = almsivi::ProfileId("PROFILE");
+    CHECK(!bridge.enqueue(std::move(malformedEnvelope)));
+    almsivi::EnvelopeIds initIds{almsivi::InstallationId(kInstallation), almsivi::ProfileId(kProfile),
+        almsivi::PlaythroughId(kPlaythrough), {}, almsivi::RequestId(uuidFor(13)), almsivi::TurnId(kTurn),
+        almsivi::MessageId(kMessage), generation};
+    almsivi::OutboundRequest init{almsivi::RequestId(uuidFor(13)), {}, generation, almsivi::RequestKind::init,
+        almsivi::InitRequest{std::move(initIds), {}, "sha256:test"}};
+    CHECK(bridge.enqueue(std::move(init)));
+    CHECK(bridge.enqueue(request(uuidFor(16), generation)));
+    CHECK(!bridge.enqueue(request(uuidFor(16), generation)));
     for (int tries = 0; tries < 10000 && state->executions.load() < 2; ++tries)
         std::this_thread::yield();
-    CHECK(bridge.cancel(almsivi::RequestId("cancel-me")));
+    CHECK(state->executions == 2);
+    state->block = true;
+    CHECK(bridge.enqueue(request(uuidFor(17), generation)));
+    for (int tries = 0; tries < 10000 && state->executions.load() < 3; ++tries)
+        std::this_thread::yield();
+    CHECK(bridge.cancel(almsivi::RequestId(uuidFor(17))));
     bool sawCancelled = false;
     for (int tries = 0; tries < 10000 && !sawCancelled; ++tries) {
         for (const auto& result : bridge.poll(8))
-            sawCancelled = sawCancelled || (result.request == almsivi::RequestId("cancel-me")
+            sawCancelled = sawCancelled || (result.request == almsivi::RequestId(uuidFor(17))
                 && result.kind == almsivi::ResponseKind::cancelled);
         std::this_thread::yield();
     }
     CHECK(sawCancelled);
     auto next = bridge.cancelGeneration(generation);
     CHECK(next && next.value() == almsivi::Generation(generation.value() + 1));
-    CHECK(!bridge.enqueue(request("stale", generation)));
-    CHECK(bridge.enqueue(request("current", bridge.generation())));
+    CHECK(!bridge.enqueue(request(uuidFor(18), generation)));
+    CHECK(bridge.enqueue(request(uuidFor(19), bridge.generation())));
     bridge.halt();
     CHECK(bridge.halted());
-    CHECK(!bridge.enqueue(request("after", bridge.generation())));
+    CHECK(!bridge.enqueue(request(uuidFor(20), bridge.generation())));
 }
 
 void testConcurrency()
@@ -217,7 +278,7 @@ void testConcurrency()
     for (unsigned thread = 0; thread < 8; ++thread) {
         producers.emplace_back([&, thread] {
             for (unsigned i = 0; i < 20; ++i)
-                if (bridge.enqueue(request(std::to_string(thread) + "-" + std::to_string(i), generation)))
+                if (bridge.enqueue(request(uuidFor(32 + thread * 20 + i), generation)))
                     ++accepted;
         });
     }
@@ -233,7 +294,7 @@ void testConcurrency()
 int main()
 {
     testUtf8(); testUrls(); testHeaders(); testQueue(); testLifecycleAndCancellation();
-    testEvents(); testActions(); testMedia(); testBridge(); testConcurrency();
+    testEvents(); testActions(); testPairingToken(); testMedia(); testBridge(); testConcurrency();
     if (failures != 0) {
         std::cerr << failures << " test(s) failed\n";
         return EXIT_FAILURE;

@@ -1,9 +1,13 @@
 #include "almsivi/events.hpp"
 
+#include "almsivi/validation.hpp"
+
 namespace almsivi {
 
 EventDecision EventTracker::observe(const EventIdentity& event)
 {
+    if (!isCanonicalUuid(event.session.value()) || !isCanonicalUuid(event.message.value()) || event.sequence == 0)
+        return {EventDisposition::invalid, 0};
     std::lock_guard lock(m_mutex);
     auto& state = m_sessions[event.session];
     const std::uint64_t expected = state.cursor + 1;

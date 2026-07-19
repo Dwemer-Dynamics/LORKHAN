@@ -13,6 +13,8 @@ namespace almsivi {
 
 [[nodiscard]] bool isValidUtf8(std::string_view input) noexcept;
 [[nodiscard]] Result<std::string> requireValidUtf8(std::string_view input, std::size_t maximumBytes);
+// Protocol IDs use canonical lowercase RFC 4122 text: 8-4-4-4-12 hexadecimal digits.
+[[nodiscard]] bool isCanonicalUuid(std::string_view input) noexcept;
 
 struct BaseUrl {
     std::string host;

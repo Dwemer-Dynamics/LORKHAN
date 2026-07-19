@@ -2,6 +2,7 @@
 
 #include "almsivi/result.hpp"
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -99,10 +100,17 @@ struct EnvelopeIds {
     Generation generation;
 };
 
+// Native scheduling correlation is separate from schema-owned action-result JSON fields.
+struct RequestCorrelation {
+    RequestId request;
+    SessionId session;
+    Generation generation;
+};
+
 struct HealthRequest {};
 struct InitRequest { EnvelopeIds ids; RuntimeInfo runtime; std::string contentFingerprint; };
 struct TurnRequest { EnvelopeIds ids; std::string serializedPayload; };
-struct ActionResultRequest { EnvelopeIds ids; ActionId action; std::string serializedPayload; };
+struct ActionResultRequest { RequestCorrelation correlation; ActionId action; std::string serializedPayload; };
 struct SttRequest { EnvelopeIds ids; std::string codec; std::vector<std::byte> audio; };
 
 using RequestPayload = std::variant<HealthRequest, InitRequest, TurnRequest, ActionResultRequest, SttRequest>;
@@ -128,37 +136,46 @@ struct InboundResult {
     std::optional<Error> failure;
 };
 
+class BeastTransport;
+
 class PairingToken {
 public:
+    using Secret = std::array<std::byte, 32>;
+
     PairingToken() = default;
-    explicit PairingToken(std::string token) : m_token(std::move(token)) {}
+    explicit PairingToken(Secret secret) noexcept : m_secret(secret), m_present(true) {}
     PairingToken(const PairingToken&) = delete;
     PairingToken& operator=(const PairingToken&) = delete;
-    PairingToken(PairingToken&& other) noexcept : m_token(std::move(other.m_token)) { other.clear(); }
+    PairingToken(PairingToken&& other) noexcept : m_secret(other.m_secret), m_present(other.m_present) { other.clear(); }
     PairingToken& operator=(PairingToken&& other) noexcept
     {
         if (this != &other) {
             clear();
-            m_token = std::move(other.m_token);
+            m_secret = other.m_secret;
+            m_present = other.m_present;
             other.clear();
         }
         return *this;
     }
     ~PairingToken() { clear(); }
 
-    [[nodiscard]] bool empty() const noexcept { return m_token.empty(); }
-    [[nodiscard]] std::string redacted() const { return m_token.empty() ? "<unset>" : "<redacted>"; }
+    [[nodiscard]] bool empty() const noexcept { return !m_present; }
+    [[nodiscard]] std::string redacted() const { return m_present ? "<redacted>" : "<unset>"; }
 
 private:
+    friend class BeastTransport;
+    [[nodiscard]] const Secret& secretForAuthorization() const noexcept { return m_secret; }
+
     void clear() noexcept
     {
-        volatile char* memory = m_token.empty() ? nullptr : m_token.data();
-        for (std::size_t i = 0; i < m_token.size(); ++i)
-            memory[i] = 0;
-        m_token.clear();
+        volatile std::byte* memory = m_secret.data();
+        for (std::size_t i = 0; i < m_secret.size(); ++i)
+            memory[i] = std::byte{0};
+        m_present = false;
     }
 
-    std::string m_token;
+    Secret m_secret{};
+    bool m_present{false};
 };
 
 } // namespace almsivi

@@ -21,12 +21,48 @@ BridgeService::~BridgeService()
 
 Result<void> BridgeService::validateRequest(const OutboundRequest& request) const
 {
-    if (request.id.empty())
-        return Result<void>::failure(makeError(ErrorCode::invalid_argument, "request ID is empty"));
+    const auto validId = [](const auto& id) { return isCanonicalUuid(id.value()); };
+    const auto validEnvelope = [&validId](const EnvelopeIds& ids, bool sessionRequired) {
+        return validId(ids.installation) && validId(ids.profile) && validId(ids.playthrough)
+            && (!sessionRequired || validId(ids.session)) && (sessionRequired || ids.session.empty() || validId(ids.session))
+            && validId(ids.request) && validId(ids.turn) && validId(ids.message);
+    };
+    if (!validId(request.id))
+        return Result<void>::failure(makeError(ErrorCode::invalid_argument, "request ID must be a canonical lowercase UUID"));
     if (request.generation != m_generation.current())
         return Result<void>::failure(makeError(ErrorCode::stale_generation, "request generation is stale"));
-    if (request.kind != RequestKind::health && request.session.empty())
-        return Result<void>::failure(makeError(ErrorCode::invalid_argument, "session ID is required"));
+    const bool sessionRequired = request.kind != RequestKind::health && request.kind != RequestKind::init;
+    if ((sessionRequired && !validId(request.session))
+        || (!sessionRequired && !request.session.empty() && !validId(request.session)))
+        return Result<void>::failure(makeError(ErrorCode::invalid_argument, "session ID is missing or malformed"));
+    const auto envelopeMatches = [&request](const EnvelopeIds& ids) {
+        return ids.request == request.id && ids.generation == request.generation
+            && (request.session.empty() || ids.session == request.session);
+    };
+    if ((request.kind == RequestKind::health) != std::holds_alternative<HealthRequest>(request.payload)
+        || (request.kind == RequestKind::init) != std::holds_alternative<InitRequest>(request.payload)
+        || (request.kind == RequestKind::turn) != std::holds_alternative<TurnRequest>(request.payload)
+        || (request.kind == RequestKind::action_result) != std::holds_alternative<ActionResultRequest>(request.payload)
+        || (request.kind == RequestKind::stt) != std::holds_alternative<SttRequest>(request.payload))
+        return Result<void>::failure(makeError(ErrorCode::invalid_argument, "request kind does not match typed payload"));
+    if (const auto* init = std::get_if<InitRequest>(&request.payload)) {
+        if (!validEnvelope(init->ids, false) || !envelopeMatches(init->ids))
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument, "init envelope contains malformed or inconsistent IDs"));
+    }
+    if (const auto* turn = std::get_if<TurnRequest>(&request.payload)) {
+        if (!validEnvelope(turn->ids, true) || !envelopeMatches(turn->ids))
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument, "turn envelope contains malformed or inconsistent IDs"));
+    }
+    if (const auto* stt = std::get_if<SttRequest>(&request.payload)) {
+        if (!validEnvelope(stt->ids, true) || !envelopeMatches(stt->ids))
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument, "STT envelope contains malformed or inconsistent IDs"));
+    }
+    if (const auto* action = std::get_if<ActionResultRequest>(&request.payload)) {
+        if (!validId(action->correlation.request) || !validId(action->correlation.session) || !validId(action->action)
+            || action->correlation.request != request.id || action->correlation.session != request.session
+            || action->correlation.generation != request.generation)
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument, "action-result correlation contains malformed or inconsistent IDs"));
+    }
     const auto validatePayload = [](std::string_view value, std::size_t limit) -> Result<void> {
         auto valid = requireValidUtf8(value, limit);
         return valid ? Result<void>::success() : Result<void>::failure(valid.error());
@@ -176,9 +212,17 @@ void BridgeService::workerLoop()
         }
         if (cancelled && !cancellationAlreadyPublished)
             publishCancelled(*request);
-        else if (!cancelled && response && m_generation.isCurrent(response.value().generation))
+        else if (!cancelled && response && response.value().request == request->id
+            && response.value().session == request->session && response.value().generation == request->generation
+            && isCanonicalUuid(response.value().request.value())
+            && (request->session.empty() || isCanonicalUuid(response.value().session.value()))
+            && m_generation.isCurrent(response.value().generation))
             static_cast<void>(m_inbound.tryPush(std::move(response).value()));
-        else if (!cancelled && !response && m_generation.isCurrent(request->generation)) {
+        else if (!cancelled && response && m_generation.isCurrent(request->generation)) {
+            InboundResult failure{request->id, request->session, request->generation, ResponseKind::failure, {},
+                makeError(ErrorCode::transport_failure, "transport returned inconsistent correlation IDs")};
+            static_cast<void>(m_inbound.tryPush(std::move(failure)));
+        } else if (!cancelled && !response && m_generation.isCurrent(request->generation)) {
             InboundResult failure{request->id, request->session, request->generation, ResponseKind::failure, {}, response.error()};
             static_cast<void>(m_inbound.tryPush(std::move(failure)));
         }

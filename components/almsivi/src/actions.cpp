@@ -1,5 +1,7 @@
 #include "almsivi/actions.hpp"
 
+#include "almsivi/validation.hpp"
+
 namespace almsivi {
 
 Result<FollowParameters> validateAiFollow(std::uint32_t distance)
@@ -11,8 +13,8 @@ Result<FollowParameters> validateAiFollow(std::uint32_t distance)
 
 Result<void> ActionResultRegistry::registerAction(const ActionId& action, Generation generation)
 {
-    if (action.empty())
-        return Result<void>::failure(makeError(ErrorCode::invalid_action, "action ID is empty"));
+    if (!isCanonicalUuid(action.value()))
+        return Result<void>::failure(makeError(ErrorCode::invalid_action, "action ID must be a canonical lowercase UUID"));
     std::lock_guard lock(m_mutex);
     if (!m_entries.emplace(action, Entry{generation, false, {}}).second)
         return Result<void>::failure(makeError(ErrorCode::duplicate_conflict, "action ID already exists"));
@@ -21,6 +23,8 @@ Result<void> ActionResultRegistry::registerAction(const ActionId& action, Genera
 
 Result<void> ActionResultRegistry::finish(ActionTerminalResult result)
 {
+    if (!isCanonicalUuid(result.action.value()))
+        return Result<void>::failure(makeError(ErrorCode::invalid_action, "action ID must be a canonical lowercase UUID"));
     std::lock_guard lock(m_mutex);
     const auto found = m_entries.find(result.action);
     if (found == m_entries.end())
