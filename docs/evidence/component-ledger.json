@@ -6,40 +6,40 @@
       "source": "OpenMW 0.51.0 release pin",
       "target": "config/source-pins/openmw.json",
       "owner": "client foundations",
-      "state": "PLANNED",
-      "proof": "config/source-pins/openmw.json and tests/test_foundation.py; durable execution evidence pending"
+      "state": "AUTOMATED",
+      "proof": "docs/evidence/runs/3717eff-local/index.json; evidence.json"
     },
     {
       "id": "bootstrap",
       "source": "exact pinned OpenMW Git bundle",
       "target": "scripts/bootstrap",
       "owner": "client foundations",
-      "state": "PLANNED",
-      "proof": "strict offline bootstrap implementation exists; durable reconstruction evidence pending"
+      "state": "AUTOMATED",
+      "proof": "docs/evidence/runs/3717eff-local/index.json; offline-bootstrap.json records pinned source and verified cache hash"
     },
     {
       "id": "patch-machinery",
       "source": "ordered exact-pin OpenMW patch specification",
       "target": "openmw-patches and scripts/patches/openmw.py",
       "owner": "engine foundations",
-      "state": "PLANNED",
-      "proof": "tests/test_openmw_patches.py"
+      "state": "AUTOMATED",
+      "proof": "docs/evidence/runs/3717eff-local/index.json; patch-manifest.json and python-tests.json"
     },
     {
       "id": "protocol-harness",
       "source": "local v1 schemas and classified fixtures",
       "target": "almsivi schemas, manifests, validators, and fake-server harness",
       "owner": "protocol foundations",
-      "state": "PLANNED",
-      "proof": "tests/test_protocol.py and almsivi/tests/test_contract_harness.py; durable execution evidence pending"
+      "state": "AUTOMATED",
+      "proof": "docs/evidence/runs/3717eff-local/index.json; protocol.json, protocol-manifest.json, and loopback-tests.json"
     },
     {
       "id": "native-pure",
       "source": "typed native client foundation",
       "target": "components/almsivi and components/almsivi/tests/native_tests.cpp",
       "owner": "native foundations",
-      "state": "PLANNED",
-      "proof": "scripts/test/native.sh defines pure-native validation; durable execution evidence pending and OpenMW integration excluded"
+      "state": "AUTOMATED",
+      "proof": "docs/evidence/runs/3717eff-local/index.json; native.json; integrated OpenMW excluded"
     },
     {
       "id": "native-engine-integration",
@@ -64,8 +64,8 @@
       "source": "docs/LUA-MOD-ARCHITECTURE.md",
       "target": "almsivi/files/scripts/ALMSIVI and source manifest",
       "owner": "Lua foundations",
-      "state": "PLANNED",
-      "proof": "almsivi/tests/run.py defines structural and source-manifest checks; durable execution evidence pending"
+      "state": "AUTOMATED",
+      "proof": "docs/evidence/runs/3717eff-local/index.json; lua-structural.json and almsivi/tests/run.py; Lua runtime excluded"
     },
     {
       "id": "lua-runtime",
@@ -81,16 +81,16 @@
       "source": "docs/PACKAGING-AND-LICENSE.md",
       "target": "scripts/package, scripts/audit, and config/packaging",
       "owner": "packaging foundations",
-      "state": "PLANNED",
-      "proof": "tests/test_packaging.py and scripts/audit/package.sh define the checks; durable execution evidence pending"
+      "state": "AUTOMATED",
+      "proof": "docs/evidence/runs/3717eff-local/index.json; python-tests.json, source-audit.json, and provenance.json"
     },
     {
       "id": "ci-definitions",
       "source": "foundation command contracts",
       "target": "checked-in CI workflow definitions",
       "owner": "CI foundations",
-      "state": "PLANNED",
-      "proof": "Definitions pin and automate commands, but no qualifying platform execution is recorded"
+      "state": "AUTOMATED",
+      "proof": "docs/evidence/runs/3717eff-local/index.json; ci-static.json proves static definitions only, not platform execution"
     },
     {
       "id": "final-server-import",

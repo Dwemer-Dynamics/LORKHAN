@@ -1,0 +1,9 @@
+ok: workflow action pins, mandatory triggers, publish bans, and repository boundaries validated
+skip: pwsh unavailable; PowerShell parser proof deferred for:
+$REPOSITORY/scripts/audit/package.ps1
+$REPOSITORY/scripts/bootstrap/prefetch-windows.ps1
+$REPOSITORY/scripts/bootstrap/windows.ps1
+$REPOSITORY/scripts/build/windows.ps1
+$REPOSITORY/scripts/package/windows.ps1
+$REPOSITORY/scripts/test/lua-windows.ps1
+ok: all shell entrypoints and available PowerShell entrypoints validated

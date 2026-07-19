@@ -1,0 +1,6 @@
+valid: config/source-pins/openmw.json
+valid: docs/evidence/source-ledger.json
+valid: docs/evidence/component-ledger.json
+valid: docs/evidence/proof-ledger.json
+valid: docs/evidence/file-provenance-ledger.json
+valid: openmw-patches/patch-manifest.json

@@ -1,0 +1,1 @@
+{"command":["$REPOSITORY/scripts/test/validate-ci.sh"],"inputs":{"validation_commit":"3717effebb8d42ad7601d6ca02c19ac3533efcf8"},"outputs":{"log":"ci-static.txt","log_lines":"9"},"result":"success","schema_version":1,"tools":{"clang++":"Apple clang version 17.0.0 (clang-1700.4.4.1)","git":"git version 2.50.1 (Apple Git-155)","python":"3.9.6"}}

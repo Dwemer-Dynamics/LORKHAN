@@ -101,8 +101,7 @@ Python checks remain distinct from runtime proof.
 ./scripts/test/lua-windows.ps1
 ```
 
-The native and Lua structural entry points are implemented. Durable execution evidence is recorded only
-through `scripts/evidence/record_local_validation.py`; Lua runtime and in-game proof remain deferred.
+The durable run at `docs/evidence/runs/3717eff-local/index.json`, bound to clean commit `3717effebb8d42ad7601d6ca02c19ac3533efcf8`, records a successful warning-clean native run and 38 Lua structural checks with zero failures. Lua runtime and in-game proof remain deferred.
 
 ## OpenMW patch series
 
@@ -131,7 +130,7 @@ the manifest.
 
 Strict Draft 2020-12 schemas, canonical positive/negative/hostile fixtures, deterministic local hashes,
 a standard-library discipline validator, and the loopback fake-server contract harness live under
-`almsivi/`. The loopback harness is implemented; only a durable run manifest may prove a specific execution. It covers the local
+`almsivi/`. The durable run records seven passing loopback tests. They cover the local
 contract and fake server only, not the Beast live wire or cross-repository parity. See
 `docs/PROTOCOL-CONTRACTS.md` for commands, scope, and contracts deliberately deferred rather than
 invented.
@@ -140,6 +139,6 @@ invented.
 
 Deterministic fixture packaging, SPDX 2.3 SBOM generation, ownership dry-runs, compliance audits, and
 Unix/PowerShell commands are documented in `docs/PACKAGING-COMPLIANCE.md`. Deterministic archives and
-the package and source audit commands are implemented. Only durable run manifests may prove a zero-finding execution. Release-named
+the durable run records 45 passing Python tests, including deterministic packaging/audit fixtures, plus a zero-finding source audit and successful exact provenance validation. Release-named
 packages still fail closed until the required built product and corresponding source exist; signing
 and publication remain deferred.

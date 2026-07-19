@@ -1,0 +1,2 @@
+all native bridge tests passed
+sanitizer runtime unsupported (probe timed out); optimized warning-clean test passed

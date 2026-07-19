@@ -1,0 +1,2 @@
+verified 26 protocol files
+validated 10 Draft 2020-12 schemas and 16 fixtures (without installed jsonschema)

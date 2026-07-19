@@ -62,11 +62,11 @@ CI action dependencies are pinned to immutable 40-character commits. CI does not
 
 ## Current host outcome (2026-07-18 checkpoint)
 
-Exact network prefetch and strict offline reconstruction commands are implemented for commit `f4bec41444214a7903bebd178389ca22ca13f646`. A successful reconstruction is claimed only when a durable run manifest records it.
+`docs/evidence/runs/3717eff-local/offline-bootstrap.json` records successful strict offline reconstruction at OpenMW commit `f4bec41444214a7903bebd178389ca22ca13f646` from verified cache SHA-256 `dde7fdbe6bb85ca42890f73d4954fc2b8f3c6734c837a47b31bba1778f5e4395`.
 
-The pure-native, Python, loopback, Lua structural, packaging, and audit commands are implemented. Exact execution counts and outcomes are claimed only from committed run manifests produced by `scripts/evidence/record_local_validation.py`.
+The run index `docs/evidence/runs/3717eff-local/index.json`, bound to clean validation commit `3717effebb8d42ad7601d6ca02c19ac3533efcf8`, records successful native execution, 45 Python tests, 7 loopback tests, 38 Lua structural checks, protocol/patch/evidence and static-CI validation, exact provenance validation, and a zero-finding source audit.
 
-No durable sanitizer-runtime, CMake/OpenMW control or patched-engine build, Lua-runtime, PowerShell, Windows, or CI-platform execution is recorded. Checked-in definitions are automation only.
+No sanitizer-runtime, CMake/OpenMW control or patched-engine build, Lua-runtime, PowerShell, Windows, or CI-platform execution is recorded. Checked-in platform definitions remain automation only.
 
 ## Deferred build and runtime gates
 
