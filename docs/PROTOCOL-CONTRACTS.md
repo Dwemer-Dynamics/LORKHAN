@@ -36,17 +36,24 @@ server contract:
 - health response details beyond the schema discriminator;
 - session acceptance/config-revision/capability response, turn acceptance response, action-result
   persistence acknowledgement, interruption/cancellation acknowledgement, and session deletion;
-- nested server-owned `turn.status`, `turn.failed`, `session.config_changed`, `server.notice`, STT
-  metadata/transcript/failure, config payloads, and resync response details;
+- nested server-owned `turn.accepted`, `turn.status`, `dialogue.delta`, `dialogue.complete`,
+  `turn.complete`, `turn.failed`, `turn.cancelled`, `session.config_changed`, `server.notice`, STT
+  metadata/transcript/failure, config payloads, and resync response details; these event variants are
+  omitted rather than assigned guessed payloads;
 - endpoint-specific connect/write/first-byte/idle/total defaults and native per-frame poll count/time
   cap (only the documented 15-second server event-wait ceiling is contracted);
-- all action intent names and parameter/result payloads except exact `ai.follow`; its documented
-  distance example is typed and bounded to a conservative engine-unit range, but behavioral timeout,
-  restoration, and policy remain an implementation acceptance contract;
-- typed `observed` payloads beyond the known follow package observation, and stable action reason-code
-  enumeration beyond its documented lowercase diagnostic form;
-- exact context object domains and recent action-result embedding. Until domain schemas are specified,
-  `turn.context` is a bounded UTF-8 serialized snapshot string rather than an invented object model;
+- all action intent names and parameter/result payloads except exact `ai.follow`; its parameter is
+  exactly `{\"distance\": 192}`. Behavioral timeout, restoration, and policy remain implementation
+  acceptance contracts;
+- the `observed` action-result object and stable action reason-code enumeration; `observed` is omitted
+  rather than assigned a guessed follow-package shape;
+- exact context snapshot/delta domains and recent action-result embedding. `turn.context` is omitted
+  from the canonical schema rather than assigned an invented representation;
+- exact capability names/count, client-version syntax, platform values, UI-source values, interrupt
+  reasons, and undocumented string/cell/identifier numeric bounds; known fields retain their base JSON
+  types without freezing guessed enumerations or limits;
+- aggregate event response count and payload shapes not explicitly listed above; the native inbound
+  queue cap is not treated as a server events-array cap;
 - cross-repository byte parity against ALMSIVIserver. The local deterministic manifest is ready for
   that check once the final server contract is authorized and available.
 

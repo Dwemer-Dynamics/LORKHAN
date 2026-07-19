@@ -1,25 +1,18 @@
 {
   "$defs": {
-    "capability": {"enum": ["action.ai.follow", "dialogue.text", "speech.say"], "type": "string"},
-    "cell": {
-      "oneOf": [
-        {"additionalProperties": false, "properties": {"grid_x": {"maximum": 2147483647, "minimum": -2147483648, "type": "integer"}, "grid_y": {"maximum": 2147483647, "minimum": -2147483648, "type": "integer"}, "kind": {"const": "exterior", "type": "string"}}, "required": ["kind", "grid_x", "grid_y"], "type": "object"},
-        {"additionalProperties": false, "properties": {"kind": {"const": "interior", "type": "string"}, "name": {"maxLength": 256, "minLength": 1, "type": "string"}}, "required": ["kind", "name"], "type": "object"}
-      ]
-    },
     "content_fingerprint": {"pattern": "sha256:[0-9a-f]{64}", "type": "string"},
-    "generation": {"maximum": 4294967295, "minimum": 0, "type": "integer"},
+    "generation": {"minimum": 0, "type": "integer"},
     "identity": {
       "additionalProperties": false,
       "properties": {
-        "cell": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/cell"},
-        "content_file": {"maxLength": 255, "minLength": 1, "type": "string"},
-        "display_name": {"maxLength": 256, "minLength": 1, "type": "string"},
-        "kind": {"enum": ["creature", "npc", "player"], "type": "string"},
-        "record_id": {"maxLength": 255, "minLength": 1, "type": "string"},
+        "cell": {},
+        "content_file": {"type": "string"},
+        "display_name": {"type": "string"},
+        "kind": {"type": "string"},
+        "record_id": {"type": "string"},
         "refnum": {
           "additionalProperties": false,
-          "properties": {"content_file": {"maximum": 255, "minimum": 0, "type": "integer"}, "index": {"maximum": 4294967295, "minimum": 0, "type": "integer"}},
+          "properties": {"content_file": {"type": "integer"}, "index": {"type": "integer"}},
           "required": ["index", "content_file"],
           "type": "object"
         }
@@ -27,23 +20,22 @@
       "required": ["kind", "record_id", "refnum", "content_file", "cell", "display_name"],
       "type": "object"
     },
-    "language": {"pattern": "[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*", "type": "string"},
     "runtime": {
       "additionalProperties": false,
       "properties": {
-        "capabilities": {"items": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/capability"}, "maxItems": 3, "type": "array", "uniqueItems": true},
-        "client_version": {"pattern": "0\\.[0-9]+\\.[0-9]+", "type": "string"},
+        "capabilities": {"items": {"type": "string"}, "type": "array"},
+        "client_version": {"type": "string"},
         "game": {"const": "tes3", "type": "string"},
         "lua_api_revision": {"const": 129, "type": "integer"},
         "openmw_commit": {"const": "f4bec41444214a7903bebd178389ca22ca13f646", "type": "string"},
         "openmw_version": {"const": "0.51.0", "type": "string"},
-        "platform": {"enum": ["linux-x86_64", "macos-arm64", "windows-x86_64"], "type": "string"},
+        "platform": {"type": "string"},
         "variant": {"const": "openmw", "type": "string"}
       },
       "required": ["game", "variant", "openmw_version", "openmw_commit", "lua_api_revision", "client_version", "platform", "capabilities"],
       "type": "object"
     },
-    "sequence": {"maximum": 9007199254740991, "minimum": 0, "type": "integer"},
+    "sequence": {"minimum": 0, "type": "integer"},
     "sha256": {"pattern": "[0-9a-f]{64}", "type": "string"},
     "timestamp": {"pattern": "[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,9})?Z", "type": "string"},
     "uuid": {"pattern": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "type": "string"}

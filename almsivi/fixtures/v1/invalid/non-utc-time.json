@@ -1,5 +1,5 @@
 {
-  "description": "Timestamp offsets are rejected in favor of canonical UTC Z",
-  "instance": {"code": "provider_timeout", "correlation_id": "00000000-0000-4000-8000-000000000023", "message": "Provider unavailable", "retriable": true, "retry_after_ms": 999999, "schema": "almsivi.error.v1"},
+  "description": "Negative retry delay is rejected",
+  "instance": {"code": "provider_timeout", "correlation_id": "00000000-0000-4000-8000-000000000023", "message": "Provider unavailable", "retriable": true, "retry_after_ms": -1, "schema": "almsivi.error.v1"},
   "schema": "https://almsivi.invalid/schemas/v1/error.schema.json"
 }

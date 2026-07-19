@@ -3,7 +3,6 @@
   "instance": {
     "audience": [{"cell": {"grid_x": -2, "grid_y": -9, "kind": "exterior"}, "content_file": "Morrowind.esm", "display_name": "Fargoth", "kind": "npc", "record_id": "fargoth", "refnum": {"content_file": 0, "index": 112}}],
     "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "context": "{\"truncated\":false}",
     "created_at": "2026-07-18T20:00:00Z",
     "generation": 7,
     "input": {"kind": "text", "language": "en-US", "text": "Hello."},

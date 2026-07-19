@@ -7,7 +7,7 @@
     "actor": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"},
     "expires_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
     "name": {"const": "ai.follow", "type": "string"},
-    "parameters": {"additionalProperties": false, "properties": {"distance": {"maximum": 8192, "minimum": 0, "type": "integer"}}, "required": ["distance"], "type": "object"},
+    "parameters": {"additionalProperties": false, "properties": {"distance": {"const": 192, "type": "integer"}}, "required": ["distance"], "type": "object"},
     "schema": {"const": "almsivi.action-intent.v1", "type": "string"},
     "target": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"},
     "tier": {"const": 1, "type": "integer"},

@@ -1,38 +1,4 @@
 {
-  "$defs": {
-    "base": {
-      "additionalProperties": false,
-      "properties": {
-        "created_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
-        "generation": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/generation"},
-        "message_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-        "payload": {"additionalProperties": false, "properties": {}, "type": "object"},
-        "sequence": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/sequence"},
-        "session_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-        "type": {"enum": ["action.intent", "dialogue.complete", "dialogue.delta", "speech.ready", "turn.accepted", "turn.cancelled", "turn.complete", "turn.failed", "turn.status"], "type": "string"}
-      },
-      "required": ["message_id", "session_id", "generation", "sequence", "created_at", "type", "payload"],
-      "type": "object"
-    },
-    "dialogue": {
-      "additionalProperties": false,
-      "properties": {"speaker": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"}, "text": {"maxLength": 16384, "minLength": 1, "type": "string"}, "turn_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}},
-      "required": ["turn_id", "speaker", "text"],
-      "type": "object"
-    },
-    "speech": {
-      "additionalProperties": false,
-      "properties": {"media": {"$ref": "https://almsivi.invalid/schemas/v1/media-descriptor.schema.json"}, "speaker": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"}, "turn_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}},
-      "required": ["turn_id", "speaker", "media"],
-      "type": "object"
-    },
-    "terminal": {
-      "additionalProperties": false,
-      "properties": {"turn_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}},
-      "required": ["turn_id"],
-      "type": "object"
-    }
-  },
   "$id": "https://almsivi.invalid/schemas/v1/events.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
@@ -40,13 +6,10 @@
     "events": {
       "items": {
         "oneOf": [
-          {"additionalProperties": false, "properties": {"created_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"}, "generation": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/generation"}, "message_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "payload": {"$ref": "https://almsivi.invalid/schemas/v1/events.schema.json#/$defs/dialogue"}, "sequence": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/sequence"}, "session_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "type": {"enum": ["dialogue.complete", "dialogue.delta"], "type": "string"}}, "required": ["message_id", "session_id", "generation", "sequence", "created_at", "type", "payload"], "type": "object"},
-          {"additionalProperties": false, "properties": {"created_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"}, "generation": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/generation"}, "message_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "payload": {"$ref": "https://almsivi.invalid/schemas/v1/events.schema.json#/$defs/speech"}, "sequence": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/sequence"}, "session_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "type": {"const": "speech.ready", "type": "string"}}, "required": ["message_id", "session_id", "generation", "sequence", "created_at", "type", "payload"], "type": "object"},
           {"additionalProperties": false, "properties": {"created_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"}, "generation": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/generation"}, "message_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "payload": {"$ref": "https://almsivi.invalid/schemas/v1/action-intent.schema.json"}, "sequence": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/sequence"}, "session_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "type": {"const": "action.intent", "type": "string"}}, "required": ["message_id", "session_id", "generation", "sequence", "created_at", "type", "payload"], "type": "object"},
-          {"additionalProperties": false, "properties": {"created_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"}, "generation": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/generation"}, "message_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "payload": {"$ref": "https://almsivi.invalid/schemas/v1/events.schema.json#/$defs/terminal"}, "sequence": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/sequence"}, "session_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "type": {"enum": ["turn.accepted", "turn.cancelled", "turn.complete", "turn.failed", "turn.status"], "type": "string"}}, "required": ["message_id", "session_id", "generation", "sequence", "created_at", "type", "payload"], "type": "object"}
+          {"additionalProperties": false, "properties": {"created_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"}, "generation": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/generation"}, "message_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "payload": {"additionalProperties": false, "properties": {"media_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "sha256": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/sha256"}, "bytes": {"maximum": 33554432, "minimum": 0, "type": "integer"}, "codec": {"enum": ["mp3", "ogg", "wav"], "type": "string"}, "duration_ms": {"minimum": 0, "type": "integer"}, "expires_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"}}, "required": ["media_id", "sha256", "bytes", "codec", "duration_ms", "expires_at"], "type": "object"}, "sequence": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/sequence"}, "session_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "type": {"const": "speech.ready", "type": "string"}}, "required": ["message_id", "session_id", "generation", "sequence", "created_at", "type", "payload"], "type": "object"}
         ]
       },
-      "maxItems": 128,
       "type": "array"
     },
     "next_after": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/sequence"},

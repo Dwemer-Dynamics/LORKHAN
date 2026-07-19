@@ -7,13 +7,12 @@
     "completed_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
     "generation": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/generation"},
     "message_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "observed": {"additionalProperties": false, "properties": {"package": {"const": "Follow", "type": "string"}}, "type": "object"},
-    "reason_code": {"maxLength": 64, "minLength": 1, "pattern": "[a-z][a-z0-9_]*", "type": "string"},
+    "reason_code": {"type": "string"},
     "schema": {"const": "almsivi.action-result.v1", "type": "string"},
     "session_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
     "status": {"enum": ["cancelled", "failed", "rejected", "succeeded", "timed_out"], "type": "string"},
     "turn_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
   },
-  "required": ["schema", "message_id", "session_id", "generation", "turn_id", "action_id", "status", "reason_code", "observed", "completed_at"],
+  "required": ["schema", "message_id", "session_id", "generation", "turn_id", "action_id", "status", "reason_code", "completed_at"],
   "type": "object"
 }
