@@ -1,0 +1,51 @@
+name: packaging-audit-reproducibility-ready
+
+on:
+  workflow_dispatch:
+    inputs:
+      required_script:
+        description: Repository-relative script that must exist and run
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  TZ: UTC
+  LANG: C
+  LC_ALL: C
+  SOURCE_DATE_EPOCH: '1784442566'
+
+jobs:
+  readiness:
+    name: ${{ matrix.kind }} readiness
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [packaging, audit, reproducibility]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: {persist-credentials: false}
+      - name: Validate and optionally run declared implementation
+        shell: bash
+        env:
+          KIND: ${{ matrix.kind }}
+          REQUIRED_SCRIPT: ${{ inputs.required_script }}
+        run: |
+          set -eu
+          scripts/test/validate-ci.sh
+          if [ -z "$REQUIRED_SCRIPT" ]; then
+            echo "$KIND implementation script was not declared required; readiness checks only, no $KIND proof claimed." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          case "$REQUIRED_SCRIPT" in
+            scripts/package/*|scripts/audit/*|scripts/reproducibility/*) ;;
+            *) echo 'required_script is outside the approved implementation roots' >&2; exit 2 ;;
+          esac
+          test -f "$REQUIRED_SCRIPT" || { echo "Declared required script missing: $REQUIRED_SCRIPT" >&2; exit 3; }
+          test -x "$REQUIRED_SCRIPT" || { echo "Declared required script is not executable: $REQUIRED_SCRIPT" >&2; exit 3; }
+          "$REQUIRED_SCRIPT"
+          echo "$KIND proof is limited to the declared script invocation above; no publishing or signing occurred." >> "$GITHUB_STEP_SUMMARY"
