@@ -26,7 +26,6 @@ inline constexpr std::size_t kMaxContextBytes = 128U * 1024U;
 inline constexpr std::size_t kOutboundCapacity = 32U;
 inline constexpr std::size_t kInboundCapacity = 128U;
 inline constexpr std::size_t kReservedControlCapacity = 4U;
-inline constexpr std::size_t kMaxPollItems = 128U;
 inline constexpr std::uint32_t kMaxAudienceActors = 12U;
 inline constexpr std::uint32_t kMaxActionsPerTurn = 4U;
 inline constexpr std::uint32_t kMaxActionContinuations = 1U;

@@ -18,11 +18,12 @@ struct ActionTerminalResult {
 };
 
 struct FollowParameters {
-    double distance{};
-    std::uint32_t durationSeconds{};
+    std::uint32_t distance{};
 };
 
-[[nodiscard]] Result<FollowParameters> validateAiFollow(double distance, std::uint32_t durationSeconds);
+// Protocol v1 currently defines exactly {"distance": 192}; no duration or additional
+// wire-visible parameter is accepted by this typed validator.
+[[nodiscard]] Result<FollowParameters> validateAiFollow(std::uint32_t distance);
 
 class ActionResultRegistry {
 public:

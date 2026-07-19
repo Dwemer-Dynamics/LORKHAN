@@ -1,16 +1,12 @@
 #include "almsivi/actions.hpp"
 
-#include <cmath>
-
 namespace almsivi {
 
-Result<FollowParameters> validateAiFollow(double distance, std::uint32_t durationSeconds)
+Result<FollowParameters> validateAiFollow(std::uint32_t distance)
 {
-    if (!std::isfinite(distance) || distance < 0.0 || distance > 2048.0)
-        return Result<FollowParameters>::failure(makeError(ErrorCode::invalid_action, "ai.follow distance must be within 0..2048"));
-    if (durationSeconds == 0 || durationSeconds > 3600)
-        return Result<FollowParameters>::failure(makeError(ErrorCode::invalid_action, "ai.follow duration must be within 1..3600 seconds"));
-    return Result<FollowParameters>::success(FollowParameters{distance, durationSeconds});
+    if (distance != 192)
+        return Result<FollowParameters>::failure(makeError(ErrorCode::invalid_action, "ai.follow distance must equal 192"));
+    return Result<FollowParameters>::success(FollowParameters{distance});
 }
 
 Result<void> ActionResultRegistry::registerAction(const ActionId& action, Generation generation)

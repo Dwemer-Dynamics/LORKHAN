@@ -75,7 +75,8 @@ Result<RequestId> BridgeService::enqueue(OutboundRequest request)
 
 std::vector<InboundResult> BridgeService::poll(std::size_t maximumItems)
 {
-    maximumItems = std::min(maximumItems, kMaxPollItems);
+    // This is an implementation safety bound from queue storage, not a protocol compatibility limit.
+    maximumItems = std::min(maximumItems, kInboundCapacity);
     auto items = m_inbound.drain(maximumItems);
     const Generation current = m_generation.current();
     std::erase_if(items, [current](const InboundResult& result) { return result.generation != current; });

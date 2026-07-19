@@ -15,7 +15,6 @@ enum class MediaCodec { wav, ogg, mp3 };
 
 struct MediaDescriptor {
     MediaId id;
-    std::string relativeRoute;
     std::array<std::byte, 32> sha256{};
     std::size_t bytes{};
     MediaCodec codec{MediaCodec::wav};
@@ -30,6 +29,8 @@ struct MediaCachePolicy {
 
 [[nodiscard]] Result<void> validateMediaDescriptor(
     const MediaDescriptor& descriptor, const MediaCachePolicy& policy, std::chrono::system_clock::time_point now);
+// The media route is always constructed natively; server DTOs and Lua never supply a path or URL.
+[[nodiscard]] Result<std::string> mediaRoute(const MediaId& media);
 [[nodiscard]] Result<std::filesystem::path> resolveCachePath(
     const std::filesystem::path& cacheRoot, std::string_view hashHex, MediaCodec codec);
 

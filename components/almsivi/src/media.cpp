@@ -4,21 +4,43 @@
 #include <cctype>
 
 namespace almsivi {
+namespace {
+
+bool isUuid(std::string_view value)
+{
+    if (value.size() != 36)
+        return false;
+    for (std::size_t index = 0; index < value.size(); ++index) {
+        if (index == 8 || index == 13 || index == 18 || index == 23) {
+            if (value[index] != '-')
+                return false;
+        } else if (!std::isdigit(static_cast<unsigned char>(value[index]))
+            && !(value[index] >= 'a' && value[index] <= 'f')) {
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
 
 Result<void> validateMediaDescriptor(
     const MediaDescriptor& descriptor, const MediaCachePolicy& policy, std::chrono::system_clock::time_point now)
 {
-    if (descriptor.id.empty())
-        return Result<void>::failure(makeError(ErrorCode::media_rejected, "media ID is empty"));
+    if (!isUuid(descriptor.id.value()))
+        return Result<void>::failure(makeError(ErrorCode::media_rejected, "media ID must be a lowercase canonical UUID"));
     if (descriptor.bytes == 0 || descriptor.bytes > policy.maximumObjectBytes || descriptor.bytes > policy.quotaBytes)
         return Result<void>::failure(makeError(ErrorCode::media_rejected, "media size is outside policy"));
     if (descriptor.expiresAt <= now)
         return Result<void>::failure(makeError(ErrorCode::media_rejected, "media descriptor is expired"));
-    if (descriptor.relativeRoute.empty() || descriptor.relativeRoute.front() != '/' || descriptor.relativeRoute.find("..") != std::string::npos
-        || descriptor.relativeRoute.find('\\') != std::string::npos || descriptor.relativeRoute.find('?') != std::string::npos
-        || descriptor.relativeRoute.find('#') != std::string::npos || descriptor.relativeRoute.find("//") != std::string::npos)
-        return Result<void>::failure(makeError(ErrorCode::media_rejected, "media route is not a safe relative route"));
     return Result<void>::success();
+}
+
+Result<std::string> mediaRoute(const MediaId& media)
+{
+    if (!isUuid(media.value()))
+        return Result<std::string>::failure(makeError(ErrorCode::media_rejected, "media ID must be a lowercase canonical UUID"));
+    return Result<std::string>::success("/media/" + media.value());
 }
 
 Result<std::filesystem::path> resolveCachePath(

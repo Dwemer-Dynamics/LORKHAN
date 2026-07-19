@@ -142,11 +142,12 @@ void testEvents()
 
 void testActions()
 {
-    CHECK(almsivi::validateAiFollow(192, 30));
-    CHECK(!almsivi::validateAiFollow(-1, 30));
-    CHECK(!almsivi::validateAiFollow(std::numeric_limits<double>::quiet_NaN(), 30));
-    CHECK(!almsivi::validateAiFollow(2050, 30));
-    CHECK(!almsivi::validateAiFollow(1, 0));
+    const auto follow = almsivi::validateAiFollow(192);
+    CHECK(follow && follow.value().distance == 192);
+    CHECK(!almsivi::validateAiFollow(0));
+    CHECK(!almsivi::validateAiFollow(191));
+    CHECK(!almsivi::validateAiFollow(193));
+    CHECK(!almsivi::validateAiFollow(std::numeric_limits<std::uint32_t>::max()));
     almsivi::ActionResultRegistry registry;
     const almsivi::ActionId action("action");
     CHECK(registry.registerAction(action, almsivi::Generation(2)));
@@ -158,10 +159,15 @@ void testActions()
 void testMedia()
 {
     almsivi::MediaDescriptor descriptor;
-    descriptor.id = almsivi::MediaId("media"); descriptor.relativeRoute = "/media/media";
+    descriptor.id = almsivi::MediaId("01912345-6789-7abc-8def-0123456789ab");
     descriptor.bytes = 123; descriptor.expiresAt = std::chrono::system_clock::time_point(200s);
     CHECK(almsivi::validateMediaDescriptor(descriptor, {}, std::chrono::system_clock::time_point(100s)));
-    descriptor.relativeRoute = "/media/../secret";
+    const auto route = almsivi::mediaRoute(descriptor.id);
+    CHECK(route && route.value() == "/media/01912345-6789-7abc-8def-0123456789ab");
+    descriptor.id = almsivi::MediaId("../secret");
+    CHECK(!almsivi::validateMediaDescriptor(descriptor, {}, std::chrono::system_clock::time_point(100s)));
+    CHECK(!almsivi::mediaRoute(descriptor.id));
+    descriptor.id = almsivi::MediaId("01912345-6789-7ABC-8def-0123456789ab");
     CHECK(!almsivi::validateMediaDescriptor(descriptor, {}, std::chrono::system_clock::time_point(100s)));
     CHECK(almsivi::resolveCachePath("cache", std::string(64, 'a'), almsivi::MediaCodec::ogg));
     CHECK(!almsivi::resolveCachePath("cache", std::string(63, 'a'), almsivi::MediaCodec::ogg));
