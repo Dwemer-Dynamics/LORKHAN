@@ -9,8 +9,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
 from almsivi_foundation import read_json, sha256_file, write_json
 from almsivi_packaging import (PackagingError, apply_suppressions, audit_archive_content, audit_notices,
-                               audit_source_inputs, load_suppressions, normalized_archive_comparison,
-                               validate_package_set, validate_provenance, validate_spdx)
+                               audit_source_inputs, audit_tree, load_suppressions, normalized_archive_comparison,
+                               tracked_implementation_paths, validate_package_set, validate_provenance, validate_spdx)
 
 
 def audit(args: argparse.Namespace) -> None:
@@ -41,6 +41,18 @@ def audit(args: argparse.Namespace) -> None:
     print(f"audit passed: {archive}")
 
 
+def source_tree(args: argparse.Namespace) -> None:
+    repository = Path(args.repository).resolve()
+    findings = audit_tree(repository)
+    result = {"schema_version": 1, "root": ".", "result": "pass" if not findings else "fail",
+              "findings": findings}
+    if args.output:
+        write_json(Path(args.output), result)
+    if findings:
+        raise PackagingError("; ".join(f"{item['audit']}:{item['path']}:{item['message']}" for item in findings))
+    print(f"source-tree audit passed: {repository} (zero findings)")
+
+
 def package_set(args: argparse.Namespace) -> None:
     validate_package_set(read_json(Path(args.runtime_manifest)), read_json(Path(args.source_manifest)),
                          Path(args.runtime_archive), Path(args.source_archive))
@@ -51,7 +63,9 @@ def provenance(args: argparse.Namespace) -> None:
     repository = Path(args.repository).resolve()
     policy = read_json(repository / args.policy)
     ledger = repository / policy["provenance_ledger"] if args.ledger is None else Path(args.ledger)
-    validate_provenance(read_json(ledger), args.paths)
+    required = tracked_implementation_paths(repository)
+    required.update(args.paths)
+    validate_provenance(read_json(ledger), required, reject_unexpected=True)
     print("provenance passed")
 
 
@@ -76,12 +90,15 @@ def parser() -> argparse.ArgumentParser:
     one.add_argument("--sbom")
     one.add_argument("--output")
     one.set_defaults(handler=audit)
+    source = sub.add_parser("source-tree")
+    source.add_argument("--output")
+    source.set_defaults(handler=source_tree)
     links = sub.add_parser("package-set")
     links.add_argument("runtime_archive"); links.add_argument("runtime_manifest")
     links.add_argument("source_archive"); links.add_argument("source_manifest")
     links.set_defaults(handler=package_set)
     prov = sub.add_parser("provenance")
-    prov.add_argument("paths", nargs="+"); prov.add_argument("--ledger")
+    prov.add_argument("paths", nargs="*"); prov.add_argument("--ledger")
     prov.add_argument("--policy", default="config/packaging/policy.json")
     prov.set_defaults(handler=provenance)
     comparison = sub.add_parser("compare")

@@ -36,10 +36,16 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: Validate CI scripts statically
         run: scripts/test/validate-ci.sh
-      - name: Run Lua tests when available
+      - name: Run loopback fake-server contract tests
+        run: python3 -m unittest discover -s almsivi/tests -v
+      - name: Run Lua structural checks
+        run: python3 almsivi/tests/run.py
+      - name: Run Lua runtime tests when available
+        env:
+          ALMSIVI_LUA_TEST_ROOT: ${{ github.workspace }}/almsivi/files/scripts/ALMSIVI/tests
         run: scripts/test/lua-unix.sh
       - name: Record scope honestly
         if: always()
         run: |
-          printf '%s\n' 'This job proves only the commands shown above.' >> "$GITHUB_STEP_SUMMARY"
-          printf '%s\n' 'A skipped Lua discovery is not Lua test proof; native builds and packages are covered by separate readiness lanes.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'This job proves only the commands actually executed above.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'A skipped Lua runtime is not Lua runtime proof; standalone native builds run in the separate native workflow.' >> "$GITHUB_STEP_SUMMARY"

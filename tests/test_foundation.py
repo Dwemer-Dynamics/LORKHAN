@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,9 @@ sys.path.insert(0, str(ROOT / "scripts/lib"))
 from almsivi_foundation import (FoundationError, cache_index_path, canonical_json, materialize_bundle,
                                read_json, run_manifest, validate_pin, verify_cache)
 from json_schema import SchemaError, validate
+
+sys.path.insert(0, str(ROOT / "scripts/evidence"))
+from validate import required_provenance_paths, validate_provenance_coverage
 
 COMMIT = "f4bec41444214a7903bebd178389ca22ca13f646"
 PIN_PATH = ROOT / "config/source-pins/openmw.json"
@@ -88,11 +92,48 @@ class FoundationTests(unittest.TestCase):
 
     def test_all_ledgers_validate(self):
         pairs = (("source-ledger", "source-ledger"), ("component-ledger", "component-ledger"),
-                 ("proof-ledger", "proof-ledger"))
+                 ("proof-ledger", "proof-ledger"),
+                 ("file-provenance-ledger", "file-provenance-ledger"))
         for document, schema in pairs:
             validate(read_json(ROOT / f"docs/evidence/{document}.json"),
                      read_json(ROOT / f"schemas/evidence/{schema}.schema.json"))
         validate(read_json(PIN_PATH), read_json(ROOT / "schemas/evidence/source-pin.schema.json"))
+        ledger = read_json(ROOT / "docs/evidence/file-provenance-ledger.json")
+        validate_provenance_coverage(ledger, required_provenance_paths(ROOT))
+        missing = json.loads(json.dumps(ledger))
+        removed = missing["records"][0]["target_paths"].pop()
+        with self.assertRaisesRegex(FoundationError, "coverage missing"):
+            validate_provenance_coverage(missing, {removed})
+        overlap = json.loads(json.dumps(ledger))
+        duplicate = overlap["records"][0]["target_paths"][0]
+        overlap["records"][1]["target_paths"].append(duplicate)
+        with self.assertRaisesRegex(FoundationError, "provenance overlap"):
+            validate_provenance_coverage(overlap, set())
+        extra = json.loads(json.dumps(ledger))
+        extra["records"][0]["target_paths"].append("untracked/implementation.cpp")
+        with self.assertRaisesRegex(FoundationError, "untracked or out-of-scope"):
+            validate_provenance_coverage(extra, required_provenance_paths(ROOT))
+
+    def test_ci_validator_rejects_inline_release_triggers_and_yaml(self):
+        root = self.temp / "ci-root"
+        shutil.copytree(ROOT / ".github", root / ".github")
+        (root / "scripts/test").mkdir(parents=True)
+        shutil.copy2(ROOT / "scripts/test/validate-ci.sh", root / "scripts/test/validate-ci.sh")
+        workflow = root / ".github/workflows/foundation.yml"
+        original = workflow.read_text(encoding="utf-8")
+        for replacement in ("on: [push, pull_request, release]", "on: {push: {}, pull_request: {}, release: {types: [published]}}"):
+            with self.subTest(trigger=replacement):
+                mutated = re.sub(r"(?ms)^on:\n(?:  [^\n]+\n)+", replacement + "\n", original, count=1)
+                workflow.write_text(mutated, encoding="utf-8")
+                result = self.command(str(root / "scripts/test/validate-ci.sh"), check=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("release/publish trigger forbidden", result.stderr)
+        workflow.write_text(original, encoding="utf-8")
+        yaml = root / ".github/workflows/release-canary.yaml"
+        yaml.write_text("""name: canary\non: [push, pull_request, release]\njobs:\n  canary:\n    runs-on: ubuntu-24.04\n    steps:\n      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n""", encoding="utf-8")
+        result = self.command(str(root / "scripts/test/validate-ci.sh"), check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("release-canary.yaml", result.stderr)
 
     def test_schema_rejects_extra_and_bad_state(self):
         schema = read_json(ROOT / "schemas/evidence/proof-ledger.schema.json")

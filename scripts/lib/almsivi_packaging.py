@@ -31,6 +31,14 @@ DIR_MODE = 0o755
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 RELEASE_NAME = re.compile(r"^ALMSIVI-(?:OpenMW|Lua|source|symbols)-", re.IGNORECASE)
 SAFE_FIXTURE_NAME = re.compile(r"^(?:fixture|test)-", re.IGNORECASE)
+PROVENANCE_PREFIXES = (
+    ".github/workflows/", "apps/openmw/", "components/almsivi/", "almsivi/",
+    "config/source-pins/", "config/packaging/", "openmw-patches/", "scripts/",
+    "schemas/evidence/", "tests/",
+)
+PROVENANCE_ROOT_FILES = {
+    "CMakeLists.txt", "CMakePresets.json", "docs/evidence/file-provenance-ledger.json",
+}
 SOURCE_EXTENSIONS = {
     ".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".lua", ".py",
     ".ps1", ".sh", ".cmake", ".json", ".toml", ".txt", ".md", ".in", ".yml", ".yaml",
@@ -289,6 +297,18 @@ def dependency_locks(root: Path, patterns: Sequence[str]) -> list[dict[str, str]
             for path in sorted(paths, key=lambda item: item.relative_to(root).as_posix())]
 
 
+def tracked_implementation_paths(root: Path) -> set[str]:
+    completed = subprocess.run(
+        ["git", "-C", str(root), "ls-files"], check=False, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if completed.returncode != 0:
+        raise PackagingError(f"cannot enumerate tracked implementation paths: {completed.stderr.strip()}")
+    return {
+        path for path in completed.stdout.splitlines()
+        if path in PROVENANCE_ROOT_FILES or path.startswith(PROVENANCE_PREFIXES)
+    }
+
+
 def package_set_linkage(root: Path, policy: Mapping[str, Any]) -> dict[str, Any]:
     openmw = read_json(root / policy["openmw_pin"])
     patch = root / policy["patch_manifest"]
@@ -301,7 +321,9 @@ def package_set_linkage(root: Path, policy: Mapping[str, Any]) -> dict[str, Any]
     upstream = patch_document.get("upstream", {}) if isinstance(patch_document, dict) else {}
     if upstream.get("commit") != openmw.get("commit") or upstream.get("tag") != openmw.get("tag"):
         raise PackagingError("authoritative patch manifest drifted from the OpenMW source pin")
-    validate_provenance(read_json(provenance), [])
+    provenance_document = read_json(provenance)
+    validate_provenance(
+        provenance_document, tracked_implementation_paths(root), reject_unexpected=True)
     return {"almsivi_commit": git_commit(root), "openmw_commit": openmw["commit"],
             "openmw_tag": openmw["tag"], "patch_manifest_sha256": sha256_file(patch),
             "provenance_ledger_sha256": sha256_file(provenance),
@@ -629,7 +651,8 @@ def audit_source_inputs(entries: Sequence[Mapping[str, Any]], required: Sequence
                                            f"missing rebuild inputs: {', '.join(missing)}")]
 
 
-def validate_provenance(document: Mapping[str, Any], source_paths: Iterable[str]) -> None:
+def validate_provenance(document: Mapping[str, Any], source_paths: Iterable[str], *,
+                        reject_unexpected: bool = False) -> None:
     if set(document) != {"schema_version", "records"} or document["schema_version"] != 1:
         raise PackagingError("invalid authoritative file-provenance ledger")
     covered: set[str] = set()
@@ -652,9 +675,13 @@ def validate_provenance(document: Mapping[str, Any], source_paths: Iterable[str]
             if path in covered:
                 raise PackagingError(f"duplicate provenance target path: {path}")
             covered.add(path)
-    missing = sorted(set(source_paths) - covered)
+    required_paths = set(source_paths)
+    missing = sorted(required_paths - covered)
     if missing:
         raise PackagingError(f"source provenance missing: {missing}")
+    unexpected = sorted(covered - required_paths)
+    if reject_unexpected and unexpected:
+        raise PackagingError(f"source provenance includes untracked or out-of-scope paths: {unexpected}")
 
 
 def validate_package_set(runtime_manifest: Mapping[str, Any], source_manifest: Mapping[str, Any],

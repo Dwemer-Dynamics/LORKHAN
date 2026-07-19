@@ -6,7 +6,7 @@ The build wrappers are noninteractive orchestration for an already materialized 
 
 Both `scripts/build/unix.sh` and `scripts/build/windows.ps1` accept exactly the same semantic inputs: patch state, roots, configuration, compiler, optional build/test targets, expected commit, and reproducibility epoch. Control and patched runs receive the same CMake options. The only declared difference is `control` versus `patched` source state.
 
-The exact source pin is `f4bec41444214a7903bebd178389ca22ca13f646` (`openmw-0.51.0`). Every build rejects a different `HEAD`. A control build rejects any tracked or untracked source change. A patched build requires a change. This proves declared source state, not patch correctness; later patch tooling must establish that separately.
+The exact source pin is `f4bec41444214a7903bebd178389ca22ca13f646` (`openmw-0.51.0`). Every build rejects a different `HEAD`. A control build rejects any tracked or untracked source change. A patched build requires a change. This proves declared source state, not patch correctness; the patch tooling establishes patch integrity separately.
 
 Supported configurations are `Debug`, `RelWithDebInfo`, and `Release`. Unix selects GCC or Clang. Windows selects MSVC or clang-cl and x64. The wrappers set `SOURCE_DATE_EPOCH`, `TZ=UTC`, `LANG=C`, `LC_ALL=C`, deterministic/path-map compiler flags, and write a plain-text invocation manifest and log under the output root.
 
@@ -41,16 +41,37 @@ scripts/build/unix.sh --state patched --source /absolute/openmw-patched --build 
 
 A declared `--test-target`/`-TestTarget` is required and fails when absent. Without one, CTest runs only when it discovers tests; zero tests emits a skip note and is not proof. Lua wrappers similarly run discovered `*_test.lua` files only when an interpreter and test root exist. Set `ALMSIVI_REQUIRE_LUA_TESTS=1` to turn absence into failure.
 
+The independent native and Lua entry points are:
+
+```sh
+./scripts/test/native.sh
+./scripts/test/lua-unix.sh
+```
+
+```powershell
+./scripts/test/lua-windows.ps1
+```
+
+The native command compiles the pure native scaffold directly; it does not configure or compile OpenMW. The Lua commands execute against fake OpenMW modules and do not constitute engine, mod-loader, or in-game proof.
+
 ## Reproducibility comparison
 
 Use clean, distinct roots; identical toolchain/dependency inputs; the same state and options; and the same epoch. Compare install trees only after both builds succeed. Normalize or exclude only artifacts documented by the eventual reproducibility implementation. A matching hash is artifact reproducibility evidence for those inputs, not platform portability, functional correctness, provenance, packaging, or signing proof.
 
-CI action dependencies are pinned to immutable 40-character commits. CI does not fetch or commit a generated source cache. Native, packaging, audit, and reproducibility lanes remain readiness lanes until an implementation target/script is explicitly declared required; missing required declarations fail, while undeclared future slices skip with an explicit no-proof statement.
+CI action dependencies are pinned to immutable 40-character commits. CI does not fetch or commit a generated source cache. The checked-in CI definitions automate declared foundation, native, Lua, packaging, audit, and platform-readiness commands. Their presence is automation, not execution proof: a platform row remains `PLANNED` until an actual qualifying run is recorded, and skipped or unavailable tools remain no-proof outcomes.
 
-## Current host outcome (2026-07-18)
+## Current host outcome (2026-07-18 checkpoint)
 
-Known host tools were Python 3.9.6 and git 2.50.1. CMake, Ninja, and Lua were absent. Exact OpenMW prefetch and offline bootstrap succeeded: cache size 96 MiB, materialized source size 133 MiB, commit `f4bec41444214a7903bebd178389ca22ca13f646`. No native compilation, CTest, Lua, package, audit, or reproducibility proof exists from that run.
+The real network prefetch and strict offline reconstruction passed for exact commit `f4bec41444214a7903bebd178389ca22ca13f646`: the verified content-addressed cache was 96 MiB and the materialized source was 133 MiB.
+
+The warning-clean direct Clang pure-native suite compiled and passed. The recorded no-game checks also passed 43 Python tests, 7 loopback contract-harness cases, and 38 Lua structural/source-manifest checks. Deterministic archive checks passed, and both the package audit and source audit completed with zero findings.
+
+The sanitizer configuration compiled, but its Apple-host runtime hung; this is not sanitizer runtime proof. CMake, Ninja, Lua, and PowerShell (`pwsh`) were unavailable locally. Consequently there is no local CMake/OpenMW control or patched-engine build, no Lua-runtime result, and no PowerShell/Windows result. The checked-in CI definitions are automation definitions only and are not evidence that any CI platform lane executed.
+
+## Deferred build and runtime gates
+
+The pure native suite is not the integrated engine. Exact-pin OpenMW package registration and media VFS-versus-decoder patches, the Beast live-wire serializer/transport, a patched engine compile, and the matching unmodified control build remain deferred. Lua-runtime proof resumes on a host with the interpreter. Windows control/product builds, legal-game/mod behavior, release assembly, signing, and publication require their exact environments and evidence.
 
 ## Platform proof semantics
 
-A green foundation job proves only schema/evidence validation, Python unit tests, and wrapper static checks actually shown in its log. A green platform readiness lane proves runner architecture and/or script parsing plus any explicitly invoked target. A skipped discovery is not proof. Control results do not prove patched behavior; one configuration/compiler/OS does not prove another. Packaging, audit, reproducibility, publishing, signing, secret handling, and game-data compatibility each require their own executed evidence. These workflows perform no publishing, signing, release trigger, secret access, game-data access, or sibling checkout.
+A green foundation job proves only schema/evidence validation, Python unit tests, and wrapper static checks actually shown in its log. A green platform readiness lane proves runner architecture and/or script parsing plus any explicitly invoked target. A skipped discovery is not proof. Control results do not prove patched behavior; one configuration/compiler/OS does not prove another. Packaging, audit, reproducibility, publishing, signing, secret handling, and game-data compatibility each require their own executed evidence. These workflows perform no publishing, signing, release trigger, secret access, game-data access, or sibling checkout. Fake servers, fake OpenMW modules, structural checks, pure-library tests, and workflow definitions must never be promoted to engine, platform, game, mod, or compatibility proof.

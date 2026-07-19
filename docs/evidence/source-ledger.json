@@ -1,13 +1,76 @@
 {
   "schema_version": 1,
   "sources": [
-    {"id":"openmw","role":"runtime source baseline and ordered patch-series base","license":"GPL-3.0-only","state":"PINNED","pin":"openmw-0.51.0@f4bec41444214a7903bebd178389ca22ca13f646; Lua API 129","proof":"config/source-pins/openmw.json; openmw-patches/patch-manifest.json; patch-series/overlay strategy selected for deterministic offline source correspondence"},
-    {"id":"dialectic","role":"client behavior reference","license":null,"state":"DEFERRED","pin":"eddbdc77a8347128b5cf5bcd68df0c2404fbf074","proof":"Planning pin only; source not read or imported in Task 1","resume_when":"License/provenance audit is authorized before any import"},
-    {"id":"chim","role":"Skyrim behavior reference","license":null,"state":"DEFERRED","pin":"77c73ffb6bb32c226340bbda93b3aac5a7ad49f8","proof":"Planning pin only; source not read or imported in Task 1","resume_when":"License/provenance audit is authorized before any import"},
-    {"id":"dialecticserver","role":"server lineage reference","license":null,"state":"DEFERRED","pin":"f447a9c6b59bfc689c788fb0139a0d13c6c6dc51","proof":"Planning pin only; source not read or imported in Task 1","resume_when":"License/provenance audit is authorized before any import"},
-    {"id":"herikaserver","role":"server lineage reference","license":null,"state":"DEFERRED","pin":"0dbfa3eb4d3197d8159b5ff2c77bfdb5bf98b4d0","proof":"Planning pin only; source not read or imported in Task 1","resume_when":"License/provenance audit is authorized before any import"},
-    {"id":"synth","role":"final client behavior reference","license":null,"state":"DEFERRED","pin":null,"proof":"No cross-repository access performed in Task 1","resume_when":"Final tested SYNTH main SHA and license are supplied after its non-game stop condition"},
-    {"id":"synthserver","role":"final server seed","license":null,"state":"DEFERRED","pin":null,"proof":"No cross-repository access performed in Task 1","resume_when":"Final tested Synthserver main SHA and license are supplied after its non-game stop condition"},
-    {"id":"almsiviserver","role":"sibling protocol and integration target","license":null,"state":"DEFERRED","pin":null,"proof":"No sibling repository access performed in Task 1","resume_when":"Cross-repository implementation task is authorized with exact source SHA"}
+    {
+      "id": "openmw",
+      "role": "runtime source baseline and ordered patch-series base",
+      "license": "GPL-3.0-only",
+      "state": "PINNED",
+      "pin": "openmw-0.51.0@f4bec41444214a7903bebd178389ca22ca13f646; Lua API 129",
+      "proof": "Current checkpoint: exact real prefetch and offline reconstruction passed; 96 MiB verified cache and 133 MiB materialized source; config/source-pins/openmw.json and openmw-patches/patch-manifest.json record the base"
+    },
+    {
+      "id": "dialectic",
+      "role": "client behavior reference",
+      "license": null,
+      "state": "DEFERRED",
+      "pin": "eddbdc77a8347128b5cf5bcd68df0c2404fbf074",
+      "proof": "Planning pin only; source has not been read or imported at the current checkpoint",
+      "resume_when": "License and provenance audit is authorized before any import"
+    },
+    {
+      "id": "chim",
+      "role": "Skyrim behavior reference",
+      "license": null,
+      "state": "DEFERRED",
+      "pin": "77c73ffb6bb32c226340bbda93b3aac5a7ad49f8",
+      "proof": "Planning pin only; source has not been read or imported at the current checkpoint",
+      "resume_when": "License and provenance audit is authorized before any import"
+    },
+    {
+      "id": "dialecticserver",
+      "role": "server lineage reference",
+      "license": null,
+      "state": "DEFERRED",
+      "pin": "f447a9c6b59bfc689c788fb0139a0d13c6c6dc51",
+      "proof": "Planning pin only; source has not been read or imported at the current checkpoint",
+      "resume_when": "License and provenance audit is authorized before any import"
+    },
+    {
+      "id": "herikaserver",
+      "role": "server lineage reference",
+      "license": null,
+      "state": "DEFERRED",
+      "pin": "0dbfa3eb4d3197d8159b5ff2c77bfdb5bf98b4d0",
+      "proof": "Planning pin only; source has not been read or imported at the current checkpoint",
+      "resume_when": "License and provenance audit is authorized before any import"
+    },
+    {
+      "id": "synth",
+      "role": "final client behavior reference",
+      "license": null,
+      "state": "DEFERRED",
+      "pin": null,
+      "proof": "No source read or import has occurred at the current checkpoint",
+      "resume_when": "The final tested SYNTH main SHA and license are supplied and import/migration work is authorized"
+    },
+    {
+      "id": "synthserver",
+      "role": "final server seed",
+      "license": null,
+      "state": "DEFERRED",
+      "pin": null,
+      "proof": "No source read or import has occurred at the current checkpoint",
+      "resume_when": "The final tested Synthserver main SHA and license are supplied and import/migration work is authorized"
+    },
+    {
+      "id": "almsiviserver",
+      "role": "sibling protocol and integration target",
+      "license": null,
+      "state": "DEFERRED",
+      "pin": null,
+      "proof": "No sibling repository source was read or imported at the current checkpoint",
+      "resume_when": "Cross-repository migration and parity work is authorized with exact source SHAs"
+    }
   ]
 }
