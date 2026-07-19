@@ -144,8 +144,14 @@ class FoundationTests(unittest.TestCase):
                                                      "checks":["one", "one"], "result":"success"}), encoding="utf-8")
         with self.assertRaisesRegex(FoundationError, "nonempty and unique"):
             validate_run_bundles(root)
+        (run / "index.json").write_text(json.dumps({"schema_version":1, "validation_commit":"0" * 40,
+                                                     "checks":["one"], "result":"success"}), encoding="utf-8")
+        with self.assertRaisesRegex(FoundationError, "commit does not exist"):
+            validate_run_bundles(root)
         (run / "index.json").write_text(json.dumps({"schema_version":1, "validation_commit":commit,
                                                      "checks":["one"], "result":"success"}), encoding="utf-8")
+        with self.assertRaisesRegex(FoundationError, "manifest missing"):
+            validate_run_bundles(root)
         manifest = {"schema_version":1, "command":["test"], "inputs":{"validation_commit":commit},
                     "outputs":{"log":"one.txt"}, "result":"success", "tools":{"python":"fixture"}}
         (run / "one.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -169,6 +175,10 @@ class FoundationTests(unittest.TestCase):
                 result = self.command(str(root / "scripts/test/validate-ci.sh"), check=False)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("release/publish trigger forbidden", result.stderr)
+        workflow.write_text(original.replace("          fetch-depth: 0\n", "", 1), encoding="utf-8")
+        result = self.command(str(root / "scripts/test/validate-ci.sh"), check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("requires full checkout history", result.stderr)
         workflow.write_text(original, encoding="utf-8")
         yaml = root / ".github/workflows/release-canary.yaml"
         yaml.write_text("""name: canary\non: [push, pull_request, release]\njobs:\n  canary:\n    runs-on: ubuntu-24.04\n    steps:\n      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n""", encoding="utf-8")

@@ -74,6 +74,13 @@ for workflow in workflows:
         raise SystemExit(f"error: checkout repository override forbidden: {workflow}")
     if re.search(r"(?i)\b(?:gh\s+release|npm\s+publish|twine\s+upload|docker\s+push)\b", text):
         raise SystemExit(f"error: release/publish command forbidden: {workflow}")
+    if "scripts/evidence/validate.py" in text or re.search(r"package_audit\.py[^\n]*\bprovenance\b", text):
+        checkout_steps = re.findall(
+            r"(?ms)^\s*-\s+name:\s+[^\n]*\n(?:.*?\n)*?^\s*uses:\s*actions/checkout@[0-9a-f]{40}.*?(?=^\s*-\s+(?:name:|uses:)|\Z)",
+            text)
+        if not checkout_steps or any(re.search(r"(?m)^\s*fetch-depth:\s*0\s*$", step) is None
+                                     for step in checkout_steps):
+            raise SystemExit(f"error: evidence/provenance workflow requires full checkout history: {workflow}")
 print("ok: workflow action pins, mandatory triggers, publish bans, and repository boundaries validated")
 PY
 
