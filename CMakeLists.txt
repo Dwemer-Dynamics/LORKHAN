@@ -7,7 +7,9 @@ add_test(NAME foundation-unit
   COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_SOURCE_DIR}/tests" -v)
 add_test(NAME protocol-contract-harness
   COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_SOURCE_DIR}/almsivi/tests" -v)
-set_tests_properties(foundation-unit protocol-contract-harness PROPERTIES
+add_test(NAME evidence-validation
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/evidence/validate.py")
+set_tests_properties(foundation-unit protocol-contract-harness evidence-validation PROPERTIES
   ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
 add_custom_target(check
   COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${CMAKE_BINARY_DIR}" --output-on-failure

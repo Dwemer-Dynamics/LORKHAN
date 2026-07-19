@@ -97,3 +97,9 @@ Strict Draft 2020-12 schemas, canonical positive/negative/hostile fixtures, dete
 a standard-library discipline validator, and the loopback fake-server contract harness live under
 `almsivi/`. See `docs/PROTOCOL-CONTRACTS.md` for commands, scope, and contracts deliberately deferred
 rather than invented.
+
+## Packaging and compliance
+
+Deterministic fixture packaging, SPDX 2.3 SBOM generation, ownership dry-runs, compliance audits, and
+Unix/PowerShell commands are documented in `docs/PACKAGING-COMPLIANCE.md`. Release-named packages
+fail closed until the required built product and corresponding source exist.
