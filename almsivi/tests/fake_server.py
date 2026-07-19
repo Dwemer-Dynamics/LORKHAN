@@ -143,13 +143,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
         data = self.read_json()
         if data is None: return
         raw, body = data
-        if not isinstance(body, dict) or not isinstance(body.get("message_id"), str):
+        if not isinstance(body, dict):
             self.error(400, "invalid_schema"); return
-        if not self.require_idempotency(raw, body["message_id"]): return
+        idempotency_id = body.get("message_id") or body.get("action_id")
+        if not isinstance(idempotency_id, str):
+            self.error(400, "invalid_schema"); return
+        if not self.require_idempotency(raw, idempotency_id): return
         if parsed.path == "/api/v1/sessions":
             session = "00000000-0000-4000-8000-000000000007"
             self.server.state.sessions[session] = body.get("generation", -1)
             self.send_json(201, {"session_id": session}); return
+        if parsed.path == "/api/v1/action-results": self.send_json(200, {"persisted": True}); return
         session = body.get("session_id")
         generation = body.get("generation")
         if session not in self.server.state.sessions:
@@ -157,7 +161,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if generation != self.server.state.sessions[session]:
             self.error(409, "stale_generation"); return
         if parsed.path == "/api/v1/turns": self.send_json(202, {"accepted": True, "first_after": 0}); return
-        if parsed.path == "/api/v1/action-results": self.send_json(200, {"persisted": True}); return
         if parsed.path == "/api/v1/interruptions": self.send_json(200, {"cancelled": True}); return
         self.error(404, "invalid_schema")
 

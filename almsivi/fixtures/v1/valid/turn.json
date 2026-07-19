@@ -1,23 +1,27 @@
 {
-  "description": "Text turn with authoritative TES3 identity",
+  "description": "Common turn envelope with minimal known client-owned payload",
   "instance": {
-    "audience": [{"cell": {"grid_x": -2, "grid_y": -9, "kind": "exterior"}, "content_file": "Morrowind.esm", "display_name": "Fargoth", "kind": "npc", "record_id": "fargoth", "refnum": {"content_file": 0, "index": 112}}],
     "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "created_at": "2026-07-18T20:00:00Z",
     "generation": 7,
-    "input": {"kind": "text", "language": "en-US", "text": "Hello."},
     "installation_id": "00000000-0000-4000-8000-000000000001",
     "message_id": "00000000-0000-4000-8000-000000000005",
+    "payload": {
+      "audience": [{"cell": {"grid_x": -2, "grid_y": -9, "kind": "exterior"}, "content_file": "Morrowind.esm", "display_name": "Fargoth", "kind": "npc", "record_id": "fargoth", "refnum": {"content_file": 0, "index": 112}}],
+      "context": {"truncated": false},
+      "input": {"kind": "text", "language": "en-US", "text": "Hello."},
+      "recent_action_results": [],
+      "speaker": {"cell": {"name": "Balmora, Guild of Mages", "kind": "interior"}, "content_file": "Morrowind.esm", "display_name": "Player", "kind": "player", "record_id": "player", "refnum": {"content_file": 0, "index": 0}},
+      "target": {"cell": {"grid_x": -2, "grid_y": -9, "kind": "exterior"}, "content_file": "Morrowind.esm", "display_name": "Fargoth", "kind": "npc", "record_id": "fargoth", "refnum": {"content_file": 0, "index": 112}},
+      "ui_source": "text"
+    },
     "playthrough_id": "00000000-0000-4000-8000-000000000003",
     "profile_id": "00000000-0000-4000-8000-000000000004",
     "request_id": "00000000-0000-4000-8000-000000000006",
     "runtime": {"capabilities": ["dialogue.text", "speech.say", "action.ai.follow"], "client_version": "0.1.0", "game": "tes3", "lua_api_revision": 129, "openmw_commit": "f4bec41444214a7903bebd178389ca22ca13f646", "openmw_version": "0.51.0", "platform": "windows-x86_64", "variant": "openmw"},
     "schema": "almsivi.turn.v1",
     "session_id": "00000000-0000-4000-8000-000000000007",
-    "speaker": {"cell": {"name": "Balmora, Guild of Mages", "kind": "interior"}, "content_file": "Morrowind.esm", "display_name": "Player", "kind": "player", "record_id": "player", "refnum": {"content_file": 0, "index": 0}},
-    "target": {"cell": {"grid_x": -2, "grid_y": -9, "kind": "exterior"}, "content_file": "Morrowind.esm", "display_name": "Fargoth", "kind": "npc", "record_id": "fargoth", "refnum": {"content_file": 0, "index": 112}},
-    "turn_id": "00000000-0000-4000-8000-000000000008",
-    "ui_source": "text"
+    "turn_id": "00000000-0000-4000-8000-000000000008"
   },
   "schema": "https://almsivi.invalid/schemas/v1/turn.schema.json"
 }

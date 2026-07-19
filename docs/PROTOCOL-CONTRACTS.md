@@ -45,10 +45,12 @@ server contract:
 - all action intent names and parameter/result payloads except exact `ai.follow`; its parameter is
   exactly `{\"distance\": 192}`. Behavioral timeout, restoration, and policy remain implementation
   acceptance contracts;
-- the `observed` action-result object and stable action reason-code enumeration; `observed` is omitted
-  rather than assigned a guessed follow-package shape;
-- exact context snapshot/delta domains and recent action-result embedding. `turn.context` is omitted
-  from the canonical schema rather than assigned an invented representation;
+- the required `observed` action-result object's typed contents and stable action reason-code
+  enumeration; the known object boundary remains while its properties are intentionally unconstrained;
+- exact context snapshot/delta domains and recent action-result embedding. Both required turn payload
+  fields remain, but their nested shapes are intentionally unconstrained. The native transport must
+  enforce the documented 128 KiB serialized context cap because JSON Schema cannot portably measure
+  arbitrary JSON's serialized byte length;
 - exact capability names/count, client-version syntax, platform values, UI-source values, interrupt
   reasons, and undocumented string/cell/identifier numeric bounds; known fields retain their base JSON
   types without freezing guessed enumerations or limits;
@@ -56,6 +58,13 @@ server contract:
   queue cap is not treated as a server events-array cap;
 - cross-repository byte parity against ALMSIVIserver. The local deterministic manifest is ready for
   that check once the final server contract is authorized and available.
+
+The turn schema follows the documented common envelope: correlation/runtime fields remain at top
+level and input, identities, audience, context, recent terminal results, and UI source are nested under
+the required strict `payload` object. Session init has no plan-specified nested payload fields, so its
+minimal client-owned fields remain directly in its request object pending final server parity.
+Standalone action intent/result follow their explicit examples rather than inheriting the common turn
+envelope.
 
 Schemas consequently cover known client-owned request shapes and known event payloads only. They do
 not certify final server response evidence or in-game behavior.

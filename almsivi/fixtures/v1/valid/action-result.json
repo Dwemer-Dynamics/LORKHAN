@@ -1,5 +1,5 @@
 {
-  "description": "Terminal observed follow result",
-  "instance": {"action_id": "00000000-0000-4000-8000-000000000020", "completed_at": "2026-07-18T20:00:02Z", "generation": 7, "message_id": "00000000-0000-4000-8000-000000000021", "reason_code": "package_started", "schema": "almsivi.action-result.v1", "session_id": "00000000-0000-4000-8000-000000000007", "status": "succeeded", "turn_id": "00000000-0000-4000-8000-000000000008"},
+  "description": "Standalone terminal action result with deferred observed contents",
+  "instance": {"action_id": "00000000-0000-4000-8000-000000000020", "completed_at": "2026-07-18T20:00:02Z", "observed": {"package": "Follow"}, "reason_code": "package_started", "schema": "almsivi.action-result.v1", "status": "succeeded"},
   "schema": "https://almsivi.invalid/schemas/v1/action-result.schema.json"
 }

@@ -5,14 +5,11 @@
   "properties": {
     "action_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
     "completed_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
-    "generation": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/generation"},
-    "message_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "observed": {"$comment": "Deferred typed observed result contents; the required object boundary is known.", "type": "object"},
     "reason_code": {"type": "string"},
     "schema": {"const": "almsivi.action-result.v1", "type": "string"},
-    "session_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "status": {"enum": ["cancelled", "failed", "rejected", "succeeded", "timed_out"], "type": "string"},
-    "turn_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+    "status": {"enum": ["cancelled", "failed", "rejected", "succeeded", "timed_out"], "type": "string"}
   },
-  "required": ["schema", "message_id", "session_id", "generation", "turn_id", "action_id", "status", "reason_code", "completed_at"],
+  "required": ["schema", "action_id", "status", "reason_code", "observed", "completed_at"],
   "type": "object"
 }

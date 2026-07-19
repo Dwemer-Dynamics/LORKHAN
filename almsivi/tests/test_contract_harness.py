@@ -59,7 +59,7 @@ class ContractHarnessTests(unittest.TestCase):
             status, _, _ = self.json_request(server, "POST", "/api/v1/turns", turn, key=turn["message_id"])
             self.assertEqual(status, 202)
             self.assertEqual(self.json_request(server, "POST", "/api/v1/turns", turn, key=turn["message_id"])[0], 202)
-            changed = copy.deepcopy(turn); changed["input"]["text"] = "changed"
+            changed = copy.deepcopy(turn); changed["payload"]["input"]["text"] = "changed"
             self.assertEqual(self.json_request(server, "POST", "/api/v1/turns", changed, key=turn["message_id"])[2]["code"], "duplicate_conflict")
             stale = copy.deepcopy(turn); stale["message_id"] = "00000000-0000-4000-8000-000000000030"; stale["generation"] = 6
             self.assertEqual(self.json_request(server, "POST", "/api/v1/turns", stale, key=stale["message_id"])[2]["code"], "stale_generation")
@@ -89,7 +89,8 @@ class ContractHarnessTests(unittest.TestCase):
             self.start_session(server)
             for endpoint, name in (("action-results", "action-result.json"), ("interruptions", "interrupt.json")):
                 body = fixture(name)
-                self.assertEqual(self.json_request(server, "POST", "/api/v1/" + endpoint, body, key=body["message_id"])[0], 200)
+                key = body.get("message_id") or body["action_id"]
+                self.assertEqual(self.json_request(server, "POST", "/api/v1/" + endpoint, body, key=key)[0], 200)
         with RunningServer() as restarted:
             turn = fixture("turn.json")
             status, _, body = self.json_request(restarted, "POST", "/api/v1/turns", turn, key=turn["message_id"])

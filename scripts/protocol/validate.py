@@ -65,7 +65,8 @@ def check_schema_shape(node: Any, path: str, registry: dict[str, dict[str, Any]]
         if not isinstance(node["$ref"], str):
             raise ValidationError(f"{path}.$ref must be a string")
         resolve(node["$ref"], registry)
-    if node.get("type") == "object" and node.get("additionalProperties") is not False:
+    if (node.get("type") == "object" and node.get("additionalProperties") is not False
+            and not node.get("$comment", "").startswith("Deferred")):
         raise ValidationError(f"{path}: contract-owned object must set additionalProperties:false")
     if "properties" in node and node.get("type") != "object":
         raise ValidationError(f"{path}: properties requires type:object")
