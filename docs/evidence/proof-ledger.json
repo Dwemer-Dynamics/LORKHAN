@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "rows": [
+    {"id":"foundation-pin","claim":"Exact OpenMW source pin and Lua API revision are machine-readable and enforced","state":"AUTOMATED","evidence":["config/source-pins/openmw.json","tests/test_foundation.py"]},
+    {"id":"foundation-cache","claim":"Content-addressed source cache rejects absence, tampering, and the wrong Git commit","state":"AUTOMATED","evidence":["scripts/lib/almsivi_foundation.py","tests/test_foundation.py"]},
+    {"id":"foundation-offline","claim":"Offline bootstrap materializes only verified pristine source without network access","state":"AUTOMATED","evidence":["scripts/bootstrap/bootstrap.py","tests/test_foundation.py"]},
+    {"id":"control-build","claim":"Unmodified exact-pin OpenMW control configures and builds on target platforms","state":"PLANNED","evidence":[]},
+    {"id":"cross-repository","claim":"Protocol fixtures and validators pass against final ALMSIVIserver","state":"DEFERRED","evidence":[],"resume_when":"Final server import and cross-repository task are authorized"},
+    {"id":"windows-build","claim":"Exact-pin Windows x64 control and product builds pass","state":"DEFERRED","evidence":[],"resume_when":"Run on a Windows VS 2022 host with OpenMW dependencies pinned by the upstream source"},
+    {"id":"windows-game","claim":"Windows in-game behavior passes with legal Morrowind GOTY data","state":"DEFERRED","evidence":[],"resume_when":"User supplies legal game data and an exact package/profile acceptance environment"}
+  ]
+}

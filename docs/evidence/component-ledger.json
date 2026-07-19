@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "components": [
+    {"id":"source-pin","source":"OpenMW 0.51.0 release pin","target":"config/source-pins/openmw.json","owner":"client foundations","state":"AUTOMATED","proof":"tests/test_foundation.py"},
+    {"id":"bootstrap","source":"ALMSIVI planning requirements","target":"scripts/bootstrap","owner":"client foundations","state":"AUTOMATED","proof":"tests/test_foundation.py"},
+    {"id":"native-bridge","source":"docs/ENGINE-INTEGRATION-PLAN.md","target":"future pinned OpenMW patch/overlay","owner":"engine/transport","state":"PLANNED","proof":"Task 1 establishes source only"},
+    {"id":"final-server-import","source":"final Synthserver","target":"ALMSIVIserver","owner":"server","state":"DEFERRED","proof":"Excluded from Task 1 and repository boundary","resume_when":"Final Synthserver SHA is available and cross-repository work is authorized"},
+    {"id":"windows-game-acceptance","source":"user-supplied legal Morrowind GOTY data","target":"Windows x64 acceptance evidence","owner":"acceptance","state":"DEFERRED","proof":"Unit tests cannot prove game behavior","resume_when":"Exact package and legal Windows game installation are available"}
+  ]
+}

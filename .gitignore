@@ -4,11 +4,17 @@
 build/
 build-*/
 out/
+.cache/
+.work/
+.runs/
+engine/
 dist/
 packages/
 deps/
 downloads/
 *.log
+__pycache__/
+*.py[cod]
 *.dmp
 *.user
 *.suo

@@ -39,13 +39,32 @@ is Windows x64. Linux x64 and macOS arm64 are build/test lanes; Android is defer
 10. `docs/COMPATIBILITY-PLAN.md` — vanilla and popular OpenMW mod-list profiles.
 11. `docs/PACKAGING-AND-LICENSE.md` — GPL/source-offer and proprietary-asset release gate.
 
-## First implementation command
+## Reproducible source foundation
 
-After SYNTH is complete, clone both ALMSIVI repositories into the same parent, open this repository
-in Claude Code using the approved Azure GPT-5.6 Sol configuration, and give it:
+Requirements are Python 3.10+ and Git; CMake 3.25+ and Ninja are minimum environment versions for the
+foundation preset. They are not immutable dependency pins. OpenMW itself is immutably pinned in
+`config/source-pins/openmw.json`.
 
-> Read `CLAUDEX-TASK.md` completely and execute it. Continue until its stop condition is met. Work
-> only in `ALMSIVI` and sibling `ALMSIVIserver`; do not push, release, or modify reference repos.
+Prefetch is the only network-capable step. It fetches the full exact commit into a Git bundle, hashes
+it into a content-addressed cache, verifies the bundle and tag, and writes a deterministic run
+manifest. All locations are configurable:
 
-The assignment contains the order, agent ownership, validation commands to create, evidence ledger,
-and exact stop condition. The worker does not need to invent a schedule or answer design questions.
+```bash
+ALMSIVI_CACHE_DIR=/safe/cache ALMSIVI_RUN_MANIFEST=/safe/runs/prefetch.json \
+  ./scripts/bootstrap/prefetch-unix.sh
+ALMSIVI_CACHE_DIR=/safe/cache ALMSIVI_SOURCE_DIR=/safe/work/openmw \
+  ALMSIVI_RUN_MANIFEST=/safe/runs/bootstrap.json ./scripts/bootstrap/unix.sh
+python3 ./scripts/evidence/validate.py
+cmake --preset foundation && cmake --build --preset foundation
+```
+
+Windows equivalents are `./scripts/bootstrap/prefetch-windows.ps1` and
+`./scripts/bootstrap/windows.ps1`, using the same environment variables. Bootstrap is strictly
+offline, rejects cache absence/tampering/wrong pins and nonempty destinations, checks out a detached
+pristine source tree, and removes its origin. Defaults remain under ignored repository-generated
+roots; no script discovers or touches game, profile, configuration, or save directories.
+
+Machine-readable source, component, and proof ledgers live under `docs/evidence/`; their schemas live
+under `schemas/evidence/`. `AUTOMATED` proves only the recorded no-game command. It does not imply a
+Windows build, cross-repository match, compatibility, or in-game proof; those have explicit deferred
+rows and resume conditions.

@@ -1,0 +1,9 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {"major": 3, "minor": 25, "patch": 0},
+  "configurePresets": [
+    {"name": "foundation", "displayName": "ALMSIVI foundation checks", "generator": "Ninja", "binaryDir": "${sourceDir}/build/foundation", "cacheVariables": {"CMAKE_BUILD_TYPE": "Release"}}
+  ],
+  "buildPresets": [{"name": "foundation", "configurePreset": "foundation", "targets": ["check"]}],
+  "testPresets": [{"name": "foundation", "configurePreset": "foundation", "output": {"outputOnFailure": true}}]
+}
