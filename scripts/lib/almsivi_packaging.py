@@ -247,10 +247,19 @@ def dependency_locks(root: Path, patterns: Sequence[str]) -> list[dict[str, str]
 def package_set_linkage(root: Path, policy: Mapping[str, Any]) -> dict[str, Any]:
     openmw = read_json(root / policy["openmw_pin"])
     patch = root / policy["patch_manifest"]
+    provenance = root / policy["provenance_ledger"]
     if not patch.is_file():
-        raise PackagingError(f"required patch manifest missing: {patch}")
+        raise PackagingError(f"required authoritative patch manifest missing: {patch}")
+    if not provenance.is_file():
+        raise PackagingError(f"required authoritative provenance ledger missing: {provenance}")
+    patch_document = read_json(patch)
+    upstream = patch_document.get("upstream", {}) if isinstance(patch_document, dict) else {}
+    if upstream.get("commit") != openmw.get("commit") or upstream.get("tag") != openmw.get("tag"):
+        raise PackagingError("authoritative patch manifest drifted from the OpenMW source pin")
+    validate_provenance(read_json(provenance), [])
     return {"almsivi_commit": git_commit(root), "openmw_commit": openmw["commit"],
             "openmw_tag": openmw["tag"], "patch_manifest_sha256": sha256_file(patch),
+            "provenance_ledger_sha256": sha256_file(provenance),
             "dependency_locks": dependency_locks(root, policy["dependency_lock_globs"])}
 
 
@@ -334,18 +343,27 @@ def enforce_allowlist(entries: Sequence[Mapping[str, Any]], allow: Sequence[str]
         raise PackagingError("; ".join(findings))
 
 
-def release_name_guard(name: str, root: Path, policy: Mapping[str, Any], kind: str) -> None:
+def release_name_guard(name: str, repository: Path, stage: Path, policy: Mapping[str, Any], kind: str) -> None:
     if not RELEASE_NAME.match(name):
         if not SAFE_FIXTURE_NAME.match(name):
             raise PackagingError("non-release packages must be clearly named fixture-* or test-*")
         return
-    required_key = "required_source_paths" if kind == "source" else "required_product_paths"
-    missing = [value for value in policy[required_key] if not (root / value).exists()]
+    lowered = name.lower()
+    package_kind = "source" if "source" in lowered else "lua" if "lua" in lowered else "runtime"
+    if (package_kind == "source") != (kind == "source"):
+        raise PackagingError(f"release package name/type mismatch: name is {package_kind}, requested {kind}")
+    authoritative = [policy["patch_manifest"], policy["provenance_ledger"]]
+    missing = [f"authoritative repository input {value}" for value in authoritative
+               if not (repository / value).is_file()]
+    required = policy["required_source_paths"] if kind == "source" else policy["required_product_paths"][package_kind]
+    missing.extend(value for value in required if not (stage / value).is_file())
     if kind != "source":
-        missing.extend(f"corresponding source {value}" for value in policy["required_source_paths"]
-                       if not (root / value).exists())
+        missing.extend(f"corresponding source {value}" for value in policy["required_corresponding_source_paths"]
+                       if not (stage / value).is_file())
     if missing:
         raise PackagingError(f"release-named package fails closed; missing: {', '.join(missing)}")
+    # Linkage validation catches pin drift and malformed authoritative provenance before a release name is accepted.
+    package_set_linkage(repository, policy)
 
 
 def install_plan(entries: Sequence[Mapping[str, Any]], install_root: Path) -> dict[str, Any]:
@@ -567,30 +585,37 @@ def audit_source_inputs(entries: Sequence[Mapping[str, Any]], required: Sequence
 
 
 def validate_provenance(document: Mapping[str, Any], source_paths: Iterable[str]) -> None:
-    if set(document) != {"schema_version", "files"} or document["schema_version"] != 1:
-        raise PackagingError("invalid provenance ledger")
-    records: dict[str, Mapping[str, Any]] = {}
-    required = {"path", "origin", "source_repository", "source_commit", "source_path", "license",
-                "copyright_notice", "transformation", "reviewer"}
-    for record in document["files"]:
-        if set(record) != required or record["path"] in records:
+    if set(document) != {"schema_version", "records"} or document["schema_version"] != 1:
+        raise PackagingError("invalid authoritative file-provenance ledger")
+    covered: set[str] = set()
+    ids: set[str] = set()
+    required = {"id", "classification", "target_paths", "source_repository", "source_commit",
+                "source_path", "license", "copyright_notice", "transformation", "reviewer"}
+    for record in document["records"]:
+        if set(record) != required or record["id"] in ids or not record["target_paths"]:
             raise PackagingError("provenance records must be unique and complete")
-        normalize_path(record["path"])
-        if record["origin"] not in {"original", "copied", "modified", "concept-only"}:
-            raise PackagingError(f"invalid provenance origin: {record['path']}")
+        ids.add(record["id"])
+        classification = record["classification"]
+        if classification not in {"original", "original-rewrite", "copied", "modified", "concept-only"}:
+            raise PackagingError(f"invalid provenance classification: {record['id']}")
         if not all(str(record[key] or "").strip() for key in ("license", "copyright_notice", "transformation", "reviewer")):
-            raise PackagingError(f"incomplete provenance: {record['path']}")
-        if record["origin"] in {"copied", "modified"} and not all(record[key] for key in ("source_repository", "source_commit", "source_path")):
-            raise PackagingError(f"import provenance missing exact source: {record['path']}")
-        records[record["path"]] = record
-    missing = sorted(set(source_paths) - set(records))
+            raise PackagingError(f"incomplete provenance: {record['id']}")
+        if classification in {"copied", "modified"} and not all(record[key] for key in ("source_repository", "source_commit", "source_path")):
+            raise PackagingError(f"import provenance missing exact source: {record['id']}")
+        for value in record["target_paths"]:
+            path = normalize_path(value)
+            if path in covered:
+                raise PackagingError(f"duplicate provenance target path: {path}")
+            covered.add(path)
+    missing = sorted(set(source_paths) - covered)
     if missing:
         raise PackagingError(f"source provenance missing: {missing}")
 
 
 def validate_package_set(runtime_manifest: Mapping[str, Any], source_manifest: Mapping[str, Any],
                          runtime_archive: Path, source_archive: Path) -> None:
-    required = {"almsivi_commit", "openmw_commit", "openmw_tag", "patch_manifest_sha256", "dependency_locks"}
+    required = {"almsivi_commit", "openmw_commit", "openmw_tag", "patch_manifest_sha256",
+                "provenance_ledger_sha256", "dependency_locks"}
     runtime_link = runtime_manifest.get("linkage", {})
     source_link = source_manifest.get("linkage", {})
     if set(runtime_link) != required or runtime_link != source_link:

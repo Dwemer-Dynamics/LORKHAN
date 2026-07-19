@@ -1,1 +1,51 @@
-{"records":[{"classification":"original","copyright_notice":"Copyright (C) 2026 ALMSIVI contributors","id":"almsivi-original-patch-machinery","license":"GPL-3.0-only","reviewer":"ALMSIVI maintainers","source_commit":null,"source_path":null,"source_repository":null,"target_paths":["scripts/lib/openmw_patches.py","scripts/patches/openmw.py","openmw-patches/patch-spec.json","openmw-patches/patch-manifest.json","openmw-patches/series","schemas/evidence/patch-manifest.schema.json","schemas/evidence/file-provenance-ledger.schema.json","docs/evidence/file-provenance-ledger.json","tests/test_openmw_patches.py"],"transformation":"Original stdlib-first implementation; no external source code imported."}],"schema_version":1}
+{
+  "schema_version": 1,
+  "records": [
+    {
+      "id": "almsivi-original-patch-machinery",
+      "classification": "original",
+      "target_paths": [
+        "scripts/lib/openmw_patches.py",
+        "scripts/patches/openmw.py",
+        "openmw-patches/patch-spec.json",
+        "openmw-patches/patch-manifest.json",
+        "openmw-patches/series",
+        "schemas/evidence/patch-manifest.schema.json",
+        "schemas/evidence/file-provenance-ledger.schema.json",
+        "docs/evidence/file-provenance-ledger.json",
+        "tests/test_openmw_patches.py"
+      ],
+      "source_repository": null,
+      "source_commit": null,
+      "source_path": null,
+      "license": "GPL-3.0-only",
+      "copyright_notice": "Copyright (C) 2026 ALMSIVI contributors",
+      "transformation": "Original stdlib-first implementation; no external source code imported.",
+      "reviewer": "ALMSIVI maintainers"
+    },
+    {
+      "id": "almsivi-original-packaging-compliance",
+      "classification": "original",
+      "target_paths": [
+        "config/packaging/policy.json",
+        "config/packaging/suppressions.json",
+        "docs/PACKAGING-COMPLIANCE.md",
+        "scripts/audit/package.ps1",
+        "scripts/audit/package.sh",
+        "scripts/audit/package_audit.py",
+        "scripts/lib/almsivi_packaging.py",
+        "scripts/package/package.py",
+        "scripts/package/unix.sh",
+        "scripts/package/windows.ps1",
+        "tests/test_packaging.py"
+      ],
+      "source_repository": null,
+      "source_commit": null,
+      "source_path": null,
+      "license": "GPL-3.0-only",
+      "copyright_notice": "Copyright (C) 2026 ALMSIVI contributors",
+      "transformation": "Original deterministic packaging, SPDX, ownership, and fail-closed compliance implementation; no external source code imported.",
+      "reviewer": "ALMSIVI maintainers"
+    }
+  ]
+}

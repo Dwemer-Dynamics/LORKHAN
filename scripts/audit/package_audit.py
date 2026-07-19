@@ -48,7 +48,10 @@ def package_set(args: argparse.Namespace) -> None:
 
 
 def provenance(args: argparse.Namespace) -> None:
-    validate_provenance(read_json(Path(args.ledger)), args.paths)
+    repository = Path(args.repository).resolve()
+    policy = read_json(repository / args.policy)
+    ledger = repository / policy["provenance_ledger"] if args.ledger is None else Path(args.ledger)
+    validate_provenance(read_json(ledger), args.paths)
     print("provenance passed")
 
 
@@ -78,7 +81,8 @@ def parser() -> argparse.ArgumentParser:
     links.add_argument("source_archive"); links.add_argument("source_manifest")
     links.set_defaults(handler=package_set)
     prov = sub.add_parser("provenance")
-    prov.add_argument("ledger"); prov.add_argument("paths", nargs="+")
+    prov.add_argument("paths", nargs="+"); prov.add_argument("--ledger")
+    prov.add_argument("--policy", default="config/packaging/policy.json")
     prov.set_defaults(handler=provenance)
     comparison = sub.add_parser("compare")
     comparison.add_argument("first"); comparison.add_argument("second")

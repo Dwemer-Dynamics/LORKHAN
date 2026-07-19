@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -120,20 +121,64 @@ class PackagingTests(unittest.TestCase):
         self.assertEqual(sha256sums([one, two]).decode().splitlines()[0].split("  ")[1], "a")
 
     def test_release_names_fail_closed_but_fixture_names_are_safe(self):
-        release_name_guard("fixture-runtime", ROOT, self.policy, "runtime")
+        stage = self.temp / "stage"; stage.mkdir()
+        release_name_guard("fixture-runtime", ROOT, stage, self.policy, "runtime")
         with self.assertRaisesRegex(PackagingError, "clearly named"):
-            release_name_guard("candidate-runtime", ROOT, self.policy, "runtime")
+            release_name_guard("candidate-runtime", ROOT, stage, self.policy, "runtime")
         with self.assertRaisesRegex(PackagingError, "release-named package fails closed"):
-            release_name_guard("ALMSIVI-OpenMW-0.1-windows-x64", ROOT, self.policy, "runtime")
+            release_name_guard("ALMSIVI-OpenMW-0.1-windows-x64", ROOT, stage, self.policy, "runtime")
         with self.assertRaisesRegex(PackagingError, "release-named package fails closed"):
-            release_name_guard("ALMSIVI-source-0.1", ROOT, self.policy, "source")
+            release_name_guard("ALMSIVI-source-0.1", ROOT, stage, self.policy, "source")
+        with self.assertRaisesRegex(PackagingError, "release-named package fails closed"):
+            release_name_guard("ALMSIVI-Lua-0.1", ROOT, stage, self.policy, "runtime")
 
     def test_package_linkage_uses_commit_pin_patch_hash_and_locks(self):
         linkage = package_set_linkage(ROOT, self.policy)
         self.assertRegex(linkage["almsivi_commit"], r"^[0-9a-f]{40}$")
         self.assertEqual(linkage["openmw_commit"], "f4bec41444214a7903bebd178389ca22ca13f646")
         self.assertRegex(linkage["patch_manifest_sha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(linkage["provenance_ledger_sha256"], r"^[0-9a-f]{64}$")
         self.assertTrue(linkage["dependency_locks"])
+
+    def test_missing_tampered_patch_manifest_and_provenance_fail_linkage(self):
+        repository = self.temp / "repository"
+        shutil.copytree(ROOT, repository, symlinks=True, ignore=shutil.ignore_patterns(".git", "build", "__pycache__"))
+        policy = read_json(repository / "config/packaging/policy.json")
+        patch = repository / policy["patch_manifest"]
+        original_patch = patch.read_bytes()
+        patch.unlink()
+        with self.assertRaisesRegex(PackagingError, "patch manifest missing"):
+            package_set_linkage(repository, policy)
+        patch.parent.mkdir(parents=True, exist_ok=True); patch.write_bytes(original_patch)
+        document = read_json(patch); document["upstream"]["commit"] = "0" * 40
+        patch.write_text(json.dumps(document), encoding="utf-8")
+        with self.assertRaisesRegex(PackagingError, "drifted"):
+            package_set_linkage(repository, policy)
+        patch.write_bytes(original_patch)
+        provenance = repository / policy["provenance_ledger"]
+        original_provenance = provenance.read_bytes()
+        provenance.unlink()
+        with self.assertRaisesRegex(PackagingError, "provenance ledger missing"):
+            package_set_linkage(repository, policy)
+        provenance.write_bytes(original_provenance)
+        document = read_json(provenance); document["records"][0]["reviewer"] = ""
+        provenance.write_text(json.dumps(document), encoding="utf-8")
+        with self.assertRaisesRegex(PackagingError, "incomplete provenance"):
+            package_set_linkage(repository, policy)
+
+    def test_release_guard_rechecks_authoritative_inputs_after_stage_is_complete(self):
+        repository = self.temp / "repository"
+        shutil.copytree(ROOT, repository, symlinks=True, ignore=shutil.ignore_patterns(".git", "build", "__pycache__"))
+        policy = read_json(repository / "config/packaging/policy.json")
+        stage = self.temp / "release-stage"
+        for relative in policy["required_product_paths"]["runtime"] + policy["required_corresponding_source_paths"]:
+            target = stage / relative; target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("fixture prerequisite\n", encoding="utf-8")
+        with self.assertRaisesRegex(PackagingError, "cannot determine exact ALMSIVI commit"):
+            release_name_guard("ALMSIVI-OpenMW-0.1-windows-x64", repository, stage, policy, "runtime")
+        (repository / policy["patch_manifest"]).unlink()
+        with self.assertRaisesRegex(PackagingError, "authoritative repository input"):
+            release_name_guard("ALMSIVI-OpenMW-0.1-windows-x64", repository, stage, policy, "runtime")
 
     def test_install_uninstall_dry_run_owns_only_archive_files(self):
         entries = content_manifest(self.tree())["files"]
@@ -178,10 +223,14 @@ class PackagingTests(unittest.TestCase):
             bad, self.policy["runtime_allowlist"], self.policy["denylist"])[1]})
 
     def test_provenance_completeness_canary(self):
-        ledger = read_json(ROOT / "config/packaging/provenance.json")
-        validate_provenance(ledger, [item["path"] for item in ledger["files"]])
+        ledger = read_json(ROOT / self.policy["provenance_ledger"])
+        recorded = [path for item in ledger["records"] for path in item["target_paths"]]
+        validate_provenance(ledger, recorded)
         with self.assertRaisesRegex(PackagingError, "provenance missing"):
             validate_provenance(ledger, ["unrecorded/file.py"])
+        drifted = json.loads(json.dumps(ledger)); drifted["records"][0]["reviewer"] = ""
+        with self.assertRaisesRegex(PackagingError, "incomplete provenance"):
+            validate_provenance(drifted, [])
 
     def test_suppressions_are_exact_hashed_reasoned_reviewed_and_expiring(self):
         digest = "a" * 64
@@ -222,7 +271,8 @@ class PackagingTests(unittest.TestCase):
         runtime = self.temp / "r.zip"; source = self.temp / "s.tar"
         runtime.write_bytes(b"r"); source.write_bytes(b"s")
         linkage = {"almsivi_commit":"a"*40,"openmw_commit":"b"*40,"openmw_tag":"tag",
-                   "patch_manifest_sha256":"c"*64,"dependency_locks":[{"path":"x","sha256":"d"*64}]}
+                   "patch_manifest_sha256":"c"*64,"provenance_ledger_sha256":"e"*64,
+                   "dependency_locks":[{"path":"x","sha256":"d"*64}]}
         rmanifest = {"linkage": linkage, "archive_sha256": hashlib.sha256(b"r").hexdigest()}
         smanifest = {"linkage": linkage, "archive_sha256": hashlib.sha256(b"s").hexdigest()}
         validate_package_set(rmanifest, smanifest, runtime, source)

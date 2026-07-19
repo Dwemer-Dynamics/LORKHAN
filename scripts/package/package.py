@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
 from almsivi_foundation import canonical_json, read_json, write_json
-from almsivi_packaging import (PackagingError, archive_manifest, content_manifest, create_tar, create_zip,
+from almsivi_packaging import (RELEASE_NAME, PackagingError, archive_manifest, content_manifest, create_tar, create_zip,
                                enforce_allowlist, generate_spdx, install_plan, package_set_linkage,
                                release_name_guard, sha256sums, source_date_epoch, uninstall_plan,
                                validate_spdx, write_release_manifest)
@@ -22,9 +22,10 @@ def package(args: argparse.Namespace) -> None:
     output_dir = Path(args.output_dir).resolve()
     policy = read_json(root / args.policy)
     epoch = source_date_epoch(args.epoch)
-    release_name_guard(args.name, root, policy, args.kind)
+    release_name_guard(args.name, root, input_root, policy, args.kind)
     manifest = content_manifest(input_root)
-    enforce_allowlist(manifest["files"], policy[f"{args.kind}_allowlist"], policy["denylist"])
+    allowlist_kind = "lua" if RELEASE_NAME.match(args.name) and "lua" in args.name.lower() else args.kind
+    enforce_allowlist(manifest["files"], policy[f"{allowlist_kind}_allowlist"], policy["denylist"])
     linkage = package_set_linkage(root, policy)
     suffix = ".zip" if args.format == "zip" else ".tar"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -37,7 +38,7 @@ def package(args: argparse.Namespace) -> None:
         shutil.copytree(input_root, stage, symlinks=True)
         write_json(stage / "sbom/almsivi.spdx.json", sbom)
         staged_manifest = content_manifest(stage)
-        enforce_allowlist(staged_manifest["files"], policy[f"{args.kind}_allowlist"], policy["denylist"])
+        enforce_allowlist(staged_manifest["files"], policy[f"{allowlist_kind}_allowlist"], policy["denylist"])
         if args.format == "zip":
             create_zip(stage, archive, epoch)
         else:
