@@ -48,7 +48,7 @@ def record(name: str, command: list[str], output: Path, commit: str,
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "TZ": "UTC", "LANG": "C", "LC_ALL": "C"})
     log = sanitize(completed.stdout, replacements)
-    log_path = output / f"{name}.log"
+    log_path = output / f"{name}.txt"
     log_path.write_text(log, encoding="utf-8")
     if completed.returncode:
         raise RecordingError(f"{name} failed with exit {completed.returncode}; see {log_path}")
@@ -73,12 +73,10 @@ def main() -> int:
     if git("status", "--porcelain"):
         raise RecordingError("validation evidence must be recorded from a clean worktree")
     commit = git("rev-parse", "HEAD")
-    output = args.output.resolve()
-    if output.exists() and any(output.iterdir()):
-        raise RecordingError(f"output directory is not empty: {output}")
-    output.mkdir(parents=True, exist_ok=True)
+    final_output = args.output.resolve()
+    if final_output.exists():
+        raise RecordingError(f"output path already exists: {final_output}")
 
-    replacements = {str(ROOT): "$REPOSITORY", str(output): "$EVIDENCE_OUTPUT"}
     tools = {"python": sys.version.split()[0], "git": tool_version(["git", "--version"])}
     clang = shutil.which("clang++")
     if clang:
@@ -97,36 +95,43 @@ def main() -> int:
         ("source-audit", [str(ROOT / "scripts/audit/package.sh"), "source-tree"]),
         ("provenance", [sys.executable, str(ROOT / "scripts/audit/package_audit.py"), "--repository", str(ROOT), "provenance"]),
     ]
-    manifests: dict[str, dict[str, object]] = {}
-    for name, command in commands:
-        manifests[name] = record(name, command, output, commit, replacements, tools)
+    with tempfile.TemporaryDirectory(prefix="almsivi-validation-evidence-") as staging_root:
+        output = Path(staging_root) / "run"
+        output.mkdir()
+        replacements = {str(ROOT): "$REPOSITORY", str(output): "$EVIDENCE_OUTPUT",
+                        str(final_output): "$EVIDENCE_OUTPUT"}
+        manifests: dict[str, dict[str, object]] = {}
+        for name, command in commands:
+            manifests[name] = record(name, command, output, commit, replacements, tools)
 
-    if args.cache_dir:
-        cache = args.cache_dir.resolve()
-        replacements[str(cache)] = "$OPENMW_CACHE"
-        with tempfile.TemporaryDirectory(prefix="almsivi-evidence-") as temporary:
-            source = Path(temporary) / "openmw"
-            raw_manifest = Path(temporary) / "bootstrap.json"
-            replacements[str(source)] = "$OPENMW_SOURCE"
-            replacements[str(raw_manifest)] = "$RAW_RUN_MANIFEST"
-            command = [sys.executable, str(ROOT / "scripts/bootstrap/bootstrap.py"), "bootstrap",
-                       "--cache-dir", str(cache), "--source-dir", str(source), "--manifest", str(raw_manifest)]
-            manifests["offline-bootstrap"] = record("offline-bootstrap", command, output, commit, replacements, tools)
-            raw = json.loads(raw_manifest.read_text(encoding="utf-8"))
-            manifests["offline-bootstrap"]["outputs"].update({
-                "source_commit": raw["outputs"]["source_commit"],
-                "cache_sha256": raw["outputs"]["cache_sha256"],
-            })
-            (output / "offline-bootstrap.json").write_bytes(canonical(manifests["offline-bootstrap"]))
+        if args.cache_dir:
+            cache = args.cache_dir.resolve()
+            replacements[str(cache)] = "$OPENMW_CACHE"
+            with tempfile.TemporaryDirectory(prefix="almsivi-evidence-openmw-") as temporary:
+                source = Path(temporary) / "openmw"
+                raw_manifest = Path(temporary) / "bootstrap.json"
+                replacements[str(source)] = "$OPENMW_SOURCE"
+                replacements[str(raw_manifest)] = "$RAW_RUN_MANIFEST"
+                command = [sys.executable, str(ROOT / "scripts/bootstrap/bootstrap.py"), "bootstrap",
+                           "--cache-dir", str(cache), "--source-dir", str(source), "--manifest", str(raw_manifest)]
+                manifests["offline-bootstrap"] = record("offline-bootstrap", command, output, commit, replacements, tools)
+                raw = json.loads(raw_manifest.read_text(encoding="utf-8"))
+                manifests["offline-bootstrap"]["outputs"].update({
+                    "source_commit": raw["outputs"]["source_commit"],
+                    "cache_sha256": raw["outputs"]["cache_sha256"],
+                })
+                (output / "offline-bootstrap.json").write_bytes(canonical(manifests["offline-bootstrap"]))
 
-    index = {
-        "schema_version": 1,
-        "validation_commit": commit,
-        "checks": sorted(manifests),
-        "result": "success",
-    }
-    (output / "index.json").write_bytes(canonical(index))
-    print(f"recorded {len(manifests)} checks for {commit} in {output}")
+        index = {
+            "schema_version": 1,
+            "validation_commit": commit,
+            "checks": sorted(manifests),
+            "result": "success",
+        }
+        (output / "index.json").write_bytes(canonical(index))
+        final_output.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(output, final_output)
+    print(f"recorded {len(manifests)} checks for {commit} in {final_output}")
     return 0
 
 
