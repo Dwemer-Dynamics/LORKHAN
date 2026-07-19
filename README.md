@@ -64,7 +64,29 @@ offline, rejects cache absence/tampering/wrong pins and nonempty destinations, c
 pristine source tree, and removes its origin. Defaults remain under ignored repository-generated
 roots; no script discovers or touches game, profile, configuration, or save directories.
 
-Machine-readable source, component, and proof ledgers live under `docs/evidence/`; their schemas live
-under `schemas/evidence/`. `AUTOMATED` proves only the recorded no-game command. It does not imply a
-Windows build, cross-repository match, compatibility, or in-game proof; those have explicit deferred
-rows and resume conditions.
+Machine-readable source, component, file-provenance, and proof ledgers live under `docs/evidence/`;
+their schemas live under `schemas/evidence/`. `AUTOMATED` proves only the recorded no-game command. It
+does not imply a Windows build, cross-repository match, compatibility, or in-game proof; those have
+explicit deferred rows and resume conditions.
+
+## OpenMW patch series
+
+Tracked OpenMW changes use `openmw-patches/patch-spec.json` as human-authored intent and a canonical
+`patch-manifest.json`, `series`, numbered `patches/`, and new-file `overlay/` as generated artifacts.
+The current zero-patch state is valid. Each future path declares an ordered add/modify/delete operation,
+rationale, subsystem, provenance ID, and proof IDs; generated metadata pins the upstream base blob and
+result SHA-256. Commands are dependency-free beyond Python and Git:
+
+```bash
+python3 ./scripts/patches/openmw.py validate
+python3 ./scripts/patches/openmw.py generate --base /pristine/openmw --source /edited/openmw
+python3 ./scripts/patches/openmw.py apply --source /pristine/openmw
+python3 ./scripts/patches/openmw.py verify --source /patched/openmw
+python3 ./scripts/patches/openmw.py audit --base /pristine/openmw
+```
+
+Generation refuses undeclared or unchanged paths. Application and audit refuse dirty/non-pinned bases,
+stale blobs, patch fuzz/offset, traversal, artifact drift, extra generated/untracked files, result hash
+mismatches, and metadata that omits rationale, provenance, subsystem, or tests. Run `audit` before
+committing any real engine patch; relevant OpenMW subsystem tests remain mandatory and must be named by
+the manifest.
