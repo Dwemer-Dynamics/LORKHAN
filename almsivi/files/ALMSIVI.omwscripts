@@ -1,0 +1,3 @@
+GLOBAL: scripts/ALMSIVI/global.lua
+PLAYER: scripts/ALMSIVI/player.lua
+CUSTOM: scripts/ALMSIVI/actor.lua

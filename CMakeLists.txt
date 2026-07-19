@@ -11,6 +11,13 @@ add_test(NAME evidence-validation
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/evidence/validate.py")
 set_tests_properties(foundation-unit protocol-contract-harness evidence-validation PROPERTIES
   ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
+add_test(NAME almsivi-lua-structural
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/almsivi/tests/run.py")
+find_program(ALMSIVI_LUA_EXECUTABLE NAMES lua lua5.4 lua5.3 luajit)
+if(ALMSIVI_LUA_EXECUTABLE)
+  add_test(NAME almsivi-lua-runtime
+    COMMAND "${ALMSIVI_LUA_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/almsivi/files/scripts/ALMSIVI/tests/run.lua")
+endif()
 add_custom_target(check
   COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${CMAKE_BINARY_DIR}" --output-on-failure
   USES_TERMINAL)

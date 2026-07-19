@@ -1,0 +1,14 @@
+Task 5 no-game implementation deferrals
+
+These seams require the pinned OpenMW 0.51.0/API-129 integration and in-game proof; pure Lua fakes do not prove them:
+- Exact .omwscripts parser/context declaration syntax and handler names.
+- GLOBAL active-object identity extraction, onPlayerAdded/onActorActive coverage, and RefNum/content/cell reads.
+- PLAYER semantic action registration/default bindings, camera ray, nearby-object query, and actual widget/text-edit construction.
+- Dynamic CUSTOM script attach/remove calls and actor-local event routing.
+- ai.follow package invocation/restoration and engine expiry-clock conversion.
+- Opaque actor-positioned speech and stop calls; no path-based substitute is implemented.
+- Native openmw.almsivi queue/backpressure, transport, cancellation, halt, status, capability, and token guarantees.
+- Actual save callbacks, menu/disconnect/profile lifecycle signals, and vanilla dialogue-response event shape.
+- In-game permission/context tests, UI appearance, activation non-regression, actor detach, and dialogue delivery.
+
+The modules keep these calls behind adapters/capabilities. The Python fallback is structural only because no Lua interpreter was available during this change.
