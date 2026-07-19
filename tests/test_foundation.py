@@ -17,7 +17,8 @@ from almsivi_foundation import (FoundationError, cache_index_path, canonical_jso
 from json_schema import SchemaError, validate
 
 sys.path.insert(0, str(ROOT / "scripts/evidence"))
-from validate import required_provenance_paths, validate_proof_evidence, validate_provenance_coverage
+from validate import (required_provenance_paths, validate_proof_evidence, validate_provenance_coverage,
+                      validate_run_bundles)
 
 COMMIT = "f4bec41444214a7903bebd178389ca22ca13f646"
 PIN_PATH = ROOT / "config/source-pins/openmw.json"
@@ -128,6 +129,31 @@ class FoundationTests(unittest.TestCase):
         missing_evidence["rows"][0]["evidence"] = ["missing/evidence.json"]
         with self.assertRaisesRegex(FoundationError, "does not exist"):
             validate_proof_evidence(missing_evidence, ROOT)
+
+    def test_run_bundle_validation_rejects_missing_artifacts_and_host_paths(self):
+        root = self.temp / "run-root"
+        shutil.copytree(ROOT / "schemas", root / "schemas")
+        self.command(self.git, "init", "-q", str(root))
+        self.command(self.git, "-C", str(root), "add", ".")
+        self.command(self.git, "-C", str(root), "-c", "user.name=Fixture", "-c",
+                     "user.email=fixture@invalid", "commit", "-qm", "fixture")
+        commit = self.command(self.git, "-C", str(root), "rev-parse", "HEAD").stdout.strip()
+        run = root / "docs/evidence/runs/fixture"
+        run.mkdir(parents=True)
+        (run / "index.json").write_text(json.dumps({"schema_version":1, "validation_commit":commit,
+                                                     "checks":["one", "one"], "result":"success"}), encoding="utf-8")
+        with self.assertRaisesRegex(FoundationError, "nonempty and unique"):
+            validate_run_bundles(root)
+        (run / "index.json").write_text(json.dumps({"schema_version":1, "validation_commit":commit,
+                                                     "checks":["one"], "result":"success"}), encoding="utf-8")
+        manifest = {"schema_version":1, "command":["test"], "inputs":{"validation_commit":commit},
+                    "outputs":{"log":"one.txt"}, "result":"success", "tools":{"python":"fixture"}}
+        (run / "one.json").write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(FoundationError, "log missing"):
+            validate_run_bundles(root)
+        (run / "one.txt").write_text("/" + "Users" + "/operator/private\n", encoding="utf-8")
+        with self.assertRaisesRegex(FoundationError, "host path leaked"):
+            validate_run_bundles(root)
 
     def test_ci_validator_rejects_inline_release_triggers_and_yaml(self):
         root = self.temp / "ci-root"

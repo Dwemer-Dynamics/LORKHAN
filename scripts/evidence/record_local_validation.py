@@ -36,6 +36,13 @@ def tool_version(command: list[str]) -> str:
     return first.strip()
 
 
+def add_replacement(replacements: dict[str, str], path: Path | str, label: str) -> None:
+    lexical = os.path.abspath(os.fspath(path))
+    resolved = os.path.realpath(lexical)
+    replacements[lexical] = label
+    replacements[resolved] = label
+
+
 def sanitize(text: str, replacements: dict[str, str]) -> str:
     for raw, replacement in sorted(replacements.items(), key=lambda item: len(item[0]), reverse=True):
         text = text.replace(raw, replacement)
@@ -98,20 +105,23 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="almsivi-validation-evidence-") as staging_root:
         output = Path(staging_root) / "run"
         output.mkdir()
-        replacements = {str(ROOT): "$REPOSITORY", str(output): "$EVIDENCE_OUTPUT",
-                        str(final_output): "$EVIDENCE_OUTPUT"}
+        replacements: dict[str, str] = {}
+        add_replacement(replacements, ROOT, "$REPOSITORY")
+        add_replacement(replacements, output, "$EVIDENCE_OUTPUT")
+        add_replacement(replacements, final_output, "$EVIDENCE_OUTPUT")
+        add_replacement(replacements, sys.executable, "$PYTHON")
         manifests: dict[str, dict[str, object]] = {}
         for name, command in commands:
             manifests[name] = record(name, command, output, commit, replacements, tools)
 
         if args.cache_dir:
             cache = args.cache_dir.resolve()
-            replacements[str(cache)] = "$OPENMW_CACHE"
+            add_replacement(replacements, cache, "$OPENMW_CACHE")
             with tempfile.TemporaryDirectory(prefix="almsivi-evidence-openmw-") as temporary:
                 source = Path(temporary) / "openmw"
                 raw_manifest = Path(temporary) / "bootstrap.json"
-                replacements[str(source)] = "$OPENMW_SOURCE"
-                replacements[str(raw_manifest)] = "$RAW_RUN_MANIFEST"
+                add_replacement(replacements, source, "$OPENMW_SOURCE")
+                add_replacement(replacements, raw_manifest, "$RAW_RUN_MANIFEST")
                 command = [sys.executable, str(ROOT / "scripts/bootstrap/bootstrap.py"), "bootstrap",
                            "--cache-dir", str(cache), "--source-dir", str(source), "--manifest", str(raw_manifest)]
                 manifests["offline-bootstrap"] = record("offline-bootstrap", command, output, commit, replacements, tools)

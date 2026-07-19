@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path, PurePosixPath
@@ -57,6 +58,51 @@ def validate_proof_evidence(document: dict, root: Path = ROOT) -> None:
                 raise FoundationError(f"proof evidence path does not exist for {row_id}: {value}")
 
 
+def validate_run_bundles(root: Path = ROOT) -> None:
+    runs = root / "docs/evidence/runs"
+    if not runs.exists():
+        return
+    schema = read_json(root / "schemas/evidence/run-manifest.schema.json")
+    forbidden = re.compile(r"(?:/Users/|/home/|[A-Z]:\\Users\\)")
+    for directory in sorted(path for path in runs.iterdir() if path.is_dir()):
+        index_path = directory / "index.json"
+        if not index_path.is_file():
+            raise FoundationError(f"evidence run has no index: {directory.relative_to(root)}")
+        index = read_json(index_path)
+        if set(index) != {"schema_version", "validation_commit", "checks", "result"} \
+                or index["schema_version"] != 1 or index["result"] != "success":
+            raise FoundationError(f"invalid evidence run index: {index_path.relative_to(root)}")
+        commit = index["validation_commit"]
+        if not isinstance(commit, str) or re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+            raise FoundationError(f"invalid evidence validation commit: {commit!r}")
+        exists = subprocess.run(["git", "-C", str(root), "cat-file", "-e", f"{commit}^{{commit}}"],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if exists.returncode:
+            raise FoundationError(f"evidence validation commit does not exist: {commit}")
+        checks = index["checks"]
+        if not isinstance(checks, list) or not checks or len(set(checks)) != len(checks):
+            raise FoundationError(f"evidence run checks must be nonempty and unique: {index_path.relative_to(root)}")
+        for name in checks:
+            if not isinstance(name, str) or re.fullmatch(r"[a-z0-9-]+", name) is None:
+                raise FoundationError(f"unsafe evidence check name: {name!r}")
+            manifest_path = directory / f"{name}.json"
+            if not manifest_path.is_file():
+                raise FoundationError(f"evidence manifest missing: {manifest_path.relative_to(root)}")
+            manifest = read_json(manifest_path)
+            validate(manifest, schema)
+            if manifest["result"] != "success" or manifest["inputs"].get("validation_commit") != commit:
+                raise FoundationError(f"evidence manifest result/commit mismatch: {manifest_path.relative_to(root)}")
+            log_name = manifest["outputs"].get("log")
+            if not isinstance(log_name, str) or PurePosixPath(log_name).name != log_name or not log_name.endswith(".txt"):
+                raise FoundationError(f"unsafe evidence log reference: {manifest_path.relative_to(root)}")
+            log_path = directory / log_name
+            if not log_path.is_file():
+                raise FoundationError(f"evidence log missing: {log_path.relative_to(root)}")
+            text = log_path.read_text(encoding="utf-8")
+            if forbidden.search(text):
+                raise FoundationError(f"host path leaked into evidence log: {log_path.relative_to(root)}")
+
+
 def main() -> int:
     try:
         for document, schema in PAIRS:
@@ -68,6 +114,7 @@ def main() -> int:
         validate_provenance_coverage(provenance_document, required_provenance_paths())
         proof_document = read_json(ROOT / "docs/evidence/proof-ledger.json")
         validate_proof_evidence(proof_document)
+        validate_run_bundles()
         provenance = {row["id"]: set(row["target_paths"]) for row in provenance_document["records"]}
         tests = {row["id"] for row in proof_document["rows"]}
         validate_manifest(ROOT / "openmw-patches", load_manifest(ROOT / "openmw-patches"), pin, provenance, tests)
