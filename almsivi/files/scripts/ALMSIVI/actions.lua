@@ -26,8 +26,12 @@ function M.validate(state, intent, authority)
     if type(authority.expired)~='function' or authority.expired(intent.expires_at) then return nil,'action_expired' end
     local count=state.byTurn[intent.turn_id] or 0
     if count >= constants.MAX_ACTIONS_PER_TURN then return nil,'turn_action_limit' end
-    local distance=intent.parameters and intent.parameters.distance
-    if type(distance)~='number' or distance < 64 or distance > 512 then return nil,'follow_distance_out_of_bounds' end
+    if type(intent.parameters)~='table' then return nil,'invalid_follow_parameters' end
+    for key in pairs(intent.parameters) do
+        if key~='distance' then return nil,'unknown_follow_parameter' end
+    end
+    local distance=intent.parameters.distance
+    if type(distance)~='number' or distance%1~=0 or distance~=192 then return nil,'invalid_follow_distance' end
     state.byTurn[intent.turn_id]=count+1
     return {action_id=intent.action_id, turn_id=intent.turn_id, request_id=intent.request_id,
         generation=intent.generation, actor=util.copy(intent.actor), target=util.copy(intent.target),
@@ -37,9 +41,17 @@ end
 function M.result(state, actionId, status, reason, observed)
     if state.results[actionId] then return nil,'terminal_result_exists' end
     if not terminal(status) then return nil,'non_terminal_status' end
-    local result={schema='almsivi.action-result.v1',action_id=actionId,status=status,reason_code=reason,observed=util.copy(observed or {})}
+    local result={kind='almsivi.internal.action-terminal',action_id=actionId,status=status,
+        reason=reason,observed=util.copy(observed or {})}
     state.results[actionId]=result
     return result
+end
+
+function M.canonicalResult(internal, completedAt)
+    if type(internal)~='table' or internal.kind~='almsivi.internal.action-terminal' then return nil,'invalid_internal_result' end
+    if type(completedAt)~='string' or completedAt=='' then return nil,'completed_at_required' end
+    return {schema='almsivi.action-result.v1',action_id=internal.action_id,status=internal.status,
+        reason_code=internal.reason,observed=util.copy(internal.observed),completed_at=completedAt}
 end
 
 function M.claimContinuation(state, actionId)

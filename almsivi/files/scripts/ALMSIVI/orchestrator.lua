@@ -10,7 +10,7 @@ local M={}
 
 function M.new(bridge,emit)
     local state={bridge=bridge,emit=emit or function() end,generation=1,sessionId=nil,registry=identity.Registry(),
-        conversation=conversation.new(1),events=nil,attachments={},disabled=false,hardHalted=false,requestCounter=0}
+        conversation=conversation.new(1),events=nil,attachments={},disabled=false,hardHalted=false}
     return state
 end
 
@@ -57,19 +57,21 @@ end
 
 function M.submitText(state,args)
     if state.disabled or state.hardHalted then return nil,'almsivi_disabled' end
-    state.requestCounter=state.requestCounter+1
-    local requestId=args.request_id or ('local-request-'..state.requestCounter)
-    local turnId=args.turn_id or ('local-turn-'..state.requestCounter)
+    for _,key in ipairs({'request_id','turn_id','message_id'}) do
+        if not protocol.isUuid(args[key]) then return nil,'invalid_'..key end
+    end
+    local requestId=args.request_id
+    local turnId=args.turn_id
     local ok,reason=conversation.begin(state.conversation,requestId,turnId,args.input_key or args.text)
     if not ok then return nil,reason end
     local audience={}
     for _,entry in ipairs(state.conversation.audience) do table.insert(audience,entry.identity) end
-    local dto,buildReason=protocol.turn({message_id=args.message_id or requestId,request_id=requestId,turn_id=turnId,
+    local dto,buildReason=protocol.turn({message_id=args.message_id,request_id=requestId,turn_id=turnId,
         installation_id=args.installation_id,profile_id=args.profile_id,playthrough_id=args.playthrough_id,
         session_id=state.sessionId,generation=state.generation,created_at=args.created_at,platform=args.platform,
         content_fingerprint=args.content_fingerprint,text=args.text,language=args.language,
         speaker=args.speaker,target=state.conversation.target,audience=audience,context=context.snapshot(args.context),
-        capabilities=args.capabilities,recent_action_results=args.recent_action_results})
+        capabilities=args.capabilities,recent_action_results=args.recent_action_results,ui_source=args.ui_source})
     if not dto then state.conversation.turn=nil return nil,buildReason end
     local submitted,nativeReason=state.bridge.submitTurn(dto)
     if not submitted then state.conversation.turn=nil return nil,nativeReason end

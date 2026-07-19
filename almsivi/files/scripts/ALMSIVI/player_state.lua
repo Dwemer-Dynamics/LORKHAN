@@ -11,7 +11,7 @@ function M.nearby(state,candidates,registry) local list=targeting.nearby(candida
 function M.event(state,event)
     if event.type=='dialogue.delta' then ui.delta(state.ui,event.payload.speaker,event.payload.text)
     elseif event.type=='dialogue.complete' then ui.final(state.ui,event.payload.speaker,event.payload.text)
-    elseif event.type=='turn.failed' or event.type=='turn.cancelled' then ui.setStatus(state.ui,'failed',event.payload.code)
+    elseif event.type=='turn.failed' or event.type=='turn.cancelled' then ui.setStatus(state.ui,'failed')
     elseif event.type=='turn.complete' then ui.setStatus(state.ui,'ready')
     else ui.setStatus(state.ui,event.payload.status or event.type) end
 end

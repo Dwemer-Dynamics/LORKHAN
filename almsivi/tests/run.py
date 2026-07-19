@@ -18,7 +18,8 @@ def text(path):
     return path.read_text(encoding="utf-8")
 
 manifest = text(FILES / "ALMSIVI.omwscripts")
-check("manifest declares GLOBAL PLAYER CUSTOM contexts", manifest.splitlines() == [
+check("non-engine manifest fixture declares intended contexts", manifest.splitlines() == [
+    "# NON-ENGINE TEST MANIFEST: syntax requires pinned OpenMW verification",
     "GLOBAL: scripts/ALMSIVI/global.lua", "PLAYER: scripts/ALMSIVI/player.lua", "CUSTOM: scripts/ALMSIVI/actor.lua"])
 required = ["global.lua", "player.lua", "actor.lua", "orchestrator.lua", "player_state.lua", "actor_executor.lua",
             "protocol.lua", "identity.lua", "context.lua", "conversation.lua", "actions.lua", "storage.lua"]
@@ -33,13 +34,25 @@ all_lua = "\n".join(text(path) for path in SCRIPTS.rglob("*.lua") if "tests" not
 for forbidden in ["io.open", "os.execute", "loadstring", "dofile", "package.loadlib", "require('socket", 'require("socket']:
     check(f"forbidden primitive absent: {forbidden}", forbidden not in all_lua)
 check("native seam exposes typed bridge only", "require, 'openmw.almsivi'" in text(SCRIPTS / "adapters" / "openmw.lua"))
-check("only ai.follow action wire contract", "intent.name ~= 'ai.follow'" in text(SCRIPTS / "actions.lua"))
+actions = text(SCRIPTS / "actions.lua")
+check("only ai.follow action wire contract", "intent.name ~= 'ai.follow'" in actions)
+check("ai.follow accepts exact integer distance 192", "distance%1~=0 or distance~=192" in actions)
+check("invented ai.follow range absent", "distance < 64" not in actions and "distance > 512" not in actions)
+check("action terminal is internal before timestamp", "almsivi.internal.action-terminal" in actions and "completed_at=completedAt" in actions)
 check("future schema preserved", "future_schema_preserved" in text(SCRIPTS / "storage.lua"))
 check("exactly one terminal action result", "terminal_result_exists" in text(SCRIPTS / "actions.lua"))
-check("stale generation discarded", "stale_generation" in text(SCRIPTS / "protocol.lua"))
+protocol = text(SCRIPTS / "protocol.lua")
+orchestrator = text(SCRIPTS / "orchestrator.lua")
+check("stale generation discarded", "stale_generation" in protocol)
+check("correlation identifiers require UUID format", "function M.isUuid" in protocol and "invalid_'..key" in orchestrator)
+check("orchestrator does not fabricate identifiers", "local-request-" not in orchestrator and "local-turn-" not in orchestrator)
+check("polled events are internal DTOs", "validatePolledEvent" in protocol and "almsivi.event.v1" not in protocol)
+check("ui source has no invented wire default", "ui_source=args.ui_source" in protocol and "almsivi.overlay" not in protocol)
 check("cursor gaps rejected", "cursor_gap" in text(SCRIPTS / "protocol.lua"))
 check("actor self identity required", "identity.same(command.actor,state.identity)" in text(SCRIPTS / "actor_executor.lua"))
 check("vanilla Activate not consumed", "return false -- built-in Activate" in text(SCRIPTS / "player_state.lua"))
+check("guessed UI and targeting constants absent", all(name not in constants for name in ["MAX_TEXT_BYTES", "MAX_TRANSCRIPT", "MAX_NEARBY_PICKER", "MAX_TARGET_DISTANCE"]))
+check("Lua tests reject 191 193 and noninteger follow", all(fragment in text(SCRIPTS / "tests" / "run.lua") for fragment in ["distance=191", "distance=193", "distance=192.5"]))
 check("pure Lua runner present", (SCRIPTS / "tests" / "run.lua").is_file())
 print(f"{len(failures)} failures (structural fallback; Lua interpreter unavailable)")
 sys.exit(bool(failures))

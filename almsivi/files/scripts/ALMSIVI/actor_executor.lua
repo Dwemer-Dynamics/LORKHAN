@@ -13,7 +13,7 @@ function M.execute(state, command, adapter, authority)
     local accepted, reason=actions.validate(state.actions,command,authority)
     if not accepted then return actions.result(state.actions,command.action_id,'rejected',reason,{}) end
     local ok, detail=adapter.followSelf(accepted.target,accepted.parameters.distance)
-    if ok then state.ownedFollow=accepted.action_id return actions.result(state.actions,accepted.action_id,'succeeded','package_started',{package='Follow'}) end
+    if ok then state.ownedFollow=accepted.action_id return actions.result(state.actions,accepted.action_id,'succeeded',detail,{}) end
     return actions.result(state.actions,accepted.action_id,'failed',detail or 'engine_rejected',{})
 end
 

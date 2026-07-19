@@ -7,7 +7,7 @@ local M = {}
 function M.validate(candidate, registry)
     if type(candidate)~='table' or not identity.validate(candidate.identity) then return nil,'invalid_target' end
     if candidate.identity.kind~='npc' and candidate.identity.kind~='creature' then return nil,'not_actor' end
-    if type(candidate.distance)~='number' or candidate.distance > constants.MAX_TARGET_DISTANCE then return nil,'target_out_of_range' end
+    if type(candidate.distance)~='number' or type(candidate.maxDistance)~='number' or candidate.distance > candidate.maxDistance then return nil,'target_out_of_range' end
     if candidate.dead then return nil,'target_dead' end
     if candidate.hostile then return nil,'target_hostile' end
     if candidate.available==false then return nil,'target_unavailable' end
@@ -25,7 +25,8 @@ function M.nearby(candidates, registry)
         if a.distance~=b.distance then return a.distance<b.distance end
         return identity.key(a.identity)<identity.key(b.identity)
     end)
-    return util.arrayCopy(accepted,constants.MAX_NEARBY_PICKER)
+    local limit=constants.MAX_AUDIENCE
+    return util.arrayCopy(accepted,limit)
 end
 
 return M

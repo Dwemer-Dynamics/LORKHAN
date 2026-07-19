@@ -16,7 +16,7 @@ return {
     },
     eventHandlers={
         ALMSIVI_SESSION=function(event) orchestrator.configureSession(state,event.session_id) end,
-        ALMSIVI_TARGET_REQUEST=function() emit('ALMSIVI_PLAYER_RESOLVE_TARGET',{maxDistance=require('scripts.ALMSIVI.constants').MAX_TARGET_DISTANCE}) end,
+        ALMSIVI_TARGET_REQUEST=function(event) emit('ALMSIVI_PLAYER_RESOLVE_TARGET',{maxDistance=event.maxDistance}) end,
         ALMSIVI_SELECT_TARGET=function(event) orchestrator.selectTarget(state,event.candidate) end,
         ALMSIVI_SUBMIT_TEXT=function(event) orchestrator.submitText(state,event) end,
         ALMSIVI_HALT_REQUEST=function() orchestrator.halt(state) end,

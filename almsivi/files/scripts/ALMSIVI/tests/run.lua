@@ -21,8 +21,9 @@ local player=require('scripts.ALMSIVI.player_state')
 local fake=require('fake_openmw')
 local npc=fake.identity('npc','fargoth',1)
 local playerId=fake.identity('player','player',2)
+local UUID={message='00000000-0000-4000-8000-000000000001',request='00000000-0000-4000-8000-000000000002',turn='00000000-0000-4000-8000-000000000003',session='00000000-0000-4000-8000-000000000004'}
 local function event(sequence,kind,generation,payload)
- return {schema='almsivi.event.v1',message_id='m'..sequence,request_id='r',turn_id='t',session_id='s',generation=generation,sequence=sequence,type=kind,payload=payload or {}}
+ return {message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,session_id=UUID.session,generation=generation,sequence=sequence,type=kind,payload=payload or {}}
 end
 
 test('lifecycle invalidates generation and cancels native',function()
@@ -30,7 +31,7 @@ test('lifecycle invalidates generation and cancels native',function()
  eq(s.generation,before+1) eq(b.cancelled[1],before)
 end)
 test('event ordering dedup and cursor gaps',function()
- local c=protocol.CursoredEvents('s',3) truthy(c:accept(event(1,'turn.accepted',3)))
+ local c=protocol.CursoredEvents(UUID.session,3) truthy(c:accept(event(1,'turn.accepted',3)))
  local ok,reason=c:accept(event(1,'turn.accepted',3)); eq(ok,false);eq(reason,'duplicate_event')
  ok,reason=c:accept(event(3,'turn.complete',3));eq(ok,nil);eq(reason,'cursor_gap');eq(c:cursor(),1)
 end)
@@ -56,21 +57,33 @@ test('conversation stale generation and exact terminal',function()
  local ok,reason=conversation.apply(s,event(1,'turn.complete',0));eq(ok,false);eq(reason,'stale_generation')
  truthy(conversation.apply(s,event(1,'turn.complete',1)));ok,reason=conversation.apply(s,event(2,'turn.complete',1));eq(ok,false);eq(reason,'duplicate_terminal')
 end)
-test('action capability authority expiry and limits',function()
+test('action capability authority expiry exact parameters and limits',function()
  local state=actions.new({'action.ai.follow'}) local registry=identity.Registry();registry:activate(npc,{});registry:activate(playerId,{})
  local authority={generation=2,session_id='s',actor=npc,resolve=function(id)return registry:resolve(id)end,expired=function()return false end}
- local base={schema='almsivi.action-intent.v1',action_id='a',request_id='r',turn_id='t',session_id='s',generation=2,name='ai.follow',tier=1,actor=npc,target=playerId,parameters={distance=192},expires_at='soon'}
- truthy(actions.validate(state,base,authority));truthy(actions.result(state,'a','succeeded','package_started',{}));eq(actions.result(state,'a','failed','x',{}),nil)
+ local base={schema='almsivi.action-intent.v1',action_id='a',request_id='r',turn_id='t',session_id='s',generation=2,name='ai.follow',tier=1,actor=npc,target=playerId,parameters={distance=191},expires_at='soon'}
+ local ok,reason=actions.validate(state,base,authority);eq(ok,nil);eq(reason,'invalid_follow_distance')
+ base.parameters.distance=193;ok,reason=actions.validate(state,base,authority);eq(ok,nil);eq(reason,'invalid_follow_distance')
+ base.parameters.distance=192.5;ok,reason=actions.validate(state,base,authority);eq(ok,nil);eq(reason,'invalid_follow_distance')
+ base.parameters.distance=192;truthy(actions.validate(state,base,authority));truthy(actions.result(state,'a','succeeded',nil,{}));eq(actions.result(state,'a','failed','x',{}),nil)
  truthy(actions.claimContinuation(state,'a'));eq(actions.claimContinuation(state,'a'),nil)
  for i=2,4 do base.action_id='a'..i truthy(actions.validate(state,base,authority)) end
- base.action_id='a5';local ok,reason=actions.validate(state,base,authority);eq(ok,nil);eq(reason,'turn_action_limit')
+ base.action_id='a5';ok,reason=actions.validate(state,base,authority);eq(ok,nil);eq(reason,'turn_action_limit')
+end)
+test('canonical action result requires completion timestamp',function()
+ local state=actions.new({}) local internal=actions.result(state,'a','succeeded',nil,{})
+ local result,reason=actions.canonicalResult(internal,nil);eq(result,nil);eq(reason,'completed_at_required')
+ result=actions.canonicalResult(internal,'2026-07-19T00:00:00Z');eq(result.completed_at,'2026-07-19T00:00:00Z');eq(result.schema,'almsivi.action-result.v1')
+end)
+test('submit requires caller supplied UUID correlation',function()
+ local b=fake.bridge() local s=orchestrator.new(b) local ok,reason=orchestrator.submitText(s,{text='hi'})
+ eq(ok,nil);eq(reason,'invalid_request_id')
 end)
 test('actor is self-only and detach stops owned state',function()
  local st=actor.new(npc,2,{'action.ai.follow'}) local stopped=0
  local adapter={followSelf=function()return true end,sayOpaque=function()return true end,stopSpeech=function()stopped=stopped+1 end,stopOwnedFollow=function()stopped=stopped+1 end}
  local registry=identity.Registry();registry:activate(npc,{});registry:activate(playerId,{})
  local cmd={schema='almsivi.action-intent.v1',action_id='a',request_id='r',turn_id='t',session_id='s',generation=2,name='ai.follow',tier=1,actor=npc,target=playerId,parameters={distance=192},expires_at='x'}
- local result=actor.execute(st,cmd,adapter,{session_id='s',resolve=function(id)return registry:resolve(id)end,expired=function()return false end});eq(result.status,'succeeded')
+ local result=actor.execute(st,cmd,adapter,{session_id='s',resolve=function(id)return registry:resolve(id)end,expired=function()return false end});eq(result.status,'succeeded');eq(result.kind,'almsivi.internal.action-terminal')
  actor.speak(st,{generation=2,actor=npc,media_id='opaque',request_id='r',turn_id='t',expires_at='x'},adapter,{expired=function()return false end});actor.detach(st,adapter);eq(st.attached,false);eq(stopped,2)
 end)
 test('hard halt clears queues and blocks submit',function()

@@ -1,3 +1,4 @@
+# NON-ENGINE TEST MANIFEST: syntax requires pinned OpenMW verification
 GLOBAL: scripts/ALMSIVI/global.lua
 PLAYER: scripts/ALMSIVI/player.lua
 CUSTOM: scripts/ALMSIVI/actor.lua

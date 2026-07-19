@@ -3,11 +3,15 @@ local identity = require('scripts.ALMSIVI.identity')
 local util = require('scripts.ALMSIVI.util')
 
 local M = {}
-local allowedEvents = {['turn.accepted']=true, ['turn.status']=true, ['dialogue.delta']=true,
-    ['dialogue.complete']=true, ['action.intent']=true, ['turn.complete']=true,
+local knownInternalEvents = {['turn.accepted']=true, ['turn.status']=true, ['dialogue.delta']=true,
+    ['dialogue.complete']=true, ['speech.ready']=true, ['action.intent']=true, ['turn.complete']=true,
     ['turn.failed']=true, ['turn.cancelled']=true, ['session.config_changed']=true, ['server.notice']=true}
-local topFields = {schema=true, message_id=true, request_id=true, turn_id=true, session_id=true,
-    generation=true, sequence=true, type=true, payload=true}
+
+function M.isUuid(value)
+    if type(value)~='string' then return false end
+    local a,b,c,d,e=value:match('^([0-9a-fA-F]+)%-([0-9a-fA-F]+)%-([0-9a-fA-F]+)%-([0-9a-fA-F]+)%-([0-9a-fA-F]+)$')
+    return a and #a==8 and #b==4 and #c==4 and #d==4 and #e==12 or false
+end
 
 function M.runtime(platform, capabilities)
     return {game='tes3', variant='openmw', openmw_version=constants.OPENMW_VERSION,
@@ -17,10 +21,12 @@ end
 
 function M.turn(args)
     local required = {'message_id','request_id','turn_id','installation_id','profile_id','playthrough_id',
-        'session_id','generation','created_at','platform','content_fingerprint','text','speaker','target','audience','context'}
+        'session_id','generation','created_at','platform','content_fingerprint','text','speaker','target','audience','context','ui_source'}
     for _, key in ipairs(required) do if args[key] == nil then return nil, 'missing_' .. key end end
+    for _, key in ipairs({'message_id','request_id','turn_id','installation_id','profile_id','playthrough_id','session_id'}) do
+        if not M.isUuid(args[key]) then return nil,'invalid_'..key end
+    end
     if type(args.text) ~= 'string' or args.text:match('^%s*$') then return nil, 'empty_input' end
-    if #args.text > constants.MAX_TEXT_BYTES then return nil, 'input_too_large' end
     if not identity.validate(args.target) or not identity.validate(args.speaker) then return nil, 'invalid_identity' end
     if #args.audience > constants.MAX_AUDIENCE then return nil, 'audience_too_large' end
     return {
@@ -30,29 +36,28 @@ function M.turn(args)
         runtime=M.runtime(args.platform, args.capabilities), content_fingerprint=args.content_fingerprint,
         payload={input={kind='text', text=args.text, language=args.language}, speaker=util.copy(args.speaker),
             target=util.copy(args.target), audience=util.arrayCopy(args.audience), context=util.copy(args.context),
-            recent_action_results=util.arrayCopy(args.recent_action_results or {}), ui_source=args.ui_source or 'almsivi.overlay'}
+            recent_action_results=util.arrayCopy(args.recent_action_results or {}), ui_source=args.ui_source}
     }
 end
 
-function M.validateEvent(event)
-    if type(event) ~= 'table' then return nil, 'event_not_table' end
-    for key in pairs(event) do if not topFields[key] then return nil, 'unknown_event_field_' .. tostring(key) end end
-    if event.schema ~= 'almsivi.event.v1' then return nil, 'invalid_event_schema' end
-    if not allowedEvents[event.type] then return nil, 'unknown_event_type' end
-    for _, key in ipairs({'message_id','request_id','turn_id','session_id'}) do
-        if type(event[key]) ~= 'string' or event[key] == '' then return nil, 'invalid_' .. key end
+-- pollResults returns native-validated internal DTOs, not canonical wire envelopes.
+function M.validatePolledEvent(event)
+    if type(event)~='table' then return nil,'event_not_table' end
+    if not knownInternalEvents[event.type] then return nil,'unknown_event_type' end
+    for _,key in ipairs({'message_id','request_id','turn_id','session_id'}) do
+        if not M.isUuid(event[key]) then return nil,'invalid_'..key end
     end
-    if type(event.generation) ~= 'number' or type(event.sequence) ~= 'number' or event.sequence < 1 then return nil, 'invalid_event_cursor' end
-    if type(event.payload) ~= 'table' then return nil, 'invalid_event_payload' end
+    if type(event.generation)~='number' or event.generation%1~=0 or event.generation<0 then return nil,'invalid_generation' end
+    if type(event.sequence)~='number' or event.sequence%1~=0 or event.sequence<1 then return nil,'invalid_event_cursor' end
+    if type(event.payload)~='table' then return nil,'invalid_event_payload' end
     if (event.type=='dialogue.delta' or event.type=='dialogue.complete') and type(event.payload.text)~='string' then
         return nil,'invalid_dialogue_text'
     end
-    if event.type=='turn.status' and event.payload.status~=nil and type(event.payload.status)~='string' then
-        return nil,'invalid_turn_status'
+    if event.type=='speech.ready' then
+        for _,key in ipairs({'media_id','sha256','codec','expires_at'}) do if type(event.payload[key])~='string' then return nil,'invalid_speech_'..key end end
+        if type(event.payload.bytes)~='number' or event.payload.bytes%1~=0 or event.payload.bytes<0 then return nil,'invalid_speech_bytes' end
     end
-    if (event.type=='turn.failed' or event.type=='turn.cancelled') and event.payload.code~=nil and type(event.payload.code)~='string' then
-        return nil,'invalid_failure_code'
-    end
+    if event.type=='action.intent' and type(event.payload.intent)~='table' then return nil,'invalid_action_intent' end
     return true
 end
 
@@ -61,7 +66,7 @@ function M.CursoredEvents(sessionId, generation)
     return {
         reset = function(_, nextSession, nextGeneration) sessionId=nextSession generation=nextGeneration cursor=0 seen={} end,
         accept = function(_, event)
-            local ok, reason = M.validateEvent(event)
+            local ok, reason = M.validatePolledEvent(event)
             if not ok then return nil, reason end
             if event.session_id ~= sessionId then return nil, 'stale_session' end
             if event.generation ~= generation then return nil, 'stale_generation' end

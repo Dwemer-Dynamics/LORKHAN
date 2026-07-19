@@ -46,7 +46,7 @@ function M.apply(state, event)
     if not turn or event.generation ~= state.generation then return false, 'stale_generation' end
     if event.request_id ~= turn.requestId or event.turn_id ~= turn.turnId then return false, 'wrong_turn' end
     if event.type == 'turn.accepted' then turn.status='accepted'
-    elseif event.type == 'turn.status' then turn.status=event.payload.status or 'streaming'
+    elseif event.type == 'turn.status' then turn.status='streaming'
     elseif event.type == 'dialogue.delta' then turn.status='streaming' turn.delta=turn.delta .. (event.payload.text or '')
     elseif event.type == 'dialogue.complete' then turn.final=event.payload.text or '' turn.delta='' turn.status='responded'
     elseif event.type == 'turn.complete' then
@@ -55,7 +55,7 @@ function M.apply(state, event)
         if turn.final then table.insert(state.transcript,{speaker=util.copy(event.payload.speaker),text=turn.final}) end
     elseif event.type == 'turn.failed' or event.type == 'turn.cancelled' then
         if turn.terminal then return false, 'duplicate_terminal' end
-        turn.terminal=true turn.status=event.type == 'turn.failed' and 'failed' or 'cancelled' turn.reason=event.payload.code
+        turn.terminal=true turn.status=event.type == 'turn.failed' and 'failed' or 'cancelled' turn.reason='remote_terminal'
     end
     return true
 end
