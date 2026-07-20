@@ -115,10 +115,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return True
 
     def do_GET(self) -> None:
-        if not self.authorized(): return
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/v1/health":
             self.send_json(200, fixture("health.json")); return
+        if not self.authorized(): return
         if parsed.path == "/api/v1/events":
             query = urllib.parse.parse_qs(parsed.query)
             wait = int(query.get("wait_ms", ["0"])[0])
@@ -145,24 +145,48 @@ class Handler(http.server.BaseHTTPRequestHandler):
         raw, body = data
         if not isinstance(body, dict):
             self.error(400, "invalid_schema"); return
-        idempotency_id = body.get("message_id") or body.get("action_id")
+        idempotency_id = body.get("message_id")
         if not isinstance(idempotency_id, str):
             self.error(400, "invalid_schema"); return
         if not self.require_idempotency(raw, idempotency_id): return
         if parsed.path == "/api/v1/sessions":
             session = "00000000-0000-4000-8000-000000000007"
             self.server.state.sessions[session] = body.get("generation", -1)
-            self.send_json(201, {"session_id": session}); return
-        if parsed.path == "/api/v1/action-results": self.send_json(200, {"persisted": True}); return
+            accepted = fixture("session-accepted.json"); accepted["message_id"] = body["message_id"]
+            self.send_json(201, accepted); return
+        if parsed.path == "/api/v1/action-results":
+            accepted = fixture("action-result-accepted.json")
+            for key in ("message_id", "request_id", "action_id", "turn_id", "session_id", "generation", "status"):
+                accepted[key] = body[key]
+            self.send_json(200, accepted); return
         session = body.get("session_id")
         generation = body.get("generation")
         if session not in self.server.state.sessions:
             self.error(404, "unknown_session"); return
         if generation != self.server.state.sessions[session]:
             self.error(409, "stale_generation"); return
-        if parsed.path == "/api/v1/turns": self.send_json(202, {"accepted": True, "first_after": 0}); return
-        if parsed.path == "/api/v1/interruptions": self.send_json(200, {"cancelled": True}); return
-        self.error(404, "invalid_schema")
+        if parsed.path == "/api/v1/turns":
+            accepted = fixture("turn-accepted.json")
+            for key in ("message_id", "request_id", "turn_id", "session_id", "generation"): accepted[key] = body[key]
+            self.send_json(202, accepted); return
+        if parsed.path == "/api/v1/interruptions":
+            accepted = fixture("interruption-accepted.json")
+            for key in ("message_id", "request_id", "turn_id", "session_id", "generation"): accepted[key] = body[key]
+            self.send_json(202, accepted); return
+        self.error(404, "not_found")
+
+    def do_DELETE(self) -> None:
+        if not self.authorized(): return
+        parsed = urllib.parse.urlparse(self.path)
+        prefix = "/api/v1/sessions/"
+        if not parsed.path.startswith(prefix): self.error(404, "not_found"); return
+        session = parsed.path[len(prefix):]
+        key = self.headers.get("Idempotency-Key")
+        if not key: self.error(422, "invalid_idempotency_key"); return
+        generation = self.server.state.sessions.pop(session, None)
+        if generation is None: self.error(404, "unknown_session"); return
+        self.send_json(200, {"schema":"almsivi.session.ended.v1", "request_id":key, "session_id":session,
+                             "generation":generation, "ended":True})
 
 class RunningServer:
     def __enter__(self) -> FakeServer:

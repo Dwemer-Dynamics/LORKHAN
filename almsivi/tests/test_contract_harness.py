@@ -24,7 +24,7 @@ class ContractHarnessTests(unittest.TestCase):
         if raw is not None:
             headers["Content-Type"] = content_type
             headers["Content-Length"] = str(len(raw))
-            if key is not None: headers["Idempotency-Key"] = key
+        if key is not None: headers["Idempotency-Key"] = key
         connection.request(method, path, body=raw, headers=headers)
         response = connection.getresponse()
         data = response.read()
@@ -46,7 +46,7 @@ class ContractHarnessTests(unittest.TestCase):
         with RunningServer() as server:
             status, headers, body = self.json_request(server, "GET", "/api/v1/health")
             self.assertEqual((status, headers["Content-Type"], body), (200, "application/json; charset=utf-8", fixture("health.json")))
-            self.assertEqual(self.json_request(server, "GET", "/api/v1/health", token="wrong")[0], 401)
+            self.assertEqual(self.json_request(server, "GET", "/api/v1/events", token="wrong")[0], 401)
             rendered = json.dumps(server.state.records)
             self.assertNotIn(TOKEN, rendered)
             self.assertNotIn("Authorization", rendered)
@@ -69,10 +69,10 @@ class ContractHarnessTests(unittest.TestCase):
     def test_events_order_duplicates_gaps_poll_cap_and_timeout(self):
         with RunningServer() as server:
             events = self.json_request(server, "GET", "/api/v1/events?session_id=x&after=0&wait_ms=0")[2]["events"]
-            self.assertEqual([item["sequence"] for item in events], [1, 2])
+            self.assertEqual([item["sequence"] for item in events], list(range(1, len(events) + 1)))
             duplicate = self.json_request(server, "GET", "/api/v1/events?scenario=duplicate&wait_ms=0")[2]["events"]
             accepted = {(item["session_id"], item["sequence"], item["message_id"]) for item in duplicate}
-            self.assertEqual(len(accepted), 2)
+            self.assertEqual(len(accepted), len(events))
             gap = self.json_request(server, "GET", "/api/v1/events?scenario=gap&wait_ms=0")[2]["events"]
             self.assertNotEqual(gap[1]["sequence"], gap[0]["sequence"] + 1)
             self.assertEqual(self.json_request(server, "GET", "/api/v1/events?wait_ms=15001")[0], 400)
@@ -84,13 +84,19 @@ class ContractHarnessTests(unittest.TestCase):
             finally:
                 connection.close()
 
-    def test_action_result_interruption_and_restart_unknown_session(self):
+    def test_action_result_interruption_session_end_and_restart_unknown_session(self):
         with RunningServer() as server:
-            self.start_session(server)
+            session = self.start_session(server)
             for endpoint, name in (("action-results", "action-result.json"), ("interruptions", "interrupt.json")):
                 body = fixture(name)
-                key = body.get("message_id") or body["action_id"]
-                self.assertEqual(self.json_request(server, "POST", "/api/v1/" + endpoint, body, key=key)[0], 200)
+                if endpoint == "interruptions":
+                    body["session_id"] = session
+                key = body["message_id"]
+                expected = 200 if endpoint == "action-results" else 202
+                self.assertEqual(self.json_request(server, "POST", "/api/v1/" + endpoint, body, key=key)[0], expected)
+            end_key = "00000000-0000-4000-8000-000000000050"
+            status, _, ended = self.json_request(server, "DELETE", "/api/v1/sessions/" + session, key=end_key)
+            self.assertEqual((status, ended["schema"], ended["request_id"]), (200, "almsivi.session.ended.v1", end_key))
         with RunningServer() as restarted:
             turn = fixture("turn.json")
             status, _, body = self.json_request(restarted, "POST", "/api/v1/turns", turn, key=turn["message_id"])

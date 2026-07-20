@@ -31,7 +31,9 @@ class ITransport {
 public:
     virtual ~ITransport() = default;
     virtual Result<InboundResult> execute(const OutboundRequest& request, std::stop_token cancellation) = 0;
-    virtual void interrupt() noexcept = 0;
+    // Interrupt only the operation currently owned by request. Implementations must ignore a
+    // late interrupt after that request has completed and must not mutate a socket from another thread.
+    virtual void interrupt(const RequestId& request) noexcept = 0;
 };
 
 } // namespace almsivi

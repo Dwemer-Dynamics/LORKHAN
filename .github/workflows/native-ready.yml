@@ -52,6 +52,27 @@ jobs:
       - name: Test standalone native core
         run: ctest --test-dir build/native --build-config '${{ matrix.config }}' --output-on-failure -R '^almsivi-native$'
 
+  linux-beast:
+    name: Linux Beast compile and tests (definition only)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install Boost.System build dependency
+        run: sudo apt-get update && sudo apt-get install --yes libboost-system-dev
+      - name: Configure Beast-enabled native core
+        run: cmake -S . -B build/beast -G Ninja -DCMAKE_BUILD_TYPE=Debug -DALMSIVI_WITH_BOOST_BEAST=ON
+      - name: Compile Beast transport and tests
+        run: cmake --build build/beast --target almsivi_core almsivi_native_tests almsivi_beast_transport_tests
+      - name: Run Beast and native tests
+        run: ctest --test-dir build/beast --output-on-failure -R '^(almsivi-native|almsivi-beast-transport)$'
+      - name: Record definition scope honestly
+        if: always()
+        run: printf '%s\n' 'The checked-in workflow is a hosted Beast build/test definition, not an execution claim.' >> "$GITHUB_STEP_SUMMARY"
+
   linux-sanitizers:
     name: Linux Clang Debug ASan UBSan
     runs-on: ubuntu-24.04

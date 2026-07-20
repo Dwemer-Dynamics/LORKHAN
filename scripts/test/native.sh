@@ -10,8 +10,10 @@ sources=(
   "$root/components/almsivi/src/actions.cpp"
   "$root/components/almsivi/src/bridge_service.cpp"
   "$root/components/almsivi/src/events.cpp"
+  "$root/components/almsivi/src/json.cpp"
   "$root/components/almsivi/src/lifecycle.cpp"
   "$root/components/almsivi/src/media.cpp"
+  "$root/components/almsivi/src/protocol_response.cpp"
   "$root/components/almsivi/src/validation.cpp"
   "$root/components/almsivi/tests/native_tests.cpp"
 )

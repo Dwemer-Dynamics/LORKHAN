@@ -12,12 +12,18 @@ add_test(NAME evidence-validation
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/evidence/validate.py")
 set_tests_properties(foundation-unit protocol-contract-harness evidence-validation PROPERTIES
   ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
+set_tests_properties(foundation-unit PROPERTIES LABELS "foundation;python;no-game")
+set_tests_properties(protocol-contract-harness PROPERTIES LABELS "contract;fake-server;no-game")
+set_tests_properties(evidence-validation PROPERTIES LABELS "evidence;structural;no-game")
 add_test(NAME almsivi-lua-structural
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/almsivi/tests/run.py")
-find_program(ALMSIVI_LUA_EXECUTABLE NAMES lua lua5.4 lua5.3 luajit)
+set_tests_properties(almsivi-lua-structural PROPERTIES LABELS "lua;structural;no-runtime;no-game")
+find_program(ALMSIVI_LUA_EXECUTABLE NAMES luajit lua5.4 lua54 lua5.3 lua)
 if(ALMSIVI_LUA_EXECUTABLE)
   add_test(NAME almsivi-lua-runtime
     COMMAND "${ALMSIVI_LUA_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/almsivi/files/scripts/ALMSIVI/tests/run.lua")
+  set_tests_properties(almsivi-lua-runtime PROPERTIES
+    LABELS "lua;standalone-runtime;fake-openmw;no-engine;no-game")
 endif()
 add_custom_target(check
   COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${CMAKE_BINARY_DIR}" --output-on-failure

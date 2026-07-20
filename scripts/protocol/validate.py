@@ -14,6 +14,7 @@ import json
 import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -140,6 +141,11 @@ def validate(value: Any, schema: dict[str, Any], registry: dict[str, dict[str, A
             raise ValidationError(f"{path}: string length out of bounds")
         if "pattern" in schema and re.fullmatch(schema["pattern"], value) is None:
             raise ValidationError(f"{path}: string does not match pattern")
+        if schema.get("format") == "date-time":
+            try:
+                datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValidationError(f"{path}: invalid calendar date-time") from exc
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         if value < schema.get("minimum", float("-inf")) or value > schema.get("maximum", float("inf")):
             raise ValidationError(f"{path}: number out of bounds")
@@ -174,7 +180,7 @@ def main() -> int:
         import jsonschema
         for schema in schemas.values():
             jsonschema.Draft202012Validator.check_schema(schema)
-        official = {uri: jsonschema.Draft202012Validator(schema, registry=None) for uri, schema in registry.items()}
+        official = True
 
     fixture_count = 0
     for classification in ("valid", "invalid", "hostile"):
@@ -191,8 +197,14 @@ def main() -> int:
                 # Referencing uses the package's resolver when installed; structural validation remains authoritative here.
                 try:
                     import jsonschema
-                    resolver = jsonschema.RefResolver.from_schema(registry[wrapper["schema"]], store=registry)
-                    jsonschema.Draft202012Validator(registry[wrapper["schema"]], resolver=resolver).validate(wrapper["instance"])
+                    from referencing import Registry, Resource
+                    local_registry = Registry()
+                    for uri, document in registry.items():
+                        local_registry = local_registry.with_resource(uri, Resource.from_contents(document))
+                    jsonschema.Draft202012Validator(
+                        registry[wrapper["schema"]], registry=local_registry,
+                        format_checker=jsonschema.Draft202012Validator.FORMAT_CHECKER,
+                    ).validate(wrapper["instance"])
                     official_accepted = True
                 except jsonschema.ValidationError:
                     official_accepted = False

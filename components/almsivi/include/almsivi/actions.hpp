@@ -9,8 +9,6 @@
 
 namespace almsivi {
 
-enum class ActionTerminalStatus { succeeded, failed, rejected, timed_out, cancelled };
-
 struct ActionTerminalResult {
     ActionId action;
     ActionTerminalStatus status{ActionTerminalStatus::failed};

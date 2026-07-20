@@ -299,7 +299,7 @@ def dependency_locks(root: Path, patterns: Sequence[str]) -> list[dict[str, str]
 
 def tracked_implementation_paths(root: Path) -> set[str]:
     completed = subprocess.run(
-        ["git", "-C", str(root), "ls-files"], check=False, text=True,
+        ["git", "-C", str(root), "ls-files", "--cached", "--others", "--exclude-standard"], check=False, text=True,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if completed.returncode != 0:
         raise PackagingError(f"cannot enumerate tracked implementation paths: {completed.stderr.strip()}")
@@ -322,8 +322,10 @@ def package_set_linkage(root: Path, policy: Mapping[str, Any]) -> dict[str, Any]
     if upstream.get("commit") != openmw.get("commit") or upstream.get("tag") != openmw.get("tag"):
         raise PackagingError("authoritative patch manifest drifted from the OpenMW source pin")
     provenance_document = read_json(provenance)
+    patch_spec = read_json(root / "openmw-patches/patch-spec.json")
+    declared_upstream = {change["path"] for change in patch_spec["changes"]}
     validate_provenance(
-        provenance_document, tracked_implementation_paths(root), reject_unexpected=True)
+        provenance_document, tracked_implementation_paths(root) | declared_upstream, reject_unexpected=True)
     return {"almsivi_commit": git_commit(root), "openmw_commit": openmw["commit"],
             "openmw_tag": openmw["tag"], "patch_manifest_sha256": sha256_file(patch),
             "provenance_ledger_sha256": sha256_file(provenance),

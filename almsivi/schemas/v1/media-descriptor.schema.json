@@ -3,9 +3,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
-    "bytes": {"maximum": 33554432, "minimum": 0, "type": "integer"},
+    "bytes": {"maximum": 33554432, "minimum": 1, "type": "integer"},
     "codec": {"enum": ["mp3", "ogg", "wav"], "type": "string"},
-    "duration_ms": {"minimum": 0, "type": "integer"},
+    "duration_ms": {"minimum": 1, "type": "integer"},
     "expires_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
     "media_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
     "sha256": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/sha256"}

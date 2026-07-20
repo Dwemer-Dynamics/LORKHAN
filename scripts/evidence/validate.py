@@ -29,8 +29,9 @@ def required_provenance_paths(root: Path = ROOT) -> set[str]:
 
 
 def validate_provenance_coverage(document: dict, required: set[str]) -> None:
+    declared_upstream = {change["path"] for change in read_json(ROOT / "openmw-patches/patch-spec.json")["changes"]}
     try:
-        validate_provenance(document, required, reject_unexpected=True)
+        validate_provenance(document, required | declared_upstream, reject_unexpected=True)
     except PackagingError as exc:
         message = str(exc).replace("source provenance missing", "provenance coverage missing tracked implementation paths")
         message = message.replace("source provenance includes", "provenance coverage includes")

@@ -4,8 +4,15 @@ local core=adapter.event()
 local state
 local engine={
     followSelf=function() return nil,'engine_follow_adapter_deferred' end,
-    sayOpaque=function() return nil,'engine_speech_adapter_deferred' end,
-    stopSpeech=function() end,
+    playSpeech=function(mediaId,actorIdentity,subtitle)
+        local bridge=adapter.bridge()
+        if not bridge then return nil,'native_bridge_unavailable' end
+        return bridge.playSpeech(mediaId,actorIdentity,subtitle)
+    end,
+    stopSpeech=function()
+        local bridge=adapter.bridge()
+        if bridge then bridge.stopSpeech() end
+    end,
     stopOwnedFollow=function() end,
 }
 local function report(result) if result and core and core.sendGlobalEvent then core.sendGlobalEvent('ALMSIVI_ACTION_RESULT',result) end end

@@ -23,7 +23,7 @@ from almsivi_packaging import (PackagingError, apply_suppressions, archive_manif
                                collect_tree, content_manifest,
                                create_tar, create_zip, generate_spdx, install_plan, load_suppressions,
                                normalized_archive_comparison, package_set_linkage, release_name_guard,
-                               sha256sums, source_date_epoch, uninstall_plan, validate_package_set,
+                               sha256sums, source_date_epoch, tracked_implementation_paths, uninstall_plan, validate_package_set,
                                validate_provenance, validate_spdx)
 
 EPOCH = 1700000000
@@ -51,8 +51,9 @@ class PackagingTests(unittest.TestCase):
     def repository_fixture(self, *, commit: bool = True) -> Path:
         repository = self.temp / "repository"
         repository.mkdir()
-        tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files"], check=True, text=True,
-                                 stdout=subprocess.PIPE).stdout.splitlines()
+        tracked = subprocess.run(
+            ["git", "-C", str(ROOT), "ls-files", "--cached", "--others", "--exclude-standard"],
+            check=True, text=True, stdout=subprocess.PIPE).stdout.splitlines()
         for relative in tracked:
             source = ROOT / relative
             target = repository / relative
@@ -149,6 +150,13 @@ class PackagingTests(unittest.TestCase):
             release_name_guard("ALMSIVI-source-0.1", ROOT, stage, self.policy, "source")
         with self.assertRaisesRegex(PackagingError, "release-named package fails closed"):
             release_name_guard("ALMSIVI-Lua-0.1", ROOT, stage, self.policy, "runtime")
+
+    def test_provenance_scope_includes_untracked_implementation_files(self):
+        repository = self.repository_fixture()
+        untracked = repository / "components/almsivi/src/untracked.cpp"
+        untracked.parent.mkdir(parents=True, exist_ok=True)
+        untracked.write_text("// original fixture\n")
+        self.assertIn("components/almsivi/src/untracked.cpp", tracked_implementation_paths(repository))
 
     def test_package_linkage_uses_commit_pin_patch_hash_and_locks(self):
         linkage = package_set_linkage(ROOT, self.policy)

@@ -108,14 +108,111 @@ struct RequestCorrelation {
 };
 
 struct HealthRequest {};
-struct InitRequest { EnvelopeIds ids; RuntimeInfo runtime; std::string contentFingerprint; };
-struct TurnRequest { EnvelopeIds ids; std::string serializedPayload; };
-struct ActionResultRequest { RequestCorrelation correlation; ActionId action; std::string serializedPayload; };
-struct SttRequest { EnvelopeIds ids; std::string codec; std::vector<std::byte> audio; };
+struct InitRequest {
+    EnvelopeIds ids;
+    RuntimeInfo runtime;
+    std::string contentFingerprint;
+    std::string createdAt;
+};
+struct TurnRequest {
+    EnvelopeIds ids;
+    RuntimeInfo runtime;
+    std::string contentFingerprint;
+    std::string createdAt;
+    // A JSON object containing only the schema-owned `payload` member. The transport
+    // constructs the envelope and never accepts a caller-selected method, route, or header.
+    std::string serializedPayload;
+};
+struct EventPollRequest {
+    SessionId session;
+    Generation generation;
+    std::uint64_t after{};
+    std::uint32_t waitMs{};
+};
+struct InterruptionRequest {
+    MessageId message;
+    RequestId request;
+    TurnId turn;
+    SessionId session;
+    Generation generation;
+    std::string createdAt;
+    std::string reason;
+};
+enum class ActionTerminalStatus { succeeded, failed, rejected, timed_out, cancelled };
 
-using RequestPayload = std::variant<HealthRequest, InitRequest, TurnRequest, ActionResultRequest, SttRequest>;
+struct ActionResultRequest {
+    MessageId message;
+    RequestCorrelation correlation;
+    ActionId action;
+    TurnId turn;
+    ActionTerminalStatus status{ActionTerminalStatus::failed};
+    std::string reasonCode;
+    // A bounded JSON object containing schema-owned observations only.
+    std::string serializedObserved;
+    std::string completedAt;
+};
+struct SessionEndRequest {
+    RequestId request;
+    SessionId session;
+    Generation generation;
+};
+struct SttRequest {
+    EnvelopeIds ids;
+    std::string createdAt;
+    std::string codec;
+    std::string language;
+    std::string sha256;
+    std::vector<std::byte> audio;
+};
+enum class DialogueDeliveryStatus { played, failed, expired, interrupted };
+struct DialogueDeliveryResultRequest {
+    MessageId message;
+    RequestCorrelation correlation;
+    MessageId dialogueMessage;
+    TurnId turn;
+    std::string serializedSpeaker;
+    DialogueDeliveryStatus status{DialogueDeliveryStatus::failed};
+    std::string reasonCode;
+    std::string completedAt;
+};
 
-enum class RequestKind { health, init, turn, action_result, stt, event_poll, media };
+enum class MediaCodec { wav, ogg, mp3 };
+
+struct MediaDescriptor {
+    MediaId id;
+    std::array<std::byte, 32> sha256{};
+    std::size_t bytes{};
+    MediaCodec codec{MediaCodec::wav};
+    std::chrono::system_clock::time_point expiresAt;
+};
+
+struct MediaPrepareRequest {
+    RequestCorrelation correlation;
+    MediaDescriptor descriptor;
+};
+
+struct PreparedMedia {
+    MediaId id;
+    std::size_t bytes{};
+    MediaCodec codec{MediaCodec::wav};
+};
+
+using RequestPayload = std::variant<HealthRequest, InitRequest, TurnRequest, EventPollRequest,
+    InterruptionRequest, ActionResultRequest, SessionEndRequest, SttRequest,
+    DialogueDeliveryResultRequest, MediaPrepareRequest>;
+
+enum class RequestKind {
+    health,
+    init,
+    turn,
+    event_poll,
+    interruption,
+    action_result,
+    dialogue_delivery_result,
+    session_end,
+    stt,
+    media,
+};
 
 enum class ResponseKind { accepted, event, completed, failure, cancelled, media_ready, status };
 
@@ -164,7 +261,8 @@ public:
 
 private:
     friend class BeastTransport;
-    [[nodiscard]] const Secret& secretForAuthorization() const noexcept { return m_secret; }
+    [[nodiscard]] std::string authorizationToken() const;
+    [[nodiscard]] const Secret& macKey() const noexcept { return m_secret; }
 
     void clear() noexcept
     {

@@ -57,6 +57,15 @@
       ]
     },
     {
+      "id": "native-json-response-parsers",
+      "claim": "Strict bounded JSON syntax parsing and contracted health/error response mapping pass",
+      "state": "PLANNED",
+      "evidence": [
+        "components/almsivi/tests/native_tests.cpp",
+        "components/almsivi/fuzz/json_fuzz.cpp"
+      ]
+    },
+    {
       "id": "native-sanitizer-runtime",
       "claim": "The native sanitizer runtime suite completes successfully on a supported host",
       "state": "DEFERRED",
@@ -125,30 +134,34 @@
     },
     {
       "id": "engine-integration",
-      "claim": "Exact-pin OpenMW package registration and media VFS-versus-decoder patches plus patched-engine and unmodified control builds pass",
+      "claim": "Exact-pin OpenMW package-registration patch foundation is deterministic and statically limits openmw.almsivi to GLOBAL, PLAYER, and CUSTOM; integrated engine build remains blocked locally",
       "state": "DEFERRED",
       "evidence": [
-        "docs/ENGINE-INTEGRATION-PLAN.md",
-        "scripts/build/unix.sh",
-        "scripts/build/windows.ps1"
+        "openmw-patches/patch-manifest.json",
+        "openmw-patches/patch-spec.json",
+        "openmw-patches/series",
+        "docs/evidence/start-gate-blocker.md"
       ],
-      "resume_when": "Implement the exact pinned patches and record integrated plus control build evidence"
+      "resume_when": "Install the pinned OpenMW macOS dependencies (first configure blocker: ICU libraries; collada_dom also absent), then run matching control/patched builds and relevant OpenMW tests"
     },
     {
       "id": "beast-live",
-      "claim": "The Beast serializer and authenticated loopback transport pass on the live wire",
-      "state": "DEFERRED",
+      "claim": "Plaintext loopback Beast transport includes request-scoped executor cancellation, typed-error correlation, and fixed opaque media GET with strict HTTP, media, and cache-entry verification plus atomic corrupt-entry replacement; peer-authentication hardening and engine playback remain unclaimed",
+      "state": "AUTOMATED",
       "evidence": [
-        "docs/PROTOCOL.md"
-      ],
-      "resume_when": "Implement the Beast serializer/transport and record live-wire tests"
+        "components/almsivi/src/beast_transport.cpp",
+        "components/almsivi/tests/beast_transport_tests.cpp",
+        "docs/evidence/completion-ledger.md"
+      ]
     },
     {
       "id": "final-synthserver-migration-crossrepo",
       "claim": "Final SYNTH and Synthserver SHAs are imported and migrated and cross-repository protocol/parity checks pass",
       "state": "DEFERRED",
-      "evidence": [],
-      "resume_when": "Final tested SYNTH and Synthserver SHAs are supplied and cross-repository work is authorized"
+      "evidence": [
+        "docs/evidence/start-gate-blocker.md"
+      ],
+      "resume_when": "Both completed implementations are on clean main at exact final tested SHAs with passing required evidence and audited licenses/provenance, and cross-repository work is authorized"
     },
     {
       "id": "windows-build-game-mod",

@@ -22,7 +22,7 @@ class ProtocolRepositoryTests(unittest.TestCase):
         paths = [record["path"] for record in manifest["files"]]
         self.assertEqual(paths, sorted(paths))
         self.assertTrue(all(path.startswith(("almsivi/schemas/v1/", "almsivi/fixtures/v1/")) for path in paths))
-        self.assertEqual(manifest["cross_repository_byte_parity"], "deferred")
+        self.assertEqual(manifest["cross_repository_byte_parity"], "locally-proven")
 
 if __name__ == "__main__":
     unittest.main()

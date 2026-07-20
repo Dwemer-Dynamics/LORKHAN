@@ -144,6 +144,42 @@ bool isCanonicalUuid(std::string_view input) noexcept
     return true;
 }
 
+bool isCanonicalUtcTimestamp(std::string_view value) noexcept
+{
+    if (value.size() < 20 || value.size() > 30 || value[4] != '-' || value[7] != '-'
+        || value[10] != 'T' || value[13] != ':' || value[16] != ':' || value.back() != 'Z')
+        return false;
+    const auto digit = [value](std::size_t index) { return value[index] >= '0' && value[index] <= '9'; };
+    for (const auto index : std::array<std::size_t, 14>{0, 1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18}) {
+        if (!digit(index))
+            return false;
+    }
+    const auto pair = [value](std::size_t index) {
+        return static_cast<unsigned>(value[index] - '0') * 10U + static_cast<unsigned>(value[index + 1] - '0');
+    };
+    const unsigned year = static_cast<unsigned>(value[0] - '0') * 1000U
+        + static_cast<unsigned>(value[1] - '0') * 100U
+        + static_cast<unsigned>(value[2] - '0') * 10U
+        + static_cast<unsigned>(value[3] - '0');
+    const unsigned month = pair(5);
+    const unsigned day = pair(8);
+    static constexpr std::array<unsigned, 12> daysPerMonth{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (year == 0 || month < 1 || month > daysPerMonth.size()
+        || pair(11) > 23 || pair(14) > 59 || pair(17) > 59)
+        return false;
+    unsigned maximumDay = daysPerMonth[month - 1];
+    if (month == 2 && year % 4 == 0 && (year % 100 != 0 || year % 400 == 0))
+        ++maximumDay;
+    if (day < 1 || day > maximumDay)
+        return false;
+    if (value.size() == 20)
+        return true;
+    if (value[19] != '.' || value.size() < 22)
+        return false;
+    return std::all_of(value.begin() + 20, value.end() - 1,
+        [](char character) { return character >= '0' && character <= '9'; });
+}
+
 std::string BaseUrl::authority() const
 {
     const std::string renderedHost = ipv6 ? "[" + host + "]" : host;

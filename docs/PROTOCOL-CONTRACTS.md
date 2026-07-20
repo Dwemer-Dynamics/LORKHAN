@@ -1,70 +1,43 @@
 # Protocol contract implementation
 
-The canonical ALMSIVI v1 contract bytes are under `almsivi/schemas/v1` and
-`almsivi/fixtures/v1`. Schemas declare JSON Schema Draft 2020-12 and reject unknown fields at each
-contract-owned object boundary. `common.schema.json` pins OpenMW 0.51.0 commit
-`f4bec41444214a7903bebd178389ca22ca13f646` and Lua API revision 129. Identity combines record ID,
-RefNum, source content file, cell, kind, and a display-name snapshot; display names are not sufficient.
-Timestamps use canonical UTC RFC 3339 `Z`, IDs use UUID text, and documented caps are explicit.
+The canonical ALMSIVI v1 bytes are under `almsivi/schemas/v1` and `almsivi/fixtures/v1`. They use JSON Schema Draft 2020-12, strict contract-owned objects, canonical lowercase UUIDs, UTC RFC 3339 timestamps, the OpenMW 0.51.0/API-129 runtime pin, bounded arrays/strings/media, and TES3 identities.
 
-Run:
+## Independent decision revision
+
+The original planning lock deferred server-owned response details until an authoritative server existed. On 2026-07-19 the sibling ALMSIVIserver independently implemented the no-game PostgreSQL vertical slice. This batch deliberately revises that deferral only for the concrete shapes emitted by that implementation: session acceptance, turn acceptance, events, interruption acceptance, action-result acceptance, and session end. The revision is evidenced by byte-identical dual-repository schemas/fixtures, authoritative Draft 2020-12 fixture validation, captured server-response validation, typed C++ parsing, Lua mapping checks, and the disposable-PostgreSQL cross-repository harness. It does not authorize broader product semantics.
+
+Run locally:
 
 ```bash
 python3 scripts/protocol/generate_manifest.py --check
-python3 scripts/protocol/validate.py
+python3 scripts/protocol/validate.py --require-jsonschema
 python3 -m unittest discover -s almsivi/tests -v
+# sibling ALMSIVIserver:
+scripts/verify-protocol-parity.sh
+scripts/test/cross-repo-integration.sh
 ```
 
-`generate_manifest.py` deterministically records every schema and fixture byte count and SHA-256 in
-`almsivi/MANIFEST.json` and `almsivi/SHA256SUMS`. Regenerate them after intentional contract changes.
-The validator uses only the Python standard library and checks repository structure, local references,
-the schema-keyword subset used here, fixture classifications, and manifest currency. It is explicitly
-not a complete JSON Schema implementation. When `jsonschema` is already installed, without fetching,
-it also checks the official Draft 2020-12 meta-schema and instances.
+`MANIFEST.json` and `SHA256SUMS` deterministically cover all schema and fixture bytes and record `cross_repository_byte_parity` as `locally-proven`. The active-worktree parity result is local dirty-tree evidence, not clean-commit durable proof.
 
-The fake server in `almsivi/tests/fake_server.py` is test-only, fixture-driven, binds an ephemeral
-`127.0.0.1` port, and refuses non-loopback binds. Diagnostics never retain authorization values or
-request/response bodies. The harness covers auth, content types, idempotency, health, session/turn,
-ordered polling with duplicate/gap handling, action results, interruptions, media hash/bytes,
-malformed/oversized/wrong-type input, deadlines, disconnect/restart, and stale generations.
+## Contracted response surface
 
-## Explicitly deferred contracts
+- `almsivi.session.accepted.v1`: originating message, session/generation, negotiated capabilities, configuration revision and cursor.
+- `almsivi.turn.accepted.v1`: full message/request/turn/session/generation correlation and cursor.
+- `almsivi.events.v1`: session/generation/cursor plus at most 100 strict event envelopes.
+- `almsivi.interruption.accepted.v1`: full correlation, cursor and duplicate marker.
+- `almsivi.action-result.accepted.v1`: full correlation, action/status and duplicate marker.
+- `almsivi.session.ended.v1`: delete request/session/generation and whether this call ended it.
 
-The planning documents do not define these shapes precisely enough to encode without inventing a
-server contract:
+Contracted event variants are exactly the current server outputs: `turn.accepted`, `dialogue.complete`, `action.intent`, `turn.complete`, `turn.cancelled`, `turn.failed` for provider timeout/unavailability, and `speech.ready`. Every event carries message, request, turn, session, generation, sequence and creation time. Media must be non-empty and independently hash/size/type/expiry validated.
 
-- health response details beyond the schema discriminator;
-- session acceptance/config-revision/capability response, turn acceptance response, action-result
-  persistence acknowledgement, interruption/cancellation acknowledgement, and session deletion;
-- nested server-owned `turn.accepted`, `turn.status`, `dialogue.delta`, `dialogue.complete`,
-  `turn.complete`, `turn.failed`, `turn.cancelled`, `session.config_changed`, `server.notice`, STT
-  metadata/transcript/failure, config payloads, and resync response details; these event variants are
-  omitted rather than assigned guessed payloads;
-- endpoint-specific connect/write/first-byte/idle/total defaults and native per-frame poll count/time
-  cap (only the documented 15-second server event-wait ceiling is contracted);
-- all action intent names and parameter/result payloads except exact `ai.follow`; its parameter is
-  exactly `{\"distance\": 192}`. Behavioral timeout, restoration, and policy remain implementation
-  acceptance contracts;
-- the required `observed` action-result object's typed contents and stable action reason-code
-  enumeration; the known object boundary remains while its properties are intentionally unconstrained;
-- exact context snapshot/delta domains and recent action-result embedding. Both required turn payload
-  fields remain, but their nested shapes are intentionally unconstrained. The native transport must
-  enforce the documented 128 KiB serialized context cap because JSON Schema cannot portably measure
-  arbitrary JSON's serialized byte length;
-- exact capability names/count, client-version syntax, platform values, UI-source values, interrupt
-  reasons, and undocumented string/cell/identifier numeric bounds; known fields retain their base JSON
-  types without freezing guessed enumerations or limits;
-- aggregate event response count and payload shapes not explicitly listed above; the native inbound
-  queue cap is not treated as a server events-array cap;
-- cross-repository byte parity against ALMSIVIserver. The local deterministic manifest is ready for
-  that check once the final server contract is authorized and available.
+Mutating message endpoints require `Idempotency-Key` equal to the envelope `message_id`. Session DELETE has no body and uses its UUID idempotency key as the response `request_id`. `request_id` remains operation correlation; an action-result request has its own request/message identity and is bound separately to action, turn, session and generation.
 
-The turn schema follows the documented common envelope: correlation/runtime fields remain at top
-level and input, identities, audience, context, recent terminal results, and UI source are nested under
-the required strict `payload` object. Session init has no plan-specified nested payload fields, so its
-minimal client-owned fields remain directly in its request object pending final server parity.
-Standalone action intent/result follow their explicit examples rather than inheriting the common turn
-envelope.
+## Intentionally deferred details
 
-Schemas consequently cover known client-owned request shapes and known event payloads only. They do
-not certify final server response evidence or in-game behavior.
+- `turn.status`, `dialogue.delta`, configuration/notice/resync events, STT response variants, and any provider/product event not emitted by this slice;
+- typed contents inside bounded `context` and `observed` objects, and stable reason-code catalogues;
+- action names and parameters beyond exact `ai.follow` with `{"distance":192}`;
+- private media serving/storage, streaming, worker and broad provider contracts;
+- exact platform/game/clean-commit evidence.
+
+The fake server is test-only, binds an ephemeral loopback literal, emits the same accepted/event/end shapes, and covers auth, content type/size, message idempotency, sessions/turns/events, duplicates/gaps, interruption/action results, session deletion, media bytes/hash, malformed input, deadlines, disconnect/restart and stale generations.

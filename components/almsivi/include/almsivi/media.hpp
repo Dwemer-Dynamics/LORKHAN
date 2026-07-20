@@ -11,16 +11,6 @@
 
 namespace almsivi {
 
-enum class MediaCodec { wav, ogg, mp3 };
-
-struct MediaDescriptor {
-    MediaId id;
-    std::array<std::byte, 32> sha256{};
-    std::size_t bytes{};
-    MediaCodec codec{MediaCodec::wav};
-    std::chrono::system_clock::time_point expiresAt;
-};
-
 struct MediaCachePolicy {
     std::size_t maximumObjectBytes{kMaxMediaBytes};
     std::size_t quotaBytes{512U * 1024U * 1024U};

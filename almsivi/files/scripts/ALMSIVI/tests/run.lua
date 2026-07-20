@@ -1,4 +1,5 @@
-local root=(arg and arg[0] or ''):match('^(.*)/scripts/ALMSIVI/tests/run%.lua$') or 'almsivi/files'
+local runner=(arg and arg[0] or ''):gsub('\\','/')
+local root=runner:match('^(.*)/scripts/ALMSIVI/tests/run%.lua$') or 'almsivi/files'
 package.path=root..'/?.lua;'..root..'/?/init.lua;'..root..'/scripts/ALMSIVI/tests/fake_openmw/?.lua;'..package.path
 
 local failures,tests=0,0
@@ -30,6 +31,13 @@ test('lifecycle invalidates generation and cancels native',function()
  local b=fake.bridge() local s=orchestrator.new(b) local before=s.generation orchestrator.lifecycle(s,'load')
  eq(s.generation,before+1) eq(b.cancelled[1],before)
 end)
+test('wire validators reject uppercase UUID and zero-byte media',function()
+ eq(protocol.isUuid('00000000-0000-4000-8000-000000000001'),true)
+ eq(protocol.isUuid('00000000-0000-4000-8000-00000000000A'),false)
+ local speech=event(1,'speech.ready',3,{media_id=UUID.message,sha256=string.rep('a',64),bytes=0,codec='wav',duration_ms=1,expires_at='2026-07-19T00:00:00Z'})
+ local ok,reason=protocol.validatePolledEvent(speech);eq(ok,nil);eq(reason,'invalid_speech_bytes')
+ speech.payload.bytes=4;speech.payload.duration_ms=0;ok,reason=protocol.validatePolledEvent(speech);eq(ok,nil);eq(reason,'invalid_speech_duration')
+end)
 test('event ordering dedup and cursor gaps',function()
  local c=protocol.CursoredEvents(UUID.session,3) truthy(c:accept(event(1,'turn.accepted',3)))
  local ok,reason=c:accept(event(1,'turn.accepted',3)); eq(ok,false);eq(reason,'duplicate_event')
@@ -53,7 +61,7 @@ test('identity registry refuses substitution and ambiguity',function()
  local clone=fake.identity('npc','fargoth',9);eq(r:resolve(clone),nil);eq(r:resolve(npc),one)
 end)
 test('conversation stale generation and exact terminal',function()
- local s=conversation.new(1);truthy(conversation.setTarget(s,npc));truthy(conversation.begin(s,'r','t','input'))
+ local s=conversation.new(1);truthy(conversation.setTarget(s,npc));truthy(conversation.begin(s,UUID.request,UUID.turn,'input'))
  local ok,reason=conversation.apply(s,event(1,'turn.complete',0));eq(ok,false);eq(reason,'stale_generation')
  truthy(conversation.apply(s,event(1,'turn.complete',1)));ok,reason=conversation.apply(s,event(2,'turn.complete',1));eq(ok,false);eq(reason,'duplicate_terminal')
 end)
@@ -69,18 +77,52 @@ test('action capability authority expiry exact parameters and limits',function()
  for i=2,4 do base.action_id='a'..i truthy(actions.validate(state,base,authority)) end
  base.action_id='a5';ok,reason=actions.validate(state,base,authority);eq(ok,nil);eq(reason,'turn_action_limit')
 end)
+test('stt events and dialogue delivery mapping are strict',function()
+ local transcript=event(1,'stt.transcript',3,{text='Hello there.',language='en-US'});truthy(protocol.validatePolledEvent(transcript))
+ transcript.payload.text='';local ok,reason=protocol.validatePolledEvent(transcript);eq(ok,nil);eq(reason,'invalid_stt_text')
+ local failed=event(1,'stt.failed',3,{code='provider_timeout',retriable=true,retry_after_ms=1000});truthy(protocol.validatePolledEvent(failed))
+ failed.payload.code='arbitrary';ok,reason=protocol.validatePolledEvent(failed);eq(ok,nil);eq(reason,'invalid_stt_failure_code')
+ local delivery={message_id=UUID.message,request_id=UUID.request,dialogue_message_id='00000000-0000-4000-8000-000000000005',turn_id=UUID.turn,session_id=UUID.session,generation=3,speaker=npc,status='played',reason_code='playback_completed',completed_at='2026-07-19T20:00:02Z'}
+ local mapped=protocol.dialogueDeliveryResult(delivery);eq(mapped.schema,'almsivi.dialogue-delivery-result.v1');eq(mapped.status,'played')
+ delivery.reason_code='../../file';mapped,reason=protocol.dialogueDeliveryResult(delivery);eq(mapped,nil);eq(reason,'invalid_reason_code')
+end)
+test('tier zero inspect report is closed and capability gated',function()
+ local state=actions.new({'action.inspect.report'}) local registry=identity.Registry();registry:activate(npc,{});registry:activate(playerId,{})
+ local authority={generation=2,session_id='s',actor=npc,resolve=function(id)return registry:resolve(id)end,expired=function()return false end}
+ local intent={schema='almsivi.action-intent.v1',action_id='inspect',request_id='r',turn_id='inspect-turn',session_id='s',generation=2,name='inspect.report',tier=0,actor=npc,target=playerId,parameters={},expires_at='soon'}
+ local mapped=actions.validate(state,intent,authority);eq(mapped.name,'inspect.report');eq(next(mapped.parameters),nil)
+ intent.parameters.path='inventory';local ok,reason=actions.validate(state,intent,authority);eq(ok,nil);eq(reason,'unknown_inspect_parameter')
+ intent.parameters={};intent.tier=1;ok,reason=actions.validate(state,intent,authority);eq(ok,nil);eq(reason,'invalid_action_tier')
+ intent.tier=0;local actorState=actor.new(npc,2,{'action.inspect.report'});local followed=false
+ local adapter={followSelf=function()followed=true return true end,inspectReport=function()return true,'inspection_completed',{record_id='fargoth'} end}
+ local result=actor.execute(actorState,intent,adapter,authority);eq(result.status,'succeeded');eq(result.observed.record_id,'fargoth');eq(followed,false)
+end)
 test('canonical action result requires completion timestamp',function()
- local state=actions.new({}) local internal=actions.result(state,'a','succeeded',nil,{})
- local result,reason=actions.canonicalResult(internal,nil);eq(result,nil);eq(reason,'completed_at_required')
- result=actions.canonicalResult(internal,'2026-07-19T00:00:00Z');eq(result.completed_at,'2026-07-19T00:00:00Z');eq(result.schema,'almsivi.action-result.v1')
+ local state=actions.new({}) local internal=actions.result(state,'00000000-0000-4000-8000-000000000020','succeeded',nil,{})
+ local result,reason=actions.canonicalResult(internal,nil,nil);eq(result,nil);eq(reason,'correlation_required')
+ local correlation={message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,session_id=UUID.session,generation=7}
+ result,reason=actions.canonicalResult(internal,correlation,nil);eq(result,nil);eq(reason,'completed_at_required')
+ correlation.message_id='00000000-0000-4000-8000-00000000000A';result,reason=actions.canonicalResult(internal,correlation,'2026-07-19T00:00:00Z');eq(result,nil);eq(reason,'invalid_message_id');correlation.message_id=UUID.message
+ result=actions.canonicalResult(internal,correlation,'2026-07-19T00:00:00Z');eq(result.completed_at,'2026-07-19T00:00:00Z');eq(result.schema,'almsivi.action-result.v1');eq(result.session_id,UUID.session)
 end)
 test('submit requires caller supplied UUID correlation',function()
  local b=fake.bridge() local s=orchestrator.new(b) local ok,reason=orchestrator.submitText(s,{text='hi'})
  eq(ok,nil);eq(reason,'invalid_request_id')
 end)
+test('media prepare handoff is opaque generation-bound and fake-adapter tested',function()
+ local b=fake.bridge() local emitted={} local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end)
+ orchestrator.configureSession(s,UUID.session);s.conversation.turn={requestId=UUID.request,turnId=UUID.turn,generation=1,status='accepted',terminal=false}
+ truthy(s.events:accept(event(1,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Hello.'})))
+ truthy(conversation.apply(s.conversation,event(1,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Hello.'})))
+ local descriptor={media_id='00000000-0000-4000-8000-000000000005',sha256=string.rep('a',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
+ b.results={event(2,'speech.ready',1,descriptor)};eq(orchestrator.poll(s),1);eq(#b.prepared,1);eq(b.prepared[1].media_id,descriptor.media_id);eq(b.prepared[1].path,nil);eq(b.prepared[1].url,nil)
+ b.media[descriptor.media_id]={state='ready'};orchestrator.poll(s)
+ local speak=emitted[#emitted];eq(speak.name,'ALMSIVI_ACTOR_SPEAK');eq(speak.payload.media_id,descriptor.media_id);eq(speak.payload.subtitle,'Hello.');eq(speak.payload.generation,1)
+ orchestrator.lifecycle(s,'load');eq(next(s.conversation.pendingMedia),nil)
+end)
 test('actor is self-only and detach stops owned state',function()
  local st=actor.new(npc,2,{'action.ai.follow'}) local stopped=0
- local adapter={followSelf=function()return true end,sayOpaque=function()return true end,stopSpeech=function()stopped=stopped+1 end,stopOwnedFollow=function()stopped=stopped+1 end}
+ local adapter={followSelf=function()return true end,playSpeech=function()return true end,stopSpeech=function()stopped=stopped+1 end,stopOwnedFollow=function()stopped=stopped+1 end}
  local registry=identity.Registry();registry:activate(npc,{});registry:activate(playerId,{})
  local cmd={schema='almsivi.action-intent.v1',action_id='a',request_id='r',turn_id='t',session_id='s',generation=2,name='ai.follow',tier=1,actor=npc,target=playerId,parameters={distance=192},expires_at='x'}
  local result=actor.execute(st,cmd,adapter,{session_id='s',resolve=function(id)return registry:resolve(id)end,expired=function()return false end});eq(result.status,'succeeded');eq(result.kind,'almsivi.internal.action-terminal')

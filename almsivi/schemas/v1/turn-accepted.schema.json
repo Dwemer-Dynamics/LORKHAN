@@ -1,0 +1,16 @@
+{
+  "$id": "https://almsivi.invalid/schemas/v1/turn-accepted.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "event_cursor": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/sequence"},
+    "generation": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/generation"},
+    "message_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "request_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "schema": {"const": "almsivi.turn.accepted.v1", "type": "string"},
+    "session_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "turn_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+  },
+  "required": ["schema", "message_id", "request_id", "turn_id", "session_id", "generation", "event_cursor"],
+  "type": "object"
+}

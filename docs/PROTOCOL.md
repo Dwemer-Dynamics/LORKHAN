@@ -6,14 +6,14 @@ JSON Schemas and fixtures live in both repos and CI compares their SHA-256 manif
 ## Transport
 
 - Base: `http://127.0.0.1:8089/ALMSIVIserver/api/v1` by default.
-- Authentication: `Authorization: Bearer <256-bit pairing token>` added by native code.
+- Authentication uses `hmac-sha256-v1` request MACs. Fixed native headers carry installation ID, canonical UTC timestamp, unique random nonce, body SHA-256 and signature over algorithm/method/canonical target/content type/body digest/installation/timestamp/nonce. The 256-bit pairing MAC key is never transmitted routinely. Server persistence binds it to one installation, accepts active or bounded-overlap keys, rejects revoked keys, enforces clock skew and database nonce uniqueness, and covers JSON, STT, event, session and media routes. Plaintext loopback still does not provide payload confidentiality against privileged local software; TLS is not claimed without server support.
 - Requests and ordinary responses: `application/json; charset=utf-8`.
-- STT upload: bounded `audio/wav`, `audio/ogg`, or `audio/webm` body plus metadata headers/schema.
+- STT upload: bounded WAV body only (`codec: wav`) plus metadata headers/schema.
 - Response progress: `GET /events?session_id=...&after=<sequence>&wait_ms<=15000`, returning bounded
   ordered JSON events. Long polling avoids exposing streaming parser complexity to Lua.
 - Media: authenticated fixed route by opaque media ID; descriptor supplies hash/size/codec. No
   server-supplied absolute URL is followed.
-- Mutating POSTs require `Idempotency-Key` equal to the request/event ID.
+- Mutating message POSTs require `Idempotency-Key` equal to envelope `message_id`; session DELETE uses its UUID key as response `request_id`.
 
 ## Common envelope
 
@@ -72,7 +72,7 @@ version/API plus the ordered content list and file identity metadata, never prop
 | --- | --- | --- |
 | `GET /health` | none | `almsivi.health.v1` |
 | `POST /sessions` | `almsivi.session.init.v1` | accepted session/capabilities/config revision |
-| `DELETE /sessions/{id}` | current generation/reason | terminal status |
+| `DELETE /sessions/{id}` | no body; UUID `Idempotency-Key` | `almsivi.session.ended.v1` |
 | `POST /turns` | `almsivi.turn.v1` | accepted request + first event cursor |
 | `POST /stt` | metadata + audio | transcript event or typed failure |
 | `GET /events` | session/cursor/wait | `almsivi.events.v1` |
@@ -87,17 +87,9 @@ bounded context snapshot/delta, recent terminal action results, and UI source. I
 pairing token, provider key, host file path, save bytes, proprietary assets, engine pointers, or raw
 unbounded logs.
 
-Server response events have a strictly increasing per-session `sequence` and one of:
+Server response events have a strictly increasing per-session `sequence`. The current v1 slice contracts exactly `turn.accepted`, `dialogue.complete`, `speech.ready`, `action.intent`, `turn.complete`, `turn.failed`, and `turn.cancelled`. Every envelope includes `message_id`, `request_id`, `turn_id`, `session_id`, `generation`, `sequence`, `created_at`, type and strict payload. The events response is capped at 100 items.
 
-- `turn.accepted`, `turn.status`, `dialogue.delta`, `dialogue.complete`;
-- `speech.ready` with `{media_id, sha256, bytes, codec, duration_ms, expires_at}`;
-- `action.intent` with typed action schema/tier/identity/expiry;
-- `turn.complete`, `turn.failed`, `turn.cancelled`;
-- `session.config_changed`, `server.notice`.
-
-`dialogue.delta` is display-only incremental text. Only `dialogue.complete` is persisted as the final
-utterance and eligible for speech. Duplicate events by `(session_id, sequence, message_id)` are
-ignored. Cursor gaps force a bounded replay request or a typed resync, never guessed ordering.
+`dialogue.complete` is the final utterance. Duplicate events by `(session_id, sequence, message_id)` are ignored. Cursor gaps force bounded replay, never guessed ordering. Streaming deltas/status, configuration/notice and resync variants remain a future v1 amendment rather than accepted open variants.
 
 ## Action intent and result
 
@@ -118,7 +110,12 @@ ignored. Cursor gaps force a bounded replay request or a typed resync, never gue
 ```json
 {
   "schema": "almsivi.action-result.v1",
+  "message_id": "019...",
+  "request_id": "019...",
   "action_id": "019...",
+  "turn_id": "019...",
+  "session_id": "019...",
+  "generation": 7,
   "status": "succeeded",
   "reason_code": "package_started",
   "observed": {"package": "Follow"},

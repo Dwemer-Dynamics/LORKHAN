@@ -42,6 +42,14 @@
       "proof": "docs/evidence/runs/3717eff-local/index.json; native.json; integrated OpenMW excluded"
     },
     {
+      "id": "native-json-response-parsers",
+      "source": "independently authored strict parsing from documented ALMSIVI v1 contracts",
+      "target": "components/almsivi JSON syntax and contracted health/error response parsers",
+      "owner": "native foundations",
+      "state": "PLANNED",
+      "proof": "implementation and local tests pass; durable clean-commit evidence is pending"
+    },
+    {
       "id": "native-engine-integration",
       "source": "docs/ENGINE-INTEGRATION-PLAN.md",
       "target": "exact-pin OpenMW package registration and media VFS-versus-decoder patches",
@@ -53,11 +61,10 @@
     {
       "id": "beast-live-transport",
       "source": "docs/PROTOCOL.md",
-      "target": "Beast serializer and authenticated loopback transport",
+      "target": "Beast serializer and bearer-authenticated plaintext loopback transport",
       "owner": "engine transport",
-      "state": "DEFERRED",
-      "proof": "local fake-server protocol checks do not exercise the Beast live wire",
-      "resume_when": "The serializer and transport are implemented and exercised against the live loopback wire"
+      "state": "AUTOMATED",
+      "proof": "local dirty-worktree CMake/CTest passes standalone native and Beast live-wire tests for request-scoped executor cancellation, late-cancel isolation, strict typed response/error correlation, redirect rejection, and verified media cache repair; the checked-in hosted Beast lane is only a definition, and plaintext bearer peer-authentication hardening, clean-commit durable evidence, and restart during an in-flight HTTP request remain pending"
     },
     {
       "id": "lua-structural",
@@ -98,8 +105,8 @@
       "target": "ALMSIVI and ALMSIVIserver migration and parity",
       "owner": "cross-repository integration",
       "state": "DEFERRED",
-      "proof": "No deferred repository source was read or imported at this checkpoint",
-      "resume_when": "Final tested SYNTH and Synthserver SHAs are supplied and import, migration, and cross-repository parity work is authorized"
+      "proof": "docs/evidence/start-gate-blocker.md records predecessor gate metadata and test evidence only; no predecessor source was imported or semantically copied",
+      "resume_when": "Both completed implementations are on clean main at exact final tested SHAs with passing required evidence and audited licenses/provenance, and import/migration/parity work is authorized"
     },
     {
       "id": "windows-build-game-acceptance",

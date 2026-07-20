@@ -10,7 +10,7 @@ local M={}
 
 function M.new(bridge,emit)
     local state={bridge=bridge,emit=emit or function() end,generation=1,sessionId=nil,registry=identity.Registry(),
-        conversation=conversation.new(1),events=nil,attachments={},disabled=false,hardHalted=false}
+        conversation=conversation.new(1),events=nil,attachments={},media={},disabled=false,hardHalted=false}
     return state
 end
 
@@ -79,6 +79,26 @@ function M.submitText(state,args)
     return requestId
 end
 
+local function preparePendingMedia(state)
+    for mediaId,item in pairs(state.conversation.pendingMedia) do
+        if item.status=='new' then
+            local requestId,reason=state.bridge.prepareMedia(item.descriptor)
+            if requestId then item.status='preparing' item.prepareRequestId=requestId
+            else item.status='failed' item.reason=reason or 'media_prepare_rejected' end
+        elseif item.status=='preparing' then
+            local status=state.bridge.mediaStatus(mediaId)
+            if status and status.state=='ready' then
+                item.status='ready'
+                state.emit('ALMSIVI_ACTOR_SPEAK',{actor=item.speaker,media_id=mediaId,subtitle=item.subtitle,
+                    request_id=item.requestId,turn_id=item.turnId,generation=item.generation,
+                    expires_at=item.descriptor.expires_at})
+            elseif status and (status.state=='failed' or status.state=='expired' or status.state=='cancelled') then
+                item.status=status.state item.reason=status.reason
+            end
+        end
+    end
+end
+
 function M.poll(state)
     if state.disabled or state.hardHalted then return 0 end
     local results=state.bridge.pollResults(constants.MAX_INBOUND_RESULTS) or {}
@@ -93,6 +113,7 @@ function M.poll(state)
             state.emit('ALMSIVI_RESYNC',{reason=reason,cursor=state.events:cursor()})
         end
     end
+    preparePendingMedia(state)
     return accepted
 end
 

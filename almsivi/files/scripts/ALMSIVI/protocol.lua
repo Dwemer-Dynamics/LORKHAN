@@ -3,14 +3,26 @@ local identity = require('scripts.ALMSIVI.identity')
 local util = require('scripts.ALMSIVI.util')
 
 local M = {}
-local knownInternalEvents = {['turn.accepted']=true, ['turn.status']=true, ['dialogue.delta']=true,
-    ['dialogue.complete']=true, ['speech.ready']=true, ['action.intent']=true, ['turn.complete']=true,
-    ['turn.failed']=true, ['turn.cancelled']=true, ['session.config_changed']=true, ['server.notice']=true}
+local knownInternalEvents = {['turn.accepted']=true, ['dialogue.complete']=true,
+    ['speech.ready']=true, ['action.intent']=true, ['turn.complete']=true,
+    ['turn.failed']=true, ['turn.cancelled']=true, ['stt.transcript']=true,
+    ['stt.failed']=true}
 
 function M.isUuid(value)
     if type(value)~='string' then return false end
-    local a,b,c,d,e=value:match('^([0-9a-fA-F]+)%-([0-9a-fA-F]+)%-([0-9a-fA-F]+)%-([0-9a-fA-F]+)%-([0-9a-fA-F]+)$')
+    local a,b,c,d,e=value:match('^([0-9a-f]+)%-([0-9a-f]+)%-([0-9a-f]+)%-([0-9a-f]+)%-([0-9a-f]+)$')
     return a and #a==8 and #b==4 and #c==4 and #d==4 and #e==12 or false
+end
+
+local function isLanguageTag(value)
+    if type(value)~='string' or #value<2 or #value>35 then return false end
+    local first=true
+    for part in value:gmatch('[^-]+') do
+        if (first and (#part<2 or #part>3 or part:match('[^A-Za-z]')))
+            or (not first and (#part<1 or #part>8 or part:match('[^A-Za-z0-9]'))) then return false end
+        first=false
+    end
+    return not first and not value:match('^%-') and not value:match('%-$') and not value:match('%-%-')
 end
 
 function M.runtime(platform, capabilities)
@@ -21,12 +33,13 @@ end
 
 function M.turn(args)
     local required = {'message_id','request_id','turn_id','installation_id','profile_id','playthrough_id',
-        'session_id','generation','created_at','platform','content_fingerprint','text','speaker','target','audience','context','ui_source'}
+        'session_id','generation','created_at','platform','content_fingerprint','text','language','speaker','target','audience','context','ui_source'}
     for _, key in ipairs(required) do if args[key] == nil then return nil, 'missing_' .. key end end
     for _, key in ipairs({'message_id','request_id','turn_id','installation_id','profile_id','playthrough_id','session_id'}) do
         if not M.isUuid(args[key]) then return nil,'invalid_'..key end
     end
     if type(args.text) ~= 'string' or args.text:match('^%s*$') then return nil, 'empty_input' end
+    if not isLanguageTag(args.language) then return nil,'invalid_language' end
     if not identity.validate(args.target) or not identity.validate(args.speaker) then return nil, 'invalid_identity' end
     if #args.audience > constants.MAX_AUDIENCE then return nil, 'audience_too_large' end
     return {
@@ -53,12 +66,43 @@ function M.validatePolledEvent(event)
     if (event.type=='dialogue.delta' or event.type=='dialogue.complete') and type(event.payload.text)~='string' then
         return nil,'invalid_dialogue_text'
     end
-    if event.type=='speech.ready' then
-        for _,key in ipairs({'media_id','sha256','codec','expires_at'}) do if type(event.payload[key])~='string' then return nil,'invalid_speech_'..key end end
-        if type(event.payload.bytes)~='number' or event.payload.bytes%1~=0 or event.payload.bytes<0 then return nil,'invalid_speech_bytes' end
+    if event.type=='stt.transcript' then
+        if type(event.payload.text)~='string' or #event.payload.text<1 or #event.payload.text>16384 then return nil,'invalid_stt_text' end
+        if not isLanguageTag(event.payload.language) then return nil,'invalid_stt_language' end
     end
-    if event.type=='action.intent' and type(event.payload.intent)~='table' then return nil,'invalid_action_intent' end
+    if event.type=='stt.failed' then
+        local code=event.payload.code
+        if code~='invalid_audio' and code~='provider_invalid_output' and code~='provider_timeout' and code~='provider_unavailable' then return nil,'invalid_stt_failure_code' end
+        if type(event.payload.retriable)~='boolean' then return nil,'invalid_stt_retriable' end
+        if event.payload.retry_after_ms~=nil and (type(event.payload.retry_after_ms)~='number' or event.payload.retry_after_ms%1~=0 or event.payload.retry_after_ms<0) then return nil,'invalid_stt_retry_after' end
+    end
+    if event.type=='speech.ready' then
+        if not M.isUuid(event.payload.media_id) then return nil,'invalid_speech_media_id' end
+        if type(event.payload.sha256)~='string' or #event.payload.sha256~=64 or event.payload.sha256:match('[^0-9a-f]') then return nil,'invalid_speech_sha256' end
+        if event.payload.codec~='wav' and event.payload.codec~='ogg' and event.payload.codec~='mp3' then return nil,'invalid_speech_codec' end
+        if type(event.payload.bytes)~='number' or event.payload.bytes%1~=0 or event.payload.bytes<1 or event.payload.bytes>33554432 then return nil,'invalid_speech_bytes' end
+        if type(event.payload.duration_ms)~='number' or event.payload.duration_ms%1~=0 or event.payload.duration_ms<1 then return nil,'invalid_speech_duration' end
+        if type(event.payload.expires_at)~='string' or not event.payload.expires_at:match('^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%dZ$') then return nil,'invalid_speech_expires_at' end
+    end
+    if event.type=='action.intent' and event.payload.schema~='almsivi.action-intent.v1' then return nil,'invalid_action_intent' end
     return true
+end
+
+function M.dialogueDeliveryResult(args)
+    local required={'message_id','request_id','dialogue_message_id','turn_id','session_id','generation','speaker','status','reason_code','completed_at'}
+    for _,key in ipairs(required) do if args[key]==nil then return nil,'missing_'..key end end
+    for _,key in ipairs({'message_id','request_id','dialogue_message_id','turn_id','session_id'}) do
+        if not M.isUuid(args[key]) then return nil,'invalid_'..key end
+    end
+    if type(args.generation)~='number' or args.generation%1~=0 or args.generation<0 then return nil,'invalid_generation' end
+    if not identity.validate(args.speaker) then return nil,'invalid_speaker' end
+    if args.status~='played' and args.status~='failed' and args.status~='expired' and args.status~='interrupted' then return nil,'invalid_delivery_status' end
+    if type(args.reason_code)~='string' or #args.reason_code<1 or #args.reason_code>128 or not args.reason_code:match('^[a-z][a-z0-9_]*$') then return nil,'invalid_reason_code' end
+    if type(args.completed_at)~='string' or not args.completed_at:match('^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%dZ$') then return nil,'invalid_completed_at' end
+    return {schema='almsivi.dialogue-delivery-result.v1',message_id=args.message_id,request_id=args.request_id,
+        dialogue_message_id=args.dialogue_message_id,turn_id=args.turn_id,session_id=args.session_id,
+        generation=args.generation,speaker=util.copy(args.speaker),status=args.status,
+        reason_code=args.reason_code,completed_at=args.completed_at}
 end
 
 function M.CursoredEvents(sessionId, generation)

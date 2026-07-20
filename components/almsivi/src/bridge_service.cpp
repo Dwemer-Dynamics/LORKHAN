@@ -1,5 +1,7 @@
 #include "almsivi/bridge_service.hpp"
 
+#include "almsivi/media.hpp"
+#include "almsivi/protocol_response.hpp"
 #include "almsivi/validation.hpp"
 
 #include <algorithm>
@@ -42,8 +44,13 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
     if ((request.kind == RequestKind::health) != std::holds_alternative<HealthRequest>(request.payload)
         || (request.kind == RequestKind::init) != std::holds_alternative<InitRequest>(request.payload)
         || (request.kind == RequestKind::turn) != std::holds_alternative<TurnRequest>(request.payload)
+        || (request.kind == RequestKind::event_poll) != std::holds_alternative<EventPollRequest>(request.payload)
+        || (request.kind == RequestKind::interruption) != std::holds_alternative<InterruptionRequest>(request.payload)
         || (request.kind == RequestKind::action_result) != std::holds_alternative<ActionResultRequest>(request.payload)
-        || (request.kind == RequestKind::stt) != std::holds_alternative<SttRequest>(request.payload))
+        || (request.kind == RequestKind::dialogue_delivery_result) != std::holds_alternative<DialogueDeliveryResultRequest>(request.payload)
+        || (request.kind == RequestKind::session_end) != std::holds_alternative<SessionEndRequest>(request.payload)
+        || (request.kind == RequestKind::stt) != std::holds_alternative<SttRequest>(request.payload)
+        || (request.kind == RequestKind::media) != std::holds_alternative<MediaPrepareRequest>(request.payload))
         return Result<void>::failure(makeError(ErrorCode::invalid_argument, "request kind does not match typed payload"));
     if (const auto* init = std::get_if<InitRequest>(&request.payload)) {
         if (!validEnvelope(init->ids, false) || !envelopeMatches(init->ids))
@@ -57,11 +64,60 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         if (!validEnvelope(stt->ids, true) || !envelopeMatches(stt->ids))
             return Result<void>::failure(makeError(ErrorCode::invalid_argument, "STT envelope contains malformed or inconsistent IDs"));
     }
+    if (const auto* media = std::get_if<MediaPrepareRequest>(&request.payload)) {
+        if (!validId(media->correlation.request) || !validId(media->correlation.session)
+            || media->correlation.request != request.id || media->correlation.session != request.session
+            || media->correlation.generation != request.generation)
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument, "media correlation contains malformed or inconsistent IDs"));
+        auto valid = validateMediaDescriptor(media->descriptor, {}, m_clock->systemNow());
+        if (!valid)
+            return valid;
+    }
+    if (const auto* poll = std::get_if<EventPollRequest>(&request.payload)) {
+        if (!validId(poll->session) || poll->session != request.session || poll->generation != request.generation
+            || poll->waitMs > 15000)
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument, "event-poll correlation or wait is invalid"));
+    }
+    if (const auto* interruption = std::get_if<InterruptionRequest>(&request.payload)) {
+        if (!validId(interruption->message) || !validId(interruption->request) || !validId(interruption->turn)
+            || !validId(interruption->session) || interruption->request != request.id
+            || interruption->session != request.session || interruption->generation != request.generation)
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument, "interruption correlation contains malformed or inconsistent IDs"));
+    }
     if (const auto* action = std::get_if<ActionResultRequest>(&request.payload)) {
-        if (!validId(action->correlation.request) || !validId(action->correlation.session) || !validId(action->action)
+        if (!validId(action->message) || !validId(action->correlation.request)
+            || !validId(action->correlation.session) || !validId(action->action) || !validId(action->turn)
             || action->correlation.request != request.id || action->correlation.session != request.session
             || action->correlation.generation != request.generation)
             return Result<void>::failure(makeError(ErrorCode::invalid_argument, "action-result correlation contains malformed or inconsistent IDs"));
+    }
+    if (const auto* delivery = std::get_if<DialogueDeliveryResultRequest>(&request.payload)) {
+        if (!validId(delivery->message) || !validId(delivery->correlation.request)
+            || !validId(delivery->correlation.session) || !validId(delivery->dialogueMessage)
+            || !validId(delivery->turn) || delivery->correlation.request != request.id
+            || delivery->correlation.session != request.session
+            || delivery->correlation.generation != request.generation)
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,
+                "dialogue-delivery correlation contains malformed or inconsistent IDs"));
+        auto speaker = parseProtocolIdentity(delivery->serializedSpeaker);
+        if (!speaker)
+            return Result<void>::failure(speaker.error());
+        if (delivery->reasonCode.empty() || delivery->reasonCode.size() > 128
+            || delivery->reasonCode.front() < 'a' || delivery->reasonCode.front() > 'z'
+            || !std::all_of(delivery->reasonCode.begin() + 1, delivery->reasonCode.end(), [](char character) {
+                return (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9')
+                    || character == '_';
+            }))
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,
+                "dialogue-delivery reason code is outside the closed contract"));
+        if (!isCanonicalUtcTimestamp(delivery->completedAt))
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,
+                "dialogue-delivery completion time is not a canonical UTC timestamp"));
+    }
+    if (const auto* end = std::get_if<SessionEndRequest>(&request.payload)) {
+        if (!validId(end->request) || !validId(end->session) || end->request != request.id
+            || end->session != request.session || end->generation != request.generation)
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument, "session-end correlation contains malformed or inconsistent IDs"));
     }
     const auto validatePayload = [](std::string_view value, std::size_t limit) -> Result<void> {
         auto valid = requireValidUtf8(value, limit);
@@ -69,13 +125,24 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
     };
     if (const auto* turn = std::get_if<TurnRequest>(&request.payload))
         return validatePayload(turn->serializedPayload, kMaxJsonBytes);
-    if (const auto* action = std::get_if<ActionResultRequest>(&request.payload))
-        return validatePayload(action->serializedPayload, kMaxJsonBytes);
+    if (const auto* interruption = std::get_if<InterruptionRequest>(&request.payload)) {
+        if (interruption->reason.empty() || interruption->reason.size() > 128)
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument, "interruption reason is outside size limit"));
+        return validatePayload(interruption->reason, 128);
+    }
+    if (const auto* action = std::get_if<ActionResultRequest>(&request.payload)) {
+        if (action->reasonCode.empty() || action->reasonCode.size() > 128)
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument, "action-result reason code is outside size limit"));
+        auto reason = validatePayload(action->reasonCode, 128);
+        if (!reason)
+            return reason;
+        return validatePayload(action->serializedObserved, kMaxJsonBytes);
+    }
     if (const auto* stt = std::get_if<SttRequest>(&request.payload)) {
         if (stt->audio.empty() || stt->audio.size() > kMaxSttBytes)
             return Result<void>::failure(makeError(ErrorCode::invalid_argument, "STT body is outside size limit"));
-        if (stt->codec != "wav" && stt->codec != "ogg" && stt->codec != "webm")
-            return Result<void>::failure(makeError(ErrorCode::invalid_argument, "STT codec is not allowed"));
+        if (stt->codec != "wav")
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument, "STT codec must be wav"));
     }
     return Result<void>::success();
 }
@@ -132,9 +199,10 @@ Result<void> BridgeService::cancel(const RequestId& request)
         if (active != m_activeRequests.end() && m_cancelledPublished.insert(request).second)
             cancelled = active->second;
     }
-    if (cancelled)
+    if (cancelled) {
         publishCancelled(*cancelled);
-    m_transport->interrupt();
+        m_transport->interrupt(request);
+    }
     return Result<void>::success();
 }
 
@@ -147,7 +215,16 @@ Result<Generation> BridgeService::cancelGeneration(Generation generation)
     m_cancellations.cancelGeneration(generation);
     m_outbound.eraseIf([generation](const OutboundRequest& request) { return request.generation == generation; });
     m_inbound.eraseIf([generation](const InboundResult& result) { return result.generation == generation; });
-    m_transport->interrupt();
+    std::vector<RequestId> active;
+    {
+        std::lock_guard lock(m_stateMutex);
+        for (const auto& [id, request] : m_activeRequests) {
+            if (request.generation == generation)
+                active.push_back(id);
+        }
+    }
+    for (const auto& id : active)
+        m_transport->interrupt(id);
     return Result<Generation>::success(m_generation.invalidate());
 }
 
@@ -157,7 +234,16 @@ void BridgeService::halt() noexcept
         return;
     m_generation.invalidate();
     m_cancellations.cancelAll();
-    m_transport->interrupt();
+    std::vector<RequestId> active;
+    {
+        std::lock_guard lock(m_stateMutex);
+        for (const auto& [id, request] : m_activeRequests) {
+            static_cast<void>(request);
+            active.push_back(id);
+        }
+    }
+    for (const auto& id : active)
+        m_transport->interrupt(id);
     m_outbound.close();
     m_worker.request_stop();
     if (m_worker.joinable())
@@ -213,7 +299,10 @@ void BridgeService::workerLoop()
         if (cancelled && !cancellationAlreadyPublished)
             publishCancelled(*request);
         else if (!cancelled && response && response.value().request == request->id
-            && response.value().session == request->session && response.value().generation == request->generation
+            && (response.value().session == request->session
+                || (request->kind == RequestKind::init && request->session.empty()
+                    && isCanonicalUuid(response.value().session.value())))
+            && response.value().generation == request->generation
             && isCanonicalUuid(response.value().request.value())
             && (request->session.empty() || isCanonicalUuid(response.value().session.value()))
             && m_generation.isCurrent(response.value().generation))

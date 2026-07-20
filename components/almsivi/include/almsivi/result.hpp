@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -12,6 +13,19 @@ enum class ErrorCode {
     invalid_url,
     invalid_header,
     invalid_content_type,
+    invalid_json,
+    invalid_schema,
+    payload_too_large,
+    timeout,
+    unauthorized,
+    forbidden,
+    rate_limited,
+    unknown_session,
+    cursor_expired,
+    provider_unavailable,
+    action_disabled,
+    internal_error,
+    redirect_rejected,
     queue_full,
     stopped,
     cancelled,
@@ -27,6 +41,8 @@ struct Error {
     ErrorCode code{ErrorCode::invalid_argument};
     std::string message;
     bool retriable{false};
+    std::optional<std::uint64_t> retryAfterMs;
+    std::optional<std::string> correlationId;
 
     friend bool operator==(const Error&, const Error&) = default;
 };
@@ -68,9 +84,11 @@ private:
     std::optional<Error> m_error;
 };
 
-inline Error makeError(ErrorCode code, std::string message, bool retriable = false)
+inline Error makeError(ErrorCode code, std::string message, bool retriable = false,
+    std::optional<std::uint64_t> retryAfterMs = std::nullopt,
+    std::optional<std::string> correlationId = std::nullopt)
 {
-    return Error{code, std::move(message), retriable};
+    return Error{code, std::move(message), retriable, retryAfterMs, std::move(correlationId)};
 }
 
 } // namespace almsivi

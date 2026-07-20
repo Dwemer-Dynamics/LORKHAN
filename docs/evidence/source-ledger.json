@@ -51,8 +51,8 @@
       "license": null,
       "state": "DEFERRED",
       "pin": null,
-      "proof": "No source read or import has occurred at the current checkpoint",
-      "resume_when": "The final tested SYNTH main SHA and license are supplied and import/migration work is authorized"
+      "proof": "docs/evidence/start-gate-blocker.md records gate metadata and test-evidence observations only; no predecessor source was imported or semantically copied and no import pin is established",
+      "resume_when": "Completed implementation is on clean main, the exact final tested main SHA has passing non-game evidence, license/provenance is audited, and import/migration work is authorized"
     },
     {
       "id": "synthserver",
@@ -60,8 +60,8 @@
       "license": null,
       "state": "DEFERRED",
       "pin": null,
-      "proof": "No source read or import has occurred at the current checkpoint",
-      "resume_when": "The final tested Synthserver main SHA and license are supplied and import/migration work is authorized"
+      "proof": "docs/evidence/start-gate-blocker.md records gate metadata and test-evidence observations only; no predecessor source was imported or semantically copied and no import pin is established",
+      "resume_when": "Completed implementation is on clean main, the exact final tested main SHA has passing non-game evidence, license/provenance is audited, and import/migration work is authorized"
     },
     {
       "id": "almsiviserver",
