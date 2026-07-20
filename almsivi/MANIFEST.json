@@ -1,0 +1,257 @@
+{
+  "cross_repository_byte_parity": "locally-proven",
+  "files": [
+    {
+      "bytes": 382,
+      "path": "almsivi/fixtures/v1/hostile/oversized-media.json",
+      "sha256": "ed38d8b3fd04699130935934354b98fe1f492c6ed46a1e0a7069aaed7f0aa95a"
+    },
+    {
+      "bytes": 354,
+      "path": "almsivi/fixtures/v1/hostile/path-media-id.json",
+      "sha256": "8ff8225544fe91e018b8ea56d43792c8ec6ccdfa5eef555767d406d80d2a0013"
+    },
+    {
+      "bytes": 471,
+      "path": "almsivi/fixtures/v1/hostile/wrong-generation-type.json",
+      "sha256": "5c0e250037d172271bae6477846865b1e94d74c37e1ed97aa85a039c94a7d9e2"
+    },
+    {
+      "bytes": 366,
+      "path": "almsivi/fixtures/v1/hostile/zero-byte-media.json",
+      "sha256": "157ebc888c195528c39d8bfde097a480befaf36c3c9238037aa5ce8ea8efa04c"
+    },
+    {
+      "bytes": 630,
+      "path": "almsivi/fixtures/v1/hostile/zero-byte-stt.json",
+      "sha256": "05fc3423bf417e68c76b21b777111dd397a5f841818406ade32131fdc7e3a842"
+    },
+    {
+      "bytes": 842,
+      "path": "almsivi/fixtures/v1/invalid/follow-distance.json",
+      "sha256": "63d65a6a7db4aba656d62d5fcaf3dfdac98d42c60738bb0eb661de5a100c871c"
+    },
+    {
+      "bytes": 815,
+      "path": "almsivi/fixtures/v1/invalid/follow-name.json",
+      "sha256": "e5c6f2a27ed7a16d596f10007c689391f16de3f0280db709fecc3117362403a2"
+    },
+    {
+      "bytes": 1091,
+      "path": "almsivi/fixtures/v1/invalid/inspect-report-extra-parameter.json",
+      "sha256": "cc90dc42f58dca5965d4ef76f0401bdbfc770cd2a5ffb6239138228a1514544e"
+    },
+    {
+      "bytes": 604,
+      "path": "almsivi/fixtures/v1/invalid/invalid-calendar-time.json",
+      "sha256": "af0f66f15da090232a049b386983cf269a6af287de39c4dade4ce569564b218e"
+    },
+    {
+      "bytes": 332,
+      "path": "almsivi/fixtures/v1/invalid/non-utc-time.json",
+      "sha256": "f1462fa532c18c1e6f1def59a64883083f611a1370ab76a0d0080e4f12d3bc80"
+    },
+    {
+      "bytes": 821,
+      "path": "almsivi/fixtures/v1/invalid/runtime-pin.json",
+      "sha256": "d9f91b95beb01a86f036ffb23fc1d5c7a46ecde4951bcd73f144d3f20bf33721"
+    },
+    {
+      "bytes": 680,
+      "path": "almsivi/fixtures/v1/invalid/stt-request-path-not-base64.json",
+      "sha256": "1aed63ecfb4fe2325b579dd98be474341214de99c409cda8b8aa1441f1091686"
+    },
+    {
+      "bytes": 199,
+      "path": "almsivi/fixtures/v1/invalid/unknown-field.json",
+      "sha256": "91b39aedd0281b62bd0f85ff48ef4a4f7adfeaae182369258624d694c767692f"
+    },
+    {
+      "bytes": 1048,
+      "path": "almsivi/fixtures/v1/valid/action-intent-inspect-report.json",
+      "sha256": "510ea3290f56be2b236610f62c21045e6a5328f3f9f473019b7bc626819e6ab1"
+    },
+    {
+      "bytes": 816,
+      "path": "almsivi/fixtures/v1/valid/action-intent.json",
+      "sha256": "e052a540307d779d27bb91dbce1725656079e08d1f07851f2692e27a15b9bdba"
+    },
+    {
+      "bytes": 531,
+      "path": "almsivi/fixtures/v1/valid/action-result-accepted.json",
+      "sha256": "3747e78b88a9d60f7378ed3b9aacbefaaef496e742bbb0a63b42825309e704bd"
+    },
+    {
+      "bytes": 668,
+      "path": "almsivi/fixtures/v1/valid/action-result.json",
+      "sha256": "ee7394360ddf7fc8c35f089232c7827c0cd2c1219fd5111e7717dd1173c00114"
+    },
+    {
+      "bytes": 602,
+      "path": "almsivi/fixtures/v1/valid/dialogue-delivery-result-accepted.json",
+      "sha256": "2dc2329de7cdc19863041042ab3415eab16a655f7f45dd62296901952695da2c"
+    },
+    {
+      "bytes": 960,
+      "path": "almsivi/fixtures/v1/valid/dialogue-delivery-result.json",
+      "sha256": "fc5dfb14842980abcd037d0ab887979a698437e2413b3b41b155d4da46f3a285"
+    },
+    {
+      "bytes": 334,
+      "path": "almsivi/fixtures/v1/valid/error.json",
+      "sha256": "6abd255b5545560efa3608128010f927c85e8aa2def1fb2db9f891250826b997"
+    },
+    {
+      "bytes": 6696,
+      "path": "almsivi/fixtures/v1/valid/events.json",
+      "sha256": "5a29651ee32ca38ed3f8981c56c0995636a85d5d182d8bad857edc18688dd66f"
+    },
+    {
+      "bytes": 165,
+      "path": "almsivi/fixtures/v1/valid/health.json",
+      "sha256": "845da6235d35e48c6e0247c2d6e14be3ff8da6e1f5e979a72d05ad333b51838b"
+    },
+    {
+      "bytes": 453,
+      "path": "almsivi/fixtures/v1/valid/interrupt.json",
+      "sha256": "7b2619693dff278e22c63b19c588c03be58d5f5f578e5ab0f890b9742dd40568"
+    },
+    {
+      "bytes": 473,
+      "path": "almsivi/fixtures/v1/valid/interruption-accepted.json",
+      "sha256": "97193c6e085e5dccdc2cb3983617aab79007bf533f718af77e1bcf3715fa9d8e"
+    },
+    {
+      "bytes": 486,
+      "path": "almsivi/fixtures/v1/valid/session-accepted.json",
+      "sha256": "6fe6588eed599c1284ebc8a553d4a390ff20b87c5a6bb8e2db5e09780742199a"
+    },
+    {
+      "bytes": 333,
+      "path": "almsivi/fixtures/v1/valid/session-ended.json",
+      "sha256": "dced2c344edb800684e6f9f56ac1505f673cacc548eab121bb9314f8da8efedc"
+    },
+    {
+      "bytes": 889,
+      "path": "almsivi/fixtures/v1/valid/session-init.json",
+      "sha256": "7be4e0294e03b5058fcbdc85d61362b3adbf144d9a8e963bdc1a56326d0d18d8"
+    },
+    {
+      "bytes": 501,
+      "path": "almsivi/fixtures/v1/valid/stt-accepted.json",
+      "sha256": "89f6c92bcaa725a0789d5d442b8aca9d909e66a9a1e9b6d35dc160a21c971091"
+    },
+    {
+      "bytes": 634,
+      "path": "almsivi/fixtures/v1/valid/stt-request.json",
+      "sha256": "7855d0449ec4c6aa8d8c3b95378dc42b5a804496e453e7e3fcd2bc572d451f71"
+    },
+    {
+      "bytes": 440,
+      "path": "almsivi/fixtures/v1/valid/turn-accepted.json",
+      "sha256": "f3e309b0aeaac56cbcadb6932561606a2835556224e3401a6628e8b2d214995f"
+    },
+    {
+      "bytes": 1942,
+      "path": "almsivi/fixtures/v1/valid/turn.json",
+      "sha256": "0b174cbb683fbf6fc14c480ea32945e2a67f0fa0a2cf855d1c2200e332462ad1"
+    },
+    {
+      "bytes": 2226,
+      "path": "almsivi/schemas/v1/action-intent.schema.json",
+      "sha256": "5e49fedc7724305be51826a7715bc84eba256f2355c0ae6d4da2ee81dff3fc63"
+    },
+    {
+      "bytes": 1157,
+      "path": "almsivi/schemas/v1/action-result-accepted.schema.json",
+      "sha256": "b6608c5aa17b7a4fb296721f5060b201397a0793c74dcb5883226abe755da69e"
+    },
+    {
+      "bytes": 1708,
+      "path": "almsivi/schemas/v1/action-result.schema.json",
+      "sha256": "eb1eade520d4e23c8d04e3b09573ec1e3810ee7918692050c6ff2d2428b9a845"
+    },
+    {
+      "bytes": 4501,
+      "path": "almsivi/schemas/v1/common.schema.json",
+      "sha256": "80765f1f4f38aac61998f89abb1a293b997a586f8dce7b4bb22e525ba31c4dde"
+    },
+    {
+      "bytes": 1184,
+      "path": "almsivi/schemas/v1/dialogue-delivery-result-accepted.schema.json",
+      "sha256": "d84e84d19c5178902be5b36fe011a3b6843f9911b5ec5d37924be7b4c8a52f9d"
+    },
+    {
+      "bytes": 1470,
+      "path": "almsivi/schemas/v1/dialogue-delivery-result.schema.json",
+      "sha256": "b52c4410e8981fa72eda522e5ef14dc0d793dbdfabd1a82fdbe4b080490fc6c4"
+    },
+    {
+      "bytes": 1588,
+      "path": "almsivi/schemas/v1/error.schema.json",
+      "sha256": "8f12bde4d02a3af7ffda4e8c330dd6cd63346f150e467b5ccfce1669e8bd9851"
+    },
+    {
+      "bytes": 18983,
+      "path": "almsivi/schemas/v1/events.schema.json",
+      "sha256": "a45117611fde8e93c08d2b330261d8a4d111fc1e64ec369be0a29d8bf7c3ae16"
+    },
+    {
+      "bytes": 295,
+      "path": "almsivi/schemas/v1/health.schema.json",
+      "sha256": "a5a26302b6b3870cd30aeff7c41117b26a46991a6a1a2eec8d1e817b9012dc48"
+    },
+    {
+      "bytes": 1016,
+      "path": "almsivi/schemas/v1/interrupt.schema.json",
+      "sha256": "69ed180fa0d131930ed3e1f724f36924e14f3efbc0a1c40970928619d21c8727"
+    },
+    {
+      "bytes": 1050,
+      "path": "almsivi/schemas/v1/interruption-accepted.schema.json",
+      "sha256": "fcbde9b07130aa7bce52fd0cd34f0329e568c76f7a76fb5635a1d024adf7bc52"
+    },
+    {
+      "bytes": 779,
+      "path": "almsivi/schemas/v1/media-descriptor.schema.json",
+      "sha256": "b8660e1d5ee3cc43c4002ce6b76b5a328f698d95cf79cd13ffba87638c9a4375"
+    },
+    {
+      "bytes": 1208,
+      "path": "almsivi/schemas/v1/session-accepted.schema.json",
+      "sha256": "5da64f71f3367a4aca0193fee037c876c50c52ce563bede3e00eabbdb60e9c48"
+    },
+    {
+      "bytes": 691,
+      "path": "almsivi/schemas/v1/session-ended.schema.json",
+      "sha256": "457e767d5cf51d1c4f28f6550d796146b2284dbfd83ef4ec40cc33648c3eaafe"
+    },
+    {
+      "bytes": 1254,
+      "path": "almsivi/schemas/v1/session-init.schema.json",
+      "sha256": "7bbab7b2c3f1321adf0182389674d5b5d42b32431f45ad2ee7bbfdedce051558"
+    },
+    {
+      "bytes": 1032,
+      "path": "almsivi/schemas/v1/stt-accepted.schema.json",
+      "sha256": "ba1d77622afa283e92e179f95843fa7d4821867fd6502add84314d4bb2a6b764"
+    },
+    {
+      "bytes": 1604,
+      "path": "almsivi/schemas/v1/stt-request.schema.json",
+      "sha256": "ee8d7e4b4e0137375666bcd13fcd825ebd8c30632559e4d002dd837523f13120"
+    },
+    {
+      "bytes": 983,
+      "path": "almsivi/schemas/v1/turn-accepted.schema.json",
+      "sha256": "8f439efa93daa915781366d1874de0939db080f4ac619e1132dafaf610b13712"
+    },
+    {
+      "bytes": 4797,
+      "path": "almsivi/schemas/v1/turn.schema.json",
+      "sha256": "89617a862dbca98984d5ff50a8c63a98bc4f6394b691ceabc45d7258291a9be9"
+    }
+  ],
+  "format": "almsivi.protocol-manifest.v1",
+  "hash": "sha256"
+}

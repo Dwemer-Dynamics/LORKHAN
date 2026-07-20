@@ -1,0 +1,45 @@
+name: foundation-packaging-audits
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  TZ: UTC
+  LANG: C
+  LC_ALL: C
+  SOURCE_DATE_EPOCH: '1784442566'
+
+jobs:
+  packaging-audits:
+    name: Packaging, audit, and reproducibility foundations
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Run packaging, audit, and canary unit tests
+        run: python3 -m unittest -v tests.test_packaging
+      - name: Audit tracked source tree
+        run: scripts/audit/package.sh source-tree
+      - name: Validate authoritative evidence and manifests
+        run: python3 scripts/evidence/validate.py
+      - name: Validate protocol manifests and fixtures
+        run: python3 scripts/protocol/validate.py
+      - name: Validate OpenMW patch manifest
+        run: python3 scripts/patches/openmw.py validate
+      - name: Validate CI and command entrypoints
+        run: scripts/test/validate-ci.sh
+      - name: Record scope honestly
+        if: always()
+        run: |
+          printf '%s\n' 'This job executes foundation packaging/audit unit and canary tests plus a zero-finding source-tree audit.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'It does not build release artifacts, publish, sign, or prove a platform package.' >> "$GITHUB_STEP_SUMMARY"

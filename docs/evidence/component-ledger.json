@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "components": [
+    {
+      "id": "source-pin",
+      "source": "OpenMW 0.51.0 release pin",
+      "target": "config/source-pins/openmw.json",
+      "owner": "client foundations",
+      "state": "AUTOMATED",
+      "proof": "docs/evidence/runs/3717eff-local/index.json; evidence.json"
+    },
+    {
+      "id": "bootstrap",
+      "source": "exact pinned OpenMW Git bundle",
+      "target": "scripts/bootstrap",
+      "owner": "client foundations",
+      "state": "AUTOMATED",
+      "proof": "docs/evidence/runs/3717eff-local/index.json; offline-bootstrap.json records pinned source and verified cache hash"
+    },
+    {
+      "id": "patch-machinery",
+      "source": "ordered exact-pin OpenMW patch specification",
+      "target": "openmw-patches and scripts/patches/openmw.py",
+      "owner": "engine foundations",
+      "state": "AUTOMATED",
+      "proof": "docs/evidence/runs/3717eff-local/index.json; patch-manifest.json and python-tests.json"
+    },
+    {
+      "id": "protocol-harness",
+      "source": "local v1 schemas and classified fixtures",
+      "target": "almsivi schemas, manifests, validators, and fake-server harness",
+      "owner": "protocol foundations",
+      "state": "AUTOMATED",
+      "proof": "docs/evidence/runs/3717eff-local/index.json; protocol.json, protocol-manifest.json, and loopback-tests.json"
+    },
+    {
+      "id": "native-pure",
+      "source": "typed native client foundation",
+      "target": "components/almsivi and components/almsivi/tests/native_tests.cpp",
+      "owner": "native foundations",
+      "state": "AUTOMATED",
+      "proof": "docs/evidence/runs/3717eff-local/index.json; native.json; integrated OpenMW excluded"
+    },
+    {
+      "id": "native-json-response-parsers",
+      "source": "independently authored strict parsing from documented ALMSIVI v1 contracts",
+      "target": "components/almsivi JSON syntax and contracted health/error response parsers",
+      "owner": "native foundations",
+      "state": "PLANNED",
+      "proof": "implementation and local tests pass; durable clean-commit evidence is pending"
+    },
+    {
+      "id": "native-engine-integration",
+      "source": "docs/ENGINE-INTEGRATION-PLAN.md",
+      "target": "exact-pin OpenMW package registration and media VFS-versus-decoder patches",
+      "owner": "engine integration",
+      "state": "DEFERRED",
+      "proof": "pure native tests are not engine proof",
+      "resume_when": "Package-registration and media VFS-versus-decoder patches exist and both patched and exact-pin control OpenMW builds can be compiled and tested"
+    },
+    {
+      "id": "beast-live-transport",
+      "source": "docs/PROTOCOL.md",
+      "target": "Beast serializer and bearer-authenticated plaintext loopback transport",
+      "owner": "engine transport",
+      "state": "AUTOMATED",
+      "proof": "local dirty-worktree CMake/CTest passes standalone native and Beast live-wire tests for request-scoped executor cancellation, late-cancel isolation, strict typed response/error correlation, redirect rejection, and verified media cache repair; the checked-in hosted Beast lane is only a definition, and plaintext bearer peer-authentication hardening, clean-commit durable evidence, and restart during an in-flight HTTP request remain pending"
+    },
+    {
+      "id": "lua-structural",
+      "source": "docs/LUA-MOD-ARCHITECTURE.md",
+      "target": "almsivi/files/scripts/ALMSIVI and source manifest",
+      "owner": "Lua foundations",
+      "state": "AUTOMATED",
+      "proof": "docs/evidence/runs/3717eff-local/index.json; lua-structural.json and almsivi/tests/run.py; Lua runtime excluded"
+    },
+    {
+      "id": "lua-runtime",
+      "source": "implemented Lua architecture and fake OpenMW modules",
+      "target": "scripts/test/lua-unix.sh and scripts/test/lua-windows.ps1",
+      "owner": "Lua foundations",
+      "state": "DEFERRED",
+      "proof": "Lua was unavailable locally; structural checks are not runtime proof",
+      "resume_when": "Run the Lua suite on a host with a supported Lua interpreter"
+    },
+    {
+      "id": "packaging-compliance",
+      "source": "docs/PACKAGING-AND-LICENSE.md",
+      "target": "scripts/package, scripts/audit, and config/packaging",
+      "owner": "packaging foundations",
+      "state": "AUTOMATED",
+      "proof": "docs/evidence/runs/3717eff-local/index.json; python-tests.json, source-audit.json, and provenance.json"
+    },
+    {
+      "id": "ci-definitions",
+      "source": "foundation command contracts",
+      "target": "checked-in CI workflow definitions",
+      "owner": "CI foundations",
+      "state": "AUTOMATED",
+      "proof": "docs/evidence/runs/3717eff-local/index.json; ci-static.json proves static definitions only, not platform execution"
+    },
+    {
+      "id": "final-server-import",
+      "source": "final tested SYNTH and Synthserver SHAs",
+      "target": "ALMSIVI and ALMSIVIserver migration and parity",
+      "owner": "cross-repository integration",
+      "state": "DEFERRED",
+      "proof": "docs/evidence/start-gate-blocker.md records predecessor gate metadata and test evidence only; no predecessor source was imported or semantically copied",
+      "resume_when": "Both completed implementations are on clean main at exact final tested SHAs with passing required evidence and audited licenses/provenance, and import/migration/parity work is authorized"
+    },
+    {
+      "id": "windows-build-game-acceptance",
+      "source": "exact package plus user-supplied legal Morrowind GOTY data",
+      "target": "Windows x64 control/product build and game/mod evidence",
+      "owner": "acceptance",
+      "state": "DEFERRED",
+      "proof": "CI definitions, mocks, and unit tests cannot prove Windows builds or game/mod behavior",
+      "resume_when": "Run qualifying control/product builds and acceptance profiles on Windows with legal game data"
+    },
+    {
+      "id": "release-publication",
+      "source": "built runtime, Lua mod, and corresponding source set",
+      "target": "release, signatures, and publication",
+      "owner": "release",
+      "state": "DEFERRED",
+      "proof": "fixture packaging is not release, signing, or publication proof",
+      "resume_when": "The real product and exact corresponding source pass release audits and authorized signing/publication environments are available"
+    }
+  ]
+}

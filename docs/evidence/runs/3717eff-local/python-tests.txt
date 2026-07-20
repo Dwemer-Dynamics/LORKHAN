@@ -1,0 +1,50 @@
+test_all_ledgers_validate (test_foundation.FoundationTests) ... ok
+test_bootstrap_rejects_repository_override (test_foundation.FoundationTests) ... ok
+test_canonical_json_and_manifest_are_deterministic (test_foundation.FoundationTests) ... ok
+test_ci_validator_rejects_inline_release_triggers_and_yaml (test_foundation.FoundationTests) ... ok
+test_exact_pin (test_foundation.FoundationTests) ... ok
+test_generated_roots_are_ignored (test_foundation.FoundationTests) ... ok
+test_materialize_pristine_bundle (test_foundation.FoundationTests) ... ok
+test_materialize_rejects_nonempty_destination (test_foundation.FoundationTests) ... ok
+test_offline_cache_miss (test_foundation.FoundationTests) ... ok
+test_run_bundle_validation_rejects_missing_artifacts_and_host_paths (test_foundation.FoundationTests) ... ok
+test_schema_rejects_extra_and_bad_state (test_foundation.FoundationTests) ... ok
+test_tampered_cache_rejected_before_git (test_foundation.FoundationTests) ... ok
+test_wrong_pin_rejected (test_foundation.FoundationTests) ... ok
+test_blob_oid_matches_git (test_openmw_patches.OpenMWPatchTests) ... ok
+test_generate_apply_verify_audit_add_modify_delete (test_openmw_patches.OpenMWPatchTests) ... ok
+test_rejects_duplicate_path_order_and_gaps (test_openmw_patches.OpenMWPatchTests) ... ok
+test_rejects_patch_offset (test_openmw_patches.OpenMWPatchTests) ... ok
+test_rejects_path_traversal_absolute_backslash_and_bad_metadata (test_openmw_patches.OpenMWPatchTests) ... ok
+test_rejects_stale_base_blob_and_hash_or_manifest_drift (test_openmw_patches.OpenMWPatchTests) ... ok
+test_rejects_undeclared_and_declared_unchanged_paths (test_openmw_patches.OpenMWPatchTests) ... ok
+test_rejects_untracked_or_generated_result (test_openmw_patches.OpenMWPatchTests) ... ok
+test_rejects_wrong_or_dirty_base_and_generated_files (test_openmw_patches.OpenMWPatchTests) ... ok
+test_zero_patch_state_validates_and_applies (test_openmw_patches.OpenMWPatchTests) ... ok
+test_archive_allowlist_notices_and_source_input_canaries (test_packaging.PackagingTests) ... ok
+test_archive_collection_does_not_exclude_vcs_metadata (test_packaging.PackagingTests) ... ok
+test_archive_traversal_and_special_entries_rejected (test_packaging.PackagingTests) ... ok
+test_cli_builds_source_manifest_and_checksums (test_packaging.PackagingTests) ... ok
+test_epoch_is_required_and_bounded (test_packaging.PackagingTests) ... ok
+test_every_content_audit_has_a_seeded_canary_and_clean_fixture (test_packaging.PackagingTests) ... ok
+test_install_uninstall_dry_run_owns_only_archive_files (test_packaging.PackagingTests) ... ok
+test_manifest_sums_and_spdx_cover_every_file (test_packaging.PackagingTests) ... ok
+test_missing_tampered_patch_manifest_and_provenance_fail_linkage (test_packaging.PackagingTests) ... ok
+test_package_linkage_and_cli_reject_incomplete_tracked_provenance (test_packaging.PackagingTests) ... ok
+test_package_linkage_uses_commit_pin_patch_hash_and_locks (test_packaging.PackagingTests) ... ok
+test_package_set_mismatch_fails (test_packaging.PackagingTests) ... ok
+test_provenance_completeness_canary (test_packaging.PackagingTests) ... ok
+test_release_guard_rechecks_authoritative_inputs_after_stage_is_complete (test_packaging.PackagingTests) ... ok
+test_release_names_fail_closed_but_fixture_names_are_safe (test_packaging.PackagingTests) ... ok
+test_source_tree_audit_excludes_vcs_and_generated_roots_only (test_packaging.PackagingTests) ... ok
+test_suppressions_are_exact_hashed_reasoned_reviewed_and_expiring (test_packaging.PackagingTests) ... ok
+test_symlink_rejected (test_packaging.PackagingTests) ... ok
+test_tar_is_byte_reproducible_and_normalized (test_packaging.PackagingTests) ... ok
+test_zip_is_byte_reproducible_and_normalized (test_packaging.PackagingTests) ... ok
+test_manifest_is_sorted_and_covers_only_contract_bytes (test_protocol.ProtocolRepositoryTests) ... ok
+test_protocol_validation_and_generated_manifest (test_protocol.ProtocolRepositoryTests) ... ok
+
+----------------------------------------------------------------------
+Ran 45 tests in 15.522s
+
+OK

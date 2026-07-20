@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "openmw",
+      "role": "runtime source baseline and ordered patch-series base",
+      "license": "GPL-3.0-only",
+      "state": "PINNED",
+      "pin": "openmw-0.51.0@f4bec41444214a7903bebd178389ca22ca13f646; Lua API 129",
+      "proof": "docs/evidence/runs/3717eff-local/offline-bootstrap.json records successful strict offline reconstruction at the pinned source commit and verified cache SHA-256"
+    },
+    {
+      "id": "dialectic",
+      "role": "client behavior reference",
+      "license": null,
+      "state": "DEFERRED",
+      "pin": "eddbdc77a8347128b5cf5bcd68df0c2404fbf074",
+      "proof": "Planning pin only; source has not been read or imported at the current checkpoint",
+      "resume_when": "License and provenance audit is authorized before any import"
+    },
+    {
+      "id": "chim",
+      "role": "Skyrim behavior reference",
+      "license": null,
+      "state": "DEFERRED",
+      "pin": "77c73ffb6bb32c226340bbda93b3aac5a7ad49f8",
+      "proof": "Planning pin only; source has not been read or imported at the current checkpoint",
+      "resume_when": "License and provenance audit is authorized before any import"
+    },
+    {
+      "id": "dialecticserver",
+      "role": "server lineage reference",
+      "license": null,
+      "state": "DEFERRED",
+      "pin": "f447a9c6b59bfc689c788fb0139a0d13c6c6dc51",
+      "proof": "Planning pin only; source has not been read or imported at the current checkpoint",
+      "resume_when": "License and provenance audit is authorized before any import"
+    },
+    {
+      "id": "herikaserver",
+      "role": "server lineage reference",
+      "license": null,
+      "state": "DEFERRED",
+      "pin": "0dbfa3eb4d3197d8159b5ff2c77bfdb5bf98b4d0",
+      "proof": "Planning pin only; source has not been read or imported at the current checkpoint",
+      "resume_when": "License and provenance audit is authorized before any import"
+    },
+    {
+      "id": "synth",
+      "role": "final client behavior reference",
+      "license": null,
+      "state": "DEFERRED",
+      "pin": null,
+      "proof": "docs/evidence/start-gate-blocker.md records gate metadata and test-evidence observations only; no predecessor source was imported or semantically copied and no import pin is established",
+      "resume_when": "Completed implementation is on clean main, the exact final tested main SHA has passing non-game evidence, license/provenance is audited, and import/migration work is authorized"
+    },
+    {
+      "id": "synthserver",
+      "role": "final server seed",
+      "license": null,
+      "state": "DEFERRED",
+      "pin": null,
+      "proof": "docs/evidence/start-gate-blocker.md records gate metadata and test-evidence observations only; no predecessor source was imported or semantically copied and no import pin is established",
+      "resume_when": "Completed implementation is on clean main, the exact final tested main SHA has passing non-game evidence, license/provenance is audited, and import/migration work is authorized"
+    },
+    {
+      "id": "almsiviserver",
+      "role": "sibling protocol and integration target",
+      "license": null,
+      "state": "DEFERRED",
+      "pin": null,
+      "proof": "No sibling repository source was read or imported at the current checkpoint",
+      "resume_when": "Cross-repository migration and parity work is authorized with exact source SHAs"
+    }
+  ]
+}

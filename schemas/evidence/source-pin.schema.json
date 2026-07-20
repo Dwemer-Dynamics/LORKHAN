@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://almsivi.invalid/schemas/source-pin.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "artifact", "repository", "tag", "version", "commit", "lua_api_revision", "license"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "artifact": {"const": "OpenMW source"},
+    "repository": {"type": "string", "pattern": "^https://"},
+    "tag": {"const": "openmw-0.51.0"},
+    "version": {"const": "0.51.0"},
+    "commit": {"const": "f4bec41444214a7903bebd178389ca22ca13f646"},
+    "lua_api_revision": {"const": 129},
+    "license": {"const": "GPL-3.0-only"}
+  }
+}

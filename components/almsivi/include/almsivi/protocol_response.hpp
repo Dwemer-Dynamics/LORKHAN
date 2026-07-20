@@ -1,0 +1,195 @@
+#pragma once
+
+#include "almsivi/actions.hpp"
+#include "almsivi/json.hpp"
+#include "almsivi/media.hpp"
+#include "almsivi/types.hpp"
+#include "almsivi/validation.hpp"
+
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <variant>
+#include <vector>
+
+namespace almsivi {
+
+struct ProtocolError {
+    ErrorCode code{ErrorCode::invalid_schema};
+    std::string correlationId;
+    bool retriable{};
+    std::optional<std::uint64_t> retryAfterMs;
+};
+
+struct SessionAcceptedResponse {
+    MessageId message;
+    SessionId session;
+    Generation generation;
+    std::vector<std::string> capabilities;
+    std::string configRevision;
+    std::uint64_t eventCursor{};
+};
+
+struct ResponseCorrelation {
+    MessageId message;
+    RequestId request;
+    TurnId turn;
+    SessionId session;
+    Generation generation;
+};
+
+struct TurnAcceptedResponse {
+    ResponseCorrelation correlation;
+    std::uint64_t eventCursor{};
+};
+
+struct ProtocolCell {
+    enum class Kind { interior, exterior };
+    Kind kind{Kind::interior};
+    std::string name;
+    std::int64_t gridX{};
+    std::int64_t gridY{};
+};
+
+struct ProtocolIdentity {
+    std::string kind;
+    std::string recordId;
+    std::uint64_t refnumIndex{};
+    std::uint64_t refnumContentFile{};
+    std::string contentFile;
+    ProtocolCell cell;
+    std::string displayName;
+};
+
+enum class ActionIntentKind { ai_follow, inspect_report };
+struct ActionIntent {
+    ActionId action;
+    TurnId turn;
+    ProtocolIdentity actor;
+    ProtocolIdentity target;
+    ActionIntentKind kind{ActionIntentKind::ai_follow};
+    std::uint32_t followDistance{};
+    std::string expiresAt;
+};
+
+struct TurnAcceptedEventPayload {};
+struct DialogueCompleteEventPayload {
+    ProtocolIdentity speaker;
+    ProtocolIdentity addressee;
+    std::string text;
+};
+struct ActionIntentEventPayload { ActionIntent intent; };
+struct TurnCompleteEventPayload {};
+struct TurnCancelledEventPayload { std::string reason; };
+struct TurnFailedEventPayload {
+    ErrorCode code{ErrorCode::provider_unavailable};
+    bool retriable{};
+    std::optional<std::uint64_t> retryAfterMs;
+};
+struct SttTranscriptEventPayload { std::string text; std::string language; };
+struct SttFailedEventPayload {
+    std::string code;
+    bool retriable{};
+    std::optional<std::uint64_t> retryAfterMs;
+};
+struct SpeechReadyEventPayload {
+    MediaId media;
+    std::string sha256;
+    std::uint64_t bytes{};
+    MediaCodec codec{MediaCodec::wav};
+    std::uint64_t durationMs{};
+    std::string expiresAt;
+};
+
+using ProtocolEventPayload = std::variant<TurnAcceptedEventPayload, DialogueCompleteEventPayload,
+    ActionIntentEventPayload, TurnCompleteEventPayload, TurnCancelledEventPayload,
+    TurnFailedEventPayload, SttTranscriptEventPayload, SttFailedEventPayload,
+    SpeechReadyEventPayload>;
+
+enum class ProtocolEventType {
+    turn_accepted,
+    dialogue_complete,
+    action_intent,
+    turn_complete,
+    turn_cancelled,
+    turn_failed,
+    stt_transcript,
+    stt_failed,
+    speech_ready,
+};
+
+struct ProtocolEvent {
+    ResponseCorrelation correlation;
+    std::uint64_t sequence{};
+    std::string createdAt;
+    ProtocolEventType type{ProtocolEventType::turn_accepted};
+    ProtocolEventPayload payload{TurnAcceptedEventPayload{}};
+};
+
+struct EventsResponse {
+    SessionId session;
+    Generation generation;
+    std::uint64_t nextAfter{};
+    std::vector<ProtocolEvent> events;
+};
+
+struct InterruptionAcceptedResponse {
+    ResponseCorrelation correlation;
+    std::uint64_t eventCursor{};
+    bool duplicate{};
+};
+
+struct ActionResultAcceptedResponse {
+    ResponseCorrelation correlation;
+    ActionId action;
+    ActionTerminalStatus status{ActionTerminalStatus::failed};
+    bool duplicate{};
+};
+
+struct SttAcceptedResponse {
+    ResponseCorrelation correlation;
+    std::uint64_t eventCursor{};
+    bool duplicate{};
+};
+struct DialogueDeliveryResultAcceptedResponse {
+    ResponseCorrelation correlation;
+    MessageId dialogueMessage;
+    DialogueDeliveryStatus status{DialogueDeliveryStatus::failed};
+    bool duplicate{};
+};
+
+[[nodiscard]] Result<ProtocolIdentity> parseProtocolIdentity(std::string_view body,
+    json::ParseLimits limits = {});
+
+struct SessionEndedResponse {
+    RequestId request;
+    SessionId session;
+    Generation generation;
+    bool ended{};
+};
+
+[[nodiscard]] Result<void> parseHealthResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<ProtocolError> parseProtocolErrorResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<SessionAcceptedResponse> parseSessionAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<TurnAcceptedResponse> parseTurnAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<EventsResponse> parseEventsResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<InterruptionAcceptedResponse> parseInterruptionAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<ActionResultAcceptedResponse> parseActionResultAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<SttAcceptedResponse> parseSttAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<DialogueDeliveryResultAcceptedResponse> parseDialogueDeliveryResultAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<SessionEndedResponse> parseSessionEndedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<void> validateHealthHttpResponse(
+    unsigned status, std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+
+} // namespace almsivi

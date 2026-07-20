@@ -1,0 +1,36 @@
+diff --git a/apps/openmw/mwlua/luabindings.cpp b/apps/openmw/mwlua/luabindings.cpp
+index dc20205cbe15f17230b87cea60a6c4276972f0a6..f769388873042259cbbdb30a3f022984f6550b75 100644
+--- a/apps/openmw/mwlua/luabindings.cpp
++++ b/apps/openmw/mwlua/luabindings.cpp
+@@ -7,6 +7,7 @@
+ #include "../mwbase/world.hpp"
+ #include "../mwworld/datetimemanager.hpp"
+ 
++#include "almsivibindings.hpp"
+ #include "animationbindings.hpp"
+ #include "camerabindings.hpp"
+ #include "cellbindings.hpp"
+@@ -50,6 +51,7 @@
+             { "openmw.core", initCorePackage(context) },
+             { "openmw.types", initTypesPackage(context) },
+             { "openmw.world", initWorldPackage(context) },
++            { "openmw.almsivi", initAlmsiviPackage(context) },
+         };
+     }
+ 
+@@ -63,6 +65,7 @@
+             { "openmw.core", initCorePackage(context) },
+             { "openmw.types", initTypesPackage(context) },
+             { "openmw.nearby", initNearbyPackage(context) },
++            { "openmw.almsivi", initAlmsiviCustomPackageLoader(context) },
+         };
+     }
+ 
+@@ -75,6 +78,7 @@
+             { "openmw.input", initInputPackage(context) },
+             { "openmw.postprocessing", initPostprocessingPackage(context) },
+             { "openmw.ui", initUserInterfacePackage(context) },
++            { "openmw.almsivi", initAlmsiviPackage(context) },
+         };
+     }
+ 

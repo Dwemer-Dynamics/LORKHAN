@@ -1,0 +1,12 @@
+test_action_result_interruption_and_restart_unknown_session (test_contract_harness.ContractHarnessTests) ... ok
+test_events_order_duplicates_gaps_poll_cap_and_timeout (test_contract_harness.ContractHarnessTests) ... ok
+test_health_auth_content_type_and_redaction (test_contract_harness.ContractHarnessTests) ... ok
+test_malformed_oversized_wrong_content_type_and_disconnect (test_contract_harness.ContractHarnessTests) ... ok
+test_media_bytes_hash_content_type_and_opaque_route (test_contract_harness.ContractHarnessTests) ... ok
+test_non_loopback_bind_is_refused (test_contract_harness.ContractHarnessTests) ... ok
+test_session_turn_idempotency_wrong_type_and_stale_generation (test_contract_harness.ContractHarnessTests) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 3.541s
+
+OK

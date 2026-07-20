@@ -1,0 +1,5 @@
+{
+  "description": "Zero-byte media is never playable",
+  "instance": {"bytes": 0, "codec": "wav", "duration_ms": 0, "expires_at": "2026-07-18T21:00:00Z", "media_id": "00000000-0000-4000-8000-000000000013", "sha256": "e12e115acf4552b2568b55e93cbd39394c4ef81c82447faed7738adf06e9ba61"},
+  "schema": "https://almsivi.invalid/schemas/v1/media-descriptor.schema.json"
+}

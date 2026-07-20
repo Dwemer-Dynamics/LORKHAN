@@ -1,0 +1,16 @@
+{
+  "description": "Negotiated session acceptance",
+  "instance": {
+    "capabilities": [
+      "dialogue.text",
+      "action.ai.follow"
+    ],
+    "config_revision": "independent-foundation-v1",
+    "event_cursor": 0,
+    "generation": 7,
+    "message_id": "00000000-0000-4000-8000-000000000001",
+    "schema": "almsivi.session.accepted.v1",
+    "session_id": "00000000-0000-4000-8000-000000000007"
+  },
+  "schema": "https://almsivi.invalid/schemas/v1/session-accepted.schema.json"
+}

@@ -1,0 +1,39 @@
+ok - production manifest has exact pinned-source-verified contexts and paths
+ok - production manifest contains only comments or allowed declarations
+ok - all architecture modules exist
+ok - manifest verification cites pinned source paths and commit
+ok - bounded constant MAX_AUDIENCE
+ok - bounded constant MAX_INVENTORY_ROWS
+ok - bounded constant MAX_NEARBY_OBJECTS
+ok - bounded constant MAX_ACTIVE_EFFECTS
+ok - bounded constant MAX_JOURNAL_ENTRIES
+ok - bounded constant MAX_CONTENT_FILES
+ok - bounded constant MAX_CONTEXT_BYTES
+ok - bounded constant MAX_ACTIONS_PER_TURN
+ok - bounded constant MAX_CONTINUATIONS_PER_ACTION
+ok - forbidden primitive absent: io.open
+ok - forbidden primitive absent: os.execute
+ok - forbidden primitive absent: loadstring
+ok - forbidden primitive absent: dofile
+ok - forbidden primitive absent: package.loadlib
+ok - forbidden primitive absent: require('socket
+ok - forbidden primitive absent: require("socket
+ok - native seam exposes typed bridge only
+ok - only ai.follow action wire contract
+ok - ai.follow accepts exact integer distance 192
+ok - invented ai.follow range absent
+ok - action terminal is internal before timestamp
+ok - future schema preserved
+ok - exactly one terminal action result
+ok - stale generation discarded
+ok - correlation identifiers require UUID format
+ok - orchestrator does not fabricate identifiers
+ok - polled events are internal DTOs
+ok - ui source has no invented wire default
+ok - cursor gaps rejected
+ok - actor self identity required
+ok - vanilla Activate not consumed
+ok - guessed UI and targeting constants absent
+ok - Lua tests reject 191 193 and noninteger follow
+ok - pure Lua runner present
+0 failures (structural fallback; Lua interpreter unavailable)

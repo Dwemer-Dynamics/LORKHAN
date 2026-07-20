@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "reviewer": "ALMSIVI release owner",
+  "openmw_pin": "config/source-pins/openmw.json",
+  "patch_manifest": "openmw-patches/patch-manifest.json",
+  "provenance_ledger": "docs/evidence/file-provenance-ledger.json",
+  "dependency_lock_globs": ["config/source-pins/*.json", "config/dependencies/*.lock.json"],
+  "required_product_paths": {
+    "runtime": ["bin/almsivi-openmw.exe", "almsivi/files/ALMSIVI.omwscripts", "almsivi/files/scripts/ALMSIVI/global.lua"],
+    "lua": ["almsivi/files/ALMSIVI.omwscripts", "almsivi/files/scripts/ALMSIVI/global.lua"]
+  },
+  "required_corresponding_source_paths": ["manifests/corresponding-source.json", "manifests/openmw-source-materialization.json"],
+  "required_source_paths": ["manifests/openmw-source-materialization.json", "openmw-patches/patch-manifest.json", "docs/evidence/file-provenance-ledger.json", "almsivi/files/ALMSIVI.omwscripts"],
+  "runtime_allowlist": ["bin/*", "bin/**/*", "lib/*", "lib/**/*", "resources/*", "resources/**/*", "almsivi/*", "almsivi/**/*", "config/*", "config/**/*", "docs/*", "docs/**/*", "licenses/*", "licenses/**/*", "notices/*", "notices/**/*", "sbom/*", "sbom/**/*", "manifests/*", "manifests/**/*", "README*", "LICENSE*"],
+  "lua_allowlist": ["almsivi/*", "almsivi/**/*", "docs/*", "docs/**/*", "licenses/*", "licenses/**/*", "notices/*", "notices/**/*", "sbom/*", "sbom/**/*", "manifests/*", "manifests/**/*", "README*", "LICENSE*"],
+  "source_allowlist": ["engine/*", "engine/**/*", "almsivi/*", "almsivi/**/*", "cmake/*", "cmake/**/*", "config/*", "config/**/*", "openmw-patches/*", "openmw-patches/**/*", "scripts/*", "scripts/**/*", "schemas/*", "schemas/**/*", "tests/*", "tests/**/*", "docs/*", "docs/**/*", "patches/*", "patches/**/*", "sbom/*", "sbom/**/*", "manifests/*", "manifests/**/*", "patch-manifest.json", "CMakeLists.txt", "CMakePresets.json", "README*", "LICENSE*", "AGENTS.md", "CLAUDEX-TASK.md"],
+  "denylist": [".git/*", ".git/**/*", "**/.git/**", "__pycache__/*", "**/__pycache__/**", ".cache/*", "**/.cache/**", "cache/*", "**/cache/**", "logs/*", "**/logs/**", "*.log", "**/*.log", "*.dmp", "**/*.dmp", "*.core", "**/*.core", "*.omwsave", "**/*.omwsave", "*.esm", "**/*.esm", "*.esp", "**/*.esp", "*.bsa", "**/*.bsa", "*.ba2", "**/*.ba2", "*.wav", "**/*.wav", "*.mp3", "**/*.mp3", "*.ogg", "**/*.ogg", "*.flac", "**/*.flac", "*.webm", "**/*.webm", "*.mp4", "**/*.mp4", "*.avi", "**/*.avi", "*.mov", "**/*.mov", "*.png", "**/*.png", "*.jpg", "**/*.jpg", "*.jpeg", "**/*.jpeg", "*.dds", "**/*.dds", "*.nif", "**/*.nif", "*.tga", "**/*.tga", "*.bmp", "**/*.bmp", "*.7z", "**/*.7z", "*.rar", "**/*.rar"],
+  "notices_required": ["LICENSE", "notices/THIRD-PARTY-NOTICES.txt", "sbom/almsivi.spdx.json"],
+  "source_rebuild_required": ["CMakeLists.txt", "CMakePresets.json", "config/source-pins/openmw.json", "openmw-patches/patch-manifest.json", "openmw-patches/patch-spec.json", "openmw-patches/series", "docs/evidence/file-provenance-ledger.json", "manifests/openmw-source-materialization.json", "scripts/bootstrap/bootstrap.py", "scripts/bootstrap/unix.sh", "scripts/bootstrap/windows.ps1", "scripts/build/unix.sh", "scripts/build/windows.ps1", "scripts/patches/openmw.py", "scripts/lib/openmw_patches.py", "scripts/package/package.py", "scripts/package/unix.sh", "scripts/package/windows.ps1"]
+}

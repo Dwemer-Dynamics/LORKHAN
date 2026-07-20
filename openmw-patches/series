@@ -1,0 +1,3 @@
+patches/0001-apps-openmw-cmakelists-txt.patch
+patches/0004-apps-openmw-mwlua-luabindings-cpp.patch
+patches/0005-components-lua-scriptscontainer-cpp.patch

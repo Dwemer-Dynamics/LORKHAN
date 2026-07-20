@@ -1,0 +1,48 @@
+{
+  "$id": "https://almsivi.invalid/schemas/v1/session-accepted.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "capabilities": {
+      "items": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 64,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "config_revision": {
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "event_cursor": {
+      "$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/sequence"
+    },
+    "generation": {
+      "$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/generation"
+    },
+    "message_id": {
+      "$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "schema": {
+      "const": "almsivi.session.accepted.v1",
+      "type": "string"
+    },
+    "session_id": {
+      "$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    }
+  },
+  "required": [
+    "schema",
+    "message_id",
+    "session_id",
+    "generation",
+    "capabilities",
+    "config_revision",
+    "event_cursor"
+  ],
+  "type": "object"
+}
