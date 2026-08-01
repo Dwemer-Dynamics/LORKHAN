@@ -1,0 +1,12 @@
+#pragma once
+
+// Local OpenMW validation fallback for libstdc++ 12, which does not ship <format>.
+// Production builds should use a standard library with native C++20 formatting support.
+#include <fmt/format.h>
+
+namespace std
+{
+    using fmt::format;
+    using fmt::make_format_args;
+    using fmt::vformat_to;
+}

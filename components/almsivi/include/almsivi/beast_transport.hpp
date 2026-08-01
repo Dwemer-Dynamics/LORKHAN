@@ -11,7 +11,6 @@ namespace almsivi {
 
 // Compile-optional literal-loopback HTTP/1.1 transport. It accepts only a prevalidated
 // BaseUrl and exposes no generic method, URL, header, or response-following surface.
-#ifdef ALMSIVI_WITH_BOOST_BEAST
 class BeastTransport final : public ITransport {
 public:
     struct Deadlines {
@@ -34,6 +33,5 @@ private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 };
-#endif
 
 } // namespace almsivi

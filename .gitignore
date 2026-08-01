@@ -21,6 +21,7 @@ __pycache__/
 *.zip
 almsivi.local.toml
 secrets/
+.local/
 Morrowind.esm
 Tribunal.esm
 Bloodmoon.esm

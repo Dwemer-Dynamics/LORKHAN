@@ -6,26 +6,22 @@ the separate `RANGROO/ALMSIVIserver` backend over authenticated loopback HTTP.
 
 ## Status
 
-The independent client foundations are implemented at the current checkpoint: exact source pinning
-and offline bootstrap, deterministic OpenMW patch machinery, local protocol schemas and fixtures, a
-loopback fake server and contract harness, a pure native scaffold and tests, the Lua architecture and
-source manifest, deterministic packaging and compliance/source audits, and pinned CI definitions.
-This is foundation proof, not an OpenMW engine build, a live Beast transport result, a Lua-runtime
-result, a Windows result, or in-game proof.
+The playable development stack is implemented through the no-game gate. The exact-pinned OpenMW
+0.51.0 engine builds with the restricted `openmw.almsivi` package and live authenticated Beast
+transport. The OpenMW Lua mod provides targeting, multi-actor conversation controls, typed conversation UI,
+bounded TES3 context collection, subtitles, TTS playback, interruption, `inspect.report`, owned
+`ai.follow`/stop/wander actions, and start/stop combat. Combat initiation is held for explicit player
+confirmation before actor dispatch. Allowlisted idle animations and use of an existing inventory item
+are also supported; item use requires the same confirmation gate. All actions and dialogue deliveries produce terminal reports. The sibling server protocol is byte-identical and the full
+mock-provider client/server/PostgreSQL vertical slice passes locally.
 
-The remaining gates are explicit:
-
-- obtain the final tested `SYNTH` and `Synthserver` SHAs, then authorize and perform their import,
-  migration, and cross-repository protocol/parity work;
-- implement and prove the Beast live-wire serializer and transport;
-- create the exact-pin OpenMW package-registration and media VFS-versus-decoder patches, then compile
-  the integrated engine and its unmodified exact-pin control build;
-- run the Lua suite on a runtime host when a Lua interpreter is unavailable locally;
-- produce Windows control/product builds and Windows game/mod evidence using legal game data; and
-- build the real release set and complete signing and publication.
-
-No deferred source was read or imported at this checkpoint, and workflows, mocks, structural checks,
-and pure-library tests are not promoted to platform, engine, mod, or in-game proof.
+The local server and private client configuration are deployed. A Windows x64 Release build of the
+exact-pinned OpenMW engine and a development OpenMW data package are prepared for installation; see
+`docs/LOCAL-TESTING.md`. The native bridge includes bounded WinMM push-to-talk capture and opt-in
+open-microphone capture with voice activity detection. This checkpoint does not claim in-game proof
+because legal Morrowind game data and a playable OpenMW profile are not configured on this machine
+yet. Item transfer, trade-menu actions, and compatibility profiles remain later gates rather than
+silently enabled model authority.
 
 The engine baseline is OpenMW `openmw-0.51.0` at
 `f4bec41444214a7903bebd178389ca22ca13f646`, with Lua API revision 129. The first supported package
@@ -53,8 +49,9 @@ is Windows x64. Linux x64 and macOS arm64 are build/test lanes; Android is defer
 7. `docs/PROTOCOL.md` — cross-repository wire contract.
 8. `docs/FEATURE-PARITY-MATRIX.md` — retained, adapted, deferred, and excluded capabilities.
 9. `docs/OPENMW-TOOLCHAIN.md` — source pin, build, CI, packaging, and in-game proof.
-10. `docs/COMPATIBILITY-PLAN.md` — vanilla and popular OpenMW mod-list profiles.
-11. `docs/PACKAGING-AND-LICENSE.md` — GPL/source-offer and proprietary-asset release gate.
+10. `docs/LOCAL-TESTING.md` — current local server/client install and launch procedure.
+11. `docs/COMPATIBILITY-PLAN.md` — vanilla and popular OpenMW mod-list profiles.
+12. `docs/PACKAGING-AND-LICENSE.md` — GPL/source-offer and proprietary-asset release gate.
 
 ## Reproducible source foundation
 
@@ -107,8 +104,8 @@ The durable run at `docs/evidence/runs/3717eff-local/index.json`, bound to clean
 
 Tracked OpenMW changes use `openmw-patches/patch-spec.json` as human-authored intent and a canonical
 `patch-manifest.json`, `series`, numbered `patches/`, and new-file `overlay/` as generated artifacts.
-The foundation patch state is valid but does not contain or prove the eventual package-registration or
-media VFS-versus-decoder engine patches. Each future path declares an ordered add/modify/delete
+The patch state contains the restricted package registration, authenticated transport integration,
+and media cache/VFS bridge used by the development client. Each changed path declares an ordered add/modify/delete
 operation, rationale, subsystem, provenance ID, and proof IDs; generated metadata pins the upstream
 base blob and result SHA-256. Commands are dependency-free beyond Python and Git:
 

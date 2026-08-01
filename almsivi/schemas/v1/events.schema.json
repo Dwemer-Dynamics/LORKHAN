@@ -3,6 +3,40 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "autonomy": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "issued_at": {
+            "$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+          },
+          "kind": {
+            "enum": [
+              "rechat",
+              "boredom",
+              "greeting"
+            ],
+            "type": "string"
+          },
+          "schedule_id": {
+            "$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+          },
+          "schema": {
+            "const": "almsivi.autonomy-directive.v1",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema",
+          "schedule_id",
+          "kind",
+          "issued_at"
+        ],
+        "type": "object"
+      },
+      "maxItems": 3,
+      "type": "array"
+    },
     "events": {
       "items": {
         "oneOf": [
@@ -548,7 +582,8 @@
     "session_id",
     "generation",
     "next_after",
-    "events"
+    "events",
+    "autonomy"
   ],
   "type": "object"
 }

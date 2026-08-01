@@ -62,7 +62,8 @@ struct ProtocolIdentity {
     std::string displayName;
 };
 
-enum class ActionIntentKind { ai_follow, inspect_report };
+enum class ActionIntentKind { ai_follow, ai_stop, ai_wander, animation_play, combat_start, combat_stop,
+    inspect_report, item_equip, item_unequip, item_use };
 struct ActionIntent {
     ActionId action;
     TurnId turn;
@@ -70,6 +71,10 @@ struct ActionIntent {
     ProtocolIdentity target;
     ActionIntentKind kind{ActionIntentKind::ai_follow};
     std::uint32_t followDistance{};
+    std::uint32_t wanderDistance{};
+    std::uint32_t wanderDurationSeconds{};
+    std::string stringParameter;
+    std::string secondaryStringParameter;
     std::string expiresAt;
 };
 
@@ -128,10 +133,16 @@ struct ProtocolEvent {
 };
 
 struct EventsResponse {
+    struct AutonomyDirective {
+        std::string scheduleId;
+        std::string kind;
+        std::string issuedAt;
+    };
     SessionId session;
     Generation generation;
     std::uint64_t nextAfter{};
     std::vector<ProtocolEvent> events;
+    std::vector<AutonomyDirective> autonomy;
 };
 
 struct InterruptionAcceptedResponse {

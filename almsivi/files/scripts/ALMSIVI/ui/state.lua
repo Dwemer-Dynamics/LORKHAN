@@ -10,6 +10,10 @@ end
 function M.toggle(state) state.visible = not state.visible return state.visible end
 function M.setStatus(state, status, diagnostics) state.status=status state.diagnostics=diagnostics end
 function M.setTarget(state, target) state.target=util.copy(target) end
+function M.setAudience(state, audience)
+    state.audience={}
+    for index,actor in ipairs(audience or {}) do state.audience[index]=util.copy(actor) end
+end
 function M.setNearby(state, actors)
     state.nearby={}
     local limit=state.policy.nearbyPickerRows

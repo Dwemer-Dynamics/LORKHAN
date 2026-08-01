@@ -102,9 +102,9 @@
       "sha256": "6abd255b5545560efa3608128010f927c85e8aa2def1fb2db9f891250826b997"
     },
     {
-      "bytes": 6696,
+      "bytes": 6921,
       "path": "almsivi/fixtures/v1/valid/events.json",
-      "sha256": "5a29651ee32ca38ed3f8981c56c0995636a85d5d182d8bad857edc18688dd66f"
+      "sha256": "0c96482612027b683152d7d125ef28a7464cd23d4f0b9af851bae5be6e4cce9c"
     },
     {
       "bytes": 165,
@@ -132,9 +132,9 @@
       "sha256": "dced2c344edb800684e6f9f56ac1505f673cacc548eab121bb9314f8da8efedc"
     },
     {
-      "bytes": 889,
+      "bytes": 1077,
       "path": "almsivi/fixtures/v1/valid/session-init.json",
-      "sha256": "7be4e0294e03b5058fcbdc85d61362b3adbf144d9a8e963bdc1a56326d0d18d8"
+      "sha256": "c04bf22ccfbb967c541b3e4461ee33dfc2847d02247c93ae85ae549234acb641"
     },
     {
       "bytes": 501,
@@ -157,9 +157,9 @@
       "sha256": "0b174cbb683fbf6fc14c480ea32945e2a67f0fa0a2cf855d1c2200e332462ad1"
     },
     {
-      "bytes": 2226,
+      "bytes": 11297,
       "path": "almsivi/schemas/v1/action-intent.schema.json",
-      "sha256": "5e49fedc7724305be51826a7715bc84eba256f2355c0ae6d4da2ee81dff3fc63"
+      "sha256": "f8f6ca91eab9a3f3fa68cabf760ea8d2173c12cb8ea6d802a77bb7748e281eda"
     },
     {
       "bytes": 1157,
@@ -192,9 +192,9 @@
       "sha256": "8f12bde4d02a3af7ffda4e8c330dd6cd63346f150e467b5ccfce1669e8bd9851"
     },
     {
-      "bytes": 18983,
+      "bytes": 19859,
       "path": "almsivi/schemas/v1/events.schema.json",
-      "sha256": "a45117611fde8e93c08d2b330261d8a4d111fc1e64ec369be0a29d8bf7c3ae16"
+      "sha256": "af8ec5cf6b63454c01cc92fa51488e185c9e4478cd64b53fd400168f89af69d1"
     },
     {
       "bytes": 295,

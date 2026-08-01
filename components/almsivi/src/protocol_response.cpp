@@ -1,5 +1,6 @@
 #include "almsivi/protocol_response.hpp"
 
+#include <algorithm>
 #include <array>
 #include <initializer_list>
 #include <limits>
@@ -204,7 +205,7 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     auto action = requireUuid(*object, "action_id");
     auto turn = requireUuid(*object, "turn_id");
     auto name = requireString(*object, "name");
-    auto tier = requireUnsigned(*object, "tier", 1, 0);
+    auto tier = requireUnsigned(*object, "tier", 2, 0);
     auto expiresAt = requireTimestamp(*object, "expires_at");
     if (!schema || schema.value() != "almsivi.action-intent.v1")
         return invalidSchemaValue<ActionIntent>("action intent schema mismatch");
@@ -212,11 +213,19 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     if (!turn) return invalidSchemaValue<ActionIntent>(turn.error().message);
     if (turn.value() != envelopeTurn.value())
         return invalidSchemaValue<ActionIntent>("action intent turn does not match event envelope");
-    if (!name || (name.value() != "ai.follow" && name.value() != "inspect.report"))
+    if (!name || (name.value() != "ai.follow" && name.value() != "ai.stop"
+        && name.value() != "ai.wander" && name.value() != "combat.start"
+        && name.value() != "combat.stop" && name.value() != "animation.play"
+        && name.value() != "item.equip" && name.value() != "item.unequip"
+        && name.value() != "item.use" && name.value() != "inspect.report"))
         return invalidSchemaValue<ActionIntent>("unknown action intent name");
     if (!tier) return invalidSchemaValue<ActionIntent>(tier.error().message);
-    if ((name.value() == "ai.follow" && tier.value() != 1)
-        || (name.value() == "inspect.report" && tier.value() != 0))
+    if ((name.value() == "inspect.report" && tier.value() != 0)
+        || ((name.value() == "combat.start" || name.value() == "item.equip"
+            || name.value() == "item.unequip" || name.value() == "item.use") && tier.value() != 2)
+        || (name.value() != "inspect.report" && name.value() != "combat.start"
+            && name.value() != "item.equip" && name.value() != "item.unequip"
+            && name.value() != "item.use" && tier.value() != 1))
         return invalidSchemaValue<ActionIntent>("action intent tier mismatch");
     if (!expiresAt) return invalidSchemaValue<ActionIntent>(expiresAt.error().message);
 
@@ -233,6 +242,10 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
         return invalidSchemaValue<ActionIntent>("action intent parameters mismatch");
     ActionIntentKind intentKind = ActionIntentKind::inspect_report;
     std::uint32_t followDistance = 0;
+    std::uint32_t wanderDistance = 0;
+    std::uint32_t wanderDurationSeconds = 0;
+    std::string stringParameter;
+    std::string secondaryStringParameter;
     if (name.value() == "ai.follow") {
         if (!hasExactly(*parameters, {"distance"}))
             return invalidSchemaValue<ActionIntent>("action intent parameters mismatch");
@@ -243,13 +256,71 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
             return invalidSchemaValue<ActionIntent>(validatedDistance.error().message);
         intentKind = ActionIntentKind::ai_follow;
         followDistance = validatedDistance.value().distance;
+    } else if (name.value() == "ai.wander") {
+        if (!hasExactly(*parameters, {"distance", "duration_seconds"}))
+            return invalidSchemaValue<ActionIntent>("action intent parameters mismatch");
+        auto distance = requireUnsigned(*parameters, "distance", 2048, 0);
+        auto duration = requireUnsigned(*parameters, "duration_seconds", 3600, 1);
+        if (!distance) return invalidSchemaValue<ActionIntent>(distance.error().message);
+        if (!duration) return invalidSchemaValue<ActionIntent>(duration.error().message);
+        intentKind = ActionIntentKind::ai_wander;
+        wanderDistance = static_cast<std::uint32_t>(distance.value());
+        wanderDurationSeconds = static_cast<std::uint32_t>(duration.value());
+    } else if (name.value() == "ai.stop") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("ai.stop parameters must be empty");
+        intentKind = ActionIntentKind::ai_stop;
+    } else if (name.value() == "combat.start") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("combat.start parameters must be empty");
+        intentKind = ActionIntentKind::combat_start;
+    } else if (name.value() == "combat.stop") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("combat.stop parameters must be empty");
+        intentKind = ActionIntentKind::combat_stop;
+    } else if (name.value() == "animation.play") {
+        if (!hasExactly(*parameters, {"group"})) return invalidSchemaValue<ActionIntent>("animation.play parameters mismatch");
+        auto group = requireString(*parameters, "group");
+        if (!group || (group.value() != "idle2" && group.value() != "idle3" && group.value() != "idle4"
+            && group.value() != "idle5" && group.value() != "idle6" && group.value() != "idle7"
+            && group.value() != "idle8" && group.value() != "idle9"))
+            return invalidSchemaValue<ActionIntent>("invalid animation group");
+        intentKind = ActionIntentKind::animation_play;
+        stringParameter = std::move(group).value();
+    } else if (name.value() == "item.equip" || name.value() == "item.unequip") {
+        const bool equip = name.value() == "item.equip";
+        if (!hasExactly(*parameters, equip ? std::initializer_list<std::string_view>{"record_id", "slot"}
+                                            : std::initializer_list<std::string_view>{"slot"}))
+            return invalidSchemaValue<ActionIntent>(name.value() + " parameters mismatch");
+        auto slot = requireString(*parameters, "slot");
+        static constexpr std::array<std::string_view, 19> slots{"helmet","cuirass","greaves","left_pauldron",
+            "right_pauldron","left_gauntlet","right_gauntlet","boots","shirt","pants","skirt","robe",
+            "left_ring","right_ring","amulet","belt","carried_right","carried_left","ammunition"};
+        if (!slot || std::find(slots.begin(), slots.end(), slot.value()) == slots.end())
+            return invalidSchemaValue<ActionIntent>("invalid equipment slot");
+        if (equip) {
+            auto recordId = requireString(*parameters, "record_id");
+            if (!recordId || recordId.value().empty() || recordId.value().size() > 128
+                || recordId.value().find_first_of("/\\\r\n\t") != std::string::npos)
+                return invalidSchemaValue<ActionIntent>("invalid item record id");
+            stringParameter = std::move(recordId).value();
+            intentKind = ActionIntentKind::item_equip;
+        } else intentKind = ActionIntentKind::item_unequip;
+        secondaryStringParameter = std::move(slot).value();
+    } else if (name.value() == "item.use") {
+        if (!hasExactly(*parameters, {"record_id"})) return invalidSchemaValue<ActionIntent>("item.use parameters mismatch");
+        auto recordId = requireString(*parameters, "record_id");
+        if (!recordId || recordId.value().empty() || recordId.value().size() > 128
+            || recordId.value().find_first_of("/\\\r\n\t") != std::string::npos)
+            return invalidSchemaValue<ActionIntent>("invalid item record id");
+        intentKind = ActionIntentKind::item_use;
+        stringParameter = std::move(recordId).value();
     } else if (!hasExactly(*parameters, {})) {
         return invalidSchemaValue<ActionIntent>("inspect.report parameters must be empty");
     }
 
     return Result<ActionIntent>::success({ActionId(std::move(action).value()),
         TurnId(std::move(turn).value()), std::move(actor).value(), std::move(target).value(),
-        intentKind, followDistance, std::move(expiresAt).value()});
+        intentKind, followDistance, wanderDistance, wanderDurationSeconds, std::move(stringParameter),
+        std::move(secondaryStringParameter),
+        std::move(expiresAt).value()});
 }
 
 Result<ActionTerminalStatus> parseTerminalStatus(const json::Object& object)
@@ -554,19 +625,23 @@ Result<EventsResponse> parseEventsResponse(
 {
     auto object = parseObject(body, headers, "almsivi.events.v1", limits);
     if (!object) return Result<EventsResponse>::failure(object.error());
-    if (!hasExactly(object.value(), {"schema", "session_id", "generation", "next_after", "events"}))
+    if (!hasExactly(object.value(), {"schema", "session_id", "generation", "next_after", "events", "autonomy"}))
         return invalidSchemaValue<EventsResponse>("events response fields mismatch");
     auto session = requireUuid(object.value(), "session_id");
     auto generation = requireUnsigned(object.value(), "generation");
     auto nextAfter = requireUnsigned(object.value(), "next_after");
     const auto* eventsValue = json::find(object.value(), "events");
     const auto* events = eventsValue ? eventsValue->array() : nullptr;
+    const auto* autonomyValue = json::find(object.value(), "autonomy");
+    const auto* autonomy = autonomyValue ? autonomyValue->array() : nullptr;
     if (!session) return invalidSchemaValue<EventsResponse>(session.error().message);
     if (!generation) return invalidSchemaValue<EventsResponse>(generation.error().message);
     if (!nextAfter) return invalidSchemaValue<EventsResponse>(nextAfter.error().message);
     if (!events || events->size() > kMaximumEvents)
         return invalidSchemaValue<EventsResponse>("events must be an array of at most 100 items");
-    EventsResponse parsed{SessionId(std::move(session).value()), Generation(generation.value()), nextAfter.value(), {}};
+    if (!autonomy || autonomy->size() > 3)
+        return invalidSchemaValue<EventsResponse>("autonomy must be an array of at most 3 items");
+    EventsResponse parsed{SessionId(std::move(session).value()), Generation(generation.value()), nextAfter.value(), {}, {}};
     parsed.events.reserve(events->size());
     std::uint64_t previous = 0;
     for (const auto& value : *events) {
@@ -576,6 +651,23 @@ Result<EventsResponse> parseEventsResponse(
             return invalidSchemaValue<EventsResponse>("events must have strictly increasing sequence values");
         previous = event.value().sequence;
         parsed.events.push_back(std::move(event).value());
+    }
+    parsed.autonomy.reserve(autonomy->size());
+    for (const auto& value : *autonomy) {
+        const auto* directive = value.object();
+        if (!directive || !hasExactly(*directive, {"schema", "schedule_id", "kind", "issued_at"}))
+            return invalidSchemaValue<EventsResponse>("autonomy directive fields mismatch");
+        auto schema = requireString(*directive, "schema");
+        auto schedule = requireUuid(*directive, "schedule_id");
+        auto kind = requireString(*directive, "kind");
+        auto issuedAt = requireTimestamp(*directive, "issued_at");
+        if (!schema || schema.value() != "almsivi.autonomy-directive.v1")
+            return invalidSchemaValue<EventsResponse>("autonomy directive schema mismatch");
+        if (!schedule) return invalidSchemaValue<EventsResponse>(schedule.error().message);
+        if (!kind || (kind.value() != "rechat" && kind.value() != "boredom" && kind.value() != "greeting"))
+            return invalidSchemaValue<EventsResponse>("autonomy directive kind mismatch");
+        if (!issuedAt) return invalidSchemaValue<EventsResponse>(issuedAt.error().message);
+        parsed.autonomy.push_back({std::move(schedule).value(), std::move(kind).value(), std::move(issuedAt).value()});
     }
     return Result<EventsResponse>::success(std::move(parsed));
 }

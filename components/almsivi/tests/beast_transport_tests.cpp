@@ -125,7 +125,7 @@ void sendJson(tcp::socket& socket, unsigned status, std::string body,
     std::string_view contentType = "application/json; charset=utf-8")
 {
     http::response<http::string_body> response{static_cast<http::status>(status), 11};
-    response.set(http::field::content_type, contentType);
+    response.set(http::field::content_type, std::string(contentType));
     response.set(http::field::connection, "close");
     response.body() = std::move(body);
     response.prepare_payload();
@@ -384,7 +384,7 @@ void testEventsInterruptionActionAndDelete()
             CHECK(request.target == std::string(kBasePath) + "/events?session_id=" + kSession
                 + "&generation=7&after=3&wait_ms=15000");
             sendJson(socket, 200, std::string(R"({"schema":"almsivi.events.v1","session_id":")")
-                + kSession + R"(","generation":7,"next_after":3,"events":[]})");
+                + kSession + R"(","generation":7,"next_after":3,"events":[],"autonomy":[]})");
         });
         almsivi::OutboundRequest request{almsivi::RequestId(kRequest), almsivi::SessionId(kSession),
             almsivi::Generation(7), almsivi::RequestKind::event_poll,

@@ -37,6 +37,9 @@ function M.snapshot(source)
         activeEffects = bounded(source.activeEffects, constants.MAX_ACTIVE_EFFECTS),
         journal = bounded(source.journal, constants.MAX_JOURNAL_ENTRIES),
         contentFiles = bounded(source.contentFiles, constants.MAX_CONTENT_FILES),
+        world = util.copy(source.world or {}),
+        playerState = util.copy(source.playerState or {}),
+        targetState = util.copy(source.targetState or {}),
         capabilities = util.copy(source.capabilities or {}),
         unavailable = util.copy(source.unavailable or {}),
     }

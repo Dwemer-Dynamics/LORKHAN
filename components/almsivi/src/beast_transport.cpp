@@ -942,10 +942,10 @@ Result<InboundResult> BeastTransport::execute(const OutboundRequest& request, st
         auto validHeaders = validateHeaders(headers);
         if (!validHeaders)
             return Result<InboundResult>::failure(validHeaders.error());
-        auto contentType = parseContentType(std::string(parser.get()[http::field::content_type]), true);
+        auto responseContentType = parseContentType(std::string(parser.get()[http::field::content_type]), true);
         const BodyType expected = wire.mediaDescriptor->codec == MediaCodec::wav ? BodyType::media_wav
             : wire.mediaDescriptor->codec == MediaCodec::ogg ? BodyType::media_ogg : BodyType::media_mpeg;
-        if (!contentType || contentType.value() != expected)
+        if (!responseContentType || responseContentType.value() != expected)
             return Result<InboundResult>::failure(makeError(ErrorCode::invalid_content_type,
                 "media Content-Type does not match descriptor codec"));
     }

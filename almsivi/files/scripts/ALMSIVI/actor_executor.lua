@@ -1,10 +1,12 @@
 local actions = require('scripts.ALMSIVI.actions')
 local identity = require('scripts.ALMSIVI.identity')
+local util = require('scripts.ALMSIVI.util')
 
 local M = {}
 
 function M.new(selfIdentity, generation, capabilities)
-    return {identity=selfIdentity,generation=generation,attached=true,actions=actions.new(capabilities),activeSpeech=nil,ownedFollow=nil,turns={}}
+    return {identity=selfIdentity,generation=generation,attached=true,actions=actions.new(capabilities),activeSpeech=nil,
+        ownedAi=nil,ownedCombat=nil,turns={}}
 end
 
 function M.execute(state, command, adapter, authority)
@@ -18,9 +20,37 @@ function M.execute(state, command, adapter, authority)
         if ok then return actions.result(state.actions,accepted.action_id,'succeeded',detail or 'inspection_completed',observed or {}) end
         return actions.result(state.actions,accepted.action_id,'failed',detail or 'engine_rejected',{})
     end
-    local ok, detail=adapter.followSelf(accepted.target,accepted.parameters.distance)
-    if ok then state.ownedFollow=accepted.action_id return actions.result(state.actions,accepted.action_id,'succeeded',detail,{}) end
+    if accepted.name=='ai.stop' then
+        if not state.ownedAi then return actions.result(state.actions,accepted.action_id,'succeeded','no_owned_ai_package',{}) end
+        local ok,detail=adapter.stopAi(state.ownedAi)
+        if ok then state.ownedAi=nil return actions.result(state.actions,accepted.action_id,'succeeded',detail,{}) end
+        return actions.result(state.actions,accepted.action_id,'failed',detail or 'engine_rejected',{})
+    end
+    if accepted.name=='combat.stop' then
+        if not state.ownedCombat then return actions.result(state.actions,accepted.action_id,'succeeded','no_owned_combat_package',{}) end
+        local ok,detail=adapter.stopCombat(state.ownedCombat.target,accepted.parameters)
+        if ok then state.ownedCombat=nil return actions.result(state.actions,accepted.action_id,'succeeded',detail,{}) end
+        return actions.result(state.actions,accepted.action_id,'failed',detail or 'engine_rejected',{})
+    end
+    local handler={
+        ['ai.follow']='followSelf',['ai.wander']='wanderSelf',['combat.start']='startCombat',
+        ['animation.play']='playAnimation',['item.equip']='equipItem',['item.unequip']='unequipItem',['item.use']='useItem',
+    }
+    local method=handler[accepted.name]
+    if type(adapter[method])~='function' then return actions.result(state.actions,accepted.action_id,'failed','action_unavailable',{}) end
+    local ok,detail=adapter[method](accepted.target,accepted.parameters)
+    if ok then
+        if accepted.name=='ai.follow' then state.ownedAi={type='Follow',actionId=accepted.action_id,target=accepted.target}
+        elseif accepted.name=='ai.wander' then state.ownedAi={type='Wander',actionId=accepted.action_id}
+        elseif accepted.name=='combat.start' then state.ownedCombat={actionId=accepted.action_id,target=accepted.target} end
+        return actions.result(state.actions,accepted.action_id,'succeeded',detail,{})
+    end
     return actions.result(state.actions,accepted.action_id,'failed',detail or 'engine_rejected',{})
+end
+
+function M.reject(state, command, reason)
+    if not state or not command or type(command.action_id)~='string' then return nil end
+    return actions.result(state.actions,command.action_id,'rejected',reason or 'user_declined',{})
 end
 
 function M.speak(state, command, adapter, authority)
@@ -32,13 +62,27 @@ function M.speak(state, command, adapter, authority)
     local correlation=command.request_id..'|'..command.turn_id..'|'..command.media_id
     if state.turns[correlation] then return nil,'duplicate_speech' end
     local ok, reason=adapter.playSpeech(command.media_id,state.identity,command.subtitle)
-    if ok then state.turns[correlation]=true state.activeSpeech=command.media_id return true end
+    if ok then
+        state.turns[correlation]=true
+        state.activeSpeech={mediaId=command.media_id,command=util.copy(command)}
+        return true
+    end
     return nil,reason or 'speech_failed'
 end
 
+function M.completeSpeech(state)
+    if not state.activeSpeech then return nil end
+    local command=state.activeSpeech.command
+    state.activeSpeech=nil
+    return command
+end
+
 function M.stop(state, adapter)
-    if state.activeSpeech then adapter.stopSpeech() state.activeSpeech=nil end
-    if state.ownedFollow then adapter.stopOwnedFollow(state.ownedFollow) state.ownedFollow=nil end
+    local interrupted=M.completeSpeech(state)
+    if interrupted then adapter.stopSpeech() end
+    if state.ownedAi and type(adapter.stopAi)=='function' then adapter.stopAi(state.ownedAi) state.ownedAi=nil end
+    if state.ownedCombat and type(adapter.stopCombat)=='function' then adapter.stopCombat(state.ownedCombat.target) state.ownedCombat=nil end
+    return interrupted
 end
 
 function M.detach(state, adapter) M.stop(state,adapter) state.attached=false end

@@ -19,14 +19,15 @@ def text(path):
 
 manifest = text(FILES / "ALMSIVI.omwscripts")
 allowed_manifest_declarations = [
-    "GLOBAL: scripts/ALMSIVI/global.lua", "PLAYER: scripts/ALMSIVI/player.lua", "CUSTOM: scripts/ALMSIVI/actor.lua"]
+    "GLOBAL: scripts/ALMSIVI/global.lua", "PLAYER: scripts/ALMSIVI/settings.lua",
+    "PLAYER: scripts/ALMSIVI/player.lua", "CUSTOM: scripts/ALMSIVI/actor.lua"]
 manifest_declarations = [line.strip() for line in manifest.splitlines() if line.strip() and not line.lstrip().startswith("#")]
 check("production manifest has exact pinned-source-verified contexts and paths",
       manifest_declarations == allowed_manifest_declarations)
 check("production manifest contains only comments or allowed declarations", all(
     not line.strip() or line.lstrip().startswith("#") or line.strip() in allowed_manifest_declarations
     for line in manifest.splitlines()))
-required = ["global.lua", "player.lua", "actor.lua", "orchestrator.lua", "player_state.lua", "actor_executor.lua",
+required = ["global.lua", "settings.lua", "player.lua", "actor.lua", "orchestrator.lua", "player_state.lua", "actor_executor.lua",
             "protocol.lua", "identity.lua", "context.lua", "conversation.lua", "actions.lua", "storage.lua"]
 check("all architecture modules exist", all((SCRIPTS / name).is_file() for name in required))
 deferrals = text(ROOT / "almsivi" / "ENGINE-DEFERRALS.txt")
@@ -44,7 +45,11 @@ for forbidden in ["io.open", "os.execute", "loadstring", "dofile", "package.load
     check(f"forbidden primitive absent: {forbidden}", forbidden not in all_lua)
 check("native seam exposes typed bridge only", "require, 'openmw.almsivi'" in text(SCRIPTS / "adapters" / "openmw.lua"))
 actions = text(SCRIPTS / "actions.lua")
-check("only ai.follow action wire contract", "intent.name ~= 'ai.follow'" in actions)
+check("safe action allowlist is explicit", all(name in actions for name in (
+    "'inspect.report'", "'ai.follow'", "'ai.stop'", "'ai.wander'", "'combat.start'", "'combat.stop'",
+    "'animation.play'", "'item.use'")))
+check("combat start requires player confirmation", "event.payload.tier>=2" in text(SCRIPTS / "orchestrator.lua")
+      and "ALMSIVI_ACTION_CONFIRMATION" in text(SCRIPTS / "player.lua"))
 check("ai.follow accepts exact integer distance 192", "distance%1~=0 or distance~=192" in actions)
 check("invented ai.follow range absent", "distance < 64" not in actions and "distance > 512" not in actions)
 check("action terminal is internal before timestamp", "almsivi.internal.action-terminal" in actions and "completed_at=completedAt" in actions)
@@ -60,6 +65,13 @@ check("ui source has no invented wire default", "ui_source=args.ui_source" in pr
 check("cursor gaps rejected", "cursor_gap" in text(SCRIPTS / "protocol.lua"))
 check("actor self identity required", "identity.same(command.actor,state.identity)" in text(SCRIPTS / "actor_executor.lua"))
 check("vanilla Activate not consumed", "return false -- built-in Activate" in text(SCRIPTS / "player_state.lua"))
+settings = text(SCRIPTS / "settings.lua")
+check("OpenMW Scripts page exposes all ALMSIVI input bindings", all(fragment in settings for fragment in [
+    "I.Settings.registerPage", "I.Settings.registerGroup", "renderer='inputBinding'",
+    "key='ALMSIVI_Talk'", "key='ALMSIVI_Halt'", "key='ALMSIVI_PushToTalk'", "key='ALMSIVI_OpenMic'"]))
+check("legacy F10 and F12 defaults seed only once", all(fragment in settings for fragment in [
+    "ALMSIVIInputDefaults", "defaultsSection:get('version') == nil", "input.KEY.F10", "input.KEY.F12"]))
+check("player has no duplicate hardcoded ALMSIVI keys", "onKeyPress" not in text(SCRIPTS / "player.lua"))
 check("guessed UI and targeting constants absent", all(name not in constants for name in ["MAX_TEXT_BYTES", "MAX_TRANSCRIPT", "MAX_NEARBY_PICKER", "MAX_TARGET_DISTANCE"]))
 check("Lua tests reject 191 193 and noninteger follow", all(fragment in text(SCRIPTS / "tests" / "run.lua") for fragment in ["distance=191", "distance=193", "distance=192.5"]))
 check("pure Lua runner present", (SCRIPTS / "tests" / "run.lua").is_file())

@@ -15,6 +15,7 @@ sources=(
   "$root/components/almsivi/src/media.cpp"
   "$root/components/almsivi/src/protocol_response.cpp"
   "$root/components/almsivi/src/validation.cpp"
+  "$root/components/almsivi/src/voice_capture.cpp"
   "$root/components/almsivi/tests/native_tests.cpp"
 )
 common=(-std=c++20 -pthread -Wall -Wextra -Wpedantic -Werror -I"$root/components/almsivi/include")
