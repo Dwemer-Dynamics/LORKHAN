@@ -36,27 +36,31 @@ I.Settings.registerGroup({
     permanentStorage=true,
     settings={
         {key='TalkBinding',renderer='inputBinding',default=bindings.talk,
+            name='Talk_name',description='Talk_description',
             argument={type='trigger',key='ALMSIVI_Talk'}},
         {key='HaltBinding',renderer='inputBinding',default=bindings.halt,
+            name='Halt_name',description='Halt_description',
             argument={type='trigger',key='ALMSIVI_Halt'}},
         {key='PushToTalkBinding',renderer='inputBinding',default=bindings.pushToTalk,
+            name='PushToTalk_name',description='PushToTalk_description',
             argument={type='action',key='ALMSIVI_PushToTalk'}},
         {key='OpenMicBinding',renderer='inputBinding',default=bindings.openMic,
+            name='OpenMic_name',description='OpenMic_description',
             argument={type='trigger',key='ALMSIVI_OpenMic'}},
     },
 })
 
--- Seed the legacy F10/F12 controls once, then leave cleared or rebound controls untouched.
+-- Seed conflict-free controls once, then leave cleared or rebound controls untouched.
 local bindingSection = storage.playerSection('OMWInputBindings')
 local defaultsSection = storage.playerSection(DEFAULTS_SECTION)
 if defaultsSection:get('version') == nil then
     if bindingSection:get(bindings.talk) == nil then
         bindingSection:set(bindings.talk,
-            {device='keyboard',button=input.KEY.F10,type='trigger',key='ALMSIVI_Talk'})
+            {device='keyboard',button=input.KEY.F6,type='trigger',key='ALMSIVI_Talk'})
     end
     if bindingSection:get(bindings.halt) == nil then
         bindingSection:set(bindings.halt,
-            {device='keyboard',button=input.KEY.F12,type='trigger',key='ALMSIVI_Halt'})
+            {device='keyboard',button=input.KEY.F7,type='trigger',key='ALMSIVI_Halt'})
     end
     defaultsSection:set('version',DEFAULTS_VERSION)
 end

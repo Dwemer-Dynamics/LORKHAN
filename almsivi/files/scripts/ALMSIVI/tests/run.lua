@@ -137,7 +137,7 @@ end)
 test('player action does not consume vanilla activation',function()
  local s=player.new();eq(player.onAction(s,'Activate',function()end),false);truthy(player.onAction(s,'ALMSIVI_Talk',function()end))
 end)
-test('OpenMW settings page registers controls and seeds legacy defaults once',function()
+test('OpenMW settings page registers controls and seeds conflict-free defaults once',function()
  local data={OMWInputBindings={},ALMSIVIInputDefaults={}}
  local function section(name)
   data[name]=data[name] or {}
@@ -145,7 +145,7 @@ test('OpenMW settings page registers controls and seeds legacy defaults once',fu
  end
  local registered={triggers={},actions={},pages={},groups={}}
  package.preload['openmw.input']=function() return {
-  KEY={F10=10,F12=12},ACTION_TYPE={Boolean='boolean'},
+  KEY={F6=6,F7=7},ACTION_TYPE={Boolean='boolean'},
   registerTrigger=function(value)registered.triggers[value.key]=value end,
   registerAction=function(value)registered.actions[value.key]=value end,
  } end
@@ -158,12 +158,13 @@ test('OpenMW settings page registers controls and seeds legacy defaults once',fu
  package.loaded['scripts.ALMSIVI.settings']=nil
  require('scripts.ALMSIVI.settings')
  eq(registered.pages[1].key,'ALMSIVI');eq(registered.groups[1].page,'ALMSIVI');eq(#registered.groups[1].settings,4)
+ for _,setting in ipairs(registered.groups[1].settings) do truthy(setting.name);truthy(setting.description) end
  truthy(registered.triggers.ALMSIVI_Talk);truthy(registered.triggers.ALMSIVI_Halt)
  truthy(registered.triggers.ALMSIVI_OpenMic);truthy(registered.actions.ALMSIVI_PushToTalk)
  local talk=data.OMWInputBindings.ALMSIVI_Talk_Binding
  local halt=data.OMWInputBindings.ALMSIVI_Halt_Binding
- eq(talk.device,'keyboard');eq(talk.button,10);eq(talk.type,'trigger');eq(talk.key,'ALMSIVI_Talk')
- eq(halt.button,12);eq(data.ALMSIVIInputDefaults.version,1)
+ eq(talk.device,'keyboard');eq(talk.button,6);eq(talk.type,'trigger');eq(talk.key,'ALMSIVI_Talk')
+ eq(halt.button,7);eq(data.ALMSIVIInputDefaults.version,1)
  data.OMWInputBindings.ALMSIVI_Talk_Binding=nil
  package.loaded['scripts.ALMSIVI.settings']=nil
  require('scripts.ALMSIVI.settings')

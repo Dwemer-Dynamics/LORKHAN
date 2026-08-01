@@ -69,8 +69,12 @@ settings = text(SCRIPTS / "settings.lua")
 check("OpenMW Scripts page exposes all ALMSIVI input bindings", all(fragment in settings for fragment in [
     "I.Settings.registerPage", "I.Settings.registerGroup", "renderer='inputBinding'",
     "key='ALMSIVI_Talk'", "key='ALMSIVI_Halt'", "key='ALMSIVI_PushToTalk'", "key='ALMSIVI_OpenMic'"]))
-check("legacy F10 and F12 defaults seed only once", all(fragment in settings for fragment in [
-    "ALMSIVIInputDefaults", "defaultsSection:get('version') == nil", "input.KEY.F10", "input.KEY.F12"]))
+check("conflict-free F6 and F7 defaults seed only once", all(fragment in settings for fragment in [
+    "ALMSIVIInputDefaults", "defaultsSection:get('version') == nil", "input.KEY.F6", "input.KEY.F7"]))
+check("OpenMW settings rows have required localization metadata", all(fragment in settings for fragment in [
+    "name='Talk_name',description='Talk_description'", "name='Halt_name',description='Halt_description'",
+    "name='PushToTalk_name',description='PushToTalk_description'",
+    "name='OpenMic_name',description='OpenMic_description'"]))
 check("player has no duplicate hardcoded ALMSIVI keys", "onKeyPress" not in text(SCRIPTS / "player.lua"))
 check("guessed UI and targeting constants absent", all(name not in constants for name in ["MAX_TEXT_BYTES", "MAX_TRANSCRIPT", "MAX_NEARBY_PICKER", "MAX_TARGET_DISTANCE"]))
 check("Lua tests reject 191 193 and noninteger follow", all(fragment in text(SCRIPTS / "tests" / "run.lua") for fragment in ["distance=191", "distance=193", "distance=192.5"]))

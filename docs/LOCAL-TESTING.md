@@ -41,8 +41,9 @@ stock OpenMW executable.
 5. Confirm `http://127.0.0.1:8089/ALMSIVIserver/api/v1/health` works from Windows. If WSL localhost
    forwarding is disabled, run `scripts/deploy/enable-wsl-loopback.ps1` from an elevated PowerShell
    window. The native client intentionally rejects non-loopback server URLs.
-6. In game, press F10 to open ALMSIVI, center the crosshair on an NPC, select the target, type a line,
-   and send. F12 is the emergency halt fallback.
+6. In game, press F6 to open ALMSIVI, center the crosshair on an NPC, select the target, type a line,
+   and send. F7 is the emergency halt fallback. All four ALMSIVI inputs can be rebound under
+   Options > Scripts > ALMSIVI.
 7. Use `Add aimed NPC to group` to include additional nearby actors. `Reset group to target` returns
    the conversation to the primary target only.
 
@@ -60,7 +61,7 @@ stock OpenMW executable.
   present in that actor's inventory and also waits for Approve/Reject;
 - player inventory, stats, effects, factions, journal, cell, weather, nearby actors, and target state
   are sent only through the bounded read-only context snapshot;
-- F12 stops ALMSIVI-owned speech/follow state;
+- F7 stops ALMSIVI-owned speech/follow state;
 - save/load and cell changes do not replay stale dialogue or actions.
 
 Do not enter live provider credentials in the game client. Configure them only in the private server

@@ -154,7 +154,8 @@ Play: Play-ALMSIVI.cmd
 Manage OpenMW content: Manage-ALMSIVI-Mods.cmd
 Management UI: http://127.0.0.1:8089/ALMSIVIserver/manage
 
-F10 opens ALMSIVI. F12 performs an emergency halt.
+F6 opens ALMSIVI. F7 performs an emergency halt.
+Rebind all ALMSIVI inputs under Options > Scripts > ALMSIVI.
 "@
 
     $desktop = [Environment]::GetFolderPath('Desktop')
