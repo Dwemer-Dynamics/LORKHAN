@@ -74,6 +74,8 @@ version/API plus the ordered content list and file identity metadata, never prop
 | `POST /sessions` | `almsivi.session.init.v1` | accepted session/capabilities/config revision |
 | `DELETE /sessions/{id}` | no body; UUID `Idempotency-Key` | `almsivi.session.ended.v1` |
 | `POST /turns` | `almsivi.turn.v1` | accepted request + first event cursor |
+| `POST /controls/query` | `almsivi.controls.query.v1` | safe server-owned model slots, NPC profiles, and installation narrator ID |
+| `POST /controls/select` | `almsivi.controls.select.v1` | idempotent session model/profile selection or revision-safe NPC/narrator generation |
 | `POST /stt` | metadata + audio | transcript event or typed failure |
 | `GET /events` | session/cursor/wait | `almsivi.events.v1` |
 | `POST /action-results` | `almsivi.action-result.v1` | persisted acknowledgement |
@@ -86,6 +88,28 @@ A turn includes input `{kind: text|stt, text, language}`, resolved speaker/targe
 bounded context snapshot/delta, recent terminal action results, and UI source. It never includes the
 pairing token, provider key, host file path, save bytes, proprietary assets, engine pointers, or raw
 unbounded logs.
+
+An in-game action menu may add `action_request` with a catalog action name, exact tier, bounded
+parameters, and an optional explicit target. The server derives the actor from the resolved turn target.
+It normally derives the action target from the player speaker; only `ai.face`, `combat.start`, and
+`combat.stop` may override that target, and only with a different identity present in the bounded nearby-actor context.
+The server then applies the negotiated capability and profile action policy without invoking the
+language-model provider. Accepted requests still emit the ordinary `turn.accepted`, `action.intent`,
+and `turn.complete` sequence.
+
+`ai.travel` and `ai.escort` carry only a player-ray-captured `destination_x`, `destination_y`,
+`destination_z`, and canonical `destination_cell`. Both client and server bound those fields, and the
+actor rechecks the current cell before starting an OpenMW package.
+
+In-game controls never accept provider endpoints, API keys, or executable configuration. Model choices
+are revisioned server-owned slots: a `configured` slot may override only the model while retaining the
+server process endpoint and credential environment; a `mock` slot remains deterministic. Roleplay
+NPC profiles bind to one stable actor identity within the active installation/playthrough; player and narrator
+profiles are excluded from that binding list. The installation narrator ID permits only the server-validated,
+revision-safe narrator-generation operation. The chosen
+profile affects that actor's profile and prompt sources, while memory, relationship, knowledge, and
+narrative retrieval remain scoped to the session profile/playthrough. Every accepted turn freezes the
+assembled prompt and selected provider revision before worker execution.
 
 Server response events have a strictly increasing per-session `sequence`. The current v1 slice contracts exactly `turn.accepted`, `dialogue.complete`, `speech.ready`, `action.intent`, `turn.complete`, `turn.failed`, and `turn.cancelled`. Every envelope includes `message_id`, `request_id`, `turn_id`, `session_id`, `generation`, `sequence`, `created_at`, type and strict payload. The events response is capped at 100 items.
 

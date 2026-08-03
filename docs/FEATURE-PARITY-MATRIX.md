@@ -23,7 +23,7 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 | Capability | Decision | Implementation / proof |
 | --- | --- | --- |
 | Targeted conversation | Keep | Dedicated semantic action + ray target/nearby picker. |
-| Group conversation | Keep | Explicit speaker/addressee/audience registry and queue. |
+| Group conversation | Keep | Explicit speaker/addressee/audience registry and one ordered no-overlap speech lane. |
 | Typed player input | Keep | Custom TextEdit overlay, size/UTF-8 validation. |
 | Push-to-talk/STT | Keep | Semantic input action, native/server bounded audio upload, transcript event. |
 | Open microphone | Keep, opt-in | VAD/rate/privacy indicator; default off. |
@@ -39,13 +39,13 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 | Domain | Decision | Notes |
 | --- | --- | --- |
 | Player stats/identity | Keep | TES3 race/class/birthsign/skills/attributes/dynamic stats. |
-| Target and nearby actors | Keep | Active-cell bounded registry, state/distance/combat/death. |
+| Target and nearby actors | Keep | Active-cell bounded registry, state/distance/combat/death plus actor-local AI activity for managed actors. |
 | Cell/region/time/weather | Keep | OpenMW fields where exposed; explicit capability gaps. |
 | Factions/disposition/reputation | Keep | Read context; mutation excluded by default. |
 | Inventory/equipment/gold | Keep | Bounded summaries with stable record identities. |
 | Spells/active effects | Keep | API-129 actor types. |
 | Journal/quests/topics | Keep | OpenMW journal/dialogue APIs and recent responses. |
-| Nearby items/doors/containers | Keep | Bounded `nearby`/world reads; no full-world scan. |
+| Nearby items/doors/containers | Keep | Bounded `nearby` reads with names, ownership, lock level, key and trap metadata; no full-world scan. |
 | Loaded mods/load order | Keep | `core.contentFiles.list`, fingerprint and truncation. |
 | Physical VR state | Exclude | OpenMW Morrowind target is flat; no HMD/hand contract. |
 | Fallout/Skyrim-specific systems | Exclude | No Pip-Boy, VATS, Power Armor, shouts, Dragonborn, Papyrus aliases. |
@@ -54,17 +54,18 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 
 | Capability | Decision | Proof |
 | --- | --- | --- |
-| Character profiles/prompts | Keep | TES3-aware profile editor and prompt trace. |
-| Short/middle/long memory | Keep | Event-derived memory with pgvector and provenance. |
-| Relationships | Keep | Actor/player scoped state and UI. |
+| Character profiles/prompts | Keep | TES3-aware searchable profile editor with prompt head, core identity, biography, skills, moods, lock/favorite state, default-on edit locking, independent profile cloning, file-picker imports, bulk unlock/delete/binding switch, private portraits, revision history, prompt trace, revision-safe NPC/narrator generation, player speech-style analysis from up to 200 real inputs, primary LLM routing and per-speaker TTS connector selection with safe fallbacks; TTS Studio blocks local sample deletion while a profile or connector references it; server runtime and saved model slots have non-persistent contract probes. |
+| Short/middle/long memory | Keep | Event-derived memory with provenance plus CHIM-style create, edit, deterministic index rebuild and soft-delete management. |
+| Relationships | Keep | Actor/player scoped state with manual create/edit and audited soft-delete management. |
 | Dynamic profiles | Keep | Server-controlled revisions with source/event history. |
 | World knowledge | Keep | Scoped documents/facts with retrieval trace. |
-| Narrator and diary | Keep | Explicit persona/event types and UI pages. |
+| Narrator and diary | Keep | Opt-in narrator persona, inline routing, player-local speech, and revision-safe PHP/in-game narrator generation are implemented; dedicated narrator/diary/summary CRUD exists, while automatic diary generation remains deferred. |
+| Rechat, boredom and greetings | Keep | Runtime-backed Global Settings schedules are editable, default off, bounded to 30-86400 seconds, and require an active session in the exact playthrough scope before enabling. |
 | Playthrough export/restore | Keep | Transactional server snapshot plus binding safeguards. |
-| LLM/STT/TTS providers | Keep | Final Synthserver provider set, health and secret handling. |
-| Prompt/action editor | Keep | Validated schemas, revisions, rollback. |
+| LLM/STT/TTS providers | Keep | Full CHIM-lineage TTS/STT catalogs, bounded adapters, health and secret handling, per-profile routing, portable LLM/TTS/STT preset export/import/clone with in-use deletion guards, and a persistent voice studio with traversal-safe bounded ZIP batch import, explicit OmniVoice/Chatterbox/XTTS voice discovery, revisioned default-voice selection, per-voice testing, and sample sync to compatible local services. |
+| Prompt/action editor | Keep | Validated schemas, revisions, rollback, portable prompt export/import/clone, explicit per-NPC prompt selection with in-use deletion guards, and labelled per-action policy controls that cannot broaden the server-owned OpenMW catalog. |
 | Request/event logs | Keep | Structured/redacted correlation and retention. |
-| Workers/backups/health | Keep | Supervision, retry/dead-letter, restore drill. |
+| Workers/backups/health | Keep | Supervised worker, retry/dead-letter queue, health/audit/provider diagnostics, bounded redacted server-log viewer, schema migrations, retention controls, scoped playthrough export/restore, and hash-verified same-installation configuration backup/restore that excludes secrets and runtime data. |
 
 ## Actions
 

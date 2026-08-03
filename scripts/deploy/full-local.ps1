@@ -128,6 +128,46 @@ function Update-OpenMwUserConfiguration {
 function Install-LaunchHelpers {
     param([Parameter(Mandatory)][string]$Root)
 
+    $compatibilityProfile = Join-Path $Root 'Profiles\Compatibility'
+    New-Item -ItemType Directory -Force -Path $compatibilityProfile | Out-Null
+    $compatibilityConfig = Join-Path $compatibilityProfile 'openmw.cfg'
+    if (-not (Test-Path -LiteralPath $compatibilityConfig -PathType Leaf)) {
+        Write-Utf8NoBom -Path $compatibilityConfig -Content @"
+user-data=.
+data="$Root\Mods\Dynamic Camera"
+data="$Root\Mods\Follower Detection Util"
+data="$Root\Mods\H3lp Yours3lf"
+content=DynamicCamera.omwscripts
+content=FollowerDetectionUtil.omwscripts
+content=H3lp Yours3lf.esp
+"@
+    }
+    $compatibilityLines = [System.Collections.Generic.List[string]]::new()
+    foreach ($line in [IO.File]::ReadAllLines($compatibilityConfig)) { $compatibilityLines.Add($line) }
+    if (-not ($compatibilityLines | Where-Object { $_ -match '^\s*user-data\s*=' })) {
+        $compatibilityLines.Insert(0, 'user-data=.')
+        [IO.File]::WriteAllLines($compatibilityConfig, $compatibilityLines, [Text.UTF8Encoding]::new($false))
+    }
+    $compatibilityLauncherConfig = Join-Path $compatibilityProfile 'launcher.cfg'
+    if (-not (Test-Path -LiteralPath $compatibilityLauncherConfig -PathType Leaf)) {
+        Write-Utf8NoBom -Path $compatibilityLauncherConfig -Content @"
+[Settings]
+language=English
+
+[Profiles]
+currentprofile=ALMSIVI Compatibility
+ALMSIVI Compatibility/data=$Root\Mods\Dynamic Camera
+ALMSIVI Compatibility/data=$Root\Mods\Follower Detection Util
+ALMSIVI Compatibility/data=$Root\Mods\H3lp Yours3lf
+ALMSIVI Compatibility/content=DynamicCamera.omwscripts
+ALMSIVI Compatibility/content=FollowerDetectionUtil.omwscripts
+ALMSIVI Compatibility/content=H3lp Yours3lf.esp
+
+[General]
+firstrun=false
+"@
+    }
+
     $launchScript = @'
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -146,15 +186,54 @@ $env:ALMSIVI_CLIENT_CONFIG = $clientConfig
 '@
     Write-Utf8NoBom -Path (Join-Path $Root 'Launch-ALMSIVI.ps1') -Content $launchScript
     Write-Utf8NoBom -Path (Join-Path $Root 'Play-ALMSIVI.cmd') -Content "@echo off`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0Launch-ALMSIVI.ps1`"`r`nif errorlevel 1 pause`r`n"
-    Write-Utf8NoBom -Path (Join-Path $Root 'Manage-ALMSIVI-Mods.cmd') -Content "@echo off`r`nset `"ALMSIVI_CLIENT_CONFIG=%~dp0Config\almsivi-client.conf`"`r`nstart `"ALMSIVI OpenMW Launcher`" `"%~dp0OpenMW\openmw-launcher.exe`"`r`n"
+
+    $compatibilityLaunchScript = @'
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+$engine = Join-Path $PSScriptRoot 'OpenMW\openmw.exe'
+$clientConfig = Join-Path $PSScriptRoot 'Config\almsivi-client.conf'
+$profile = Join-Path $PSScriptRoot 'Profiles\Compatibility'
+$requiredMods = @(
+    (Join-Path $PSScriptRoot 'Mods\Dynamic Camera\DynamicCamera.omwscripts'),
+    (Join-Path $PSScriptRoot 'Mods\Follower Detection Util\FollowerDetectionUtil.omwscripts'),
+    (Join-Path $PSScriptRoot 'Mods\H3lp Yours3lf\H3lp Yours3lf.esp')
+)
+if (-not (Test-Path -LiteralPath $engine -PathType Leaf)) { throw "The ALMSIVI OpenMW executable is missing: $engine" }
+if (-not (Test-Path -LiteralPath $clientConfig -PathType Leaf)) { throw "The private ALMSIVI client configuration is missing: $clientConfig" }
+if (-not (Test-Path -LiteralPath (Join-Path $profile 'openmw.cfg') -PathType Leaf)) { throw "The ALMSIVI compatibility profile is missing: $profile" }
+foreach ($requiredMod in $requiredMods) {
+    if (-not (Test-Path -LiteralPath $requiredMod -PathType Leaf)) { throw "A required compatibility mod is missing: $requiredMod" }
+}
+
+& wsl.exe -d DwemerAI4Skyrim3 -u root -- bash -lc 'service postgresql start >/dev/null; service apache2 start >/dev/null; service almsiviserver-worker start >/dev/null'
+if ($LASTEXITCODE -ne 0) { throw 'The ALMSIVI WSL services could not be started.' }
+$health = Invoke-RestMethod -Uri 'http://127.0.0.1:8089/ALMSIVIserver/api/v1/health' -TimeoutSec 5
+if ($health.schema -ne 'almsivi.health.v1') { throw 'ALMSIVIserver returned an unexpected health response.' }
+$env:ALMSIVI_CLIENT_CONFIG = $clientConfig
+& $engine --config $profile
+'@
+    Write-Utf8NoBom -Path (Join-Path $Root 'Launch-ALMSIVI-Compatibility.ps1') -Content $compatibilityLaunchScript
+    Write-Utf8NoBom -Path (Join-Path $Root 'Play-ALMSIVI-Compatibility.cmd') -Content "@echo off`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0Launch-ALMSIVI-Compatibility.ps1`"`r`nif errorlevel 1 pause`r`n"
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts\tools\manage-openmw-profile.ps1') -Destination (Join-Path $Root 'Manage-ALMSIVI-Profile.ps1') -Force
+    Write-Utf8NoBom -Path (Join-Path $Root 'Manage-ALMSIVI-Mods.cmd') -Content "@echo off`r`nset `"ALMSIVI_CLIENT_CONFIG=%~dp0Config\almsivi-client.conf`"`r`nwsl.exe -d DwemerAI4Skyrim3 -u root -- bash -lc `"service postgresql start >/dev/null; service apache2 start >/dev/null; service almsiviserver-worker start >/dev/null`"`r`nif errorlevel 1 (`r`n  echo The ALMSIVI WSL services could not be started.`r`n  pause`r`n  exit /b 1`r`n)`r`nstart `"ALMSIVI OpenMW Launcher`" `"%~dp0OpenMW\openmw-launcher.exe`"`r`n"
+    Write-Utf8NoBom -Path (Join-Path $Root 'Manage-ALMSIVI-Compatibility-Mods.cmd') -Content "@echo off`r`nstart `"ALMSIVI Compatibility Mod Manager`" powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0Manage-ALMSIVI-Profile.ps1`" -Root `"%~dp0`" -ProfileName Compatibility`r`n"
     Write-Utf8NoBom -Path (Join-Path $Root 'README.txt') -Content @"
 ALMSIVI OpenMW local installation
 
 Play: Play-ALMSIVI.cmd
+Play with the recommended compatibility mods: Play-ALMSIVI-Compatibility.cmd
 Manage OpenMW content: Manage-ALMSIVI-Mods.cmd
+Manage compatibility mods and native OpenMW content: Manage-ALMSIVI-Compatibility-Mods.cmd
 Management UI: http://127.0.0.1:8089/ALMSIVIserver/manage
 
-F6 opens ALMSIVI. F7 performs an emergency halt.
+Install a mod by extracting it into its own Mods\Mod Name folder. Open the
+ALMSIVI Compatibility Mod Manager, enable the folder and its content files,
+set their order, then save. The manager backs up the profile before changes.
+Use Manage-ALMSIVI-Mods.cmd for OpenMW engine and general launcher settings.
+
+F6 opens typed conversation. F7 stops current ALMSIVI work. F8 opens Actor Actions.
+The Master Menu is linked inside the conversation and action panels.
 Rebind all ALMSIVI inputs under Options > Scripts > ALMSIVI.
 "@
 
@@ -162,7 +241,9 @@ Rebind all ALMSIVI inputs under Options > Scripts > ALMSIVI.
     $shell = New-Object -ComObject WScript.Shell
     foreach ($shortcut in @(
         @{ Name = 'Play ALMSIVI.lnk'; Target = (Join-Path $Root 'Play-ALMSIVI.cmd'); Icon = (Join-Path $Root 'OpenMW\openmw.exe') },
-        @{ Name = 'ALMSIVI Mod Manager.lnk'; Target = (Join-Path $Root 'Manage-ALMSIVI-Mods.cmd'); Icon = (Join-Path $Root 'OpenMW\openmw-launcher.exe') }
+        @{ Name = 'Play ALMSIVI - Compatibility.lnk'; Target = (Join-Path $Root 'Play-ALMSIVI-Compatibility.cmd'); Icon = (Join-Path $Root 'OpenMW\openmw.exe') },
+        @{ Name = 'ALMSIVI Mod Manager.lnk'; Target = (Join-Path $Root 'Manage-ALMSIVI-Mods.cmd'); Icon = (Join-Path $Root 'OpenMW\openmw-launcher.exe') },
+        @{ Name = 'ALMSIVI Compatibility Mod Manager.lnk'; Target = (Join-Path $Root 'Manage-ALMSIVI-Compatibility-Mods.cmd'); Icon = (Join-Path $Root 'OpenMW\openmw-launcher.exe') }
     )) {
         $link = $shell.CreateShortcut((Join-Path $desktop $shortcut.Name))
         $link.TargetPath = $shortcut.Target

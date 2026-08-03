@@ -1,3 +1,10 @@
 patches/0001-apps-openmw-cmakelists-txt.patch
 patches/0004-apps-openmw-mwlua-luabindings-cpp.patch
 patches/0005-components-lua-scriptscontainer-cpp.patch
+patches/0006-apps-openmw-mwbase-soundmanager-hpp.patch
+patches/0007-apps-openmw-mwsound-ffmpegdecoder-cpp.patch
+patches/0008-apps-openmw-mwsound-ffmpegdecoder-hpp.patch
+patches/0009-apps-openmw-mwsound-soundmanagerimp-cpp.patch
+patches/0010-apps-openmw-mwsound-soundmanagerimp-hpp.patch
+patches/0011-apps-launcher-main-cpp.patch
+patches/0012-apps-launcher-maindialog-cpp.patch

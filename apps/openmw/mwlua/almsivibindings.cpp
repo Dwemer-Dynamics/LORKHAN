@@ -9,6 +9,15 @@
 #include <almsivi/voice_capture.hpp>
 #include <components/lua/configuration.hpp>
 #include <components/lua/scriptscontainer.hpp>
+#include <components/files/constrainedfilestream.hpp>
+#include <components/files/conversion.hpp>
+#include <components/settings/values.hpp>
+
+#include "../mwbase/environment.hpp"
+#include "../mwbase/soundmanager.hpp"
+
+#include "luamanagerimp.hpp"
+#include "objectvariant.hpp"
 
 #include <sol/sol.hpp>
 
@@ -186,12 +195,24 @@ namespace MWLua
             return out.str();
         }
 
+        // Seed each engine process above previous local sessions while retaining cheap increments
+        // for save loads, interruptions, and other lifecycle invalidations inside that process.
+        almsivi::Generation processGeneration()
+        {
+            const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            if (elapsed < 0 || elapsed > 9007199254740991LL)
+                throw std::runtime_error("system clock is outside the supported generation range");
+            return almsivi::Generation(static_cast<std::uint64_t>(elapsed));
+        }
+
         std::chrono::system_clock::time_point parseUtc(const std::string& input)
         {
             std::tm value{};
             std::istringstream stream(input);
             stream >> std::get_time(&value, "%Y-%m-%dT%H:%M:%SZ");
-            if (!stream || !stream.eof()) throw std::runtime_error("invalid UTC media expiry");
+            if (!stream || stream.peek() != std::char_traits<char>::eof())
+                throw std::runtime_error("invalid UTC media expiry");
 #ifdef _WIN32
             const std::time_t raw = _mkgmtime(&value);
 #else
@@ -318,6 +339,17 @@ namespace MWLua
             return result;
         }
 
+        MWWorld::Ptr mutablePtrOrThrow(const sol::object& object)
+        {
+            ObjectVariant variant(object);
+            if (variant.isLObject())
+                throw std::runtime_error("Local scripts can only modify the object they are attached to.");
+            MWWorld::Ptr ptr = variant.ptr();
+            if (ptr.isEmpty())
+                throw std::runtime_error("Invalid object");
+            return ptr;
+        }
+
         class NativeClient
         {
         public:
@@ -328,7 +360,8 @@ namespace MWLua
                     m_config = loadConfig();
                     auto transport = std::make_unique<almsivi::BeastTransport>(m_config->baseUrl,
                         m_config->installation, almsivi::PairingToken(m_config->key), m_config->cacheRoot);
-                    m_service = std::make_unique<almsivi::BridgeService>(std::move(transport), std::make_shared<almsivi::SystemClock>());
+                    m_service = std::make_unique<almsivi::BridgeService>(std::move(transport),
+                        std::make_shared<almsivi::SystemClock>(), processGeneration());
                     beginSession();
                     m_status = "connecting";
                 }
@@ -347,6 +380,21 @@ namespace MWLua
             std::string error() const { return m_error; }
             std::uint64_t generation() const { return m_service ? m_service->generation().value() : 0; }
             bool ready() const { return m_service && m_session.has_value() && m_status == "ready"; }
+
+            sol::table diagnostics(sol::state_view lua) const
+            {
+                sol::table result(lua, sol::create);
+                if (!m_service) return result;
+                const auto value = m_service->diagnostics();
+                result["outbound"] = value.outbound;
+                result["inbound"] = value.inbound;
+                result["active"] = value.active;
+                result["cancellations"] = value.cancellations;
+                result["init_pending"] = m_initRequest.has_value();
+                result["results_seen"] = m_resultsSeen;
+                result["init_matches"] = m_initMatches;
+                return result;
+            }
 
             sol::object sessionInfo(sol::state_view lua) const
             {
@@ -395,10 +443,77 @@ namespace MWLua
                 catch (const std::exception& error) { return failure(lua, error.what()); }
             }
 
-            std::tuple<sol::object, sol::object> startVoiceCapture(sol::state_view lua, bool automatic)
+            std::tuple<sol::object, sol::object> requestControls(sol::state_view lua, sol::table target)
             {
                 if (!ready()) return failure(lua, "bridge_not_ready");
-                auto started = almsivi::VoiceCaptureService::instance().start(automatic);
+                if (m_controlsRequest) return failure(lua, "controls_request_pending");
+                try {
+                    const almsivi::RequestId request(uuid());
+                    const almsivi::MessageId message(uuid());
+                    almsivi::OutboundRequest outbound{request,*m_session,m_service->generation(),
+                        almsivi::RequestKind::controls_query,almsivi::ControlsQueryRequest{message,
+                            {request,*m_session,m_service->generation()},toJson(sol::make_object(lua,target))}};
+                    auto accepted=m_service->enqueue(std::move(outbound));
+                    if(!accepted)return failure(lua,accepted.error().message);
+                    m_controlsRequest=request;
+                    return success(lua,request.value());
+                }
+                catch(const std::exception& error){return failure(lua,error.what());}
+            }
+
+            std::tuple<sol::object, sol::object> selectControl(sol::state_view lua,const std::string& kind,
+                sol::optional<std::string> selection,sol::table target)
+            {
+                if (!ready()) return failure(lua, "bridge_not_ready");
+                if (m_controlsRequest) return failure(lua, "controls_request_pending");
+                try {
+                    const auto mapped=kind=="model_slot"?almsivi::SessionControlKind::model_slot
+                        :kind=="actor_profile"?almsivi::SessionControlKind::actor_profile
+                        :kind=="profile_generate"?almsivi::SessionControlKind::profile_generate
+                        :kind=="narrator_profile_generate"?almsivi::SessionControlKind::narrator_profile_generate
+                        :throw std::runtime_error("invalid_session_control_kind");
+                    if(selection&& !almsivi::isCanonicalUuid(*selection))
+                        throw std::runtime_error("invalid_session_control_selection");
+                    const almsivi::RequestId request(uuid());const almsivi::MessageId message(uuid());
+                    almsivi::OutboundRequest outbound{request,*m_session,m_service->generation(),
+                        almsivi::RequestKind::controls_select,almsivi::ControlsSelectRequest{message,
+                            {request,*m_session,m_service->generation()},utcNow(),mapped,
+                            selection?std::optional<std::string>(*selection):std::nullopt,toJson(sol::make_object(lua,target))}};
+                    auto accepted=m_service->enqueue(std::move(outbound));
+                    if(!accepted)return failure(lua,accepted.error().message);
+                    m_controlsRequest=request;
+                    return success(lua,request.value());
+                }
+                catch(const std::exception& error){return failure(lua,error.what());}
+            }
+
+            sol::object sessionControls(sol::state_view lua) const
+            {
+                if(!m_controls)return sol::make_object(lua,sol::nil);
+                sol::table result(lua,sol::create),slots(lua,sol::create),profiles(lua,sol::create);
+                result["target"]=identityTable(lua,m_controls->target);
+                if(m_controls->selectedModelSlotId)result["selected_model_slot_id"]=*m_controls->selectedModelSlotId;
+                if(m_controls->selectedProfileId)result["selected_profile_id"]=*m_controls->selectedProfileId;
+                if(m_controls->narratorProfileId)result["narrator_profile_id"]=*m_controls->narratorProfileId;
+                for(std::size_t index=0;index<m_controls->modelSlots.size();++index){const auto& slot=m_controls->modelSlots[index];
+                    sol::table row(lua,sol::create);row["configuration_id"]=slot.configurationId;row["name"]=slot.name;
+                    row["revision"]=slot.revision;row["driver"]=slot.driver;row["model"]=slot.model;slots[index+1]=row;}
+                for(std::size_t index=0;index<m_controls->profiles.size();++index){const auto& profile=m_controls->profiles[index];
+                    sol::table row(lua,sol::create);row["profile_id"]=profile.profileId;row["name"]=profile.name;
+                    row["revision"]=profile.revision;profiles[index+1]=row;}
+                result["model_slots"]=slots;result["profiles"]=profiles;result["pending"]=m_controlsRequest.has_value();
+                return sol::make_object(lua,result);
+            }
+
+            std::tuple<sol::object, sol::object> startVoiceCapture(
+                sol::state_view lua, bool automatic, int rmsThreshold, int trailingSilenceMs)
+            {
+                if (!ready()) return failure(lua, "bridge_not_ready");
+                if (rmsThreshold < 100 || rmsThreshold > 5000
+                    || trailingSilenceMs < 500 || trailingSilenceMs > 5000)
+                    return failure(lua, "invalid_voice_activity_settings");
+                auto started = almsivi::VoiceCaptureService::instance().start(
+                    automatic, static_cast<std::uint16_t>(rmsThreshold), static_cast<std::uint32_t>(trailingSilenceMs));
                 if (!started) return failure(lua, started.error().message);
                 return success(lua, "recording");
             }
@@ -480,7 +595,8 @@ namespace MWLua
                     if (!accepted) return failure(lua, accepted.error().message);
                     const std::string extension = codec == almsivi::MediaCodec::wav ? ".wav"
                         : codec == almsivi::MediaCodec::ogg ? ".ogg" : ".mp3";
-                    m_media[mediaId] = { "preparing", m_config->vfsPrefix + "/" + hash.substr(0, 2) + "/" + hash + extension };
+                    m_media[mediaId] = { "preparing",
+                        m_config->cacheRoot / hash.substr(0, 2) / (hash + extension), {}, request };
                     return success(lua, request.value());
                 }
                 catch (const std::exception& error) { return failure(lua, error.what()); }
@@ -490,15 +606,65 @@ namespace MWLua
             {
                 const auto found = m_media.find(mediaId);
                 if (found == m_media.end()) return sol::make_object(lua, sol::nil);
-                sol::table result(lua, sol::create); result["state"] = found->second.state;
-                return sol::make_object(lua, result);
+                  sol::table result(lua, sol::create); result["state"] = found->second.state;
+                  if (!found->second.reason.empty()) result["reason"] = found->second.reason;
+                  return sol::make_object(lua, result);
             }
 
-            sol::object mediaVfsName(sol::state_view lua, const std::string& mediaId) const
+            std::tuple<sol::object, sol::object> playSpeech(sol::state_view lua, const std::string& mediaId,
+                const sol::object& actor, const std::string& subtitle, float volumeBoost, LuaManager* luaManager)
             {
-                const auto found = m_media.find(mediaId);
-                if (found == m_media.end() || found->second.state != "ready") return sol::make_object(lua, sol::nil);
-                return sol::make_object(lua, found->second.vfsName);
+                try
+                {
+                    if (!std::isfinite(volumeBoost) || volumeBoost < 1.f || volumeBoost > 4.f)
+                        return failure(lua, "invalid_tts_volume_boost");
+                    const auto found = m_media.find(mediaId);
+                    if (found == m_media.end() || found->second.state != "ready")
+                        return failure(lua, "prepared_media_unavailable");
+                    MWWorld::Ptr ptr = mutablePtrOrThrow(actor);
+                    auto media = Files::openConstrainedFileStream(found->second.cachePath);
+                    const std::string name = Files::pathToUnicodeString(found->second.cachePath.filename());
+                    if (!MWBase::Environment::get().getSoundManager()->sayAlmsiviMedia(
+                            ptr, std::move(media), name, volumeBoost))
+                        return failure(lua, "playback_failed");
+                    if (luaManager && !subtitle.empty() && Settings::gui().mSubtitles)
+                        luaManager->addUIMessage(subtitle);
+                    return success(lua, mediaId);
+                }
+                catch (const std::exception& error)
+                {
+                    return failure(lua, error.what());
+                }
+            }
+
+            bool isSpeechActive(const sol::object& actor) const
+            {
+                try
+                {
+                    return MWBase::Environment::get().getSoundManager()->sayActive(mutablePtrOrThrow(actor));
+                }
+                catch (...)
+                {
+                    return false;
+                }
+            }
+
+            bool stopSpeech(const sol::object& actor) const
+            {
+                try
+                {
+                    MWBase::Environment::get().getSoundManager()->stopSay(mutablePtrOrThrow(actor));
+                    return true;
+                }
+                catch (...)
+                {
+                    return false;
+                }
+            }
+
+            bool releaseMedia(const std::string& mediaId)
+            {
+                return m_media.erase(mediaId) != 0;
             }
 
             std::tuple<sol::object, sol::object> submitActionResult(sol::state_view lua, sol::table dto)
@@ -514,7 +680,8 @@ namespace MWLua
                         : statusName == "cancelled" ? almsivi::ActionTerminalStatus::cancelled
                         : throw std::runtime_error("invalid action terminal status");
                     const almsivi::RequestId correlated(dto.get<std::string>("request_id"));
-                    almsivi::OutboundRequest request{ correlated, *m_session, m_service->generation(),
+                    const almsivi::RequestId transportRequest(uuid());
+                    almsivi::OutboundRequest request{ transportRequest, *m_session, m_service->generation(),
                         almsivi::RequestKind::action_result,
                         almsivi::ActionResultRequest{ almsivi::MessageId(dto.get<std::string>("message_id")),
                             { correlated, *m_session, m_service->generation() },
@@ -524,7 +691,7 @@ namespace MWLua
                             dto.get<std::string>("completed_at") } };
                     auto accepted = m_service->enqueue(std::move(request));
                     if (!accepted) return failure(lua, accepted.error().message);
-                    return success(lua, correlated.value());
+                    return success(lua, transportRequest.value());
                 }
                 catch (const std::exception& error) { return failure(lua, error.what()); }
             }
@@ -541,7 +708,8 @@ namespace MWLua
                         : statusName == "interrupted" ? almsivi::DialogueDeliveryStatus::interrupted
                         : throw std::runtime_error("invalid dialogue delivery status");
                     const almsivi::RequestId correlated(dto.get<std::string>("request_id"));
-                    almsivi::OutboundRequest request{ correlated, *m_session, m_service->generation(),
+                    const almsivi::RequestId transportRequest(uuid());
+                    almsivi::OutboundRequest request{ transportRequest, *m_session, m_service->generation(),
                         almsivi::RequestKind::dialogue_delivery_result,
                         almsivi::DialogueDeliveryResultRequest{ almsivi::MessageId(dto.get<std::string>("message_id")),
                             { correlated, *m_session, m_service->generation() },
@@ -551,7 +719,7 @@ namespace MWLua
                             dto.get<std::string>("reason_code"), dto.get<std::string>("completed_at") } };
                     auto accepted = m_service->enqueue(std::move(request));
                     if (!accepted) return failure(lua, accepted.error().message);
-                    return success(lua, correlated.value());
+                    return success(lua, transportRequest.value());
                 }
                 catch (const std::exception& error) { return failure(lua, error.what()); }
             }
@@ -563,15 +731,50 @@ namespace MWLua
                 std::size_t outIndex = 1;
                 for (auto& result : m_service->poll(std::min<std::size_t>(maximum, 128)))
                 {
+                    ++m_resultsSeen;
                     if (result.kind == almsivi::ResponseKind::failure)
-                    { m_status = "error"; m_error = result.failure ? result.failure->message : "transport_failure"; }
+                    {
+                        const bool pollFailure = m_pollRequest && result.request == *m_pollRequest;
+                        bool mediaFailure = false;
+                        for (auto& [unused, media] : m_media)
+                        {
+                            static_cast<void>(unused);
+                            if (media.request && *media.request == result.request)
+                            {
+                                media.state = "failed";
+                                media.reason = result.failure ? result.failure->message : "transport_failure";
+                                media.request.reset();
+                                mediaFailure = true;
+                                break;
+                            }
+                        }
+                        if (pollFailure)
+                        {
+                            m_pollRequest.reset();
+                            const auto retry = result.failure && result.failure->retryAfterMs
+                                ? std::chrono::milliseconds(*result.failure->retryAfterMs) : 1000ms;
+                            m_nextPoll = std::chrono::steady_clock::now() + std::max(retry, 250ms);
+                            if (m_session)
+                                m_status = "ready";
+                        }
+                        if(m_controlsRequest&&result.request==*m_controlsRequest)m_controlsRequest.reset();
+                        if ((!pollFailure && !mediaFailure) || !m_session)
+                            m_status = "error";
+                        if (!mediaFailure)
+                            m_error = result.failure ? result.failure->message : "transport_failure";
+                    }
                     else if (m_initRequest && result.request == *m_initRequest && result.kind == almsivi::ResponseKind::accepted)
                     {
+                        ++m_initMatches;
                         auto parsed = almsivi::parseSessionAcceptedResponse(result.payload, jsonHeaders());
                         if (parsed)
                         {
                             m_session = parsed.value().session; m_cursor = parsed.value().eventCursor;
                             m_status = "ready"; m_error.clear(); m_initRequest.reset();
+                        }
+                        else
+                        {
+                            m_status = "error"; m_error = parsed.error().message; m_initRequest.reset();
                         }
                     }
                     else if (m_pollRequest && result.request == *m_pollRequest)
@@ -593,7 +796,19 @@ namespace MWLua
                     else if (result.kind == almsivi::ResponseKind::media_ready)
                     {
                         const auto found = m_media.find(result.payload);
-                        if (found != m_media.end()) found->second.state = "ready";
+                        if (found != m_media.end())
+                        {
+                            found->second.state = "ready";
+                            found->second.reason.clear();
+                            found->second.request.reset();
+                        }
+                    }
+                    else if(m_controlsRequest&&result.request==*m_controlsRequest
+                        &&result.kind==almsivi::ResponseKind::controls)
+                    {
+                        auto parsed=almsivi::parseControlsResponse(result.payload,jsonHeaders());
+                        if(parsed)m_controls=std::move(parsed).value();
+                        m_controlsRequest.reset();
                     }
                 }
                 schedulePoll();
@@ -622,7 +837,7 @@ namespace MWLua
                 if (!m_service) return false;
                 auto result = m_service->cancelGeneration(almsivi::Generation(generation));
                 if (!result) return false;
-                m_session.reset(); m_pollRequest.reset(); m_initRequest.reset(); beginSession();
+                m_session.reset(); m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();beginSession();
                 m_status = "connecting";
                 return true;
             }
@@ -635,7 +850,10 @@ namespace MWLua
             }
 
         private:
-            static almsivi::Headers jsonHeaders() { return { { "content-type", "application/json" } }; }
+            static almsivi::Headers jsonHeaders()
+            {
+                return { { "Content-Type", "application/json; charset=utf-8" } };
+            }
             static std::tuple<sol::object, sol::object> failure(sol::state_view lua, const std::string& reason)
             { return { sol::make_object(lua, sol::nil), sol::make_object(lua, reason) }; }
             static std::tuple<sol::object, sol::object> success(sol::state_view lua, const std::string& value)
@@ -664,15 +882,16 @@ namespace MWLua
                 const almsivi::RequestId request(uuid());
                 almsivi::OutboundRequest outbound{ request, *m_session, m_service->generation(),
                     almsivi::RequestKind::event_poll,
-                    almsivi::EventPollRequest{ *m_session, m_service->generation(), m_cursor, 200 } };
+                    almsivi::EventPollRequest{ *m_session, m_service->generation(), m_cursor, 1000 } };
                 auto result = m_service->enqueue(std::move(outbound));
                 if (result) m_pollRequest = request;
-                m_nextPoll = now + 50ms;
+                m_nextPoll = now + 250ms;
             }
 
             static std::vector<std::string> capabilities()
-            { return { "dialogue.text", "speech.say", "speech.listen", "action.ai.follow", "action.ai.stop", "action.ai.wander",
-                "action.combat.start", "action.combat.stop", "action.animation.play", "action.item.use",
+            { return { "dialogue.text", "speech.say", "speech.listen", "controls.session", "action.ai.follow", "action.ai.stop",
+                "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
+                "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
                 "action.inspect.report" }; }
 
             static sol::table eventTable(sol::state_view lua, const almsivi::ProtocolEvent& event)
@@ -700,6 +919,9 @@ namespace MWLua
                         switch (item.kind) {
                             case almsivi::ActionIntentKind::ai_follow: name = "ai.follow"; tier = 1; break;
                             case almsivi::ActionIntentKind::ai_stop: name = "ai.stop"; tier = 1; break;
+                            case almsivi::ActionIntentKind::ai_travel: name = "ai.travel"; tier = 1; break;
+                            case almsivi::ActionIntentKind::ai_escort: name = "ai.escort"; tier = 1; break;
+                            case almsivi::ActionIntentKind::ai_face: name = "ai.face"; tier = 1; break;
                             case almsivi::ActionIntentKind::ai_wander: name = "ai.wander"; tier = 1; break;
                             case almsivi::ActionIntentKind::animation_play: name = "animation.play"; tier = 1; break;
                             case almsivi::ActionIntentKind::combat_start: name = "combat.start"; tier = 2; break;
@@ -716,6 +938,10 @@ namespace MWLua
                         if (item.kind == almsivi::ActionIntentKind::ai_wander) {
                             parameters["distance"] = item.wanderDistance;
                             parameters["duration_seconds"] = item.wanderDurationSeconds;
+                        }
+                        if(item.kind==almsivi::ActionIntentKind::ai_travel||item.kind==almsivi::ActionIntentKind::ai_escort){
+                            parameters["destination_x"]=item.destinationX;parameters["destination_y"]=item.destinationY;
+                            parameters["destination_z"]=item.destinationZ;parameters["destination_cell"]=item.destinationCell;
                         }
                         if (item.kind == almsivi::ActionIntentKind::animation_play) parameters["group"] = item.stringParameter;
                         if (item.kind == almsivi::ActionIntentKind::item_equip) {
@@ -761,13 +987,22 @@ namespace MWLua
             std::optional<almsivi::SessionId> m_session;
             std::optional<almsivi::RequestId> m_initRequest;
             std::optional<almsivi::RequestId> m_pollRequest;
+            std::optional<almsivi::RequestId> m_controlsRequest;
+            std::optional<almsivi::ControlsResponse> m_controls;
             std::uint64_t m_cursor{};
             std::chrono::steady_clock::time_point m_nextPoll{};
-            struct MediaState { std::string state; std::string vfsName; };
+            struct MediaState {
+                std::string state;
+                std::filesystem::path cachePath;
+                std::string reason;
+                std::optional<almsivi::RequestId> request;
+            };
             std::map<std::string, MediaState> m_media;
             std::vector<almsivi::EventsResponse::AutonomyDirective> m_autonomy;
             std::string m_status{"unconfigured"};
             std::string m_error;
+            std::uint64_t m_resultsSeen{};
+            std::uint64_t m_initMatches{};
         };
 
         NativeClient& client()
@@ -776,21 +1011,23 @@ namespace MWLua
             return instance;
         }
 
-        sol::object makePackage(sol::state_view lua)
+        sol::object makePackage(sol::state_view lua, LuaManager* luaManager)
         {
             sol::table api(lua, sol::create);
             api["version"] = std::string(almsivi::kClientVersion);
             api["capabilities"] = [lua] {
                 sol::table result(lua, sol::create); std::size_t index = 1;
-            for (const auto& capability : std::vector<std::string>{ "dialogue.text", "speech.say", "speech.listen", "action.ai.follow",
-                "action.ai.stop", "action.ai.wander", "action.combat.start", "action.combat.stop",
-                "action.animation.play", "action.item.use", "action.inspect.report" })
+            for (const auto& capability : std::vector<std::string>{ "dialogue.text", "speech.say", "speech.listen", "controls.session",
+                "action.ai.follow", "action.ai.stop", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
+                "action.combat.start", "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip",
+                "action.item.use", "action.inspect.report" })
                     result[index++] = capability;
                 return result;
             };
             api["status"] = [] { return client().status(); };
             api["lastError"] = [] { return client().error(); };
             api["generation"] = [] { return client().generation(); };
+            api["diagnostics"] = [lua] { return client().diagnostics(lua); };
             api["isExpired"] = [](const std::string& timestamp) {
                 try { return parseUtc(timestamp) <= std::chrono::system_clock::now(); }
                 catch (...) { return true; }
@@ -800,9 +1037,16 @@ namespace MWLua
             api["sessionInfo"] = [lua] { return client().sessionInfo(lua); };
             api["nextTurnMetadata"] = [lua] { return client().nextTurnMetadata(lua); };
             api["submitTurn"] = [lua](sol::table dto) { return client().submitTurn(lua, std::move(dto)); };
+            api["requestSessionControls"] = [lua](sol::table target) { return client().requestControls(lua,std::move(target)); };
+            api["selectSessionControl"] = [lua](const std::string& kind,sol::optional<std::string> selection,sol::table target) {
+                return client().selectControl(lua,kind,std::move(selection),std::move(target));
+            };
+            api["sessionControls"] = [lua] { return client().sessionControls(lua); };
             api["voiceCaptureSupported"] = [] { return almsivi::VoiceCaptureService::instance().supported(); };
-            api["startVoiceCapture"] = [lua](sol::optional<bool> automatic) {
-                return client().startVoiceCapture(lua, automatic.value_or(false));
+            api["startVoiceCapture"] = [lua](sol::optional<bool> automatic, sol::optional<int> rmsThreshold,
+                                               sol::optional<int> trailingSilenceMs) {
+                return client().startVoiceCapture(
+                    lua, automatic.value_or(false), rmsThreshold.value_or(700), trailingSilenceMs.value_or(900));
             };
             api["stopVoiceCapture"] = [] { client().stopVoiceCapture(); };
             api["cancelVoiceCapture"] = [] { client().cancelVoiceCapture(); };
@@ -814,7 +1058,13 @@ namespace MWLua
             api["pollAutonomy"] = [lua](std::size_t maximum) { return client().pollAutonomy(lua, maximum); };
             api["prepareMedia"] = [lua](sol::table dto) { return client().prepareMedia(lua, std::move(dto)); };
             api["mediaStatus"] = [lua](const std::string& id) { return client().mediaStatus(lua, id); };
-            api["mediaVfsName"] = [lua](const std::string& id) { return client().mediaVfsName(lua, id); };
+            api["playSpeech"] = [lua, luaManager](const std::string& id, const sol::object& actor,
+                                    sol::optional<std::string> subtitle, sol::optional<float> volumeBoost) {
+                return client().playSpeech(lua, id, actor, subtitle.value_or(""), volumeBoost.value_or(3.f), luaManager);
+            };
+            api["isSpeechActive"] = [](const sol::object& actor) { return client().isSpeechActive(actor); };
+            api["stopSpeech"] = [](const sol::object& actor) { return client().stopSpeech(actor); };
+            api["releaseMedia"] = [](const std::string& id) { return client().releaseMedia(id); };
             api["submitActionResult"] = [lua](sol::table dto) { return client().submitActionResult(lua, std::move(dto)); };
             api["submitDialogueDeliveryResult"] = [lua](sol::table dto) {
                 return client().submitDialogueDeliveryResult(lua, std::move(dto));
@@ -829,17 +1079,17 @@ namespace MWLua
     {
         if (context.mType == Context::Menu || context.mType == Context::Load)
             throw std::logic_error("openmw.almsivi is unavailable in menu and load contexts");
-        return makePackage(context.sol());
+        return makePackage(context.sol(), context.mLuaManager);
     }
 
     sol::object initAlmsiviCustomPackageLoader(const Context& context)
     {
         if (context.mType != Context::Local)
             throw std::logic_error("openmw.almsivi custom loader requires a local context");
-        return sol::make_object(context.sol(), [lua = context.mLua](sol::table hiddenData) -> sol::object {
+        return sol::make_object(context.sol(), [lua = context.mLua, luaManager = context.mLuaManager](sol::table hiddenData) -> sol::object {
             LuaUtil::ScriptId id = hiddenData[LuaUtil::ScriptsContainer::sScriptIdKey];
             if (!lua->getConfiguration().isCustomScript(id.mIndex)) return sol::nil;
-            return makePackage(hiddenData.lua_state());
+            return makePackage(hiddenData.lua_state(), luaManager);
         });
     }
 }

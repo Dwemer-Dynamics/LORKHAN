@@ -23,6 +23,9 @@ function M.validate(state, intent, authority)
         ['inspect.report']={capability='action.inspect.report',tier=0},
         ['ai.follow']={capability='action.ai.follow',tier=1},
         ['ai.stop']={capability='action.ai.stop',tier=1},
+        ['ai.travel']={capability='action.ai.travel',tier=1},
+        ['ai.escort']={capability='action.ai.escort',tier=1},
+        ['ai.face']={capability='action.ai.face',tier=1},
         ['ai.wander']={capability='action.ai.wander',tier=1},
         ['combat.start']={capability='action.combat.start',tier=2},
         ['combat.stop']={capability='action.combat.stop',tier=1},
@@ -50,6 +53,22 @@ function M.validate(state, intent, authority)
         local distance=intent.parameters.distance
         if type(distance)~='number' or distance%1~=0 or distance~=192 then return nil,'invalid_follow_distance' end
         parameters.distance=distance
+    elseif intent.name=='ai.travel' or intent.name=='ai.escort' then
+        local allowed={destination_x=true,destination_y=true,destination_z=true,destination_cell=true}
+        for key in pairs(intent.parameters) do if not allowed[key] then return nil,'unknown_destination_parameter' end end
+        for _,axis in ipairs({'destination_x','destination_y','destination_z'}) do
+            local value=intent.parameters[axis]
+            if type(value)~='number' or value~=value or value<-100000000 or value>100000000 then
+                return nil,'invalid_destination_coordinate'
+            end
+            parameters[axis]=value
+        end
+        local cell=intent.parameters.destination_cell
+        if type(cell)~='string' or #cell<1 or #cell>300
+            or not (cell:match('^interior:.+$') or cell:match('^exterior:%-?%d+:%-?%d+$')) then
+            return nil,'invalid_destination_cell'
+        end
+        parameters.destination_cell=cell
     elseif intent.name=='ai.wander' then
         for key in pairs(intent.parameters) do if key~='distance' and key~='duration_seconds' then return nil,'unknown_wander_parameter' end end
         local distance=intent.parameters.distance

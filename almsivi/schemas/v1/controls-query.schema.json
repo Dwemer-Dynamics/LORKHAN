@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://almsivi.invalid/schemas/v1/controls-query.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "almsivi.controls.query.v1", "type": "string"},
+    "message_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "request_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "session_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "generation": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/generation"},
+    "target": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"}
+  },
+  "required": ["schema", "message_id", "request_id", "session_id", "generation", "target"],
+  "type": "object"
+}

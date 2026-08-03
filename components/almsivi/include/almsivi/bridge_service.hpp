@@ -17,13 +17,21 @@
 
 namespace almsivi {
 
+struct BridgeDiagnostics {
+    std::size_t outbound{};
+    std::size_t inbound{};
+    std::size_t active{};
+    std::size_t cancellations{};
+};
+
 // Thread ownership contract:
 // - OpenMW's engine/main thread validates and copies DTOs before calling enqueue/poll/control.
 // - The sole worker owns ITransport. It never receives or retains engine, sol, VFS, or UI objects.
 // - poll returns immutable native DTOs; the caller re-resolves engine identity behind its main-thread gate.
 class BridgeService {
 public:
-    BridgeService(std::unique_ptr<ITransport> transport, std::shared_ptr<IClock> clock);
+    BridgeService(std::unique_ptr<ITransport> transport, std::shared_ptr<IClock> clock,
+        Generation initialGeneration = Generation());
     ~BridgeService();
     BridgeService(const BridgeService&) = delete;
     BridgeService& operator=(const BridgeService&) = delete;
@@ -33,6 +41,7 @@ public:
     [[nodiscard]] std::vector<InboundResult> poll(std::size_t maximumItems);
     [[nodiscard]] Result<void> cancel(const RequestId& request);
     [[nodiscard]] Result<Generation> cancelGeneration(Generation generation);
+    [[nodiscard]] BridgeDiagnostics diagnostics() const;
     void halt() noexcept;
     [[nodiscard]] bool halted() const noexcept { return m_halted.load(std::memory_order_acquire); }
 

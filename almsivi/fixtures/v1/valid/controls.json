@@ -1,0 +1,34 @@
+{
+  "description": "Safe server-owned model slots and actor profiles for the active session",
+  "instance": {
+    "schema": "almsivi.controls.v1",
+    "message_id": "10000000-0000-4000-8000-000000000404",
+    "request_id": "10000000-0000-4000-8000-000000000405",
+    "session_id": "10000000-0000-4000-8000-000000000403",
+    "generation": 7,
+    "target": {
+      "kind": "npc",
+      "record_id": "fargoth",
+      "refnum": {"index": 42, "content_file": 0},
+      "content_file": "Morrowind.esm",
+      "cell": {"kind": "interior", "name": "Seyda Neen, Census and Excise Office"},
+      "display_name": "Fargoth"
+    },
+    "selected_model_slot_id": "10000000-0000-4000-8000-000000000406",
+    "selected_profile_id": null,
+    "narrator_profile_id": "10000000-0000-4000-8000-000000000408",
+    "model_slots": [{
+      "configuration_id": "10000000-0000-4000-8000-000000000406",
+      "name": "Dialogue",
+      "revision": 1,
+      "driver": "configured",
+      "model": "gpt-5-mini"
+    }],
+    "profiles": [{
+      "profile_id": "10000000-0000-4000-8000-000000000407",
+      "name": "Fargoth",
+      "revision": 2
+    }]
+  },
+  "schema": "https://almsivi.invalid/schemas/v1/controls.schema.json"
+}

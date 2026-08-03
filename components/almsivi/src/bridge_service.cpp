@@ -8,8 +8,9 @@
 
 namespace almsivi {
 
-BridgeService::BridgeService(std::unique_ptr<ITransport> transport, std::shared_ptr<IClock> clock)
-    : m_transport(std::move(transport)), m_clock(std::move(clock))
+BridgeService::BridgeService(std::unique_ptr<ITransport> transport, std::shared_ptr<IClock> clock,
+    Generation initialGeneration)
+    : m_transport(std::move(transport)), m_clock(std::move(clock)), m_generation(initialGeneration)
 {
     if (!m_transport || !m_clock)
         throw std::invalid_argument("BridgeService requires transport and clock");
@@ -50,6 +51,8 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         || (request.kind == RequestKind::dialogue_delivery_result) != std::holds_alternative<DialogueDeliveryResultRequest>(request.payload)
         || (request.kind == RequestKind::session_end) != std::holds_alternative<SessionEndRequest>(request.payload)
         || (request.kind == RequestKind::stt) != std::holds_alternative<SttRequest>(request.payload)
+        || (request.kind == RequestKind::controls_query) != std::holds_alternative<ControlsQueryRequest>(request.payload)
+        || (request.kind == RequestKind::controls_select) != std::holds_alternative<ControlsSelectRequest>(request.payload)
         || (request.kind == RequestKind::media) != std::holds_alternative<MediaPrepareRequest>(request.payload))
         return Result<void>::failure(makeError(ErrorCode::invalid_argument, "request kind does not match typed payload"));
     if (const auto* init = std::get_if<InitRequest>(&request.payload)) {
@@ -87,15 +90,14 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
     if (const auto* action = std::get_if<ActionResultRequest>(&request.payload)) {
         if (!validId(action->message) || !validId(action->correlation.request)
             || !validId(action->correlation.session) || !validId(action->action) || !validId(action->turn)
-            || action->correlation.request != request.id || action->correlation.session != request.session
+            || action->correlation.session != request.session
             || action->correlation.generation != request.generation)
             return Result<void>::failure(makeError(ErrorCode::invalid_argument, "action-result correlation contains malformed or inconsistent IDs"));
     }
     if (const auto* delivery = std::get_if<DialogueDeliveryResultRequest>(&request.payload)) {
         if (!validId(delivery->message) || !validId(delivery->correlation.request)
             || !validId(delivery->correlation.session) || !validId(delivery->dialogueMessage)
-            || !validId(delivery->turn) || delivery->correlation.request != request.id
-            || delivery->correlation.session != request.session
+            || !validId(delivery->turn) || delivery->correlation.session != request.session
             || delivery->correlation.generation != request.generation)
             return Result<void>::failure(makeError(ErrorCode::invalid_argument,
                 "dialogue-delivery correlation contains malformed or inconsistent IDs"));
@@ -118,6 +120,26 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         if (!validId(end->request) || !validId(end->session) || end->request != request.id
             || end->session != request.session || end->generation != request.generation)
             return Result<void>::failure(makeError(ErrorCode::invalid_argument, "session-end correlation contains malformed or inconsistent IDs"));
+    }
+    if (const auto* controls = std::get_if<ControlsQueryRequest>(&request.payload)) {
+        if (!validId(controls->message) || !validId(controls->correlation.request)
+            || !validId(controls->correlation.session) || controls->correlation.request != request.id
+            || controls->correlation.session != request.session || controls->correlation.generation != request.generation)
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,
+                "controls-query correlation contains malformed or inconsistent IDs"));
+        auto target = parseProtocolIdentity(controls->serializedTarget);
+        if (!target) return Result<void>::failure(target.error());
+    }
+    if (const auto* controls = std::get_if<ControlsSelectRequest>(&request.payload)) {
+        if (!validId(controls->message) || !validId(controls->correlation.request)
+            || !validId(controls->correlation.session) || controls->correlation.request != request.id
+            || controls->correlation.session != request.session || controls->correlation.generation != request.generation
+            || (controls->selectionId && !isCanonicalUuid(*controls->selectionId))
+            || !isCanonicalUtcTimestamp(controls->createdAt))
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,
+                "controls-select correlation or selection is invalid"));
+        auto target = parseProtocolIdentity(controls->serializedTarget);
+        if (!target) return Result<void>::failure(target.error());
     }
     const auto validatePayload = [](std::string_view value, std::size_t limit) -> Result<void> {
         auto valid = requireValidUtf8(value, limit);
@@ -226,6 +248,14 @@ Result<Generation> BridgeService::cancelGeneration(Generation generation)
     for (const auto& id : active)
         m_transport->interrupt(id);
     return Result<Generation>::success(m_generation.invalidate());
+}
+
+BridgeDiagnostics BridgeService::diagnostics() const
+{
+    BridgeDiagnostics result{m_outbound.size(), m_inbound.size(), 0, m_cancellations.size()};
+    std::lock_guard lock(m_stateMutex);
+    result.active = m_activeRequests.size();
+    return result;
 }
 
 void BridgeService::halt() noexcept

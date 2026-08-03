@@ -21,6 +21,35 @@
     "payload": {
       "additionalProperties": false,
       "properties": {
+        "action_request": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.]{0,63}$",
+              "type": "string"
+            },
+            "parameters": {
+              "$comment": "Deferred catalog-validated action parameters; bounded envelope only.",
+              "maxProperties": 16,
+              "type": "object"
+            },
+            "target": {
+              "$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"
+            },
+            "tier": {
+              "maximum": 3,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "name",
+            "tier",
+            "parameters"
+          ],
+          "type": "object"
+        },
         "audience": {
           "items": {
             "$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"

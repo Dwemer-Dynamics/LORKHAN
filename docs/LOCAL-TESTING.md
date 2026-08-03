@@ -41,27 +41,60 @@ stock OpenMW executable.
 5. Confirm `http://127.0.0.1:8089/ALMSIVIserver/api/v1/health` works from Windows. If WSL localhost
    forwarding is disabled, run `scripts/deploy/enable-wsl-loopback.ps1` from an elevated PowerShell
    window. The native client intentionally rejects non-loopback server URLs.
-6. In game, press F6 to open ALMSIVI, center the crosshair on an NPC, select the target, type a line,
-   and send. F7 is the emergency halt fallback. All four ALMSIVI inputs can be rebound under
-   Options > Scripts > ALMSIVI.
-7. Use `Add aimed NPC to group` to include additional nearby actors. `Reset group to target` returns
-   the conversation to the primary target only.
+6. In game, center the crosshair on an NPC and press F6. ALMSIVI selects that NPC automatically and
+   shows the confirmed name beside `Target`. Click the text box, type a line, and press Enter; Escape
+   closes the panel. F7 stops current ALMSIVI work and F8 opens Actor Actions; the Master Menu is
+   linked inside both panels. Every ALMSIVI input can be rebound under Options > Scripts > ALMSIVI.
+   Bind `Mute ALMSIVI open microphone` separately if using VAD. Behavior settings expose the bounded
+   speech sensitivity and silence-end delay.
+7. Use `Use aimed NPC as target` to retarget, or open Master Menu > Agent Manager to choose one of the
+   nearest active actors without the crosshair. `Add aimed NPC to group` and the Agent Manager group
+   rows include another actor; `Reset group to target` returns to the primary target only. Manual AI
+   Activate toggles the aimed actor, or pins up to 12 nearby actors when no actor is aimed at.
+8. For `Attack aimed actor` or `Stop combat with aimed actor`, choose the action, aim at the second
+   actor, and press F8 again. The server accepts only a different actor from the bounded nearby-actor
+   snapshot. For `Go to aimed point` or `Escort me to aimed point`, choose the action, aim at a point
+   in the current cell within 2048 units, and press F8 again; ALMSIVI captures that ray hit rather than
+   accepting model-authored coordinates. `Face me` turns toward the player; `Face aimed actor` uses the
+   same two-stage F8 actor confirmation and reports success only after the heading is observed. Auto greeting, bounded rechat depth, boredom delays, separate interior/exterior scan and hearing distances, creatures, and hostile
+   actors are controlled under Options > Scripts > ALMSIVI. Managed NPCs inside the hearing distance join
+   the bounded turn audience without replacing manually selected group members. Auto-managed actors already
+   fighting the player are removed unless `Add hostile actors` is enabled; actors selected manually remain
+   under user control. By default, idle/rechat timers reset while a menu is open, the player is sneaking, or
+   a managed nearby actor is fighting the player. Those three safety gates can be changed in Behavior settings.
+   Master Menu > Dialogue Mode selects real routing: Standard adds normal spatial hearing, Close uses only
+   the explicit group, Whisper uses the primary target only, and Shout doubles spatial hearing.
+   Combat barks are enabled by default with a 30-second minimum interval and only run for managed hostile
+   actors when menus, voice input, generated speech and other ALMSIVI turns are inactive.
+9. Master Menu > LLM model slot lists only revisioned choices created on ALMSIVIserver; `Server default`
+   clears the per-session override. Master Menu > NPC roleplay profile assigns a server profile to the
+   currently confirmed actor for this playthrough; `Playthrough default` clears that actor binding.
+   Neither panel accepts an endpoint, API key, model name, profile text, or other free-form configuration.
 
 ## What to verify in game
 
 - the target name matches the NPC under the crosshair;
 - a typed turn appears in the transcript and receives a mock response;
 - push-to-talk records only while its semantic input is held and submits the resulting bounded WAV;
-- opt-in open microphone visibly reports its privacy state and ignores silence through VAD;
+- opt-in open microphone visibly reports listening/muted state, resumes after unmute, and honors the
+  configured VAD sensitivity and silence-end delay;
+- Standard, Close, Whisper and Shout produce the expected target/group/spatial audience;
+- a manually managed hostile can bark on combat entry and periodically without overlapping another turn;
 - the generated short WAV plays through the actor voice path and subtitles remain visible;
 - `inspect.report` returns a terminal result;
-- `ai.follow`, `ai.stop`, and bounded `ai.wander` affect only the selected actor;
+- `ai.follow`, same-cell `ai.travel`/`ai.escort`, `ai.stop`, and bounded `ai.wander` affect only the
+  selected actor; replacement/stop matches the package ALMSIVI started;
+- `ai.face` is actor-local, times out after three seconds, cancels on combat/cell/target loss, and
+  releases its yaw control on every terminal path;
 - `combat.start` waits for the visible Approve/Reject choice, while `combat.stop` remains immediate;
+  both aimed-actor commands require the two-stage F8 confirmation and reject stale/out-of-context targets;
 - `animation.play` accepts only `idle2` through `idle9`; `item.use` can select only an item already
   present in that actor's inventory and also waits for Approve/Reject;
 - player inventory, stats, effects, factions, journal, cell, weather, nearby actors, and target state
   are sent only through the bounded read-only context snapshot;
 - F7 stops ALMSIVI-owned speech/follow state;
+- model-slot and actor-profile choices update visibly, survive a fresh controls query, and affect only
+  future accepted turns for the current session/actor scope;
 - save/load and cell changes do not replay stale dialogue or actions.
 
 Do not enter live provider credentials in the game client. Configure them only in the private server

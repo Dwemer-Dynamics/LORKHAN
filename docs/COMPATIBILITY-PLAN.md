@@ -68,6 +68,19 @@ vanilla dialogue voices, ALMSIVI generated speech, subtitle ownership, simultane
 lip/loudness behavior, filenames/cache, script interfaces, input bindings and UI layers. ALMSIVI must
 not suppress existing voice playback globally.
 
+## Profile H: ALMSIVI development helpers
+
+Keep a separate local profile containing H3lp Yours3lf, Follower Detection Util and Dynamic Camera.
+H3 is a compatibility/library probe rather than an ALMSIVI dependency. Follower Detection Util is an
+optional provider for bounded follower/leader context through its published interface. Dynamic Camera
+is a camera/UI coexistence probe and does not replace ALMSIVI target authority. Record exact archive
+versions and hashes, keep every mod in its own `C:\Modlists\ALMSIVI\Mods` directory, and retain the
+minimal legal GOTY profile for release-blocking comparisons. The local Compatibility profile sets
+`user-data=.` so its saves and logs remain isolated. The ALMSIVI profile manager owns ordered `data=`
+and `content=` entries, reports loose-file conflicts with the final winning folder, validates missing
+paths/content, backs up the profile before saving, and starts the server/private client environment
+before handing off to the OpenMW launcher.
+
 ## Conflict rules
 
 1. Use unique `scripts/ALMSIVI` paths, interfaces, storage sections and semantic input actions.

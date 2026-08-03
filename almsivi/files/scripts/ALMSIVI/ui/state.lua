@@ -3,8 +3,10 @@ local util = require('scripts.ALMSIVI.util')
 local M = {}
 
 function M.new(policy)
-    return {visible=false, status='offline', target=nil, audience={}, nearby={}, input='', transcript={}, subtitle=nil,
-        diagnostics=nil, policy=util.copy(policy or {})}
+    return {visible=false, status='offline', target=nil, audience={}, nearby={}, agents={}, input='', transcript={}, subtitle=nil,
+        diagnostics=nil, mode='Standard',panel='conversation',actionView='root',actionPage=1,actionSlot=nil,
+        pendingTargetAction=nil,
+        statusHudVisible=true,policy=util.copy(policy or {})}
 end
 
 function M.toggle(state) state.visible = not state.visible return state.visible end

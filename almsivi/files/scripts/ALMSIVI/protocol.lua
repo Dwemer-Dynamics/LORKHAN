@@ -42,14 +42,26 @@ function M.turn(args)
     if not isLanguageTag(args.language) then return nil,'invalid_language' end
     if not identity.validate(args.target) or not identity.validate(args.speaker) then return nil, 'invalid_identity' end
     if #args.audience > constants.MAX_AUDIENCE then return nil, 'audience_too_large' end
+    local payload={input={kind='text', text=args.text, language=args.language}, speaker=util.copy(args.speaker),
+        target=util.copy(args.target), audience=util.arrayCopy(args.audience), context=util.copy(args.context),
+        recent_action_results=util.arrayCopy(args.recent_action_results or {}), ui_source=args.ui_source}
+    if args.action_request~=nil then
+        local request=args.action_request
+        if type(request)~='table' or type(request.name)~='string' or not request.name:match('^[a-z][a-z0-9_.]*$')
+            or #request.name>64 or type(request.tier)~='number' or request.tier%1~=0 or request.tier<0 or request.tier>3
+            or type(request.parameters)~='table' then return nil,'invalid_action_request' end
+        payload.action_request={name=request.name,tier=request.tier,parameters=util.copy(request.parameters)}
+        if request.target~=nil then
+            if not identity.validate(request.target) then return nil,'invalid_action_target' end
+            payload.action_request.target=util.copy(request.target)
+        end
+    end
     return {
         schema='almsivi.turn.v1', message_id=args.message_id, request_id=args.request_id, turn_id=args.turn_id,
         installation_id=args.installation_id, profile_id=args.profile_id, playthrough_id=args.playthrough_id,
         session_id=args.session_id, generation=args.generation, created_at=args.created_at,
         runtime=M.runtime(args.platform, args.capabilities), content_fingerprint=args.content_fingerprint,
-        payload={input={kind='text', text=args.text, language=args.language}, speaker=util.copy(args.speaker),
-            target=util.copy(args.target), audience=util.arrayCopy(args.audience), context=util.copy(args.context),
-            recent_action_results=util.arrayCopy(args.recent_action_results or {}), ui_source=args.ui_source}
+        payload=payload
     }
 end
 

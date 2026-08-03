@@ -188,10 +188,12 @@ bool VoiceCaptureService::supported() const noexcept
 #endif
 }
 
-Result<void> VoiceCaptureService::start(bool automatic)
+Result<void> VoiceCaptureService::start(bool automatic, std::uint16_t rmsThreshold, std::uint32_t trailingSilenceMs)
 {
     if (!supported())
         return Result<void>::failure(makeError(ErrorCode::invalid_argument, "voice capture is available only on Windows"));
+    if (rmsThreshold < 100 || rmsThreshold > 5000 || trailingSilenceMs < 500 || trailingSilenceMs > 5000)
+        return Result<void>::failure(makeError(ErrorCode::invalid_argument, "invalid voice activity settings"));
     std::thread finished;
     {
         std::lock_guard lock(m_mutex);
@@ -205,6 +207,8 @@ Result<void> VoiceCaptureService::start(bool automatic)
         m_stop.store(false, std::memory_order_release);
         m_automatic.store(automatic, std::memory_order_release);
         m_voiceDetected.store(false, std::memory_order_release);
+        m_rmsThreshold.store(rmsThreshold, std::memory_order_release);
+        m_trailingSilenceMs.store(trailingSilenceMs, std::memory_order_release);
         m_ready.reset();
         m_error.clear();
         m_state = VoiceCaptureState::recording;
@@ -310,8 +314,10 @@ void VoiceCaptureService::capture()
     constexpr std::size_t minimumPcmBytes = sampleRate * 2U / 10U;
     constexpr auto maximumDuration = 30s;
     constexpr auto voiceTimeout = 15s;
-    constexpr auto trailingSilence = 900ms;
     constexpr std::size_t preRollBytes = sampleRate * 2U * 300U / 1000U;
+    const auto trailingSilence = std::chrono::milliseconds(
+        m_trailingSilenceMs.load(std::memory_order_acquire));
+    const auto rmsThreshold = m_rmsThreshold.load(std::memory_order_acquire);
 
     WAVEFORMATEX format{};
     format.wFormatTag = WAVE_FORMAT_PCM;
@@ -363,7 +369,7 @@ void VoiceCaptureService::capture()
             if ((header.dwFlags & WHDR_DONE) == 0) continue;
             const auto* first = reinterpret_cast<const std::byte*>(header.lpData);
             const std::span<const std::byte> chunk(first, header.dwBytesRecorded);
-            if (automaticCapture && pcm16HasVoice(chunk)) {
+            if (automaticCapture && pcm16HasVoice(chunk, rmsThreshold)) {
                 if (!heardVoice) speechStart = pcm.size() > preRollBytes ? pcm.size() - preRollBytes : 0;
                 heardVoice = true;
                 ++voicedBuffers;

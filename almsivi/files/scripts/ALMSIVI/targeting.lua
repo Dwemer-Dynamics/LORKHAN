@@ -4,12 +4,14 @@ local util = require('scripts.ALMSIVI.util')
 
 local M = {}
 
-function M.validate(candidate, registry)
+function M.validate(candidate, registry, policy)
+    policy=policy or {}
     if type(candidate)~='table' or not identity.validate(candidate.identity) then return nil,'invalid_target' end
     if candidate.identity.kind~='npc' and candidate.identity.kind~='creature' then return nil,'not_actor' end
     if type(candidate.distance)~='number' or type(candidate.maxDistance)~='number' or candidate.distance > candidate.maxDistance then return nil,'target_out_of_range' end
     if candidate.dead then return nil,'target_dead' end
-    if candidate.hostile then return nil,'target_hostile' end
+    if candidate.hostile and not policy.allowHostile then return nil,'target_hostile' end
+    if candidate.identity.kind=='creature' and not policy.allowCreatures then return nil,'target_creature' end
     if candidate.available==false then return nil,'target_unavailable' end
     if not registry:resolve(candidate.identity) then return nil,'target_inactive' end
     return util.copy(candidate.identity)

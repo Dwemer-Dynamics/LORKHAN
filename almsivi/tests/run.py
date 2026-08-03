@@ -7,6 +7,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 FILES = ROOT / "almsivi" / "files"
 SCRIPTS = FILES / "scripts" / "ALMSIVI"
+DEPLOY = ROOT / "scripts" / "deploy" / "full-local.ps1"
+PROFILE_MANAGER = ROOT / "scripts" / "tools" / "manage-openmw-profile.ps1"
 failures = []
 
 def check(name, condition):
@@ -44,6 +46,21 @@ all_lua = "\n".join(text(path) for path in SCRIPTS.rglob("*.lua") if "tests" not
 for forbidden in ["io.open", "os.execute", "loadstring", "dofile", "package.loadlib", "require('socket", 'require("socket']:
     check(f"forbidden primitive absent: {forbidden}", forbidden not in all_lua)
 check("native seam exposes typed bridge only", "require, 'openmw.almsivi'" in text(SCRIPTS / "adapters" / "openmw.lua"))
+adapter_script = text(SCRIPTS / "adapters" / "openmw.lua")
+native_binding = text(ROOT / "apps" / "openmw" / "mwlua" / "almsivibindings.cpp")
+check("verified speech bypasses the startup-only VFS index", all(fragment in native_binding for fragment in [
+    'api["playSpeech"]', "sayAlmsiviMedia", "openConstrainedFileStream", "cachePath"])
+    and 'api["mediaVfsName"]' not in native_binding
+    and "bridge.playSpeech(mediaId,modules.self,subtitle or '',tonumber(volumeBoost) or 3)" in adapter_script
+    and "modules.core.sound.say" not in adapter_script)
+check("ALMSIVI-only TTS boost is bounded and reaches native playback", all(fragment in native_binding for fragment in [
+    "invalid_tts_volume_boost", "volumeBoost.value_or(3.f)", "sayAlmsiviMedia("])
+    and "tts_volume_boost=ttsVolumeBoost" in text(SCRIPTS / "orchestrator.lua")
+    and "command.tts_volume_boost" in text(SCRIPTS / "actor_executor.lua")
+    and "command.tts_volume_boost" in text(SCRIPTS / "player.lua"))
+check("OpenMW special player identity is stable and resolvable", all(fragment in adapter_script for fragment in [
+    "kind=='player' and object.id:match('^@0x[0-9a-fA-F]+$')", "refnumIndex=specialPlayer and 0",
+    "(kind=='npc' or kind=='player') and modules.types.NPC.record", "modules.nearby.players and modules.nearby.players[1]"]))
 actions = text(SCRIPTS / "actions.lua")
 check("safe action allowlist is explicit", all(name in actions for name in (
     "'inspect.report'", "'ai.follow'", "'ai.stop'", "'ai.wander'", "'combat.start'", "'combat.stop'",
@@ -69,15 +86,103 @@ settings = text(SCRIPTS / "settings.lua")
 check("OpenMW Scripts page exposes all ALMSIVI input bindings", all(fragment in settings for fragment in [
     "I.Settings.registerPage", "I.Settings.registerGroup", "renderer='inputBinding'",
     "key='ALMSIVI_Talk'", "key='ALMSIVI_Halt'", "key='ALMSIVI_PushToTalk'", "key='ALMSIVI_OpenMic'"]))
+check("OpenMW Scripts page exposes bounded ALMSIVI TTS volume boost", all(fragment in settings for fragment in [
+    "key='ttsVolumeBoost'", "default=3", "integer=true,min=1,max=4"]))
 check("conflict-free F6 and F7 defaults seed only once", all(fragment in settings for fragment in [
     "ALMSIVIInputDefaults", "defaultsSection:get('version') == nil", "input.KEY.F6", "input.KEY.F7"]))
 check("OpenMW settings rows have required localization metadata", all(fragment in settings for fragment in [
     "name='Talk_name',description='Talk_description'", "name='Halt_name',description='Halt_description'",
     "name='PushToTalk_name',description='PushToTalk_description'",
     "name='OpenMic_name',description='OpenMic_description'"]))
-check("player has no duplicate hardcoded ALMSIVI keys", "onKeyPress" not in text(SCRIPTS / "player.lua"))
+player_script = text(SCRIPTS / "player.lua")
+check("player has no duplicate hardcoded ALMSIVI keys", all(key not in player_script for key in [
+    "input.KEY.F6", "input.KEY.F7", "input.KEY.F8"]))
+check("typed chat fallback follows the configured semantic binding", all(fragment in player_script for fragment in [
+    "inputBindings:get('ALMSIVI_Talk_Binding')", "binding.button==event.code",
+    "input.registerTriggerHandler('ALMSIVI_Talk',adapter.callback(requestTalkToggle))"]))
+check("typed chat captures a target before UI mode and exposes nearby choices", all(fragment in player_script for fragment in [
+    "TYPE YOUR MESSAGE", "type=openmwUi.TYPE.TextEdit", "type=openmwUi.TYPE.Image",
+    "chooseTarget(2048,true)\n        enterUiMode()\n        render()", "NEARBY TARGETS", "Talk to "]))
+check("typed chat uses one-line Enter submission and waits for target confirmation", all(fragment in player_script for fragment in [
+    "multiline=false", "player.consumeTextEdit(value)", "pendingTextSubmit=true",
+    "event.code==input.KEY.Enter or event.code==input.KEY.NP_Enter",
+    "if shouldSubmit then submitText() elseif controlPanel then refreshSessionControls(controlPanel) else render() end"]))
+check("master popup exposes persistent local rechat and boredom controls", all(fragment in player_script for fragment in [
+    "masterOption('Conversation behavior'", "state.ui.panel=='behavior'", "behaviorSettings:set(key,not enabled)",
+    "behaviorOption('Continue conversations (rechat)','rechat')", "behaviorOption('Bored events','boredom')",
+    "this is not background life."]))
+check("master popup exposes server-validated narrator generation", all(fragment in player_script for fragment in [
+    "masterOption('Narrator profile'", "controls.narrator_profile_id",
+    "native.selectSessionControl('narrator_profile_generate'", "preserves voice routing and enablement."]))
+check("nearby agent manager opens the selected actor profile controls", all(fragment in player_script for fragment in [
+    "text='Manage profile for '..label", "pendingControlPanel='profiles'",
+    "elseif controlPanel then refreshSessionControls(controlPanel)", "pendingControlPanel=nil"]))
+global_script = text(SCRIPTS / "global.lua")
+check("global orchestrator output is delivered to the player-local script", all(fragment in global_script for fragment in [
+    "local function currentPlayer()", "player:sendEvent(name,payload)", "local function flushPlayerEvents(player)",
+    "pendingPlayerEvents[#pendingPlayerEvents+1]", "flushPlayerEvents(object)"])
+    and "local function emit(name,payload) if core and core.sendGlobalEvent" not in global_script)
+orchestrator_script = text(SCRIPTS / "orchestrator.lua")
+check("terminal speech releases bounded client media state",
+    all(fragment in global_script for fragment in ["ALMSIVI_SPEECH_STATUS=function(event)",
+        "orchestrator.speechStatus(state,event)", "emit('ALMSIVI_SPEECH_STATUS',event)"])
+    and all(fragment in orchestrator_script for fragment in ["function M.speechStatus(state,event)",
+        "state.conversation.pendingMedia[event.media_id]=nil", "state.bridge.releaseMedia(event.media_id)"]))
+check("vanilla actor activation only supplies a passive target hint", all(fragment in global_script for fragment in [
+    "interfaces.Activation.addHandlerForType(types.NPC,observeActivatedActor)",
+    "interfaces.Activation.addHandlerForType(types.Creature,observeActivatedActor)",
+    "orchestrator.activate(state,candidate.identity,object)", "orchestrator.selectTarget(state,candidate)"])
+    and "return false" not in global_script.split("local function observeActivatedActor", 1)[1].split("end", 1)[0])
+check("loaded actors are reactivated before target validation", all(fragment in global_script for fragment in [
+    "world.activeActors", "orchestrator.load(state,data)\n            activateWorldActors()",
+    "local function selectCandidate(candidate,source)",
+    "emit('ALMSIVI_TARGET_REJECTED',{reason=reason})"]))
+check("global nearest actor fallback handles empty local target searches", all(fragment in global_script for fragment in [
+    "local function nearestWorldCandidate(maxDistance)", "world.activeActors", "world.players",
+    "ALMSIVI_SELECT_NEAREST_TARGET=function(event)", "selectCandidate(candidate,'nearest_active_actor')"])
+    and all(fragment in player_script for fragment in [
+    "send('ALMSIVI_SELECT_NEAREST_TARGET',{maxDistance=maxDistance,local_reason=reason})",
+    "local target search failed:", "return true"]))
+check("text submission failures are observable in game and logs", all(fragment in global_script for fragment in [
+    "local submitted,reason=orchestrator.submitText(state,event)",
+    "print('[ALMSIVI] text turn rejected: '..tostring(reason))",
+    "emit('ALMSIVI_TURN',{status='failed',reason=reason})"]))
+check("native session handshake is pumped before cursored event polling", all(fragment in global_script for fragment in [
+    "if not session and bridge.pollResults then", "bridge.pollResults(8)",
+    "session=bridge.sessionInfo and bridge.sessionInfo()",
+    "if state.events then orchestrator.poll(state) end"]))
+check("Follower Detection Util remains an optional bounded context provider", all(fragment in adapter_script for fragment in [
+    "modules.interfaces.FollowerDetectionUtil", "type(fdu.getFollowerList)~='function'", "if #result>=32 then break end",
+    "follower_detection=followerProvider and followerProvider.provider or 'unavailable'"]))
+check("OpenMW content files are copied into serializable event data", all(fragment in adapter_script for fragment in [
+    "local contentFiles={}", "for index,name in ipairs(loadedFiles) do contentFiles[index]=name end",
+    "contentFiles=contentFiles"]) and "contentFiles=modules.core and modules.core.contentFiles" not in adapter_script)
+check("live aimed actor preview is physics-only and distinct from committed target", all(fragment in player_script for fragment in [
+    "Aim: '..displayName(aimCandidate and aimCandidate.identity)", "adapter.resolveActorRay(2048)",
+    "local reason=candidate and 'live_aim_preview' or nil"]) and all(fragment in adapter_script for fragment in [
+    "function M.resolveActorRay(maxDistance, modules)", "function M.actorDistance(targetIdentity, modules)"]))
 check("guessed UI and targeting constants absent", all(name not in constants for name in ["MAX_TEXT_BYTES", "MAX_TRANSCRIPT", "MAX_NEARBY_PICKER", "MAX_TARGET_DISTANCE"]))
 check("Lua tests reject 191 193 and noninteger follow", all(fragment in text(SCRIPTS / "tests" / "run.lua") for fragment in ["distance=191", "distance=193", "distance=192.5"]))
 check("pure Lua runner present", (SCRIPTS / "tests" / "run.lua").is_file())
+deploy_script = text(DEPLOY)
+check("compatibility launcher keeps third-party mods out of the clean profile", all(fragment in deploy_script for fragment in [
+    "Profiles\\Compatibility", "Play-ALMSIVI-Compatibility.cmd", "Manage-ALMSIVI-Compatibility-Mods.cmd", "& $engine --config $profile",
+    "currentprofile=ALMSIVI Compatibility", "firstrun=false", "user-data=.",
+    "content=DynamicCamera.omwscripts", "content=FollowerDetectionUtil.omwscripts", "content=H3lp Yours3lf.esp"]))
+profile_manager = text(PROFILE_MANAGER)
+check("native OpenMW profile manager preserves settings and backs up before save", all(fragment in profile_manager for fragment in [
+    "Where-Object { $_ -notmatch '^\\s*(data|content)\\s*=' }", "Copy-Item -LiteralPath $profilePath -Destination $backup",
+    "[IO.File]::WriteAllLines($profilePath", "[Text.UTF8Encoding]::new($false)"]))
+check("native OpenMW profile manager supports all engine content types and ordered data folders", all(fragment in profile_manager for fragment in [
+    "'.esm', '.esp', '.omwgame', '.omwaddon', '.omwscripts'", "Move mod up", "Move content up",
+    "Get-AvailableContent", "Open OpenMW Launcher", "[switch]$Validate", "function Rescan-Mods", "Refresh mods",
+    "function Show-ModConflicts", "Later enabled folders win", "Show file conflicts"]))
+check("mod-manager launcher starts the private ALMSIVI runtime before OpenMW", all(fragment in profile_manager for fragment in [
+    "function Start-AlmsiviServices", "$env:ALMSIVI_CLIENT_CONFIG = $clientConfigPath",
+    "service almsiviserver-worker start", "almsivi.health.v1"]) and all(fragment in deploy_script for fragment in [
+    "Manage-ALMSIVI-Mods.cmd", "service almsiviserver-worker start", "ALMSIVI_CLIENT_CONFIG=%~dp0Config\\almsivi-client.conf"]))
+check("deploy installs the ALMSIVI profile manager instead of the limited launcher wrapper", all(fragment in deploy_script for fragment in [
+    "scripts\\tools\\manage-openmw-profile.ps1", "Manage-ALMSIVI-Profile.ps1", "-ProfileName Compatibility",
+    "extracting it into its own Mods\\Mod Name folder"]))
 print(f"{len(failures)} failures (structural fallback; Lua interpreter unavailable)")
 sys.exit(bool(failures))

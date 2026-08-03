@@ -1,4 +1,5 @@
 local constants=require('scripts.ALMSIVI.constants')
+local agentRegistry=require('scripts.ALMSIVI.agent_registry')
 local context=require('scripts.ALMSIVI.context')
 local conversation=require('scripts.ALMSIVI.conversation')
 local identity=require('scripts.ALMSIVI.identity')
@@ -9,14 +10,29 @@ local util=require('scripts.ALMSIVI.util')
 
 local M={}
 
-function M.new(bridge,emit,sendActor)
+function M.new(bridge,emit,sendActor,manageActor)
     local generation=bridge and bridge.generation and bridge.generation() or 1
     local state={bridge=bridge,emit=emit or function() end,sendActor=sendActor or function() return nil,'actor_sender_unavailable' end,
-        generation=generation,sessionId=nil,registry=identity.Registry(),
+        generation=generation,sessionId=nil,registry=identity.Registry(),agents=agentRegistry.new(),
+        manageActor=manageActor or function() return nil,'actor_manager_unavailable' end,
         conversation=conversation.new(generation),events=nil,attachments={},media={},pendingConfirmations={},
+        activeSpeechMediaId=nil,
         pendingVoice=nil,pendingStt={},openMic=false,openMicRequested=false,
-        pendingAutonomy={},autonomyRequested=false,disabled=false,hardHalted=false}
+        pendingAutonomy={},autonomyRequested=false,greetedAgents={},autonomyCounts={},combatThreats={},
+        combatVerified={},dialogueMode='Standard',disabled=false,hardHalted=false}
     return state
+end
+
+-- Keep the player script informed without depending on OpenMW's internal music-combat events.
+local function emitCombatState(state)
+    local count=0
+    local threats={}
+    for _,actor in pairs(state.combatThreats) do
+        count=count+1
+        if #threats<constants.MAX_AUDIENCE then threats[#threats+1]=util.copy(actor) end
+    end
+    table.sort(threats,function(left,right)return identity.key(left)<identity.key(right) end)
+    state.emit('ALMSIVI_COMBAT_STATUS',{active=count>0,count=count,threats=threats})
 end
 
 local function detachAll(state,reason)
@@ -24,6 +40,12 @@ local function detachAll(state,reason)
         state.sendActor(actorIdentity,'ALMSIVI_ACTOR_DETACH',{actor=actorIdentity,reason=reason,generation=state.generation})
     end
     state.attachments={}
+end
+
+local function signalAllActors(state,eventName,reason)
+    for _,actorIdentity in pairs(state.attachments) do
+        state.sendActor(actorIdentity,eventName,{actor=actorIdentity,reason=reason,generation=state.generation})
+    end
 end
 
 function M.lifecycle(state,kind)
@@ -34,9 +56,15 @@ function M.lifecycle(state,kind)
     if state.bridge then state.bridge.cancelGeneration(state.generation-1) end
     state.events=state.sessionId and protocol.CursoredEvents(state.sessionId,state.generation) or nil
     state.pendingConfirmations={}
+    state.activeSpeechMediaId=nil
     state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
     state.pendingAutonomy={} state.autonomyRequested=false
+    state.greetedAgents={} state.autonomyCounts={} state.combatThreats={} state.combatVerified={}
+    state.hardHalted=false state.conversation.hardHalted=false
     state.registry:clear()
+    agentRegistry.clear(state.agents)
+    emitCombatState(state)
+    state.emit('ALMSIVI_ACTOR_ACTIVITY',{reset=true})
     state.emit('ALMSIVI_STATUS',{status='offline',reason=kind,generation=state.generation})
 end
 
@@ -52,31 +80,203 @@ end
 function M.deactivate(state,actorIdentity,object)
     local key=identity.key(actorIdentity)
     local removed=state.registry:deactivate(actorIdentity,object)
-    if removed and key and state.attachments[key] then state.sendActor(actorIdentity,'ALMSIVI_ACTOR_DETACH',{actor=actorIdentity}) state.attachments[key]=nil end
+    if removed and key then
+        agentRegistry.remove(state.agents,actorIdentity)
+        state.combatVerified[key]=nil state.combatThreats[key]=nil
+        emitCombatState(state)
+        if state.attachments[key] then state.sendActor(actorIdentity,'ALMSIVI_ACTOR_DETACH',{actor=actorIdentity}) state.attachments[key]=nil end
+        if state.conversation.target and identity.same(state.conversation.target,actorIdentity) then
+            conversation.clearTarget(state.conversation)
+            state.emit('ALMSIVI_TARGET',{target=nil,audience={}})
+        end
+    end
     return removed
 end
 
+local function emitAgents(state)
+    state.emit('ALMSIVI_AGENTS',{agents=agentRegistry.snapshot(state.agents)})
+end
+
+local function detachAgent(state,actor,reason)
+    local key=identity.key(actor)
+    if key then state.combatVerified[key]=nil end
+    local removedThreat=key and state.combatThreats[key]~=nil
+    if key then state.combatThreats[key]=nil end
+    if key and state.attachments[key] then
+        state.sendActor(actor,'ALMSIVI_ACTOR_DETACH',{actor=actor,reason=reason,generation=state.generation})
+        state.attachments[key]=nil
+    end
+    if state.conversation.target and identity.same(state.conversation.target,actor) then
+        conversation.clearTarget(state.conversation)
+        state.emit('ALMSIVI_TARGET',{target=nil,audience={}})
+    end
+    if removedThreat then emitCombatState(state) end
+end
+
+function M.manageCandidate(state,candidate,source,silent)
+    local policy={allowHostile=source~='auto' or state.settings and state.settings.autoActivate
+            and state.settings.autoActivate.addHostile==true,
+        allowCreatures=source~='auto' or state.settings and state.settings.autoActivate
+            and state.settings.autoActivate.addCreatures==true}
+    local actor,reason=targeting.validate(candidate,state.registry,policy)
+    if not actor then return nil,reason end
+    local entry,status=agentRegistry.activate(state.agents,actor,source,candidate.distance)
+    if status=='deactivated' then
+        detachAgent(state,actor,'manual_deactivate')
+        if not silent then emitAgents(state) end
+        return actor,status
+    end
+    if not entry then return nil,status end
+    if status=='activated' or status=='upgraded' then
+        local managed,manageReason=state.manageActor(actor,state.generation)
+        if not managed then
+            agentRegistry.remove(state.agents,actor)
+            return nil,manageReason
+        end
+        state.attachments[identity.key(actor)]=actor
+    end
+    if not silent then emitAgents(state) end
+    return actor,status
+end
+
+function M.scanAgents(state,candidates,safeForAutonomy)
+    local settings=state.settings and state.settings.autoActivate or {}
+    local policy={allowHostile=settings.addHostile==true,allowCreatures=settings.addCreatures==true}
+    agentRegistry.beginScan(state.agents)
+    local added=0
+    if settings.enabled~=false then
+        for _,candidate in ipairs(candidates or {}) do
+            local valid=targeting.validate(candidate,state.registry,policy)
+            if valid and agentRegistry.markSeen(state.agents,valid,candidate.distance) then
+                -- Existing agents only need their presence refreshed.
+            elseif valid and added<6 then
+                local actor,status=M.manageCandidate(state,candidate,'auto',true)
+                if actor and status=='activated' then
+                    added=added+1
+                end
+            end
+        end
+    end
+    for _,actor in ipairs(agentRegistry.sweep(state.agents,4)) do detachAgent(state,actor,'auto_out_of_range') end
+    emitAgents(state)
+    if safeForAutonomy==true then
+        for _,entry in ipairs(agentRegistry.snapshot(state.agents)) do
+            local greetingKey=identity.key(entry.identity)
+            if state.combatVerified[greetingKey] and not state.greetedAgents[greetingKey]
+                and M.requestLocalAutonomy(state,'greeting',entry.identity) then
+                state.greetedAgents[greetingKey]=true
+                break
+            end
+        end
+    end
+    return added
+end
+
+-- Match CHIM's no-crosshair manual activation without toggling already pinned actors off.
+function M.manageNearby(state,candidates)
+    local added=0
+    local retained=0
+    for index,candidate in ipairs(candidates or {}) do
+        if index>constants.MAX_AUDIENCE then break end
+        local actor=type(candidate)=='table' and candidate.identity or nil
+        local entry=actor and agentRegistry.get(state.agents,actor) or nil
+        if entry and entry.source=='manual' then retained=retained+1
+        else
+            local managed,status=M.manageCandidate(state,candidate,'manual',true)
+            if managed and (status=='activated' or status=='upgraded') then added=added+1 end
+        end
+    end
+    emitAgents(state)
+    return added,retained
+end
+
+-- Enforce the auto-activation hostility policy once the actor-local AI package becomes visible.
+function M.actorCombatStatus(state,event)
+    if type(event)~='table' or not identity.validate(event.actor) then return nil,'invalid_actor' end
+    local key=identity.key(event.actor)
+    state.combatVerified[key]=true
+    if event.hostile_to_player==true then state.combatThreats[key]=util.copy(event.actor)
+    else state.combatThreats[key]=nil end
+    emitCombatState(state)
+    state.emit('ALMSIVI_ACTOR_ACTIVITY',{actor=util.copy(event.actor),activity=event.activity,target=util.copy(event.target)})
+    local entry=agentRegistry.get(state.agents,event.actor)
+    if not entry then return nil,'agent_not_found' end
+    if event.hostile_to_player~=true or entry.source~='auto' then return false,'agent_retained' end
+    local settings=state.settings and state.settings.autoActivate or {}
+    if settings.addHostile==true then return false,'hostile_allowed' end
+    agentRegistry.remove(state.agents,event.actor)
+    detachAgent(state,event.actor,'auto_hostile_to_player')
+    emitAgents(state)
+    return true,'hostile_removed'
+end
+
 function M.selectTarget(state,candidate)
-    local actor,reason=targeting.validate(candidate,state.registry)
+    local actor,reason=M.manageCandidate(state,candidate,'target',true)
     if not actor then return nil,reason end
     conversation.setTarget(state.conversation,actor)
-    local key=identity.key(actor)
-    if not state.attachments[key] then state.attachments[key]=actor end
-    state.emit('ALMSIVI_TARGET',{target=actor,audience={actor}}) return actor
+    state.emit('ALMSIVI_TARGET',{target=actor,audience={actor}})
+    emitAgents(state)
+    return actor
 end
 
 local autonomyPrompt={
     greeting='[Autonomy: greeting] Begin a natural, context-aware greeting to the player as the selected character.',
     rechat='[Autonomy: rechat] Continue the recent conversation naturally as the selected character without repeating prior lines.',
     boredom='[Autonomy: boredom] Start a brief, context-aware conversation about the current place, events, or relationship.',
+    combat_bark='[Autonomy: combat bark] Deliver one brief, character-appropriate combat remark to the player. Do not issue an action.',
 }
+
+local autonomySetting={greeting='autoGreeting',rechat='rechat',boredom='boredom',combat_bark='combatBarks'}
+
+function M.requestLocalAutonomy(state,kind,actor)
+    local setting=autonomySetting[kind]
+    local behavior=state.settings and state.settings.behavior or {}
+    if not setting or behavior[setting]~=true then return nil,'disabled_in_settings' end
+    if state.autonomyRequested or #state.pendingAutonomy>0
+        or state.conversation.turn and not state.conversation.turn.terminal then return nil,'turn_in_flight' end
+    if not actor and kind~='boredom' then actor=state.conversation.target end
+    if not actor then
+        local agents=agentRegistry.snapshot(state.agents)
+        table.sort(agents,function(left,right)
+            local leftCount=state.autonomyCounts[identity.key(left.identity)] or 0
+            local rightCount=state.autonomyCounts[identity.key(right.identity)] or 0
+            if leftCount~=rightCount then return leftCount<rightCount end
+            if left.distance~=right.distance then return left.distance<right.distance end
+            return identity.key(left.identity)<identity.key(right.identity)
+        end)
+        actor=agents[1] and agents[1].identity or nil
+    end
+    if not actor then return nil,'target_required' end
+    if not state.bridge or not state.bridge.newMessageId or not state.bridge.utcNow then
+        return nil,'bridge_not_ready'
+    end
+    if not state.conversation.target or not identity.same(state.conversation.target,actor) then
+        conversation.setTarget(state.conversation,actor)
+        state.emit('ALMSIVI_TARGET',{target=actor,audience={actor}})
+    end
+    local directive={schema='almsivi.autonomy-directive.v1',schedule_id=state.bridge.newMessageId(),
+        kind=kind,issued_at=state.bridge.utcNow(),local_request=true}
+    table.insert(state.pendingAutonomy,directive)
+    state.autonomyRequested=true
+    local actorKey=identity.key(actor)
+    state.autonomyCounts[actorKey]=(state.autonomyCounts[actorKey] or 0)+1
+    state.emit('ALMSIVI_AUTONOMY_CONTEXT_REQUEST',{directive=util.copy(directive),target=util.copy(actor)})
+    return directive
+end
 
 function M.pollAutonomy(state)
     if not state.bridge or not state.bridge.pollAutonomy then return 0 end
     local directives=state.bridge.pollAutonomy(3) or {}
     for _,directive in ipairs(directives) do
-        if type(directive)=='table' and protocol.isUuid(directive.schedule_id) and autonomyPrompt[directive.kind]
-            and #state.pendingAutonomy<3 then table.insert(state.pendingAutonomy,util.copy(directive)) end
+        if type(directive)=='table' and protocol.isUuid(directive.schedule_id) and autonomyPrompt[directive.kind] then
+            local behavior=state.settings and state.settings.behavior or {}
+            if behavior[autonomySetting[directive.kind]]==true and #state.pendingAutonomy<3 then
+                table.insert(state.pendingAutonomy,util.copy(directive))
+            else
+                state.emit('ALMSIVI_AUTONOMY_STATUS',{status='skipped',reason='disabled_in_settings',
+                    schedule_id=directive.schedule_id})
+            end
+        end
     end
     if state.autonomyRequested or #state.pendingAutonomy==0 then return #directives end
     if state.conversation.turn and not state.conversation.turn.terminal then return #directives end
@@ -119,7 +319,9 @@ function M.startVoice(state,args)
     if state.conversation.turn and not state.conversation.turn.terminal then return nil,'turn_in_flight' end
     if not state.conversation.target then return nil,'target_required' end
     if not args or not identity.validate(args.speaker) then return nil,'invalid_speaker' end
-    local started,reason=state.bridge.startVoiceCapture(args.automatic==true)
+    local sensitivity=math.max(100,math.min(5000,math.floor(tonumber(args.vad_sensitivity) or 700)))
+    local endDelay=math.max(500,math.min(5000,math.floor(tonumber(args.end_delay_ms) or 900)))
+    local started,reason=state.bridge.startVoiceCapture(args.automatic==true,sensitivity,endDelay)
     if not started then return nil,reason or 'voice_capture_failed' end
     state.pendingVoice={speaker=util.copy(args.speaker),target=util.copy(state.conversation.target),
         context=util.copy(args.context or {}),language=args.language or 'en-US',
@@ -207,7 +409,7 @@ function M.pollVoice(state)
 end
 
 function M.addAudience(state,candidate)
-    local actor,reason=targeting.validate(candidate,state.registry)
+    local actor,reason=M.manageCandidate(state,candidate,'target',true)
     if not actor then return nil,reason end
     local ok,addReason=conversation.addAudience(state.conversation,actor)
     if not ok then return nil,addReason end
@@ -237,16 +439,42 @@ function M.submitText(state,args)
     local turnId=args.turn_id
     local ok,reason=conversation.begin(state.conversation,requestId,turnId,args.input_key or args.text)
     if not ok then return nil,reason end
+    local mode=({Standard=true,Whisper=true,Close=true,Shout=true})[state.dialogueMode]
+        and state.dialogueMode or 'Standard'
     local audience={}
-    for _,entry in ipairs(state.conversation.audience) do table.insert(audience,entry.identity) end
+    local audienceKeys={}
+    local selectedAudience=state.conversation.audience
+    if mode=='Whisper' and state.conversation.target then
+        selectedAudience={{identity=state.conversation.target,key=identity.key(state.conversation.target)}}
+    end
+    for _,entry in ipairs(selectedAudience) do
+        table.insert(audience,entry.identity)
+        audienceKeys[entry.key]=true
+    end
+    local hearingDistance=tonumber(state.settings and state.settings.autoActivate
+        and state.settings.autoActivate.hearingDistance) or 0
+    if mode=='Close' or mode=='Whisper' then hearingDistance=0
+    elseif mode=='Shout' then hearingDistance=math.min(32768,hearingDistance*2) end
+    if hearingDistance>0 then
+        for _,entry in ipairs(agentRegistry.snapshot(state.agents)) do
+            local key=identity.key(entry.identity)
+            if #audience>=constants.MAX_AUDIENCE then break end
+            if entry.distance<=hearingDistance and key and not audienceKeys[key] then
+                table.insert(audience,entry.identity)
+                audienceKeys[key]=true
+            end
+        end
+    end
     args.context=args.context or {}
     args.context.audience=audience
+    args.context.dialogueMode=mode
     local dto,buildReason=protocol.turn({message_id=args.message_id,request_id=requestId,turn_id=turnId,
         installation_id=args.installation_id,profile_id=args.profile_id,playthrough_id=args.playthrough_id,
         session_id=state.sessionId,generation=state.generation,created_at=args.created_at,platform=args.platform,
         content_fingerprint=args.content_fingerprint,text=args.text,language=args.language,
         speaker=args.speaker,target=state.conversation.target,audience=audience,context=context.snapshot(args.context),
-        capabilities=args.capabilities,recent_action_results=args.recent_action_results,ui_source=args.ui_source})
+        capabilities=args.capabilities,recent_action_results=args.recent_action_results,ui_source=args.ui_source,
+        action_request=args.action_request})
     if not dto then state.conversation.turn=nil return nil,buildReason end
     local submitted,nativeReason=state.bridge.submitTurn(dto)
     if not submitted then state.conversation.turn=nil return nil,nativeReason end
@@ -255,24 +483,78 @@ function M.submitText(state,args)
 end
 
 local function preparePendingMedia(state)
+    local finished={}
+    local function reportFailure(mediaId,item,reason)
+        local messageId=state.bridge.newMessageId and state.bridge.newMessageId()
+        local completedAt=state.bridge.utcNow and state.bridge.utcNow()
+        if messageId and completedAt and state.bridge.submitDialogueDeliveryResult then
+            local result=protocol.dialogueDeliveryResult({message_id=messageId,request_id=item.requestId,
+                dialogue_message_id=item.messageId,turn_id=item.turnId,session_id=item.sessionId,
+                generation=item.generation,speaker=item.speaker,status='failed',reason_code='media_prepare_failed',
+                completed_at=completedAt})
+            if result then state.bridge.submitDialogueDeliveryResult(result) end
+        end
+        if state.bridge.releaseMedia then state.bridge.releaseMedia(mediaId) end
+        finished[#finished+1]=mediaId
+        print('[ALMSIVI] media preparation failed: '..tostring(reason))
+    end
     for mediaId,item in pairs(state.conversation.pendingMedia) do
         if item.status=='new' then
             local requestId,reason=state.bridge.prepareMedia(item.descriptor)
             if requestId then item.status='preparing' item.prepareRequestId=requestId
-            else item.status='failed' item.reason=reason or 'media_prepare_rejected' end
+            else
+                item.status='failed' item.reason=reason or 'media_prepare_rejected'
+                reportFailure(mediaId,item,item.reason)
+            end
         elseif item.status=='preparing' then
             local status=state.bridge.mediaStatus(mediaId)
             if status and status.state=='ready' then
                 item.status='ready'
-                state.sendActor(item.speaker,'ALMSIVI_ACTOR_SPEAK',{actor=item.speaker,media_id=mediaId,subtitle=item.subtitle,
-                    request_id=item.requestId,turn_id=item.turnId,session_id=item.sessionId,
-                    dialogue_message_id=item.messageId,generation=item.generation,
-                    expires_at=item.descriptor.expires_at})
             elseif status and (status.state=='failed' or status.state=='expired' or status.state=='cancelled') then
                 item.status=status.state item.reason=status.reason
+                reportFailure(mediaId,item,status.reason or status.state)
             end
         end
     end
+    for _,mediaId in ipairs(finished) do state.conversation.pendingMedia[mediaId]=nil end
+    if state.activeSpeechMediaId then return end
+    local nextMediaId,nextItem
+    for mediaId,item in pairs(state.conversation.pendingMedia) do
+        if not nextItem or (item.ordinal or math.huge)<(nextItem.ordinal or math.huge) then
+            nextMediaId,nextItem=mediaId,item
+        end
+    end
+    if not nextItem or nextItem.status~='ready' then return end
+    nextItem.status='playing' state.activeSpeechMediaId=nextMediaId
+    local ttsVolumeBoost=math.max(1,math.min(4,math.floor(tonumber(
+        state.settings and state.settings.presentation and state.settings.presentation.ttsVolumeBoost) or 3)))
+    local command={actor=nextItem.speaker,
+        media_id=nextMediaId,subtitle=nextItem.subtitle,request_id=nextItem.requestId,turn_id=nextItem.turnId,
+        session_id=nextItem.sessionId,dialogue_message_id=nextItem.messageId,generation=nextItem.generation,
+        expires_at=nextItem.descriptor.expires_at,tts_volume_boost=ttsVolumeBoost}
+    local sent,reason
+    if nextItem.speaker.kind=='narrator' then state.emit('ALMSIVI_NARRATOR_SPEAK',command) sent=true
+    else sent,reason=state.sendActor(nextItem.speaker,'ALMSIVI_ACTOR_SPEAK',command) end
+    if not sent then
+        state.activeSpeechMediaId=nil nextItem.status='failed'
+        reportFailure(nextMediaId,nextItem,reason or 'actor_speech_unavailable')
+        for _,mediaId in ipairs(finished) do state.conversation.pendingMedia[mediaId]=nil end
+    end
+end
+
+-- Advance the single ordered speech lane only after the actor reports a terminal playback state.
+function M.speechStatus(state,event)
+    if type(event)~='table' or type(event.media_id)~='string' then return false end
+    local item=state.conversation.pendingMedia[event.media_id]
+    if event.active==true then
+        if item then item.status='playing' end
+        state.activeSpeechMediaId=event.media_id
+        return item~=nil
+    end
+    if item then state.conversation.pendingMedia[event.media_id]=nil end
+    if state.activeSpeechMediaId==event.media_id then state.activeSpeechMediaId=nil end
+    if state.bridge and state.bridge.releaseMedia then state.bridge.releaseMedia(event.media_id) end
+    return item~=nil
 end
 
 function M.poll(state)
@@ -335,14 +617,64 @@ function M.confirmAction(state,actionId,approved)
     return state.sendActor(command.actor,eventName,command)
 end
 
-function M.halt(state)
+function M.interrupt(state,reason)
+    reason=reason or 'halt_ai_actions'
+    if state.bridge and state.bridge.cancelVoiceCapture then state.bridge.cancelVoiceCapture()
+    elseif state.bridge and state.bridge.stopVoiceCapture then state.bridge.stopVoiceCapture() end
+    signalAllActors(state,'ALMSIVI_ACTOR_STOP',reason)
+    state.emit('ALMSIVI_NARRATOR_STOP',{reason=reason})
+    local previousGeneration=state.generation
+    state.generation=conversation.interrupt(state.conversation,reason)
+    if state.bridge and state.bridge.cancelGeneration then state.bridge.cancelGeneration(previousGeneration) end
+    state.events=nil
+    state.activeSpeechMediaId=nil
+    state.pendingConfirmations={}
+    state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
+    state.pendingAutonomy={} state.autonomyRequested=false
+    state.hardHalted=false
+    state.emit('ALMSIVI_HALT',{generation=state.generation,reason=reason,recoverable=true})
+    return true
+end
+
+function M.stopDialogue(state,reason)
+    reason=reason or 'stop_dialogue'
+    if state.bridge and state.bridge.cancelVoiceCapture then state.bridge.cancelVoiceCapture()
+    elseif state.bridge and state.bridge.stopVoiceCapture then state.bridge.stopVoiceCapture() end
+    signalAllActors(state,'ALMSIVI_ACTOR_STOP_SPEECH',reason)
+    state.emit('ALMSIVI_NARRATOR_STOP',{reason=reason})
+    local previousGeneration=state.generation
+    state.generation=conversation.interrupt(state.conversation,reason)
+    if state.bridge and state.bridge.cancelGeneration then state.bridge.cancelGeneration(previousGeneration) end
+    state.events=nil
+    state.activeSpeechMediaId=nil
+    state.pendingConfirmations={}
+    state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
+    state.pendingAutonomy={} state.autonomyRequested=false
+    state.emit('ALMSIVI_DIALOGUE_STOPPED',{generation=state.generation,reason=reason})
+    return true
+end
+
+function M.haltActions(state,reason)
+    reason=reason or 'halt_ai_actions'
+    signalAllActors(state,'ALMSIVI_ACTOR_HALT_ACTIONS',reason)
+    state.pendingConfirmations={}
+    state.emit('ALMSIVI_ACTIONS_HALTED',{generation=state.generation,reason=reason})
+    return true
+end
+
+function M.hardHalt(state)
     detachAll(state,'hard_halt')
     state.bridge.halt() conversation.halt(state.conversation)
     state.generation=state.conversation.generation state.hardHalted=true state.pendingConfirmations={}
+    state.activeSpeechMediaId=nil
     state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
     state.pendingAutonomy={} state.autonomyRequested=false
-    state.emit('ALMSIVI_HALT',{generation=state.generation})
+    state.emit('ALMSIVI_NARRATOR_STOP',{reason='hard_halt'})
+    state.emit('ALMSIVI_HALT',{generation=state.generation,reason='hard_halt',recoverable=false})
 end
+
+-- Preserve the original public entry point while making the in-game control recoverable.
+function M.halt(state) return M.interrupt(state,'halt_ai_actions') end
 
 function M.load(state,raw)
     local loaded,meta=storage.load(raw,state.generation)

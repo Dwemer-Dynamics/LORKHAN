@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <initializer_list>
 #include <limits>
 #include <set>
@@ -98,6 +99,17 @@ Result<std::uint64_t> requireUnsigned(const json::Object& object, std::string_vi
     if (parsed < minimum || parsed > maximum)
         return invalidSchemaValue<std::uint64_t>(std::string(key) + " is outside the allowed range");
     return Result<std::uint64_t>::success(parsed);
+}
+
+Result<double> requireNumber(const json::Object& object,std::string_view key,double minimum,double maximum)
+{
+    const auto* value=json::find(object,key);double parsed{};
+    if(!value)return invalidSchemaValue<double>(std::string(key)+" must be a bounded number");
+    if(value->number())parsed=*value->number();else if(value->integer())parsed=static_cast<double>(*value->integer());
+    else return invalidSchemaValue<double>(std::string(key)+" must be a bounded number");
+    if(!std::isfinite(parsed)||parsed<minimum||parsed>maximum)
+        return invalidSchemaValue<double>(std::string(key)+" is outside the allowed range");
+    return Result<double>::success(parsed);
 }
 
 Result<bool> requireBoolean(const json::Object& object, std::string_view key)
@@ -214,6 +226,7 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     if (turn.value() != envelopeTurn.value())
         return invalidSchemaValue<ActionIntent>("action intent turn does not match event envelope");
     if (!name || (name.value() != "ai.follow" && name.value() != "ai.stop"
+        && name.value() != "ai.travel" && name.value() != "ai.escort" && name.value() != "ai.face"
         && name.value() != "ai.wander" && name.value() != "combat.start"
         && name.value() != "combat.stop" && name.value() != "animation.play"
         && name.value() != "item.equip" && name.value() != "item.unequip"
@@ -246,6 +259,8 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     std::uint32_t wanderDurationSeconds = 0;
     std::string stringParameter;
     std::string secondaryStringParameter;
+    double destinationX=0,destinationY=0,destinationZ=0;
+    std::string destinationCell;
     if (name.value() == "ai.follow") {
         if (!hasExactly(*parameters, {"distance"}))
             return invalidSchemaValue<ActionIntent>("action intent parameters mismatch");
@@ -266,6 +281,23 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
         intentKind = ActionIntentKind::ai_wander;
         wanderDistance = static_cast<std::uint32_t>(distance.value());
         wanderDurationSeconds = static_cast<std::uint32_t>(duration.value());
+    } else if (name.value() == "ai.travel" || name.value() == "ai.escort") {
+        if(!hasExactly(*parameters,{"destination_x","destination_y","destination_z","destination_cell"}))
+            return invalidSchemaValue<ActionIntent>(name.value()+" parameters mismatch");
+        auto x=requireNumber(*parameters,"destination_x",-100000000,100000000);
+        auto y=requireNumber(*parameters,"destination_y",-100000000,100000000);
+        auto z=requireNumber(*parameters,"destination_z",-100000000,100000000);
+        auto cell=requireString(*parameters,"destination_cell",1,300);
+        if(!x)return invalidSchemaValue<ActionIntent>(x.error().message);
+        if(!y)return invalidSchemaValue<ActionIntent>(y.error().message);
+        if(!z)return invalidSchemaValue<ActionIntent>(z.error().message);
+        if(!cell||(!cell.value().starts_with("interior:")&&!cell.value().starts_with("exterior:")))
+            return invalidSchemaValue<ActionIntent>("destination cell key mismatch");
+        destinationX=x.value();destinationY=y.value();destinationZ=z.value();destinationCell=std::move(cell).value();
+        intentKind=name.value()=="ai.travel"?ActionIntentKind::ai_travel:ActionIntentKind::ai_escort;
+    } else if (name.value() == "ai.face") {
+        if(!hasExactly(*parameters,{}))return invalidSchemaValue<ActionIntent>("ai.face parameters must be empty");
+        intentKind=ActionIntentKind::ai_face;
     } else if (name.value() == "ai.stop") {
         if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("ai.stop parameters must be empty");
         intentKind = ActionIntentKind::ai_stop;
@@ -319,7 +351,7 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     return Result<ActionIntent>::success({ActionId(std::move(action).value()),
         TurnId(std::move(turn).value()), std::move(actor).value(), std::move(target).value(),
         intentKind, followDistance, wanderDistance, wanderDurationSeconds, std::move(stringParameter),
-        std::move(secondaryStringParameter),
+        std::move(secondaryStringParameter),destinationX,destinationY,destinationZ,std::move(destinationCell),
         std::move(expiresAt).value()});
 }
 
@@ -761,6 +793,78 @@ Result<SessionEndedResponse> parseSessionEndedResponse(
     if (!ended) return invalidSchemaValue<SessionEndedResponse>(ended.error().message);
     return Result<SessionEndedResponse>::success({RequestId(std::move(request).value()),
         SessionId(std::move(session).value()), Generation(generation.value()), ended.value()});
+}
+
+Result<ControlsResponse> parseControlsResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits)
+{
+    auto object=parseObject(body,headers,"almsivi.controls.v1",limits);
+    if(!object)return Result<ControlsResponse>::failure(object.error());
+    if(!hasExactly(object.value(),{"schema","message_id","request_id","session_id","generation","target",
+            "selected_model_slot_id","selected_profile_id","narrator_profile_id","model_slots","profiles"}))
+        return invalidSchemaValue<ControlsResponse>("controls response fields mismatch");
+    auto message=requireUuid(object.value(),"message_id");auto request=requireUuid(object.value(),"request_id");
+    auto session=requireUuid(object.value(),"session_id");auto generation=requireUnsigned(object.value(),"generation");
+    if(!message)return invalidSchemaValue<ControlsResponse>(message.error().message);
+    if(!request)return invalidSchemaValue<ControlsResponse>(request.error().message);
+    if(!session)return invalidSchemaValue<ControlsResponse>(session.error().message);
+    if(!generation)return invalidSchemaValue<ControlsResponse>(generation.error().message);
+    const auto* targetValue=json::find(object.value(),"target");auto target=parseIdentity(*targetValue);
+    if(!target)return invalidSchemaValue<ControlsResponse>(target.error().message);
+    const auto nullableUuid=[&object](std::string_view key)->Result<std::optional<std::string>>{
+        const auto* value=json::find(object.value(),key);
+        if(!value)return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" is missing");
+        if(value->isNull())return Result<std::optional<std::string>>::success(std::nullopt);
+        if(!value->string()||!isCanonicalUuid(*value->string()))
+            return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" must be null or a canonical UUID");
+        return Result<std::optional<std::string>>::success(*value->string());
+    };
+    auto selectedModel=nullableUuid("selected_model_slot_id");auto selectedProfile=nullableUuid("selected_profile_id");
+    auto narratorProfile=nullableUuid("narrator_profile_id");
+    if(!selectedModel)return invalidSchemaValue<ControlsResponse>(selectedModel.error().message);
+    if(!selectedProfile)return invalidSchemaValue<ControlsResponse>(selectedProfile.error().message);
+    if(!narratorProfile)return invalidSchemaValue<ControlsResponse>(narratorProfile.error().message);
+    const auto* slotsValue=json::find(object.value(),"model_slots");const auto* slots=slotsValue?slotsValue->array():nullptr;
+    const auto* profilesValue=json::find(object.value(),"profiles");const auto* profiles=profilesValue?profilesValue->array():nullptr;
+    if(!slots||slots->size()>32)return invalidSchemaValue<ControlsResponse>("model slots must be an array of at most 32 items");
+    if(!profiles||profiles->size()>100)return invalidSchemaValue<ControlsResponse>("profiles must be an array of at most 100 items");
+    ControlsResponse parsed{MessageId(std::move(message).value()),RequestId(std::move(request).value()),
+        SessionId(std::move(session).value()),Generation(generation.value()),std::move(target).value(),
+        std::move(selectedModel).value(),std::move(selectedProfile).value(),std::move(narratorProfile).value(),{}, {}};
+    std::set<std::string> unique;
+    for(const auto& value:*slots){const auto* row=value.object();
+        if(!row||!hasExactly(*row,{"configuration_id","name","revision","driver","model"}))
+            return invalidSchemaValue<ControlsResponse>("model slot fields mismatch");
+        auto id=requireUuid(*row,"configuration_id");auto name=requireString(*row,"name",1,128);
+        auto revision=requireUnsigned(*row,"revision",kMaximumProtocolInteger,1);auto driver=requireString(*row,"driver");
+        auto model=requireString(*row,"model",1,256);
+        if(!id)return invalidSchemaValue<ControlsResponse>(id.error().message);
+        if(!name)return invalidSchemaValue<ControlsResponse>(name.error().message);
+        if(!revision)return invalidSchemaValue<ControlsResponse>(revision.error().message);
+        if(!driver||(driver.value()!="configured"&&driver.value()!="mock"))
+            return invalidSchemaValue<ControlsResponse>("model slot driver mismatch");
+        if(!model)return invalidSchemaValue<ControlsResponse>(model.error().message);
+        if(!unique.insert(id.value()).second)return invalidSchemaValue<ControlsResponse>("duplicate model slot");
+        parsed.modelSlots.push_back({std::move(id).value(),std::move(name).value(),revision.value(),
+            std::move(driver).value(),std::move(model).value()});}
+    unique.clear();
+    for(const auto& value:*profiles){const auto* row=value.object();
+        if(!row||!hasExactly(*row,{"profile_id","name","revision"}))
+            return invalidSchemaValue<ControlsResponse>("profile fields mismatch");
+        auto id=requireUuid(*row,"profile_id");auto name=requireString(*row,"name",1,256);
+        auto revision=requireUnsigned(*row,"revision",kMaximumProtocolInteger,1);
+        if(!id)return invalidSchemaValue<ControlsResponse>(id.error().message);
+        if(!name)return invalidSchemaValue<ControlsResponse>(name.error().message);
+        if(!revision)return invalidSchemaValue<ControlsResponse>(revision.error().message);
+        if(!unique.insert(id.value()).second)return invalidSchemaValue<ControlsResponse>("duplicate profile");
+        parsed.profiles.push_back({std::move(id).value(),std::move(name).value(),revision.value()});}
+    if(parsed.selectedModelSlotId&&!std::any_of(parsed.modelSlots.begin(),parsed.modelSlots.end(),
+        [&parsed](const ControlsResponse::ModelSlot& slot){return slot.configurationId==*parsed.selectedModelSlotId;}))
+        return invalidSchemaValue<ControlsResponse>("selected model slot is absent from the list");
+    if(parsed.selectedProfileId&&!std::any_of(parsed.profiles.begin(),parsed.profiles.end(),
+        [&parsed](const ControlsResponse::Profile& profile){return profile.profileId==*parsed.selectedProfileId;}))
+        return invalidSchemaValue<ControlsResponse>("selected profile is absent from the list");
+    return Result<ControlsResponse>::success(std::move(parsed));
 }
 
 Result<void> validateHealthHttpResponse(

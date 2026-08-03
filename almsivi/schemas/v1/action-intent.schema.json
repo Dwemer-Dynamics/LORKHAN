@@ -24,6 +24,54 @@
         "action_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
         "actor": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"},
         "expires_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+        "name": {"const": "ai.face", "type": "string"},
+        "parameters": {"additionalProperties": false, "properties": {}, "type": "object"},
+        "schema": {"const": "almsivi.action-intent.v1", "type": "string"},
+        "target": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+        "tier": {"const": 1, "type": "integer"},
+        "turn_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+      },
+      "required": ["schema", "action_id", "turn_id", "name", "tier", "actor", "target", "parameters", "expires_at"],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+        "actor": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+        "expires_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+        "name": {"const": "ai.travel", "type": "string"},
+        "parameters": {"additionalProperties": false, "properties": {"destination_cell": {"maxLength": 300, "minLength": 1, "pattern": "^(interior:.+|exterior:-?[0-9]+:-?[0-9]+)$", "type": "string"}, "destination_x": {"maximum": 100000000, "minimum": -100000000, "type": "number"}, "destination_y": {"maximum": 100000000, "minimum": -100000000, "type": "number"}, "destination_z": {"maximum": 100000000, "minimum": -100000000, "type": "number"}}, "required": ["destination_x", "destination_y", "destination_z", "destination_cell"], "type": "object"},
+        "schema": {"const": "almsivi.action-intent.v1", "type": "string"},
+        "target": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+        "tier": {"const": 1, "type": "integer"},
+        "turn_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+      },
+      "required": ["schema", "action_id", "turn_id", "name", "tier", "actor", "target", "parameters", "expires_at"],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+        "actor": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+        "expires_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+        "name": {"const": "ai.escort", "type": "string"},
+        "parameters": {"additionalProperties": false, "properties": {"destination_cell": {"maxLength": 300, "minLength": 1, "pattern": "^(interior:.+|exterior:-?[0-9]+:-?[0-9]+)$", "type": "string"}, "destination_x": {"maximum": 100000000, "minimum": -100000000, "type": "number"}, "destination_y": {"maximum": 100000000, "minimum": -100000000, "type": "number"}, "destination_z": {"maximum": 100000000, "minimum": -100000000, "type": "number"}}, "required": ["destination_x", "destination_y", "destination_z", "destination_cell"], "type": "object"},
+        "schema": {"const": "almsivi.action-intent.v1", "type": "string"},
+        "target": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+        "tier": {"const": 1, "type": "integer"},
+        "turn_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+      },
+      "required": ["schema", "action_id", "turn_id", "name", "tier", "actor", "target", "parameters", "expires_at"],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+        "actor": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+        "expires_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
         "name": {"const": "item.equip", "type": "string"},
         "parameters": {"additionalProperties": false, "properties": {"record_id": {"maxLength": 128, "minLength": 1, "type": "string"}, "slot": {"enum": ["helmet", "cuirass", "greaves", "left_pauldron", "right_pauldron", "left_gauntlet", "right_gauntlet", "boots", "shirt", "pants", "skirt", "robe", "left_ring", "right_ring", "amulet", "belt", "carried_right", "carried_left", "ammunition"], "type": "string"}}, "required": ["record_id", "slot"], "type": "object"},
         "schema": {"const": "almsivi.action-intent.v1", "type": "string"},

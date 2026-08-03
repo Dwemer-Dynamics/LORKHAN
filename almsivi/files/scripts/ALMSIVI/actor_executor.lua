@@ -6,7 +6,7 @@ local M = {}
 
 function M.new(selfIdentity, generation, capabilities)
     return {identity=selfIdentity,generation=generation,attached=true,actions=actions.new(capabilities),activeSpeech=nil,
-        ownedAi=nil,ownedCombat=nil,turns={}}
+        activeFace=nil,ownedAi=nil,ownedCombat=nil,turns={}}
 end
 
 function M.execute(state, command, adapter, authority)
@@ -32,20 +32,65 @@ function M.execute(state, command, adapter, authority)
         if ok then state.ownedCombat=nil return actions.result(state.actions,accepted.action_id,'succeeded',detail,{}) end
         return actions.result(state.actions,accepted.action_id,'failed',detail or 'engine_rejected',{})
     end
+    if accepted.name=='ai.face' then
+        if state.activeFace then return actions.result(state.actions,accepted.action_id,'failed','face_action_busy',{}) end
+        if state.ownedAi then return actions.result(state.actions,accepted.action_id,'failed','face_blocked_by_owned_movement',{}) end
+        if type(adapter.faceSelf)~='function' then return actions.result(state.actions,accepted.action_id,'failed','action_unavailable',{}) end
+        local ok,detail,controller=adapter.faceSelf(accepted.target,accepted.parameters)
+        if not ok then return actions.result(state.actions,accepted.action_id,'failed',detail or 'engine_rejected',{}) end
+        state.activeFace={actionId=accepted.action_id,command=util.copy(command),controller=controller}
+        return nil,'action_pending'
+    end
     local handler={
-        ['ai.follow']='followSelf',['ai.wander']='wanderSelf',['combat.start']='startCombat',
+        ['ai.follow']='followSelf',['ai.travel']='travelSelf',['ai.escort']='escortSelf',
+        ['ai.wander']='wanderSelf',['combat.start']='startCombat',
         ['animation.play']='playAnimation',['item.equip']='equipItem',['item.unequip']='unequipItem',['item.use']='useItem',
     }
     local method=handler[accepted.name]
     if type(adapter[method])~='function' then return actions.result(state.actions,accepted.action_id,'failed','action_unavailable',{}) end
-    local ok,detail=adapter[method](accepted.target,accepted.parameters)
+    local movement=accepted.name=='ai.follow' or accepted.name=='ai.travel' or accepted.name=='ai.escort'
+        or accepted.name=='ai.wander'
+    if movement and state.ownedAi then
+        local replaced,replaceReason=adapter.stopAi(state.ownedAi)
+        if not replaced then
+            return actions.result(state.actions,accepted.action_id,'failed',replaceReason or 'owned_ai_replace_failed',{})
+        end
+        state.ownedAi=nil
+    end
+    local ok,detail,observed=adapter[method](accepted.target,accepted.parameters)
     if ok then
         if accepted.name=='ai.follow' then state.ownedAi={type='Follow',actionId=accepted.action_id,target=accepted.target}
-        elseif accepted.name=='ai.wander' then state.ownedAi={type='Wander',actionId=accepted.action_id}
+        elseif accepted.name=='ai.travel' then state.ownedAi={type='Travel',actionId=accepted.action_id,
+            destination=util.copy(accepted.parameters)}
+        elseif accepted.name=='ai.escort' then state.ownedAi={type='Escort',actionId=accepted.action_id,
+            target=accepted.target,destination=util.copy(accepted.parameters)}
+        elseif accepted.name=='ai.wander' then state.ownedAi={type='Wander',actionId=accepted.action_id,
+            distance=accepted.parameters.distance}
         elseif accepted.name=='combat.start' then state.ownedCombat={actionId=accepted.action_id,target=accepted.target} end
-        return actions.result(state.actions,accepted.action_id,'succeeded',detail,{})
+        return actions.result(state.actions,accepted.action_id,'succeeded',detail,observed or {})
     end
     return actions.result(state.actions,accepted.action_id,'failed',detail or 'engine_rejected',{})
+end
+
+function M.updateFace(state, adapter, dt)
+    if not state or not state.activeFace then return nil end
+    if type(adapter.updateFace)~='function' then
+        local pending=state.activeFace state.activeFace=nil
+        return actions.result(state.actions,pending.actionId,'failed','face_update_unavailable',{}),pending.command
+    end
+    local completed,reason,observed,terminalStatus=adapter.updateFace(state.activeFace.controller,dt)
+    if completed==nil then return nil end
+    local pending=state.activeFace state.activeFace=nil
+    local status=terminalStatus or (completed and 'succeeded' or 'failed')
+    return actions.result(state.actions,pending.actionId,status,reason or (completed and 'face_completed' or 'engine_rejected'),
+        observed or {}),pending.command
+end
+
+function M.cancelFace(state, adapter, reason)
+    if not state or not state.activeFace then return nil end
+    local pending=state.activeFace state.activeFace=nil
+    if type(adapter.stopFace)=='function' then adapter.stopFace(pending.controller) end
+    return actions.result(state.actions,pending.actionId,'cancelled',reason or 'face_cancelled',{}),pending.command
 end
 
 function M.reject(state, command, reason)
@@ -61,7 +106,7 @@ function M.speak(state, command, adapter, authority)
     if type(command.media_id)~='string' or command.media_id=='' then return nil,'media_id_required' end
     local correlation=command.request_id..'|'..command.turn_id..'|'..command.media_id
     if state.turns[correlation] then return nil,'duplicate_speech' end
-    local ok, reason=adapter.playSpeech(command.media_id,state.identity,command.subtitle)
+    local ok, reason=adapter.playSpeech(command.media_id,state.identity,command.subtitle,command.tts_volume_boost)
     if ok then
         state.turns[correlation]=true
         state.activeSpeech={mediaId=command.media_id,command=util.copy(command)}
@@ -71,19 +116,48 @@ function M.speak(state, command, adapter, authority)
 end
 
 function M.completeSpeech(state)
+    if not state then return nil end
     if not state.activeSpeech then return nil end
     local command=state.activeSpeech.command
     state.activeSpeech=nil
     return command
 end
 
-function M.stop(state, adapter)
+function M.stopSpeech(state, adapter)
+    if not state then return nil end
     local interrupted=M.completeSpeech(state)
     if interrupted then adapter.stopSpeech() end
-    if state.ownedAi and type(adapter.stopAi)=='function' then adapter.stopAi(state.ownedAi) state.ownedAi=nil end
-    if state.ownedCombat and type(adapter.stopCombat)=='function' then adapter.stopCombat(state.ownedCombat.target) state.ownedCombat=nil end
     return interrupted
 end
 
-function M.detach(state, adapter) M.stop(state,adapter) state.attached=false end
+function M.haltActions(state, adapter)
+    if not state then return false end
+    M.cancelFace(state,adapter,'client_interrupted')
+    if state.ownedAi and type(adapter.stopAi)=='function' then adapter.stopAi(state.ownedAi) state.ownedAi=nil end
+    if state.ownedCombat and type(adapter.stopCombat)=='function' then adapter.stopCombat(state.ownedCombat.target) state.ownedCombat=nil end
+    return true
+end
+
+function M.stop(state, adapter)
+    if not state then return nil end
+    local interrupted=M.stopSpeech(state,adapter)
+    M.cancelFace(state,adapter,'client_interrupted')
+    M.haltActions(state,adapter)
+    return interrupted
+end
+
+function M.attach(state, generation, capabilities)
+    if not state then return nil,'actor_state_uninitialized' end
+    state.generation=generation or state.generation
+    state.attached=true
+    if capabilities then state.actions=actions.new(capabilities) end
+    return true
+end
+
+function M.detach(state, adapter)
+    if not state then return nil end
+    M.stop(state,adapter)
+    state.attached=false
+    return true
+end
 return M

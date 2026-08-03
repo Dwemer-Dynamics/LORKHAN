@@ -2,6 +2,7 @@ local constants = require('scripts.ALMSIVI.constants')
 local util = require('scripts.ALMSIVI.util')
 
 local M = {limits = constants}
+local DIALOGUE_MODES={Standard=true,Whisper=true,Close=true,Shout=true}
 
 local function bounded(values, limit)
     values = values or {}
@@ -28,14 +29,17 @@ function M.snapshot(source)
     source = source or {}
     local snapshot = {
         mode = source.mode or 'full',
+        dialogueMode = DIALOGUE_MODES[source.dialogueMode] and source.dialogueMode or 'Standard',
         player = util.copy(source.player),
         target = util.copy(source.target),
         audience = bounded(source.audience, constants.MAX_AUDIENCE),
         nearbyActors = bounded(source.nearbyActors, constants.MAX_AUDIENCE),
+        actorActivities = bounded(source.actorActivities, constants.MAX_AUDIENCE),
         nearbyObjects = bounded(source.nearbyObjects, constants.MAX_NEARBY_OBJECTS),
         inventory = bounded(source.inventory, constants.MAX_INVENTORY_ROWS),
         activeEffects = bounded(source.activeEffects, constants.MAX_ACTIVE_EFFECTS),
         journal = bounded(source.journal, constants.MAX_JOURNAL_ENTRIES),
+        books = bounded(source.books, constants.MAX_RECENT_BOOKS),
         contentFiles = bounded(source.contentFiles, constants.MAX_CONTENT_FILES),
         world = util.copy(source.world or {}),
         playerState = util.copy(source.playerState or {}),

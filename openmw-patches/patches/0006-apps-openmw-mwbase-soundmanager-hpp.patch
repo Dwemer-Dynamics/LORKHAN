@@ -1,0 +1,24 @@
+diff --git a/apps/openmw/mwbase/soundmanager.hpp b/apps/openmw/mwbase/soundmanager.hpp
+index 9b6b579c2ffc52431a974b0a5455a3f7da7f4e3e..0afd35d46ee76ca06115c6b12bc9195522066b21 100644
+--- a/apps/openmw/mwbase/soundmanager.hpp
++++ b/apps/openmw/mwbase/soundmanager.hpp
+@@ -6,6 +6,7 @@
+ #include <string>
+ #include <string_view>
+ 
++#include <components/files/istreamptr.hpp>
+ #include <components/vfs/pathutil.hpp>
+ 
+ #include "../mwsound/type.hpp"
+@@ -130,6 +131,11 @@
+         ///< Make an actor say some text.
+         /// \param filename name of a sound file in the VFS
+ 
++        virtual bool sayAlmsiviMedia(
++            const MWWorld::ConstPtr& reference, Files::IStreamPtr media, std::string_view name, float volumeBoost)
++            = 0;
++        ///< Play a natively verified ALMSIVI media stream without exposing a host path to Lua.
++
+         virtual void say(VFS::Path::NormalizedView filename) = 0;
+         ///< Say some text, without an actor ref
+         /// \param filename name of a sound file in the VFS

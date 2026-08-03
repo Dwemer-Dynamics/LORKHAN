@@ -32,7 +32,8 @@ public:
 
     ~VoiceCaptureService();
     [[nodiscard]] bool supported() const noexcept;
-    [[nodiscard]] Result<void> start(bool automatic = false);
+    [[nodiscard]] Result<void> start(
+        bool automatic = false, std::uint16_t rmsThreshold = 700, std::uint32_t trailingSilenceMs = 900);
     void stop() noexcept;
     void halt() noexcept;
     [[nodiscard]] VoiceCaptureState state() const noexcept;
@@ -54,6 +55,8 @@ private:
     std::atomic_bool m_stop{false};
     std::atomic_bool m_automatic{false};
     std::atomic_bool m_voiceDetected{false};
+    std::atomic<std::uint16_t> m_rmsThreshold{700};
+    std::atomic<std::uint32_t> m_trailingSilenceMs{900};
     VoiceCaptureState m_state{
 #ifdef _WIN32
         VoiceCaptureState::idle

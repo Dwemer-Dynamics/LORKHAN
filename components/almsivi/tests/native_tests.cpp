@@ -314,6 +314,25 @@ void testAcceptedProtocolResponses()
     CHECK(!almsivi::parseSessionEndedResponse(
         R"({"schema":"almsivi.session.ended.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":-1,"ended":true})",
         jsonHeaders));
+
+    auto controls = almsivi::parseControlsResponse(
+        R"({"schema":"almsivi.controls.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"target":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"selected_model_slot_id":"01900000-0000-7000-8000-000000000011","selected_profile_id":null,"narrator_profile_id":"01900000-0000-7000-8000-000000000013","model_slots":[{"configuration_id":"01900000-0000-7000-8000-000000000011","name":"Dialogue","revision":2,"driver":"configured","model":"gpt-5-mini"}],"profiles":[{"profile_id":"01900000-0000-7000-8000-000000000012","name":"Fargoth","revision":3}]})",
+        jsonHeaders);
+    CHECK(controls && controls.value().request == almsivi::RequestId(kInstallation)
+        && controls.value().session == almsivi::SessionId(kSession)
+        && controls.value().generation == almsivi::Generation(7)
+        && controls.value().target.recordId == "fargoth"
+        && controls.value().selectedModelSlotId
+        && *controls.value().selectedModelSlotId == "01900000-0000-7000-8000-000000000011"
+        && !controls.value().selectedProfileId
+        && controls.value().narratorProfileId
+        && *controls.value().narratorProfileId == "01900000-0000-7000-8000-000000000013"
+        && controls.value().modelSlots.size() == 1 && controls.value().profiles.size() == 1
+        && controls.value().modelSlots[0].model == "gpt-5-mini"
+        && controls.value().profiles[0].revision == 3);
+    CHECK(!almsivi::parseControlsResponse(
+        R"({"schema":"almsivi.controls.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"target":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"selected_model_slot_id":"01900000-0000-7000-8000-000000000099","selected_profile_id":null,"narrator_profile_id":null,"model_slots":[],"profiles":[]})",
+        jsonHeaders));
 }
 
 void testProtocolEventResponses()
@@ -437,6 +456,9 @@ void testLifecycleAndCancellation()
     almsivi::GenerationState generations;
     CHECK(generations.current() == almsivi::Generation(0));
     CHECK(generations.invalidate() == almsivi::Generation(1));
+    almsivi::GenerationState seeded(almsivi::Generation(42));
+    CHECK(seeded.current() == almsivi::Generation(42));
+    CHECK(seeded.invalidate() == almsivi::Generation(43));
     almsivi::CancellationRegistry registry;
     auto token = registry.registerRequest(almsivi::RequestId("a"), almsivi::Generation(1));
     CHECK(token && !token.value().stop_requested());
@@ -528,7 +550,10 @@ void testBridgeDialogueDeliveryValidation()
                 almsivi::MessageId(kAction), almsivi::TurnId(kTurn), protocolIdentity(),
                 almsivi::DialogueDeliveryStatus::played, "playback_completed", "2026-07-19T20:00:02.123Z"}};
     };
-    CHECK(bridge.enqueue(makeDelivery(uuidFor(80))));
+    auto separatelyCorrelated = makeDelivery(uuidFor(80));
+    std::get<almsivi::DialogueDeliveryResultRequest>(separatelyCorrelated.payload).correlation.request
+        = almsivi::RequestId(uuidFor(79));
+    CHECK(bridge.enqueue(std::move(separatelyCorrelated)));
     auto mismatchedKind = makeDelivery(uuidFor(81));
     mismatchedKind.kind = almsivi::RequestKind::turn;
     CHECK(!bridge.enqueue(std::move(mismatchedKind)));
@@ -537,7 +562,7 @@ void testBridgeDialogueDeliveryValidation()
     CHECK(!bridge.enqueue(std::move(badSpeaker)));
     auto badCorrelation = makeDelivery(uuidFor(83));
     std::get<almsivi::DialogueDeliveryResultRequest>(badCorrelation.payload).correlation.request
-        = almsivi::RequestId(uuidFor(84));
+        = almsivi::RequestId("request");
     CHECK(!bridge.enqueue(std::move(badCorrelation)));
     auto badReason = makeDelivery(uuidFor(85));
     std::get<almsivi::DialogueDeliveryResultRequest>(badReason.payload).reasonCode = "Bad-Reason";

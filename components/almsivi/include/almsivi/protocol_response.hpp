@@ -62,7 +62,7 @@ struct ProtocolIdentity {
     std::string displayName;
 };
 
-enum class ActionIntentKind { ai_follow, ai_stop, ai_wander, animation_play, combat_start, combat_stop,
+enum class ActionIntentKind { ai_follow, ai_stop, ai_travel, ai_escort, ai_face, ai_wander, animation_play, combat_start, combat_stop,
     inspect_report, item_equip, item_unequip, item_use };
 struct ActionIntent {
     ActionId action;
@@ -75,6 +75,10 @@ struct ActionIntent {
     std::uint32_t wanderDurationSeconds{};
     std::string stringParameter;
     std::string secondaryStringParameter;
+    double destinationX{};
+    double destinationY{};
+    double destinationZ{};
+    std::string destinationCell;
     std::string expiresAt;
 };
 
@@ -180,6 +184,31 @@ struct SessionEndedResponse {
     bool ended{};
 };
 
+struct ControlsResponse {
+    struct ModelSlot {
+        std::string configurationId;
+        std::string name;
+        std::uint64_t revision{};
+        std::string driver;
+        std::string model;
+    };
+    struct Profile {
+        std::string profileId;
+        std::string name;
+        std::uint64_t revision{};
+    };
+    MessageId message;
+    RequestId request;
+    SessionId session;
+    Generation generation;
+    ProtocolIdentity target;
+    std::optional<std::string> selectedModelSlotId;
+    std::optional<std::string> selectedProfileId;
+    std::optional<std::string> narratorProfileId;
+    std::vector<ModelSlot> modelSlots;
+    std::vector<Profile> profiles;
+};
+
 [[nodiscard]] Result<void> parseHealthResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 [[nodiscard]] Result<ProtocolError> parseProtocolErrorResponse(
@@ -199,6 +228,8 @@ struct SessionEndedResponse {
 [[nodiscard]] Result<DialogueDeliveryResultAcceptedResponse> parseDialogueDeliveryResultAcceptedResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 [[nodiscard]] Result<SessionEndedResponse> parseSessionEndedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<ControlsResponse> parseControlsResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateHealthHttpResponse(
     unsigned status, std::string_view body, const Headers& headers, json::ParseLimits limits = {});

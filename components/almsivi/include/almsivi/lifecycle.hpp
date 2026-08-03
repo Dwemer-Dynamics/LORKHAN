@@ -11,12 +11,13 @@ namespace almsivi {
 
 class GenerationState {
 public:
+    explicit GenerationState(Generation initial = Generation()) noexcept : m_generation(initial.value()) {}
     [[nodiscard]] Generation current() const noexcept { return Generation(m_generation.load(std::memory_order_acquire)); }
     [[nodiscard]] bool isCurrent(Generation generation) const noexcept { return current() == generation; }
     Generation invalidate() noexcept { return Generation(m_generation.fetch_add(1, std::memory_order_acq_rel) + 1); }
 
 private:
-    std::atomic<std::uint64_t> m_generation{0};
+    std::atomic<std::uint64_t> m_generation;
 };
 
 class CancellationRegistry {

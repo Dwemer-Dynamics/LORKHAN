@@ -2,6 +2,13 @@ local ui=require('scripts.ALMSIVI.ui.state')
 local targeting=require('scripts.ALMSIVI.targeting')
 local M={}
 function M.new() return {ui=ui.new(),action='ALMSIVI_Talk',haltAction='ALMSIVI_Halt'} end
+-- Convert the editable widget value into a single-line message and surface Enter as submit.
+function M.consumeTextEdit(value)
+    if type(value)~='string' then return '',false end
+    local submit=value:find('[\r\n]')~=nil
+    local cleaned=value:gsub('[\r\n]+',' ')
+    return cleaned,submit
+end
 function M.onAction(state,name,send)
     if name==state.action then ui.toggle(state.ui) send('ALMSIVI_TARGET_REQUEST',{}) return true end
     if name==state.haltAction then send('ALMSIVI_HALT_REQUEST',{}) return true end
