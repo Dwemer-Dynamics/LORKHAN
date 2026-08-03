@@ -2,6 +2,10 @@ local adapter=require('scripts.ALMSIVI.adapters.openmw')
 local identity=require('scripts.ALMSIVI.identity')
 local player=require('scripts.ALMSIVI.player_state')
 local protocol=require('scripts.ALMSIVI.protocol')
+local chatbox=require('scripts.ALMSIVI.ui.chatbox')
+local selector=require('scripts.ALMSIVI.ui.selector')
+local actorTools=require('scripts.ALMSIVI.ui.actor_tools')
+local notifications=require('scripts.ALMSIVI.ui.notifications')
 local core=adapter.event()
 local inputOk,input=pcall(require,'openmw.input')
 local uiOk,openmwUi=pcall(require,'openmw.ui')
@@ -11,6 +15,8 @@ local interfacesOk,interfaces=pcall(require,'openmw.interfaces')
 local storageOk,openmwStorage=pcall(require,'openmw.storage')
 local nativeOk,native=pcall(require,'openmw.almsivi')
 local state=player.new()
+local notification=notifications.new()
+local lastNotificationStatus
 local element
 local statusElement
 local voiceRecording=false
@@ -41,6 +47,8 @@ local EQUIPMENT_SLOTS={'helmet','cuirass','greaves','left_pauldron','right_pauld
     'carried_right','carried_left','ammunition'}
 local autoSettings=storageOk and openmwStorage.playerSection('SettingsALMSIVIAutoActivate') or nil
 local behaviorSettings=storageOk and openmwStorage.playerSection('SettingsALMSIVIBehavior') or nil
+local soundSettings=storageOk and openmwStorage.playerSection('SettingsALMSIVISound') or nil
+local agentSettings=storageOk and openmwStorage.playerSection('SettingsALMSIVIAgents') or nil
 local presentationSettings=storageOk and openmwStorage.playerSection('SettingsALMSIVIPresentation') or nil
 local inputBindings=storageOk and openmwStorage.playerSection('OMWInputBindings') or nil
 local unpackValues=table.unpack or unpack
@@ -249,7 +257,9 @@ local function actionContext(actionTarget)
 end
 
 local function submitActionRequest(label,name,tier,parameters,actionTarget)
-    if behaviorSettings and behaviorSettings:get('actionsEnabled')==false then
+    local actionsEnabled=agentSettings and agentSettings:get('actionsEnabled')
+    if actionsEnabled==nil and behaviorSettings then actionsEnabled=behaviorSettings:get('actionsEnabled') end
+    if actionsEnabled==false then
         state.ui.status='actions disabled in settings' render() return
     end
     if not state.ui.target then state.ui.status='actor target required' render() return end
@@ -271,7 +281,7 @@ local function beginSecondaryTarget(label,name,tier,parameters)
     state.ui.pendingTargetAction={kind='actor',label=label,name=name,tier=tier,parameters=parameters,
         actor=state.ui.target}
     state.ui.visible=false
-    state.ui.status='aim action target; F8 confirm'
+    state.ui.status='aim at the action target, then use Targeted NPC Tools again'
     leaveUiMode()
     render()
 end
@@ -279,132 +289,54 @@ end
 local function beginDestinationTarget(label,name,tier)
     state.ui.pendingTargetAction={kind='destination',label=label,name=name,tier=tier,actor=state.ui.target}
     state.ui.visible=false
-    state.ui.status='aim at a nearby destination; F8 confirm'
+    state.ui.status='aim at a nearby destination, then use Targeted NPC Tools again'
     leaveUiMode()
     render()
 end
 
 local function renderStatusHud()
     if statusElement then statusElement:destroy() statusElement=nil end
-    if state.ui.visible or not state.ui.statusHudVisible or not uiOk or not utilOk then return end
+    if state.ui.visible or not uiOk or not utilOk
+        or not state.ui.statusHudVisible and not notifications.active(notification) then return end
+    local text
+    if state.ui.statusHudVisible then
+        text='ALMSIVI  |  '..state.ui.status..'  |  '..state.ui.mode..
+            '  |  Target: '..actorLabel(state.ui.target)..'  |  Agents: '..tostring(#state.ui.agents)
+    else
+        text='ALMSIVI  |  '..tostring(notification.text or state.ui.status)
+    end
     statusElement=openmwUi.create({layer='HUD',type=openmwUi.TYPE.Container,
-        props={position=util.vector2(26,24),size=util.vector2(430,54)},content=openmwUi.content({
-            {type=openmwUi.TYPE.Text,props={text='ALMSIVI  |  '..state.ui.status..'  |  '..state.ui.mode..
-                '  |  Target: '..actorLabel(state.ui.target)..'  |  Aim: '..displayName(aimCandidate and aimCandidate.identity)..
-                '  |  Agents: '..tostring(#state.ui.agents),
+        props={position=util.vector2(26,24),size=util.vector2(520,42)},content=openmwUi.content({
+            {type=openmwUi.TYPE.Text,props={text=text,
                 textSize=15,textColor=util.color.rgb(1.0,0.58,0.18)}}
         })})
 end
 render=function()
     if element then element:destroy() element=nil end
+    if state.ui.status~=lastNotificationStatus then
+        lastNotificationStatus=state.ui.status
+        notifications.show(notification,tostring(state.ui.status),4)
+    end
     renderStatusHud()
     if not state.ui.visible or not uiOk or not utilOk then return end
     local transcript={}
     if state.ui.panel=='conversation' then
-    local inputContent={}
-    if whiteTexture then
-        inputContent[#inputContent+1]={type=openmwUi.TYPE.Image,props={resource=whiteTexture,
-            size=util.vector2(620,46),color=util.color.rgb(0.08,0.06,0.04),alpha=0.96,
-            propagateEvents=false}}
-    end
-    inputContent[#inputContent+1]={type=openmwUi.TYPE.TextEdit,props={position=util.vector2(8,5),
-        text=state.ui.input,size=util.vector2(604,36),multiline=false,wordWrap=false,readOnly=false,autoSize=false,
-        textSize=18,textColor=util.color.rgb(1.0,0.92,0.72),propagateEvents=false},events={
-            textChanged=adapter.callback(function(value)
-                local text=player.consumeTextEdit(value)
-                state.ui.input=text
-            end),
-            keyPress=adapter.callback(function(event)
+        transcript=chatbox.build({ui=openmwUi,util=util,whiteTexture=whiteTexture,text=state.ui.input,
+            target=displayName(state.ui.target),
+            onTextChanged=adapter.callback(function(value) state.ui.input=player.consumeTextEdit(value) end),
+            onKeyPress=adapter.callback(function(event)
                 if inputOk and event and event.code==input.KEY.Escape then
                     pendingTextSubmit=false state.ui.visible=false leaveUiMode() render()
                 end
-            end)}}
-    transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='TYPE YOUR MESSAGE',textSize=14,
-        textColor=util.color.rgb(1.0,0.58,0.18)}}
-    transcript[#transcript+1]={type=openmwUi.TYPE.Container,props={size=util.vector2(620,46)},
-        content=openmwUi.content(inputContent)}
-    transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Click the dark box, type, then press Enter or click Send',textSize=14,
-        textColor=util.color.rgb(0.72,0.68,0.62)}}
-    transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Send',textSize=18,textColor=util.color.rgb(1.0,0.58,0.18)},
-        events={mouseClick=adapter.callback(submitText)}}
-    transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Close',textSize=16,textColor=util.color.rgb(0.82,0.78,0.72)},
-        events={mouseClick=adapter.callback(function() pendingTextSubmit=false state.ui.visible=false leaveUiMode() render() end)}}
-    transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Use aimed NPC as target',textSize=16,
-        textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
-            send('ALMSIVI_TARGET_REQUEST',{maxDistance=2048})
-        end)}}
-    transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Master Menu',textSize=16,
-        textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
-            state.ui.panel='master' render()
-        end)}}
-    transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Add aimed NPC to group',textSize=16,textColor=util.color.rgb(1.0,0.58,0.18)},
-        events={mouseClick=adapter.callback(function() send('ALMSIVI_AUDIENCE_REQUEST',{maxDistance=2048}) end)}}
-    transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Reset group to target',textSize=16,textColor=util.color.rgb(1.0,0.58,0.18)},
-        events={mouseClick=adapter.callback(function() send('ALMSIVI_CLEAR_AUDIENCE',{}) end)}}
-    local nearbyTargets=adapter.nearbyActors(2048)
-    if #nearbyTargets>0 then
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='NEARBY TARGETS',textSize=14,
-            textColor=util.color.rgb(0.72,0.68,0.62)}}
-        for index=1,math.min(#nearbyTargets,3) do
-            local candidate=nearbyTargets[index]
-            local label=displayName(candidate.identity)..'  ('..tostring(math.floor(candidate.distance))..', '..activityLabel(candidate.identity)..')'
-            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Talk to '..label,textSize=16,
-                textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
-                    state.ui.status='selecting '..displayName(candidate.identity)
-                    send('ALMSIVI_SELECT_TARGET',{candidate=candidate}) render()
-                end)}}
-        end
-    end
-    for _,line in ipairs(state.ui.transcript) do
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=displayName(line.speaker)..': '..line.text,
-            textColor=util.color.rgb(0.92,0.82,0.68),textSize=16}}
-    end
-    if state.ui.subtitle then
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=displayName(state.ui.subtitle.speaker)..': '..state.ui.subtitle.text,
-            textColor=util.color.rgb(1.0,0.58,0.18),textSize=16}}
-    end
-    transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=voiceRecording and 'Stop voice recording' or 'Start voice recording',textSize=16,
-        textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
-            if openMicEnabled then openMicEnabled=false openMicMuted=false send('ALMSIVI_OPEN_MIC_STOP',{}) end
-            voiceRecording=not voiceRecording
-            if voiceRecording then
-                if not state.ui.target then voiceRecording=false state.ui.status='target required'
-                else
-                    rechatDepth=0 hadConversation=false activeAutonomyKind=nil activeAutonomySpoke=false
-                    send('ALMSIVI_VOICE_START',voicePayload('almsivi_voice'))
-                end
-            else send('ALMSIVI_VOICE_STOP',{}) end
-            render()
-        end)}}
-    local openMicLabel=openMicEnabled and (openMicMuted and 'Open mic: ON (muted)' or 'Open mic: ON (voice activated)')
-        or 'Open mic: Off'
-    transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=openMicLabel,textSize=16,
-        textColor=openMicEnabled and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(1.0,0.58,0.18)},
-        events={mouseClick=adapter.callback(function()
-            if not openMicEnabled and not state.ui.target then state.ui.status='target required' render() return end
-            openMicEnabled=not openMicEnabled openMicMuted=false voiceRecording=openMicEnabled
-            if openMicEnabled then
-                rechatDepth=0 hadConversation=false activeAutonomyKind=nil activeAutonomySpoke=false
-                send('ALMSIVI_OPEN_MIC_START',voicePayload('almsivi_open_mic'))
-            else send('ALMSIVI_OPEN_MIC_STOP',{}) end
-            render()
-        end)}}
-    if openMicEnabled then
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=openMicMuted and 'Resume open microphone' or 'Mute open microphone',textSize=15,
-            textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
-                openMicMuted=not openMicMuted voiceRecording=not openMicMuted
-                if openMicMuted then send('ALMSIVI_OPEN_MIC_STOP',{})
-                else send('ALMSIVI_OPEN_MIC_START',voicePayload('almsivi_open_mic')) end
-                state.ui.status=openMicMuted and 'open mic muted' or 'open mic listening'
-                render()
-            end)}}
-    end
-    elseif state.ui.panel=='agents' then
+            end),
+            onSend=adapter.callback(submitText),
+            onClose=adapter.callback(function() pendingTextSubmit=false state.ui.visible=false leaveUiMode() render() end)})
+    elseif state.ui.panel=='nearby-profiles' then
         local exterior=self.cell and self.cell.isExterior==true
         local distance=autoSettings and autoSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')
             or (exterior and 2400 or 1200)
         local nearby=adapter.nearbyActors(tonumber(distance) or (exterior and 2400 or 1200))
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Agent Manager',textSize=20,
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Nearby AI NPC Profiles',textSize=20,
             textColor=util.color.rgb(0.95,0.9,0.82)}}
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Managed: '..tostring(#state.ui.agents)..
             '  |  Nearby: '..tostring(#nearby),textSize=16,textColor=util.color.rgb(0.92,0.82,0.68)}}
@@ -435,9 +367,9 @@ render=function()
                 while #nearby>12 do table.remove(nearby) end
                 send('ALMSIVI_MANUAL_ACTIVATE_NEARBY_REQUEST',{candidates=nearby})
             end)}}
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Master Menu',textSize=16,
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Dynamic Profiles',textSize=16,
             textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
-                state.ui.panel='master' render()
+                state.ui.panel='profile-menu' render()
             end)}}
     elseif state.ui.panel=='history' then
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Conversation History',textSize=20,
@@ -450,9 +382,9 @@ render=function()
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=displayName(line.speaker)..': '..line.text,
                 textSize=16,textColor=util.color.rgb(0.92,0.82,0.68)}}
         end
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Master Menu',textSize=16,
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
             textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
-                state.ui.panel='master' render()
+                state.ui.panel='actor-tools' render()
             end)}}
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Close',textSize=16,
             textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
@@ -485,9 +417,9 @@ render=function()
         end
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Server UI: http://127.0.0.1:8089/ALMSIVIserver/manage',
             textSize=14,textColor=util.color.rgb(0.72,0.68,0.62)}}
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Master Menu',textSize=16,
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
             textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
-                state.ui.panel='master' render()
+                state.ui.panel='actor-tools' render()
             end)}}
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Close',textSize=16,
             textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
@@ -582,48 +514,33 @@ render=function()
             link('Back',function() state.ui.actionView='root' state.ui.actionPage=1 render() end)
         end
         link('Conversation',function() state.ui.panel='conversation' render() end)
-        link('Master Menu',function() state.ui.panel='master' render() end)
+        link('Targeted NPC Tools',function() state.ui.panel='actor-tools' render() end)
         link('Close',function() state.ui.visible=false leaveUiMode() render() end)
-    elseif state.ui.panel=='master' then
-        local function masterOption(label,callback)
-            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=label,textSize=18,
-                textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(callback)}}
-        end
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Master Menu',textSize=20,
-            textColor=util.color.rgb(0.95,0.9,0.82)}}
-        masterOption('Typed conversation',function() state.ui.panel='conversation' render() end)
-        masterOption('Actor actions',function() state.ui.panel='actions' render() end)
-        masterOption('Agent manager',function() state.ui.panel='agents' render() end)
-        masterOption('Conversation history',function() state.ui.panel='history' render() end)
-        masterOption('Diagnostics',function() state.ui.panel='diagnostics' render() end)
-        masterOption('Conversation behavior',function() state.ui.panel='behavior' render() end)
-        masterOption('Dialogue mode: '..state.ui.mode,function() state.ui.panel='modes' render() end)
-        masterOption('LLM model slot',function() refreshSessionControls('models') end)
-        masterOption('NPC roleplay profile',function() refreshSessionControls('profiles') end)
-        masterOption('Narrator profile',function() refreshSessionControls('narrator') end)
-        masterOption('Stop current dialogue',function() send('ALMSIVI_STOP_DIALOGUE_REQUEST',{}) state.ui.status='dialogue stopped' render() end)
-        masterOption('Halt actor actions',function() send('ALMSIVI_HALT_ACTIONS_REQUEST',{}) state.ui.status='actions halted' render() end)
-        masterOption('Stop all ALMSIVI work',function() send('ALMSIVI_HALT_REQUEST',{}) state.ui.status='stopped' render() end)
-        masterOption('Toggle compact status HUD',function() state.ui.statusHudVisible=not state.ui.statusHudVisible render() end)
-        local ttsVolumeBoost=math.max(1,math.min(4,math.floor(tonumber(
-            presentationSettings and presentationSettings:get('ttsVolumeBoost')) or 3)))
-        masterOption('TTS volume boost: '..tostring(ttsVolumeBoost)..'x',function()
-            if not presentationSettings then state.ui.status='settings storage unavailable' render() return end
-            presentationSettings:set('ttsVolumeBoost',ttsVolumeBoost%4+1)
-            settingsSignature=nil
-            applySettings()
-        end)
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Managed Agents: '..tostring(#state.ui.agents),textSize=17,
-            textColor=util.color.rgb(0.92,0.82,0.68)}}
-        for index,entry in ipairs(state.ui.agents) do
-            if index>8 then break end
-            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='  '..displayName(entry.identity)..
-                ' ['..activityLabel(entry.identity)..']'..(entry.pinned and ' [pinned]' or ''),
-                textSize=15,textColor=util.color.rgb(0.82,0.78,0.72)}}
-        end
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Settings: Options > Scripts > ALMSIVI',textSize=15,
-            textColor=util.color.rgb(0.72,0.68,0.62)}}
-        masterOption('Close',function() state.ui.visible=false leaveUiMode() render() end)
+    elseif state.ui.panel=='actor-tools' then
+        transcript=actorTools.build({ui=openmwUi,util=util,target=displayName(state.ui.target),options={
+            {label='Activate or deactivate aimed NPC',onSelect=adapter.callback(manualActivate)},
+            {label='Add aimed NPC to conversation',onSelect=adapter.callback(function()
+                send('ALMSIVI_AUDIENCE_REQUEST',{maxDistance=2048})
+                state.ui.status='adding aimed NPC to conversation' render()
+            end)},
+            {label='Dynamic profiles...',onSelect=adapter.callback(function() state.ui.panel='profile-menu' render() end)},
+            {label='Actor actions...',onSelect=adapter.callback(function()
+                state.ui.panel='actions' state.ui.actionView='root' state.ui.actionPage=1 render()
+            end)},
+            {label='Stop current dialogue',onSelect=adapter.callback(function()
+                send('ALMSIVI_STOP_DIALOGUE_REQUEST',{}) state.ui.status='dialogue stopped' render()
+            end)},
+            {label='Halt actor actions',danger=true,onSelect=adapter.callback(function()
+                send('ALMSIVI_HALT_ACTIONS_REQUEST',{}) state.ui.status='actions halted' render()
+            end)},
+        },onClose=adapter.callback(function() state.ui.visible=false leaveUiMode() render() end)})
+    elseif state.ui.panel=='profile-menu' then
+        transcript=selector.build({ui=openmwUi,util=util,title='Dynamic Profiles',options={
+            {label='Targeted NPC',onSelect=adapter.callback(function() refreshSessionControls('profiles') end)},
+            {label='Nearby AI NPCs',onSelect=adapter.callback(function() state.ui.panel='nearby-profiles' render() end)},
+            {label='Narrator',onSelect=adapter.callback(function() refreshSessionControls('narrator') end)},
+        },onBack=adapter.callback(function() state.ui.panel='actor-tools' render() end),
+        onClose=adapter.callback(function() state.ui.visible=false leaveUiMode() render() end)})
     elseif state.ui.panel=='behavior' then
         local function behaviorOption(label,key)
             local enabled=behaviorSettings and behaviorSettings:get(key)==true
@@ -648,8 +565,8 @@ render=function()
             textSize=14,textColor=util.color.rgb(0.72,0.68,0.62)}}
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Timers and safety conditions: Options > Scripts > ALMSIVI',
             textSize=14,textColor=util.color.rgb(0.72,0.68,0.62)}}
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Master Menu',textSize=16,
-            textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function() state.ui.panel='master' render() end)}}
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
+            textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function() state.ui.panel='actor-tools' render() end)}}
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Close',textSize=16,
             textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
                 state.ui.visible=false leaveUiMode() render()
@@ -704,8 +621,8 @@ render=function()
         end
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Refresh choices',textSize=16,
             textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function() refreshSessionControls(state.ui.panel) end)}}
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Master Menu',textSize=16,
-            textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function() state.ui.panel='master' render() end)}}
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
+            textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function() state.ui.panel='actor-tools' render() end)}}
     elseif state.ui.panel=='modes' then
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Dialogue Mode',textSize=20,
             textColor=util.color.rgb(0.95,0.9,0.82)}}
@@ -723,9 +640,9 @@ render=function()
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=descriptions[mode],textSize=14,
                 textColor=util.color.rgb(0.72,0.68,0.62)}}
         end
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Master Menu',textSize=16,
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
             textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
-                state.ui.panel='master' render()
+                state.ui.panel='actor-tools' render()
             end)}}
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Close',textSize=16,
             textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
@@ -746,13 +663,17 @@ render=function()
                 state.ui.pendingAction=nil render()
             end)}}
     end
+    local panelSizes={conversation={560,210},['actor-tools']={540,360},['profile-menu']={520,300},
+        modes={540,390},models={580,420},profiles={580,420},narrator={580,330},
+        ['nearby-profiles']={680,460}}
+    local panelSize=panelSizes[state.ui.panel] or {680,460}
+    local contentWidth=panelSize[1]-20
+    local contentHeight=panelSize[2]-20
     element=openmwUi.create({layer='Windows',type=openmwUi.TYPE.Container,
-        props={position=util.vector2(30,60),size=util.vector2(680,460)},content=openmwUi.content({
-            {type=openmwUi.TYPE.Flex,props={horizontal=false,size=util.vector2(660,440)},content=openmwUi.content({
-                {type=openmwUi.TYPE.Text,props={text='ALMSIVI  |  '..state.ui.status..'  |  '..state.ui.mode,textSize=22,textColor=util.color.rgb(1.0,0.45,0.08)}},
-                {type=openmwUi.TYPE.Text,props={text='Target: '..actorLabel(state.ui.target),textSize=18,textColor=util.color.rgb(0.95,0.9,0.82)}},
-                {type=openmwUi.TYPE.Text,props={text='Aim: '..displayName(aimCandidate and aimCandidate.identity),textSize=15,textColor=util.color.rgb(0.72,0.68,0.62)}},
-                {type=openmwUi.TYPE.Text,props={text='Group: '..audienceNames(),textSize=16,textColor=util.color.rgb(0.82,0.78,0.72)}},
+        props={position=util.vector2(30,60),size=util.vector2(panelSize[1],panelSize[2])},content=openmwUi.content({
+            {type=openmwUi.TYPE.Flex,props={horizontal=false,size=util.vector2(contentWidth,contentHeight)},content=openmwUi.content({
+                {type=openmwUi.TYPE.Text,props={text='ALMSIVI  |  '..state.ui.status,textSize=16,
+                    textColor=util.color.rgb(1.0,0.45,0.08)}},
                 unpackValues(transcript),
             })},
         })})
@@ -828,18 +749,12 @@ local function isConfiguredTalkKey(event)
         and binding.key=='ALMSIVI_Talk' and binding.button==event.code
 end
 
-local function cycleMode()
-    if not controlsAllowed() then return end
-    local index=1
-    for current,name in ipairs(MODES) do if name==state.ui.mode then index=current break end end
-    setMode(MODES[index%#MODES+1])
-end
-
 local function openPanel(panel)
     if not controlsAllowed() and not ownsUiMode then return end
     state.ui.panel=panel state.ui.visible=true
     if panel=='actions' then state.ui.actionView='root' state.ui.actionPage=1 end
-    if (panel=='actions' or panel=='conversation') and not state.ui.target then chooseTarget(2048) end
+    if (panel=='actions' or panel=='conversation' or panel=='actor-tools' or panel=='models'
+        or panel=='profiles' or panel=='profile-menu') and not state.ui.target then chooseTarget(2048) end
     enterUiMode()
 end
 
@@ -852,7 +767,7 @@ local function togglePanel(panel)
 end
 
 local function manualActivate()
-    if not controlsAllowed() then return end
+    if not controlsAllowed() and not ownsUiMode then return end
     local candidate,reason=adapter.resolveCameraTarget(2048)
     if candidate then send('ALMSIVI_MANUAL_ACTIVATE_REQUEST',{candidate=candidate})
     else
@@ -883,7 +798,7 @@ local function confirmSecondaryTarget()
     if pending.kind=='destination' then
         local destination,reason=adapter.resolveCameraPoint(2048)
         if not destination then
-            state.ui.status='destination unavailable; aim nearby and press F8'
+            state.ui.status='destination unavailable; aim nearby and use Targeted NPC Tools again'
             state.ui.diagnostics=reason
             render()
             return true
@@ -893,7 +808,7 @@ local function confirmSecondaryTarget()
     end
     local candidate,reason=adapter.resolveCameraTarget(2048)
     if not candidate then
-        state.ui.status='action target unavailable; aim and press F8'
+        state.ui.status='action target unavailable; aim and use Targeted NPC Tools again'
         state.ui.diagnostics=reason
         render()
         return true
@@ -912,6 +827,11 @@ applySettings=function()
     local legacyHearing=autoSettings and autoSettings:get('hearingDistance')
     local interiorHearing=autoSettings and autoSettings:get('interiorHearingDistance') or legacyHearing or 500
     local exteriorHearing=autoSettings and autoSettings:get('exteriorHearingDistance') or legacyHearing or 1000
+    local actionsEnabled=agentSettings and agentSettings:get('actionsEnabled')
+    if actionsEnabled==nil and behaviorSettings then actionsEnabled=behaviorSettings:get('actionsEnabled') end
+    if actionsEnabled==nil then actionsEnabled=true end
+    local ttsVolumeBoost=soundSettings and soundSettings:get('ttsVolumeBoost')
+    if ttsVolumeBoost==nil and presentationSettings then ttsVolumeBoost=presentationSettings:get('ttsVolumeBoost') end
     local current={
         autoActivate={enabled=autoSettings and autoSettings:get('enabled'),
             interiorDistance=autoSettings and autoSettings:get('interiorDistance'),
@@ -921,7 +841,7 @@ applySettings=function()
             exteriorHearingDistance=exteriorHearing,
             addHostile=autoSettings and autoSettings:get('addHostile'),
             addCreatures=autoSettings and autoSettings:get('addCreatures')},
-        behavior={actionsEnabled=behaviorSettings and behaviorSettings:get('actionsEnabled'),
+        behavior={actionsEnabled=actionsEnabled,
             autoGreeting=behaviorSettings and behaviorSettings:get('autoGreeting'),
             rechat=behaviorSettings and behaviorSettings:get('rechat'),
             rechatDelaySeconds=behaviorSettings and behaviorSettings:get('rechatDelaySeconds'),
@@ -938,7 +858,7 @@ applySettings=function()
             openMicEndDelayMs=behaviorSettings and behaviorSettings:get('openMicEndDelayMs')},
         presentation={showStatusHud=presentationSettings and presentationSettings:get('showStatusHud'),
             transcriptRows=presentationSettings and presentationSettings:get('transcriptRows'),
-            ttsVolumeBoost=presentationSettings and presentationSettings:get('ttsVolumeBoost')},
+            ttsVolumeBoost=ttsVolumeBoost or 3},
     }
     local auto=current.autoActivate or {}
     local behavior=current.behavior or {}
@@ -957,7 +877,7 @@ applySettings=function()
         tostring(presentation.ttsVolumeBoost)},'|')
     if signature==settingsSignature then return end
     settingsSignature=signature
-    state.ui.statusHudVisible=presentation.showStatusHud~=false
+    state.ui.statusHudVisible=presentation.showStatusHud==true
     state.ui.policy.transcriptRows=presentation.transcriptRows or 12
     send('ALMSIVI_SETTINGS_UPDATE',current)
     render()
@@ -1019,17 +939,22 @@ if inputOk then
     end))
     input.registerTriggerHandler('ALMSIVI_ManualActivate',adapter.callback(manualActivate))
     input.registerTriggerHandler('ALMSIVI_ActionsMenu',adapter.callback(function()
-        if not confirmSecondaryTarget() then togglePanel('actions') end
+        if not confirmSecondaryTarget() then togglePanel('actor-tools') end
     end))
-    input.registerTriggerHandler('ALMSIVI_MasterMenu',adapter.callback(function() togglePanel('master') end))
-    input.registerTriggerHandler('ALMSIVI_ToggleMode',adapter.callback(cycleMode))
+    input.registerTriggerHandler('ALMSIVI_MasterMenu',adapter.callback(function() togglePanel('actor-tools') end))
+    input.registerTriggerHandler('ALMSIVI_ToggleMode',adapter.callback(function() togglePanel('modes') end))
+    input.registerTriggerHandler('ALMSIVI_ModelMenu',adapter.callback(function()
+        openPanel('models') refreshSessionControls('models')
+    end))
+    input.registerTriggerHandler('ALMSIVI_ProfileMenu',adapter.callback(function() togglePanel('profile-menu') end))
     input.registerTriggerHandler('ALMSIVI_StatusHud',adapter.callback(function()
         if not controlsAllowed() then return end
         state.ui.statusHudVisible=not state.ui.statusHudVisible
+        if presentationSettings then presentationSettings:set('showStatusHud',state.ui.statusHudVisible) end
         render()
     end))
-    input.registerTriggerHandler('ALMSIVI_History',adapter.callback(function() togglePanel('history') end))
-    input.registerTriggerHandler('ALMSIVI_Diagnostics',adapter.callback(function() togglePanel('diagnostics') end))
+    input.registerTriggerHandler('ALMSIVI_History',adapter.callback(function() togglePanel('actor-tools') end))
+    input.registerTriggerHandler('ALMSIVI_Diagnostics',adapter.callback(function() togglePanel('actor-tools') end))
     input.registerTriggerHandler('ALMSIVI_OpenMic',adapter.callback(function()
         if not controlsAllowed() then return end
         if not openMicEnabled and not state.ui.target then chooseTarget(2048) return end
@@ -1065,6 +990,7 @@ return {
         end,
         onUpdate=function(dt)
             if narratorSpeech and not adapter.isSpeechActive() then reportNarrator('played','playback_completed') end
+            if notifications.update(notification,dt) then renderStatusHud() end
             applySettings()
             updateLocalAutonomy(dt)
             updateCombatBarks(dt)
@@ -1181,7 +1107,7 @@ return {
             if key then
                 if event.activity=='inactive' then actorActivities[key]=nil
                 else actorActivities[key]={actor=event.actor,activity=event.activity,target=event.target} end
-                if state.ui.visible and (state.ui.panel=='agents' or state.ui.panel=='master') then render() end
+                if state.ui.visible and (state.ui.panel=='nearby-profiles' or state.ui.panel=='actor-tools') then render() end
             end
         end,
         ALMSIVI_SPEECH_STATUS=function(event)

@@ -42,32 +42,30 @@ stock OpenMW executable.
    forwarding is disabled, run `scripts/deploy/enable-wsl-loopback.ps1` from an elevated PowerShell
    window. The native client intentionally rejects non-loopback server URLs.
 6. In game, center the crosshair on an NPC and press F6. ALMSIVI selects that NPC automatically and
-   shows the confirmed name beside `Target`. Click the text box, type a line, and press Enter; Escape
-   closes the panel. F7 stops current ALMSIVI work and F8 opens Actor Actions; the Master Menu is
-   linked inside both panels. Every ALMSIVI input can be rebound under Options > Scripts > ALMSIVI.
-   Bind `Mute ALMSIVI open microphone` separately if using VAD. Behavior settings expose the bounded
-   speech sensitivity and silence-end delay.
-7. Use `Use aimed NPC as target` to retarget, or open Master Menu > Agent Manager to choose one of the
-   nearest active actors without the crosshair. `Add aimed NPC to group` and the Agent Manager group
-   rows include another actor; `Reset group to target` returns to the primary target only. Manual AI
-   Activate toggles the aimed actor, or pins up to 12 nearby actors when no actor is aimed at.
+   opens the compact chatbox. Click the text box, type a line, and press Enter; Escape closes the panel.
+   F7 stops current ALMSIVI work. Every visible ALMSIVI control can be rebound under
+   Options > Scripts > ALMSIVI > Hotkeys. Only F6 and F7 are assigned on a new install.
+7. Bind `Targeted NPC tools` to open the compact activation, group, dynamic-profile, actor-action and
+   stop controls for the aimed NPC. `Manual AI Activate` toggles the aimed actor, or pins up to 12
+   nearby actors when no actor is aimed. The Dynamic Profiles selector can manage the targeted NPC,
+   a bounded nearby AI NPC, or the narrator without opening a master dashboard.
 8. For `Attack aimed actor` or `Stop combat with aimed actor`, choose the action, aim at the second
-   actor, and press F8 again. The server accepts only a different actor from the bounded nearby-actor
+   actor, and use `Targeted NPC tools` again. The server accepts only a different actor from the bounded nearby-actor
    snapshot. For `Go to aimed point` or `Escort me to aimed point`, choose the action, aim at a point
-   in the current cell within 2048 units, and press F8 again; ALMSIVI captures that ray hit rather than
+   in the current cell within 2048 units, and use `Targeted NPC tools` again; ALMSIVI captures that ray hit rather than
    accepting model-authored coordinates. `Face me` turns toward the player; `Face aimed actor` uses the
-   same two-stage F8 actor confirmation and reports success only after the heading is observed. Auto greeting, bounded rechat depth, boredom delays, separate interior/exterior scan and hearing distances, creatures, and hostile
+   same two-stage targeted-tools confirmation and reports success only after the heading is observed. Auto greeting, bounded rechat depth, boredom delays, separate interior/exterior scan and hearing distances, creatures, and hostile
    actors are controlled under Options > Scripts > ALMSIVI. Managed NPCs inside the hearing distance join
    the bounded turn audience without replacing manually selected group members. Auto-managed actors already
    fighting the player are removed unless `Add hostile actors` is enabled; actors selected manually remain
    under user control. By default, idle/rechat timers reset while a menu is open, the player is sneaking, or
    a managed nearby actor is fighting the player. Those three safety gates can be changed in Behavior settings.
-   Master Menu > Dialogue Mode selects real routing: Standard adds normal spatial hearing, Close uses only
+   The `Dialogue mode` hotkey opens routing choices: Standard adds normal spatial hearing, Close uses only
    the explicit group, Whisper uses the primary target only, and Shout doubles spatial hearing.
    Combat barks are enabled by default with a 30-second minimum interval and only run for managed hostile
    actors when menus, voice input, generated speech and other ALMSIVI turns are inactive.
-9. Master Menu > LLM model slot lists only revisioned choices created on ALMSIVIserver; `Server default`
-   clears the per-session override. Master Menu > NPC roleplay profile assigns a server profile to the
+9. The `LLM model` hotkey lists only revisioned choices created on ALMSIVIserver; `Server default`
+   clears the per-session override. Dynamic Profiles > Targeted NPC assigns a server profile to the
    currently confirmed actor for this playthrough; `Playthrough default` clears that actor binding.
    Neither panel accepts an endpoint, API key, model name, profile text, or other free-form configuration.
 
@@ -87,7 +85,7 @@ stock OpenMW executable.
 - `ai.face` is actor-local, times out after three seconds, cancels on combat/cell/target loss, and
   releases its yaw control on every terminal path;
 - `combat.start` waits for the visible Approve/Reject choice, while `combat.stop` remains immediate;
-  both aimed-actor commands require the two-stage F8 confirmation and reject stale/out-of-context targets;
+  both aimed-actor commands require the two-stage targeted-tools confirmation and reject stale/out-of-context targets;
 - `animation.play` accepts only `idle2` through `idle9`; `item.use` can select only an item already
   present in that actor's inventory and also waits for Approve/Reject;
 - player inventory, stats, effects, factions, journal, cell, weather, nearby actors, and target state

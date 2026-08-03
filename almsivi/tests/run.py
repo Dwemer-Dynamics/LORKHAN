@@ -30,7 +30,8 @@ check("production manifest contains only comments or allowed declarations", all(
     not line.strip() or line.lstrip().startswith("#") or line.strip() in allowed_manifest_declarations
     for line in manifest.splitlines()))
 required = ["global.lua", "settings.lua", "player.lua", "actor.lua", "orchestrator.lua", "player_state.lua", "actor_executor.lua",
-            "protocol.lua", "identity.lua", "context.lua", "conversation.lua", "actions.lua", "storage.lua"]
+            "protocol.lua", "identity.lua", "context.lua", "conversation.lua", "actions.lua", "storage.lua",
+            "ui/chatbox.lua", "ui/selector.lua", "ui/actor_tools.lua", "ui/notifications.lua"]
 check("all architecture modules exist", all((SCRIPTS / name).is_file() for name in required))
 deferrals = text(ROOT / "almsivi" / "ENGINE-DEFERRALS.txt")
 check("manifest verification cites pinned source paths and commit", all(fragment in deferrals for fragment in [
@@ -83,36 +84,44 @@ check("cursor gaps rejected", "cursor_gap" in text(SCRIPTS / "protocol.lua"))
 check("actor self identity required", "identity.same(command.actor,state.identity)" in text(SCRIPTS / "actor_executor.lua"))
 check("vanilla Activate not consumed", "return false -- built-in Activate" in text(SCRIPTS / "player_state.lua"))
 settings = text(SCRIPTS / "settings.lua")
-check("OpenMW Scripts page exposes all ALMSIVI input bindings", all(fragment in settings for fragment in [
-    "I.Settings.registerPage", "I.Settings.registerGroup", "renderer='inputBinding'",
-    "key='ALMSIVI_Talk'", "key='ALMSIVI_Halt'", "key='ALMSIVI_PushToTalk'", "key='ALMSIVI_OpenMic'"]))
+check("OpenMW Scripts page exposes the focused seven-hotkey layout", settings.count("renderer='inputBinding'") == 7
+      and all(fragment in settings for fragment in ["I.Settings.registerPage", "key='ALMSIVI_Talk'",
+          "key='ALMSIVI_ManualActivate'", "key='ALMSIVI_ToggleMode'", "key='ALMSIVI_ModelMenu'",
+          "key='ALMSIVI_ProfileMenu'", "key='ALMSIVI_Halt'", "key='ALMSIVI_ActionsMenu'"]))
+check("legacy and voice controls remain compatibility triggers but are not visible settings rows",
+      all(fragment in settings for fragment in ["trigger('ALMSIVI_MasterMenu'", "trigger('ALMSIVI_OpenMic'",
+          "registerAction({key='ALMSIVI_PushToTalk'"]))
 check("OpenMW Scripts page exposes bounded ALMSIVI TTS volume boost", all(fragment in settings for fragment in [
     "key='ttsVolumeBoost'", "default=3", "integer=true,min=1,max=4"]))
 check("conflict-free F6 and F7 defaults seed only once", all(fragment in settings for fragment in [
-    "ALMSIVIInputDefaults", "defaultsSection:get('version') == nil", "input.KEY.F6", "input.KEY.F7"]))
+    "ALMSIVIInputDefaults", "defaultsSection:get('version') == nil", "input.KEY.F6", "input.KEY.F7"])
+      and "input.KEY.F8" not in settings and "input.KEY.F9" not in settings)
 check("OpenMW settings rows have required localization metadata", all(fragment in settings for fragment in [
     "name='Talk_name',description='Talk_description'", "name='Halt_name',description='Halt_description'",
-    "name='PushToTalk_name',description='PushToTalk_description'",
-    "name='OpenMic_name',description='OpenMic_description'"]))
+    "name='ModeMenu_name',description='ModeMenu_description'",
+    "name='ActorTools_name',description='ActorTools_description'"]))
 player_script = text(SCRIPTS / "player.lua")
 check("player has no duplicate hardcoded ALMSIVI keys", all(key not in player_script for key in [
     "input.KEY.F6", "input.KEY.F7", "input.KEY.F8"]))
 check("typed chat fallback follows the configured semantic binding", all(fragment in player_script for fragment in [
     "inputBindings:get('ALMSIVI_Talk_Binding')", "binding.button==event.code",
     "input.registerTriggerHandler('ALMSIVI_Talk',adapter.callback(requestTalkToggle))"]))
-check("typed chat captures a target before UI mode and exposes nearby choices", all(fragment in player_script for fragment in [
-    "TYPE YOUR MESSAGE", "type=openmwUi.TYPE.TextEdit", "type=openmwUi.TYPE.Image",
-    "chooseTarget(2048,true)\n        enterUiMode()\n        render()", "NEARBY TARGETS", "Talk to "]))
+chatbox_script = text(SCRIPTS / "ui" / "chatbox.lua")
+check("typed chat captures a target before UI mode and renders only focused chat controls",
+      all(fragment in player_script for fragment in ["chatbox.build", "chooseTarget(2048,true)\n        enterUiMode()\n        render()"])
+      and all(fragment in chatbox_script for fragment in ["type=ui.TYPE.TextEdit", "type=ui.TYPE.Image", "Press Enter or select Send"])
+      and all(fragment not in chatbox_script for fragment in ["Open mic", "NEARBY TARGETS", "Master Menu"]))
 check("typed chat uses one-line Enter submission and waits for target confirmation", all(fragment in player_script for fragment in [
-    "multiline=false", "player.consumeTextEdit(value)", "pendingTextSubmit=true",
+    "player.consumeTextEdit(value)", "pendingTextSubmit=true",
     "event.code==input.KEY.Enter or event.code==input.KEY.NP_Enter",
-    "if shouldSubmit then submitText() elseif controlPanel then refreshSessionControls(controlPanel) else render() end"]))
-check("master popup exposes persistent local rechat and boredom controls", all(fragment in player_script for fragment in [
-    "masterOption('Conversation behavior'", "state.ui.panel=='behavior'", "behaviorSettings:set(key,not enabled)",
-    "behaviorOption('Continue conversations (rechat)','rechat')", "behaviorOption('Bored events','boredom')",
-    "this is not background life."]))
-check("master popup exposes server-validated narrator generation", all(fragment in player_script for fragment in [
-    "masterOption('Narrator profile'", "controls.narrator_profile_id",
+    "if shouldSubmit then submitText() elseif controlPanel then refreshSessionControls(controlPanel) else render() end"])
+      and "multiline=false" in chatbox_script)
+check("focused selectors and targeted NPC tools replace the master dashboard", all(fragment in player_script for fragment in [
+    "state.ui.panel=='actor-tools'", "state.ui.panel=='profile-menu'", "state.ui.panel=='modes'",
+    "refreshSessionControls('models')", "Targeted NPC Tools", "Actor actions..."])
+      and "state.ui.panel=='master'" not in player_script)
+check("dynamic profile selector exposes server-validated narrator generation", all(fragment in player_script for fragment in [
+    "label='Narrator'", "controls.narrator_profile_id",
     "native.selectSessionControl('narrator_profile_generate'", "preserves voice routing and enablement."]))
 check("nearby agent manager opens the selected actor profile controls", all(fragment in player_script for fragment in [
     "text='Manage profile for '..label", "pendingControlPanel='profiles'",
@@ -158,7 +167,7 @@ check("OpenMW content files are copied into serializable event data", all(fragme
     "local contentFiles={}", "for index,name in ipairs(loadedFiles) do contentFiles[index]=name end",
     "contentFiles=contentFiles"]) and "contentFiles=modules.core and modules.core.contentFiles" not in adapter_script)
 check("live aimed actor preview is physics-only and distinct from committed target", all(fragment in player_script for fragment in [
-    "Aim: '..displayName(aimCandidate and aimCandidate.identity)", "adapter.resolveActorRay(2048)",
+    "aimCandidate and aimCandidate.distance<=maxDistance", "adapter.resolveActorRay(2048)",
     "local reason=candidate and 'live_aim_preview' or nil"]) and all(fragment in adapter_script for fragment in [
     "function M.resolveActorRay(maxDistance, modules)", "function M.actorDistance(targetIdentity, modules)"]))
 check("guessed UI and targeting constants absent", all(name not in constants for name in ["MAX_TEXT_BYTES", "MAX_TRANSCRIPT", "MAX_NEARBY_PICKER", "MAX_TARGET_DISTANCE"]))

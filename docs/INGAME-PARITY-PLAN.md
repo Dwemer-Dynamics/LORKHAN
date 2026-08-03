@@ -104,8 +104,8 @@ Currently implemented end to end:
 - equip, unequip and use an item already present in the actor inventory;
 - one terminal action result, capability/policy/tier validation on both client and server, and halt.
 
-Travel and escort destinations are captured from the player's center-camera rendering ray only while
-F8 is processed. They are bounded to 2048 units and the actor's current cell, carried as typed
+Travel and escort destinations are captured from the player's center-camera rendering ray only when
+the configured Targeted NPC Tools control confirms the second stage. They are bounded to 2048 units and the actor's current cell, carried as typed
 coordinates through the server catalog, and rechecked actor-locally before API-129 starts the package.
 Replacement and stop operations match the owned package's target/destination/distance instead of
 removing unrelated packages of the same type.

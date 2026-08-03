@@ -1,7 +1,9 @@
 SettingsPage_name: ALMSIVI
-SettingsPage_description: Configure ALMSIVI conversations, automatic NPC activation, actions, voice input, and presentation.
-ControlsGroup_name: Controls
-ControlsGroup_description: Click a binding to clear it, then press a keyboard, mouse, or controller button to assign it.
+SettingsPage_description: Configure ALMSIVI hotkeys, automatic NPC activation, conversation behavior, sound, agents, and advanced tools.
+HotkeysGroup_name: Hotkeys
+HotkeysGroup_description: Focused gameplay controls. Click a binding to clear it, then press a keyboard, mouse, or controller button to assign it.
+ControlsGroup_name: Hotkeys
+ControlsGroup_description: Focused gameplay controls. Click a binding to clear it, then press a keyboard, mouse, or controller button to assign it.
 Talk_name: Talk with ALMSIVI
 Talk_description: Target the actor under the crosshair and open typed chat; click the input box, type, and press Enter to send.
 StopDialogue_name: Stop current dialogue
@@ -18,10 +20,18 @@ ManualActivate_name: Manually activate AI agents
 ManualActivate_description: Add or remove the aimed NPC as a pinned agent, or pin a bounded nearby group when no NPC is aimed at.
 ActionsMenu_name: Open ALMSIVI actions menu
 ActionsMenu_description: Open actor-scoped roleplay and safety actions for the current NPC.
+ActorTools_name: Targeted NPC tools
+ActorTools_description: Open the compact menu for the aimed NPC, including activation, profiles, conversation controls, and actor actions.
 MasterMenu_name: Open ALMSIVI master menu
-MasterMenu_description: Open the full conversation, agent, mode, history, and diagnostics interface. ALMSIVI assigns F9 on first setup; change it here at any time.
+MasterMenu_description: Legacy binding retained for compatibility; opens Targeted NPC Tools in the focused interface.
 ToggleMode_name: Cycle ALMSIVI dialogue mode
-ToggleMode_description: Cycle Standard, Whisper, Close, and Shout conversation routing.
+ToggleMode_description: Open the Standard, Whisper, Close, and Shout conversation routing selector.
+ModeMenu_name: Dialogue mode
+ModeMenu_description: Open the compact Standard, Whisper, Close, and Shout mode selector.
+ModelMenu_name: LLM model
+ModelMenu_description: Open the compact server-owned LLM model selector for the current target.
+ProfileMenu_name: Dynamic profiles
+ProfileMenu_description: Choose targeted NPC, nearby AI NPC, or narrator profile management.
 StatusHud_name: Toggle ALMSIVI status HUD
 StatusHud_description: Show or hide the compact target, mode, voice, and server status display.
 History_name: Conversation history
@@ -76,10 +86,16 @@ OpenMicSensitivity_name: Open microphone sensitivity
 OpenMicSensitivity_description: RMS level required to detect speech. Higher values require louder speech.
 OpenMicEndDelay_name: Open microphone end delay
 OpenMicEndDelay_description: Milliseconds of silence after speech before ALMSIVI submits the recording.
-PresentationGroup_name: Presentation
-PresentationGroup_description: Configure ALMSIVI status and transcript presentation.
+SoundGroup_name: Sound
+SoundGroup_description: Configure ALMSIVI-generated speech playback without changing other OpenMW audio.
+AgentsGroup_name: AI Agents
+AgentsGroup_description: Configure capabilities available to managed ALMSIVI actors.
+ToolsGroup_name: Tools / Advanced
+ToolsGroup_description: Optional status and retained transcript controls. Normal play does not require these settings.
+PresentationGroup_name: Tools / Advanced
+PresentationGroup_description: Optional status and retained transcript controls.
 ShowStatusHud_name: Show compact status HUD
-ShowStatusHud_description: Display the current target, mode, microphone, and server state during gameplay.
+ShowStatusHud_description: Keep a compact ALMSIVI status strip visible. Off by default; important updates still appear briefly.
 TranscriptRows_name: Transcript history rows
 TranscriptRows_description: Maximum recent dialogue rows retained in the in-game conversation panel.
 TtsVolumeBoost_name: TTS volume boost

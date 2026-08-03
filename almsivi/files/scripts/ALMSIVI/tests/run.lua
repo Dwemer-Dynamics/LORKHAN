@@ -352,6 +352,22 @@ test('text edit Enter becomes a single-line submit request',function()
  value,submit=player.consumeTextEdit('First\r\nSecond');eq(value,'First Second');eq(submit,true)
  value,submit=player.consumeTextEdit(nil);eq(value,'');eq(submit,false)
 end)
+test('focused UI builders keep chat selectors tools and notifications independent',function()
+ local ui={TYPE={Text='text',Image='image',TextEdit='edit',Container='container'},content=function(value)return value end}
+ local util={vector2=function(x,y)return{x=x,y=y}end,color={rgb=function(r,g,b)return{r=r,g=g,b=b}end}}
+ local chat=require('scripts.ALMSIVI.ui.chatbox').build({ui=ui,util=util,target='Fargoth',text='',
+  onTextChanged=function()end,onKeyPress=function()end,onSend=function()end,onClose=function()end})
+ eq(chat[1].props.text,'Chat with Fargoth');eq(chat[#chat-1].props.text,'Send');eq(chat[#chat].props.text,'Close')
+ local choices=require('scripts.ALMSIVI.ui.selector').build({ui=ui,util=util,title='Dialogue Mode',
+  options={{label='Standard',active=true,onSelect=function()end}},onClose=function()end})
+ eq(choices[1].props.text,'Dialogue Mode');eq(choices[2].props.text,'Standard  [active]')
+ local tools=require('scripts.ALMSIVI.ui.actor_tools').build({ui=ui,util=util,target='Fargoth',
+  options={{label='Actor actions...',onSelect=function()end}},onClose=function()end})
+ eq(tools[1].props.text,'Targeted NPC Tools');eq(tools[2].props.text,'Target: Fargoth')
+ local notifications=require('scripts.ALMSIVI.ui.notifications');local notice=notifications.new()
+ truthy(notifications.show(notice,'queued',1));truthy(notifications.active(notice))
+ eq(notifications.update(notice,0.5),false);eq(notifications.update(notice,0.5),true);eq(notifications.active(notice),false)
+end)
 test('OpenMW settings page registers controls and seeds conflict-free defaults once',function()
  local data={OMWInputBindings={},ALMSIVIInputDefaults={}}
  local function section(name)
@@ -373,12 +389,13 @@ test('OpenMW settings page registers controls and seeds conflict-free defaults o
  package.loaded['scripts.ALMSIVI.settings']=nil
  local settingsEntry=require('scripts.ALMSIVI.settings')
  eq(next(settingsEntry),nil)
- eq(registered.pages[1].key,'ALMSIVI');eq(#registered.groups,4);eq(registered.groups[1].page,'ALMSIVI');eq(#registered.groups[1].settings,13)
+ eq(registered.pages[1].key,'ALMSIVI');eq(#registered.groups,6);eq(registered.groups[1].page,'ALMSIVI');eq(#registered.groups[1].settings,7)
  for _,setting in ipairs(registered.groups[1].settings) do truthy(setting.name);truthy(setting.description) end
  truthy(registered.triggers.ALMSIVI_Talk);truthy(registered.triggers.ALMSIVI_Halt)
  truthy(registered.triggers.ALMSIVI_StopDialogue);truthy(registered.triggers.ALMSIVI_ManualActivate)
  truthy(registered.triggers.ALMSIVI_ActionsMenu);truthy(registered.triggers.ALMSIVI_MasterMenu)
  truthy(registered.triggers.ALMSIVI_ToggleMode);truthy(registered.triggers.ALMSIVI_StatusHud)
+ truthy(registered.triggers.ALMSIVI_ModelMenu);truthy(registered.triggers.ALMSIVI_ProfileMenu)
  truthy(registered.triggers.ALMSIVI_History);truthy(registered.triggers.ALMSIVI_Diagnostics)
  truthy(registered.triggers.ALMSIVI_OpenMic);truthy(registered.triggers.ALMSIVI_OpenMicMute)
  truthy(registered.actions.ALMSIVI_PushToTalk)
@@ -397,15 +414,15 @@ test('OpenMW settings page registers controls and seeds conflict-free defaults o
  eq(setting(registered.groups[3],'cancelDialogueOnCombat').default,true)
  eq(setting(registered.groups[3],'combatBarks').default,true)
  eq(setting(registered.groups[3],'combatBarkPeriodSeconds').default,30)
- eq(setting(registered.groups[3],'openMicSensitivity').default,1000)
- eq(setting(registered.groups[3],'openMicEndDelayMs').default,1000)
+ eq(registered.groups[4].key,'SettingsALMSIVISound');eq(setting(registered.groups[4],'ttsVolumeBoost').default,3)
+ eq(registered.groups[5].key,'SettingsALMSIVIAgents');eq(setting(registered.groups[5],'actionsEnabled').default,true)
+ eq(registered.groups[6].key,'SettingsALMSIVIPresentation');eq(setting(registered.groups[6],'showStatusHud').default,false)
  local talk=data.OMWInputBindings.ALMSIVI_Talk_Binding
  local halt=data.OMWInputBindings.ALMSIVI_Halt_Binding
- local actionsMenu=data.OMWInputBindings.ALMSIVI_ActionsMenu_Binding
- local masterMenu=data.OMWInputBindings.ALMSIVI_MasterMenu_Binding
  eq(talk.device,'keyboard');eq(talk.button,6);eq(talk.type,'trigger');eq(talk.key,'ALMSIVI_Talk')
- eq(halt.button,7);eq(actionsMenu.button,8);eq(masterMenu.button,9);eq(masterMenu.key,'ALMSIVI_MasterMenu')
- eq(data.ALMSIVIInputDefaults.version,3)
+ eq(halt.button,7);eq(data.OMWInputBindings.ALMSIVI_ActionsMenu_Binding,nil)
+ eq(data.OMWInputBindings.ALMSIVI_MasterMenu_Binding,nil)
+ eq(data.ALMSIVIInputDefaults.version,4)
  data.OMWInputBindings.ALMSIVI_Talk_Binding=nil
  package.loaded['scripts.ALMSIVI.settings']=nil
  require('scripts.ALMSIVI.settings')

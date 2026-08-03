@@ -22,9 +22,10 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 
 | Capability | Decision | Implementation / proof |
 | --- | --- | --- |
-| Targeted conversation | Keep | Dedicated semantic action + ray target/nearby picker. |
+| Targeted conversation | Keep | Dedicated semantic action + ray target + compact target/input/Send/Close chatbox. |
 | Group conversation | Keep | Explicit speaker/addressee/audience registry and one ordered no-overlap speech lane. |
 | Typed player input | Keep | Custom TextEdit overlay, size/UTF-8 validation. |
+| In-game controls | Adapt | Dialectic-style focused Hotkeys/Auto Activate/Behavior/Sound/AI Agents/Tools settings; compact mode/model/profile selectors and one targeted-NPC tools menu replace the master dashboard. |
 | Push-to-talk/STT | Keep | Semantic input action, native/server bounded audio upload, transcript event. |
 | Open microphone | Keep, opt-in | VAD/rate/privacy indicator; default off. |
 | Subtitles/transcript | Keep | Custom UI with speaker and status, independent of stock subtitle toggle. |
