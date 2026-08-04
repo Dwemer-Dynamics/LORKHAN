@@ -44,6 +44,7 @@ local whiteTexture=uiOk and openmwUi.texture and openmwUi.texture({path='white'}
 local lastTalkToggleAt=-1
 local pendingTextSubmit=false
 local awaitingTextQueue=false
+local pendingHistory
 local pendingControlPanel
 local aimCandidate
 local aimScanElapsed=0
@@ -153,6 +154,7 @@ local function submitText()
     send('ALMSIVI_SUBMIT_TEXT',{text=text,language='en-US',speaker=speaker,
         context=context,capabilities=CAPABILITIES,
         recent_action_results={},ui_source='almsivi_text'})
+    pendingHistory={speaker=speaker,text=text}
     awaitingTextQueue=true
     state.ui.status='submitting'
     pendingTextSubmit=false
@@ -297,8 +299,10 @@ local function renderStatusHud()
     if dialogueVisible then
         text=tostring(dialogueNotification.text)
     elseif state.ui.statusHudVisible then
-        text='ALMSIVI  |  '..state.ui.status..'  |  '..state.ui.mode..
-            '  |  Target: '..actorLabel(state.ui.target)..'  |  Agents: '..tostring(#state.ui.agents)
+        text='ALMSIVI  |  Connection: '..tostring(nativeValue('status','unavailable'))..
+            '  |  Request: '..(turnActive and 'active' or 'idle')..
+            '  |  Speech: '..(speechActive() and 'speaking' or 'idle')..
+            '  |  Target: '..actorLabel(state.ui.target)..'  |  '..state.ui.mode
     else
         text='ALMSIVI  |  '..tostring(notification.text or state.ui.status)
     end
@@ -382,9 +386,32 @@ render=function()
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='No ALMSIVI dialogue in this session yet.',
                 textSize=16,textColor=util.color.rgb(0.72,0.68,0.62)}}
         end
-        for _,line in ipairs(state.ui.transcript) do
+        local pageSize=5
+        local pages=math.max(1,math.ceil(#state.ui.transcript/pageSize))
+        state.ui.historyPage=math.max(1,math.min(state.ui.historyPage or 1,pages))
+        local newest=#state.ui.transcript-(state.ui.historyPage-1)*pageSize
+        for index=newest,math.max(1,newest-pageSize+1),-1 do
+            local line=state.ui.transcript[index]
+            local order=line.sequence and ('#'..tostring(line.sequence)) or ('local '..tostring(index))
+            local timestamp=tostring(line.createdAt or line.terminalCreatedAt or 'time pending')
+            local request=line.requestId and line.requestId:sub(1,8) or 'pending'
+            local metadata=order..'  |  '..timestamp..'  |  '..tostring(line.status or 'unknown')..'  |  request '..request
+            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=metadata,textSize=13,
+                textColor=util.color.rgb(0.72,0.68,0.62)}}
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=displayName(line.speaker)..': '..line.text,
-                textSize=16,textColor=util.color.rgb(0.92,0.82,0.68)}}
+                textSize=16,wordWrap=true,textColor=util.color.rgb(0.92,0.82,0.68)}}
+        end
+        if pages>1 then
+            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Newer',textSize=15,
+                textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
+                    state.ui.historyPage=math.max(1,state.ui.historyPage-1) render()
+                end)}}
+            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Older',textSize=15,
+                textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
+                    state.ui.historyPage=math.min(pages,state.ui.historyPage+1) render()
+                end)}}
+            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Page '..state.ui.historyPage..' / '..pages,
+                textSize=13,textColor=util.color.rgb(0.72,0.68,0.62)}}
         end
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
             textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
@@ -423,6 +450,14 @@ render=function()
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Last detail: '..tostring(state.ui.diagnostics),
                 textSize=15,textColor=util.color.rgb(1.0,0.58,0.18)}}
         end
+        local ids=state.ui.lastCorrelation or {}
+        local copyText='message_id='..tostring(ids.messageId or 'unavailable')..'  request_id='..
+            tostring(ids.requestId or 'unavailable')..'  turn_id='..tostring(ids.turnId or 'unavailable')
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Correlation IDs (click, select, Ctrl+C)',textSize=14,
+            textColor=util.color.rgb(0.72,0.68,0.62)}}
+        transcript[#transcript+1]={type=openmwUi.TYPE.TextEdit,props={text=copyText,textSize=14,
+            size=util.vector2(720,52),multiline=true,wordWrap=true,readOnly=true,autoSize=false,
+            textColor=util.color.rgb(0.92,0.82,0.68)}}
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
             textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
                 state.ui.panel='actor-tools' render()
@@ -641,7 +676,7 @@ render=function()
     end
     local panelSizes={conversation={560,210},['actor-tools']={540,360},['profile-menu']={520,300},
         modes={540,390},models={580,420},profiles={580,420},narrator={580,330},
-        ['nearby-profiles']={680,460}}
+        ['nearby-profiles']={680,460},history={760,620},diagnostics={760,620}}
     local panelSize=panelSizes[state.ui.panel] or {680,460}
     local contentWidth=panelSize[1]-20
     local contentHeight=panelSize[2]-20
@@ -949,6 +984,8 @@ return {
             if not awaitingTextQueue then return end
             awaitingTextQueue=false
             if event.status=='queued' then
+                if pendingHistory then player.queued(state,pendingHistory.speaker,pendingHistory.text,event) end
+                pendingHistory=nil
                 state.ui.input=''
                 state.ui.status='queued'
                 state.ui.visible=false
@@ -958,6 +995,7 @@ return {
             else
                 state.ui.status='message failed: '..tostring(event.reason or 'unknown')
                 turnActive=false
+                pendingHistory=nil
                 print('[ALMSIVI] text message rejected: '..tostring(event.reason or 'unknown'))
             end
             render()

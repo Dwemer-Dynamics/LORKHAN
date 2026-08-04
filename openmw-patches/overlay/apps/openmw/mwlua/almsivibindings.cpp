@@ -926,6 +926,7 @@ namespace MWLua
                 result["message_id"] = event.correlation.message.value(); result["request_id"] = event.correlation.request.value();
                 result["turn_id"] = event.correlation.turn.value(); result["session_id"] = event.correlation.session.value();
                 result["generation"] = event.correlation.generation.value(); result["sequence"] = event.sequence;
+                result["created_at"] = event.createdAt;
                 switch (event.type)
                 {
                     case almsivi::ProtocolEventType::turn_accepted: result["type"] = "turn.accepted"; break;

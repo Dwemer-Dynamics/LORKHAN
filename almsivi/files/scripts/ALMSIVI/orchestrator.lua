@@ -494,7 +494,8 @@ function M.submitText(state,args)
     local submitted,nativeReason=state.bridge.submitTurn(dto)
     if not submitted then state.conversation.turn=nil return nil,nativeReason end
     state.recentVanillaDialogue={}
-    state.emit('ALMSIVI_TURN',{status='queued',request_id=requestId,turn_id=turnId})
+    state.emit('ALMSIVI_TURN',{status='queued',message_id=args.message_id,request_id=requestId,turn_id=turnId,
+        created_at=args.created_at})
     return requestId
 end
 

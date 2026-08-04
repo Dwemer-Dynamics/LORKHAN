@@ -27,7 +27,8 @@ local playerId=fake.identity('player','player',2)
 local enemy=fake.identity('creature','mudcrab',3)
 local UUID={message='00000000-0000-4000-8000-000000000001',request='00000000-0000-4000-8000-000000000002',turn='00000000-0000-4000-8000-000000000003',session='00000000-0000-4000-8000-000000000004'}
 local function event(sequence,kind,generation,payload)
- return {message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,session_id=UUID.session,generation=generation,sequence=sequence,type=kind,payload=payload or {}}
+ return {message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,session_id=UUID.session,generation=generation,
+  sequence=sequence,created_at='2026-07-19T20:00:0'..tostring(sequence)..'Z',type=kind,payload=payload or {}}
 end
 
 test('lifecycle invalidates generation and cancels native',function()
@@ -50,6 +51,18 @@ test('speaker-less streaming delta uses the selected target',function()
  local s=player.new();s.ui.target=npc
  player.event(s,event(1,'dialogue.delta',3,{text='Welcome.'}))
  eq(s.ui.subtitle.speaker.record_id,'fargoth');eq(s.ui.subtitle.text,'Welcome.')
+end)
+test('conversation history retains correlation metadata and terminal request state',function()
+ local s=player.new();s.ui.policy.transcriptRows=2
+ player.queued(s,playerId,'Hello.',event(1,'turn.accepted',3,{status='accepted'}))
+ player.event(s,event(2,'dialogue.complete',3,{speaker=npc,text='Greetings.'}))
+ eq(#s.ui.transcript,2);eq(s.ui.transcript[1].status,'queued');eq(s.ui.transcript[2].sequence,2)
+ eq(s.ui.transcript[2].createdAt,'2026-07-19T20:00:02Z');eq(s.ui.lastCorrelation.messageId,UUID.message)
+ player.event(s,event(3,'turn.complete',3,{status='complete'}))
+ eq(s.ui.transcript[1].status,'complete');eq(s.ui.transcript[2].status,'complete')
+ eq(s.ui.transcript[1].terminalSequence,3)
+ player.event(s,event(4,'dialogue.complete',3,{speaker=npc,text='Another response.'}))
+ eq(#s.ui.transcript,2);eq(s.ui.transcript[1].text,'Greetings.')
 end)
 test('OpenMW async callback retains its package identifier',function()
  local savedLoaded=package.loaded['openmw.async'];local savedPreload=package.preload['openmw.async']

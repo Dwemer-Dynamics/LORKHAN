@@ -103,6 +103,12 @@ check("diagnostics use configured server and native bridge state", all(fragment 
     "nativeValue('serverBaseUrl',nil)", "'/ui/home.php'", "'Server connection: '",
     "'Session ID: '", "'Bridge queue: '", "nativeValue('lastError','none')",
 ]) and 'http://127.0.0.1:8089/ALMSIVIserver/manage' not in player_lua)
+check("status HUD exposes connection request speech and target state", all(fragment in player_lua for fragment in [
+    "'  |  Request: '", "'  |  Speech: '", "'  |  Target: '", "nativeValue('status','unavailable')"]))
+check("history exposes bounded ordered timestamped request state", all(fragment in player_lua for fragment in [
+    "local pageSize=5", "line.createdAt", "line.status", "line.requestId", "state.ui.historyPage"]))
+check("diagnostic correlation IDs are selectable", all(fragment in player_lua for fragment in [
+    "state.ui.lastCorrelation", "Correlation IDs (click, select, Ctrl+C)", "readOnly=true"]))
 check("player-local vanilla dialogue is forwarded as bounded context", all(fragment in player_lua for fragment in [
     "DialogueResponse=function(event)", "adapter.dialogueResponse(event)", "ALMSIVI_VANILLA_DIALOGUE"]))
 controls_schema = text(ROOT / "almsivi" / "schemas" / "v1" / "controls.schema.json")

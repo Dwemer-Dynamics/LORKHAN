@@ -217,6 +217,8 @@ class FoundationTests(unittest.TestCase):
         self.assertNotIn("speech.listen", patch_bindings)
         self.assertIn('api["serverBaseUrl"]', native_bindings)
         self.assertIn('api["serverBaseUrl"]', patch_bindings)
+        self.assertIn('result["created_at"] = event.createdAt', native_bindings)
+        self.assertIn('result["created_at"] = event.createdAt', patch_bindings)
         self.assertNotIn("http://127.0.0.1:8089/ALMSIVIserver/manage", player)
 
     def test_offline_cache_miss(self):
