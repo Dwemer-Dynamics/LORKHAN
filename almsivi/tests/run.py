@@ -91,9 +91,10 @@ check("OpenMW Scripts page exposes all applicable focused hotkeys", settings.cou
           "key='ALMSIVI_ModelMenu'", "key='ALMSIVI_ProfileMenu'", "key='ALMSIVI_Halt'",
           "key='ALMSIVI_ActionsMenu'", "key='ALMSIVI_StatusHud'", "key='ALMSIVI_History'",
           "key='ALMSIVI_Diagnostics'"]))
-check("legacy and voice controls remain compatibility triggers but are not visible settings rows",
-      all(fragment in settings for fragment in ["trigger('ALMSIVI_MasterMenu'", "trigger('ALMSIVI_OpenMic'",
-          "registerAction({key='ALMSIVI_PushToTalk'"]))
+check("legacy master menu remains hidden while excluded voice controls are unregistered",
+      "trigger('ALMSIVI_MasterMenu'" in settings
+      and "trigger('ALMSIVI_OpenMic'" not in settings
+      and "registerAction({key='ALMSIVI_PushToTalk'" not in settings)
 player_lua = text(SCRIPTS / "player.lua")
 check("history and diagnostics bindings open their named panels", all(fragment in player_lua for fragment in [
     "ALMSIVI_History',adapter.callback(function() togglePanel('history')",

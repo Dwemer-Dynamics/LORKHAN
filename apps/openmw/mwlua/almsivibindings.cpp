@@ -910,7 +910,7 @@ namespace MWLua
             }
 
             static std::vector<std::string> capabilities()
-            { return { "dialogue.text", "speech.say", "speech.listen", "controls.session", "action.ai.follow", "action.ai.stop",
+            { return { "dialogue.text", "speech.say", "controls.session", "action.ai.follow", "action.ai.stop",
                 "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
                 "action.inspect.report" }; }
@@ -1038,7 +1038,7 @@ namespace MWLua
             api["version"] = std::string(almsivi::kClientVersion);
             api["capabilities"] = [lua] {
                 sol::table result(lua, sol::create); std::size_t index = 1;
-            for (const auto& capability : std::vector<std::string>{ "dialogue.text", "speech.say", "speech.listen", "controls.session",
+            for (const auto& capability : std::vector<std::string>{ "dialogue.text", "speech.say", "controls.session",
                 "action.ai.follow", "action.ai.stop", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
                 "action.combat.start", "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip",
                 "action.item.use", "action.inspect.report" })

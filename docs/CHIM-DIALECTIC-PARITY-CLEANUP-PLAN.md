@@ -48,7 +48,7 @@ The foundations are substantially present, but the product is not yet at full pa
 | TTS | Actor/narrator playback, ordered delivery, cancellation, and ALMSIVI boost exist | Full per-NPC voice and volume acceptance matrix remains unproven |
 | In-game controls | Most actions have trigger handlers | Several applicable bindings are not exposed; History and Diagnostics route to the wrong panel |
 | Morrowind context | Broad player, actor, world, inventory, journal, book, and environment coverage | Captured vanilla dialogue is not included in turn context |
-| Autonomy | Greeting, rechat, boredom, and combat bark paths exist and are gated | Needs lifecycle, cancellation, and cell/save transition proof |
+| Autonomy | Legacy paths exist but are outside this implementation goal | Keep unadvertised and unreachable; browser controls remain disabled Excluded placeholders |
 | Settings hierarchy | Server resolves Global -> Core Profile -> NPC for prompt/routing work | Effective target settings are not propagated to client runtime behavior |
 | Exclusions | Browser labels STT, ITT, and Background Life | STT/open-mic protocol and client code still advertise functional paths |
 | Validation | Core server integration passes; live outer/mobile pages render without browser errors | Management browser test has a current HTTP 422 regression; Lua runtime unavailable locally |
@@ -226,8 +226,8 @@ Use three explicit ownership classes:
 | Class | Examples | Source and lifetime |
 |---|---|---|
 | Local player preference | key bindings, HUD visibility, panel placement, local TTS boost, subtitles, audio spatial presentation | OpenMW client settings; never overridden per NPC |
-| Installation/global behavior | auto-activation master switch, default distances, global autonomy enablement, response timeout, default action safety | Server Global Settings with safe client fallback |
-| Target-effective behavior | Core Profile behavior defaults and explicit NPC overrides for autonomy, action policy, response style, voice/profile routing | Server effective-settings response, recalculated on target/profile change |
+| Installation/global behavior | response timeout, memory/context bounds, narrator configuration, connector routing, and default action safety | Server Global Settings with safe client fallback |
+| Target-effective behavior | Core Profile defaults and explicit NPC overrides for memory/context, narrator, action safety, and voice/profile routing | Server effective-settings response, recalculated on target/profile change |
 
 The resolution order is `NPC explicit override > assigned Core Profile > Global default`. Missing fields inherit; they must not be copied into every NPC record. The browser should show both the effective value and its source. The client should cache the effective snapshot by target/profile/change token and discard it safely when the target becomes invalid.
 
@@ -275,14 +275,7 @@ Every section needs size limits, update cadence, omission behavior, and prompt f
 
 ### 6.7 Autonomy
 
-Keep only the bounded conversation features requested for this milestone:
-
-- greeting/first-contact event;
-- rechat/follow-up event;
-- boredom/idle event;
-- combat bark where safe and enabled.
-
-All model-triggering defaults remain off. Each trigger needs distance, cooldown, actor eligibility, menu/combat/cell safety, per-target effective settings, cancellation, and one-at-a-time request gating. Background Life remains excluded and cannot be used as a hidden scheduler for these features.
+Autonomy is excluded from this implementation goal. Automatic greetings, rechat, boredom events, combat barks, schedules, cooldowns, and every other automatic model trigger must remain unadvertised and unreachable. Herika presentation controls remain visible only as disabled `Excluded` placeholders. Background Life cannot be used as a hidden scheduler.
 
 ### 6.8 Actions
 
@@ -321,7 +314,7 @@ This should replace scattered assumptions in the client. It must not expose secr
 
 ### 7.2 Capability truthfulness
 
-Capabilities are promises. Remove excluded or unavailable entries from negotiation. Validate that advertised actions, panels, TTS, and autonomy operations have both a client handler and server path. Reject unknown or version-incompatible capabilities cleanly.
+Capabilities are promises. Remove excluded or unavailable entries from negotiation. Validate that advertised actions, panels, and TTS operations have both a client handler and server path. Reject unknown or version-incompatible capabilities cleanly.
 
 ### 7.3 Identity and lifecycle
 
@@ -386,12 +379,12 @@ Exit gate per family: visual comparison, PHP lint, HTTP GET/POST/CSRF checks, re
 
 Exit gate: switching targets visibly and correctly changes only target-scoped effective behavior; local preferences remain stable; every applicable control is discoverable and works without the Lua console.
 
-### Phase 5 - Conversation, TTS, context, autonomy, and action hardening
+### Phase 5 - Conversation, TTS, context, and action hardening
 
 1. Run cancellation/order tests across new turns, Halt, Stop Dialogue, cell changes, loads, and invalid actors.
 2. Complete voice identity and volume validation across representative Morrowind actor classes.
 3. Finish bounded context coverage, including recent vanilla dialogue.
-4. Prove greeting, rechat, boredom, and combat bark safety with defaults off.
+4. Prove excluded autonomy paths cannot trigger requests.
 5. Finish the applicable action catalogue and policy receipts.
 
 Exit gate: the in-game acceptance matrix passes without duplicate replies, stale audio, unbounded context, unexpected model calls, or advertised unsupported actions.
@@ -439,7 +432,7 @@ Use a clean OpenMW profile and an existing playthrough. Cover at least:
 - single and group conversation;
 - text-only fallback, exact actor TTS, narrator TTS, missing voice, and provider failure;
 - Talk, Enter, Escape, Stop Dialogue, Halt, History, Diagnostics, HUD, Mode, Model, Profile, and Actor Tools;
-- greeting, rechat, boredom, and combat bark with defaults off and deliberate enablement;
+- negative checks proving greetings, rechat, boredom, and combat barks cannot trigger requests;
 - save/load, cell change, fast travel, menu transition, death, and session reconnect;
 - action allow, deny, confirm, cancel, success, failure, timeout, and stale receipt;
 - Journal, book, vanilla dialogue, inventory, faction/disposition, and nearby-world context.
@@ -461,7 +454,7 @@ Keep implementation reviewable and avoid another all-at-once rewrite:
 9. Control Panel page family.
 10. Effective settings protocol and client application.
 11. In-game panel/control polish and agent tools.
-12. Context, autonomy, action, TTS, and lifecycle hardening.
+12. Context, action, TTS, lifecycle hardening, and negative autonomy checks.
 13. Full deployment and acceptance evidence.
 
 Each package should contain the smallest complete behavior, update the master matrix, and include its own validation evidence. Do not defer basic page correctness until the end of the site rebuild.
@@ -479,8 +472,7 @@ ALMSIVI reaches this parity milestone only when all of the following are true:
 - Text conversation, cancellation, response queuing, subtitles, and TTS pass the lifecycle matrix.
 - Exact actor voice routing and ALMSIVI volume boost pass representative in-game tests.
 - Morrowind context, including Journal, books, and recent vanilla dialogue, is bounded and reaches prompts correctly.
-- Greeting, rechat, boredom, and combat bark are safe, opt-in, cancellable, and proven.
-- ITT, STT, and Background Life cannot be activated by the shipped product.
+- Autonomy, ITT, STT, and Background Life cannot be activated by the shipped product.
 - Fresh-install and upgrade migrations, server integration, management HTTP, client checks, browser comparisons, and in-game smoke tests pass.
 - Deployment records the exact client/server refs and destinations and preserves user configuration, profiles, voices, and database state.
 

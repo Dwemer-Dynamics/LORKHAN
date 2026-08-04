@@ -20,26 +20,13 @@ local dialogueNotification=notifications.new()
 local lastNotificationStatus
 local element
 local statusElement
-local voiceRecording=false
-local pttHeld=false
-local openMicEnabled=false
-local openMicMuted=false
 local settingsSignature
 local autoScanElapsed=0
-local quietElapsed=0
-local combatBarkElapsed=0
-local combatBarkIndex=0
-local hadConversation=false
-local autonomyPending=false
 local turnActive=false
 local nearbyCombat=false
-local combatThreats={}
 local actorActivities={}
 local speechActors={}
 local narratorSpeech
-local rechatDepth=0
-local activeAutonomyKind
-local activeAutonomySpoke=false
 local ownsUiMode=false
 local controlsSignature
 local MODES={'Standard','Whisper','Close','Shout'}
@@ -62,7 +49,7 @@ local aimCandidate
 local aimScanElapsed=0
 local aimSignature=''
 local function send(name,payload) if core and core.sendGlobalEvent then core.sendGlobalEvent(name,payload) end end
-local CAPABILITIES={'dialogue.text','speech.say','speech.listen','action.ai.follow','action.ai.stop',
+local CAPABILITIES={'dialogue.text','speech.say','action.ai.follow','action.ai.stop',
     'action.ai.travel','action.ai.escort','action.ai.face','action.ai.wander','action.combat.start','action.combat.stop','action.inspect.report',
     'action.animation.play','action.item.equip','action.item.unequip','action.item.use'}
 
@@ -74,15 +61,6 @@ local function conversationContext(target)
     while #activities>12 do table.remove(activities) end
     snapshot.actorActivities=activities
     return snapshot
-end
-
-local function voicePayload(uiSource)
-    local context=conversationContext(state.ui.target)
-    context.dialogueMode=state.ui.mode
-    return {speaker=adapter.identity(self),target=state.ui.target,context=context,
-        language='en-US',capabilities=CAPABILITIES,recent_action_results={},ui_source=uiSource,
-        vad_sensitivity=tonumber(behaviorSettings and behaviorSettings:get('openMicSensitivity')) or 1000,
-        end_delay_ms=tonumber(behaviorSettings and behaviorSettings:get('openMicEndDelayMs')) or 1000}
 end
 
 local function displayName(actor) return actor and actor.display_name or 'No target' end
@@ -159,7 +137,6 @@ local function submitText()
         return false
     end
     local speaker=adapter.identity(self)
-    rechatDepth=0 hadConversation=false activeAutonomyKind=nil activeAutonomySpoke=false
     local context=conversationContext(state.ui.target)
     context.dialogueMode=state.ui.mode
     send('ALMSIVI_SUBMIT_TEXT',{text=text,language='en-US',speaker=speaker,
@@ -269,7 +246,6 @@ local function submitActionRequest(label,name,tier,parameters,actionTarget)
     if not state.ui.target then state.ui.status='actor target required' render() return end
     local request={name=name,tier=tier,parameters=parameters}
     if actionTarget then request.target=actionTarget end
-    rechatDepth=0 hadConversation=false activeAutonomyKind=nil activeAutonomySpoke=false
     send('ALMSIVI_SUBMIT_TEXT',{text=label,language='en-US',speaker=adapter.identity(self),
         context=actionContext(actionTarget),capabilities=CAPABILITIES,
         recent_action_results={},ui_source='almsivi_action_menu',action_request=request})
@@ -414,13 +390,8 @@ render=function()
             'Conversation group: '..audienceNames(),
             'Managed agents: '..tostring(#state.ui.agents),
             'Turn active: '..tostring(turnActive),
-            'Voice recording: '..tostring(voiceRecording),
             'Generated speech: '..tostring(speechActive()),
-            'Open microphone: '..tostring(openMicEnabled),
-            'Open microphone muted: '..tostring(openMicMuted),
             'Nearby combat: '..tostring(nearbyCombat),
-            'Managed combat threats: '..tostring(#combatThreats),
-            'Rechat depth: '..tostring(rechatDepth),
         }
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Diagnostics',textSize=20,
             textColor=util.color.rgb(0.95,0.9,0.82)}}
@@ -558,36 +529,6 @@ render=function()
             {label='Narrator',onSelect=adapter.callback(function() refreshSessionControls('narrator') end)},
         },onBack=adapter.callback(function() state.ui.panel='actor-tools' render() end),
         onClose=adapter.callback(function() state.ui.visible=false leaveUiMode() render() end)})
-    elseif state.ui.panel=='behavior' then
-        local function behaviorOption(label,key)
-            local enabled=behaviorSettings and behaviorSettings:get(key)==true
-            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=label..': '..(enabled and 'ON' or 'OFF'),textSize=18,
-                textColor=enabled and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(1.0,0.58,0.18)},
-                events={mouseClick=adapter.callback(function()
-                    if not behaviorSettings then state.ui.status='settings storage unavailable' render() return end
-                    behaviorSettings:set(key,not enabled)
-                    settingsSignature=nil
-                    applySettings()
-                end)}}
-        end
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Conversation Behavior',textSize=20,
-            textColor=util.color.rgb(0.95,0.9,0.82)}}
-        behaviorOption('Continue conversations (rechat)','rechat')
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='After '..tostring(behaviorSettings and behaviorSettings:get('rechatDelaySeconds') or 45)
-            ..' quiet seconds; maximum '..tostring(behaviorSettings and behaviorSettings:get('rechatMaxDepth') or 10)..' replies.',
-            textSize=14,textColor=util.color.rgb(0.72,0.68,0.62)}}
-        behaviorOption('Bored events','boredom')
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='After '..tostring(behaviorSettings and behaviorSettings:get('boredomDelaySeconds') or 180)
-            ..' quiet seconds. Runs locally around managed nearby actors; this is not background life.',
-            textSize=14,textColor=util.color.rgb(0.72,0.68,0.62)}}
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Timers and safety conditions: Options > Scripts > ALMSIVI',
-            textSize=14,textColor=util.color.rgb(0.72,0.68,0.62)}}
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
-            textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function() state.ui.panel='actor-tools' render() end)}}
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Close',textSize=16,
-            textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
-                state.ui.visible=false leaveUiMode() render()
-            end)}}
     elseif state.ui.panel=='models' or state.ui.panel=='profiles' or state.ui.panel=='narrator' then
         local controls=sessionControls()
         local modelPanel=state.ui.panel=='models'
@@ -844,8 +785,6 @@ end
 applySettings=function()
     local exterior=self.cell and self.cell.isExterior==true
     local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
-    local server=session and session.settings or nil
-    local serverBehavior=server and server.behavior or {}
     local controls=sessionControls()
     local effective=controls and state.ui.target and identity.same(controls.target,state.ui.target)
         and controls.effective_settings or nil
@@ -854,12 +793,6 @@ applySettings=function()
     local function restricted(localValue,serverValue,localDefault)
         if localValue==nil then localValue=localDefault end
         return localValue==true and serverValue==true
-    end
-    local function boundedMinimum(localValue,serverValue,defaultValue)
-        return math.min(tonumber(localValue) or defaultValue,tonumber(serverValue) or defaultValue)
-    end
-    local function boundedMaximum(localValue,serverValue,defaultValue)
-        return math.max(tonumber(localValue) or defaultValue,tonumber(serverValue) or defaultValue)
     end
     local legacyHearing=autoSettings and autoSettings:get('hearingDistance')
     local interiorHearing=autoSettings and autoSettings:get('interiorHearingDistance') or legacyHearing or 500
@@ -879,20 +812,7 @@ applySettings=function()
             addHostile=restricted(autoSettings and autoSettings:get('addHostile'),serverSafety.allowHostile,false),
             addCreatures=restricted(autoSettings and autoSettings:get('addCreatures'),serverSafety.allowCreatures,false)},
         behavior={actionsEnabled=restricted(actionsEnabled,serverSafety.actionsEnabled,true),
-            autoGreeting=restricted(behaviorSettings and behaviorSettings:get('autoGreeting'),serverBehavior.autoGreeting,false),
-            rechat=restricted(behaviorSettings and behaviorSettings:get('rechat'),serverBehavior.rechat,false),
-            rechatDelaySeconds=boundedMaximum(behaviorSettings and behaviorSettings:get('rechatDelaySeconds'),serverBehavior.rechatDelaySeconds,45),
-            rechatMaxDepth=boundedMinimum(behaviorSettings and behaviorSettings:get('rechatMaxDepth'),serverBehavior.rechatMaxDepth,10),
-            boredom=restricted(behaviorSettings and behaviorSettings:get('boredom'),serverBehavior.boredom,false),
-            boredomDelaySeconds=boundedMaximum(behaviorSettings and behaviorSettings:get('boredomDelaySeconds'),serverBehavior.boredomDelaySeconds,180),
-            avoidAutonomyInMenus=behaviorSettings and behaviorSettings:get('avoidAutonomyInMenus'),
-            avoidAutonomyInCombat=behaviorSettings and behaviorSettings:get('avoidAutonomyInCombat'),
-            avoidAutonomyWhenSneaking=behaviorSettings and behaviorSettings:get('avoidAutonomyWhenSneaking'),
-            cancelDialogueOnCombat=behaviorSettings and behaviorSettings:get('cancelDialogueOnCombat'),
-            combatBarks=restricted(behaviorSettings and behaviorSettings:get('combatBarks'),serverBehavior.combatBarks,false),
-            combatBarkPeriodSeconds=boundedMaximum(behaviorSettings and behaviorSettings:get('combatBarkPeriodSeconds'),serverBehavior.combatBarkPeriodSeconds,20),
-            openMicSensitivity=behaviorSettings and behaviorSettings:get('openMicSensitivity'),
-            openMicEndDelayMs=behaviorSettings and behaviorSettings:get('openMicEndDelayMs')},
+            cancelDialogueOnCombat=behaviorSettings and behaviorSettings:get('cancelDialogueOnCombat')},
         presentation={showStatusHud=presentationSettings and presentationSettings:get('showStatusHud')==true,
             transcriptRows=tonumber(presentationSettings and presentationSettings:get('transcriptRows')) or 12,
             ttsVolumeBoost=tonumber(ttsVolumeBoost) or 3},
@@ -904,13 +824,7 @@ applySettings=function()
     local signature=table.concat({tostring(auto.enabled),tostring(auto.interiorDistance),tostring(auto.exteriorDistance),
         tostring(auto.hearingDistance),tostring(auto.interiorHearingDistance),tostring(auto.exteriorHearingDistance),
         tostring(auto.addHostile),tostring(auto.addCreatures),tostring(behavior.actionsEnabled),
-        tostring(behavior.autoGreeting),tostring(behavior.rechat),tostring(behavior.rechatDelaySeconds),
-        tostring(behavior.rechatMaxDepth),tostring(behavior.boredom),tostring(behavior.boredomDelaySeconds),
-        tostring(behavior.avoidAutonomyInMenus),
-        tostring(behavior.avoidAutonomyInCombat),tostring(behavior.avoidAutonomyWhenSneaking),
         tostring(behavior.cancelDialogueOnCombat),
-        tostring(behavior.combatBarks),tostring(behavior.combatBarkPeriodSeconds),
-        tostring(behavior.openMicSensitivity),tostring(behavior.openMicEndDelayMs),
         tostring(presentation.showStatusHud),tostring(presentation.transcriptRows),
         tostring(presentation.ttsVolumeBoost),tostring(effective and effective.change_token),tostring(session and session.config_revision)},'|')
     if signature==settingsSignature then return end
@@ -921,57 +835,12 @@ applySettings=function()
     render()
 end
 
-local function autonomyBlocked()
-    local avoidMenus=not behaviorSettings or behaviorSettings:get('avoidAutonomyInMenus')~=false
-    local avoidCombat=not behaviorSettings or behaviorSettings:get('avoidAutonomyInCombat')~=false
-    local avoidSneaking=not behaviorSettings or behaviorSettings:get('avoidAutonomyWhenSneaking')~=false
-    return autonomyPending or turnActive or state.ui.visible or voiceRecording or openMicEnabled
-        or state.ui.pendingTargetAction or avoidMenus and not controlsAllowed()
-        or avoidCombat and nearbyCombat or avoidSneaking and self.controls and self.controls.sneak==true
-end
-
-local function updateLocalAutonomy(dt)
-    if autonomyBlocked() then quietElapsed=0 return end
-    quietElapsed=quietElapsed+(tonumber(dt) or 0)
-    local rechatEnabled=behaviorSettings and behaviorSettings:get('rechat')==true
-    local rechatDelay=tonumber(behaviorSettings and behaviorSettings:get('rechatDelaySeconds')) or 45
-    local rechatMaxDepth=tonumber(behaviorSettings and behaviorSettings:get('rechatMaxDepth')) or 10
-    local boredomEnabled=behaviorSettings and behaviorSettings:get('boredom')==true
-    local boredomDelay=tonumber(behaviorSettings and behaviorSettings:get('boredomDelaySeconds')) or 180
-    local kind
-    if rechatEnabled and rechatDepth<rechatMaxDepth and hadConversation and state.ui.target
-        and quietElapsed>=rechatDelay then kind='rechat'
-    elseif boredomEnabled and quietElapsed>=boredomDelay then kind='boredom' end
-    if kind then
-        autonomyPending=true
-        quietElapsed=0
-        send('ALMSIVI_LOCAL_AUTONOMY_REQUEST',{kind=kind})
-    end
-end
-
-local function updateCombatBarks(dt)
-    if not behaviorSettings or behaviorSettings:get('combatBarks')==false or #combatThreats==0 then
-        combatBarkElapsed=0
-        return
-    end
-    if autonomyPending or turnActive or state.ui.visible or voiceRecording or openMicEnabled
-        or speechActive() or state.ui.pendingTargetAction or not controlsAllowed() then return end
-    combatBarkElapsed=combatBarkElapsed+(tonumber(dt) or 0)
-    local period=math.max(10,math.min(300,tonumber(behaviorSettings:get('combatBarkPeriodSeconds')) or 30))
-    if combatBarkElapsed<period then return end
-    combatBarkElapsed=0
-    combatBarkIndex=combatBarkIndex%#combatThreats+1
-    autonomyPending=true
-    send('ALMSIVI_LOCAL_AUTONOMY_REQUEST',{kind='combat_bark',actor=combatThreats[combatBarkIndex]})
-end
-
 if inputOk then
     input.registerTriggerHandler('ALMSIVI_Talk',adapter.callback(requestTalkToggle))
     input.registerTriggerHandler('ALMSIVI_StopDialogue',adapter.callback(function()
         send('ALMSIVI_STOP_DIALOGUE_REQUEST',{}) state.ui.status='dialogue stopped' render()
     end))
     input.registerTriggerHandler('ALMSIVI_Halt',adapter.callback(function()
-        openMicEnabled=false openMicMuted=false voiceRecording=false pttHeld=false
         state.ui.pendingTargetAction=nil
         player.onAction(state,'ALMSIVI_Halt',send) state.ui.status='stopped' render()
     end))
@@ -993,25 +862,6 @@ if inputOk then
     end))
     input.registerTriggerHandler('ALMSIVI_History',adapter.callback(function() togglePanel('history') end))
     input.registerTriggerHandler('ALMSIVI_Diagnostics',adapter.callback(function() togglePanel('diagnostics') end))
-    input.registerTriggerHandler('ALMSIVI_OpenMic',adapter.callback(function()
-        if not controlsAllowed() then return end
-        if not openMicEnabled and not state.ui.target then chooseTarget(2048) return end
-        openMicEnabled=not openMicEnabled openMicMuted=false voiceRecording=openMicEnabled
-        if openMicEnabled then
-            rechatDepth=0 hadConversation=false activeAutonomyKind=nil activeAutonomySpoke=false
-            send('ALMSIVI_OPEN_MIC_START',voicePayload('almsivi_open_mic'))
-        else send('ALMSIVI_OPEN_MIC_STOP',{}) end
-        render()
-    end))
-    input.registerTriggerHandler('ALMSIVI_OpenMicMute',adapter.callback(function()
-        if not controlsAllowed() then return end
-        if not openMicEnabled then state.ui.status='open mic is off' render() return end
-        openMicMuted=not openMicMuted voiceRecording=not openMicMuted
-        if openMicMuted then send('ALMSIVI_OPEN_MIC_STOP',{})
-        else send('ALMSIVI_OPEN_MIC_START',voicePayload('almsivi_open_mic')) end
-        state.ui.status=openMicMuted and 'open mic muted' or 'open mic listening'
-        render()
-    end))
 end
 
 return {
@@ -1032,8 +882,6 @@ return {
             local dialogueChanged=notifications.update(dialogueNotification,dt)
             if statusChanged or dialogueChanged then renderStatusHud() end
             applySettings()
-            updateLocalAutonomy(dt)
-            updateCombatBarks(dt)
             aimScanElapsed=aimScanElapsed+(tonumber(dt) or 0)
             if aimScanElapsed>=0.1 and not state.ui.visible and controlsAllowed() then
                 aimScanElapsed=0
@@ -1055,8 +903,7 @@ return {
                     candidates=adapter.nearbyActors(tonumber(distance) or (exterior and 2400 or 1200))
                     while #candidates>32 do table.remove(candidates) end
                 end
-                send('ALMSIVI_AUTO_ACTIVATE_SCAN',{candidates=candidates,
-                    safe_for_autonomy=not autonomyBlocked()})
+                send('ALMSIVI_AUTO_ACTIVATE_SCAN',{candidates=candidates})
             end
             local controls=sessionControls()
             local signature=controls and table.concat({tostring(controls.selected_model_slot_id),tostring(controls.selected_profile_id),
@@ -1064,19 +911,6 @@ return {
                 tostring(#(controls.model_slots or {})),tostring(#(controls.profiles or {})),tostring(controls.pending)},'|') or ''
             if signature~=controlsSignature then controlsSignature=signature
                 if state.ui.visible and (state.ui.panel=='models' or state.ui.panel=='profiles') then render() end end
-            if not inputOk or not input.getBooleanActionValue then return end
-            local held=input.getBooleanActionValue('ALMSIVI_PushToTalk')==true
-            if held and not controlsAllowed() then held=false end
-            if held==pttHeld then return end
-            pttHeld=held
-            if held then
-                if not state.ui.target then chooseTarget(2048) pttHeld=false return end
-                if openMicEnabled then openMicEnabled=false openMicMuted=false send('ALMSIVI_OPEN_MIC_STOP',{}) end
-                rechatDepth=0 hadConversation=false activeAutonomyKind=nil activeAutonomySpoke=false
-                voiceRecording=true
-                send('ALMSIVI_VOICE_START',voicePayload('almsivi_voice'))
-            else voiceRecording=false send('ALMSIVI_VOICE_STOP',{}) end
-            render()
         end,
     },
     eventHandlers={
@@ -1137,14 +971,10 @@ return {
         ALMSIVI_COMBAT_STATUS=function(event)
             local started=event.active==true and not nearbyCombat
             nearbyCombat=event.active==true
-            combatThreats=event.threats or {}
-            if started then
-                combatBarkElapsed=tonumber(behaviorSettings and behaviorSettings:get('combatBarkPeriodSeconds')) or 30
-            elseif not nearbyCombat then combatBarkElapsed=0 end
             if started and (not behaviorSettings or behaviorSettings:get('cancelDialogueOnCombat')~=false)
-                and (turnActive or voiceRecording or openMicEnabled or speechActive()) then
+                and (turnActive or speechActive()) then
                 send('ALMSIVI_STOP_DIALOGUE_REQUEST',{})
-                voiceRecording=false openMicEnabled=false openMicMuted=false pttHeld=false turnActive=false
+                turnActive=false
                 speechActors={}
                 state.ui.status='dialogue stopped for combat'
                 render()
@@ -1188,36 +1018,6 @@ return {
             state.ui.diagnostics=event.submitted and event.reason or event.submit_reason
             render()
         end,
-        ALMSIVI_VOICE_STATUS=function(event)
-            state.ui.status=event.status
-            if event.status=='failed' or event.status=='queued' then voiceRecording=false end
-            if (event.status=='open mic off' and not openMicMuted)
-                or (event.status=='failed' and event.continuous) then openMicEnabled=false openMicMuted=false end
-            state.ui.diagnostics=event.reason render()
-        end,
-        ALMSIVI_OPEN_MIC_CONTEXT_REQUEST=function()
-            if not openMicEnabled or openMicMuted or not state.ui.target then return end
-            send('ALMSIVI_OPEN_MIC_CONTEXT',voicePayload('almsivi_open_mic'))
-        end,
-        ALMSIVI_AUTONOMY_CONTEXT_REQUEST=function(event)
-            if not state.ui.target then return end
-            activeAutonomyKind=event.directive and event.directive.kind or nil
-            activeAutonomySpoke=false
-            send('ALMSIVI_AUTONOMY_CONTEXT',{directive=event.directive,speaker=adapter.identity(self),
-                context=(function()
-                    local context=conversationContext(state.ui.target)
-                    context.dialogueMode=state.ui.mode
-                    return context
-                end)(),language='en-US',capabilities=CAPABILITIES,
-                recent_action_results={}})
-        end,
-        ALMSIVI_AUTONOMY_STATUS=function(event)
-            autonomyPending=false
-            if event.status=='failed' or event.status=='skipped' then
-                activeAutonomyKind=nil activeAutonomySpoke=false
-            end
-            if event.status~='skipped' then state.ui.status='autonomy '..event.status render() end
-        end,
         ALMSIVI_EVENT=function(event)
             if event.type=='turn.accepted' then turnActive=true end
             if (event.type=='dialogue.delta' or event.type=='dialogue.complete') and event.payload
@@ -1227,18 +1027,8 @@ return {
                     and math.max(6,math.min(14,#event.payload.text/12)) or 4
                 notifications.show(dialogueNotification,displayName(speaker)..': '..event.payload.text,duration)
             end
-            if event.type=='dialogue.complete' then
-                hadConversation=true quietElapsed=0
-                if activeAutonomyKind then activeAutonomySpoke=true end
-            end
             if event.type=='turn.complete' or event.type=='turn.failed' or event.type=='turn.cancelled' then
-                if event.type=='turn.complete' and activeAutonomyKind=='rechat' and activeAutonomySpoke then
-                    rechatDepth=rechatDepth+1
-                elseif activeAutonomyKind and activeAutonomyKind~='rechat' then
-                    rechatDepth=0
-                end
-                activeAutonomyKind=nil activeAutonomySpoke=false
-                turnActive=false quietElapsed=0
+                turnActive=false
             end
             player.event(state,event) render()
         end,

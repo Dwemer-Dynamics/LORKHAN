@@ -17,9 +17,6 @@ local bindings = {
     talk = 'ALMSIVI_Talk_Binding',
     stopDialogue = 'ALMSIVI_StopDialogue_Binding',
     halt = 'ALMSIVI_Halt_Binding',
-    pushToTalk = 'ALMSIVI_PushToTalk_Binding',
-    openMic = 'ALMSIVI_OpenMic_Binding',
-    openMicMute = 'ALMSIVI_OpenMicMute_Binding',
     manualActivate = 'ALMSIVI_ManualActivate_Binding',
     actorTools = 'ALMSIVI_ActionsMenu_Binding',
     masterMenu = 'ALMSIVI_MasterMenu_Binding',
@@ -38,8 +35,6 @@ end
 trigger('ALMSIVI_Talk','Talk_name','Talk_description')
 trigger('ALMSIVI_StopDialogue','StopDialogue_name','StopDialogue_description')
 trigger('ALMSIVI_Halt','Halt_name','Halt_description')
-trigger('ALMSIVI_OpenMic','OpenMic_name','OpenMic_description')
-trigger('ALMSIVI_OpenMicMute','OpenMicMute_name','OpenMicMute_description')
 trigger('ALMSIVI_ManualActivate','ManualActivate_name','ManualActivate_description')
 trigger('ALMSIVI_ActionsMenu','ActorTools_name','ActorTools_description')
 trigger('ALMSIVI_MasterMenu','ActorTools_name','ActorTools_description')
@@ -49,8 +44,6 @@ trigger('ALMSIVI_ProfileMenu','ProfileMenu_name','ProfileMenu_description')
 trigger('ALMSIVI_StatusHud','StatusHud_name','StatusHud_description')
 trigger('ALMSIVI_History','History_name','History_description')
 trigger('ALMSIVI_Diagnostics','Diagnostics_name','Diagnostics_description')
-input.registerAction({key='ALMSIVI_PushToTalk',l10n='ALMSIVI',name='PushToTalk_name',
-    description='PushToTalk_description',type=input.ACTION_TYPE.Boolean,defaultValue=false})
 
 I.Settings.registerPage({
     key=PAGE_KEY,
@@ -106,18 +99,7 @@ I.Settings.registerGroup({
     key=BEHAVIOR_GROUP_KEY,page=PAGE_KEY,l10n='ALMSIVI',name='BehaviorGroup_name',
     description='BehaviorGroup_description',permanentStorage=true,order=2,
     settings={
-        {key='autoGreeting',renderer='checkbox',default=false,name='AutoGreeting_name',description='AutoGreeting_description'},
-        {key='rechat',renderer='checkbox',default=false,name='Rechat_name',description='Rechat_description'},
-        {key='rechatDelaySeconds',renderer='number',default=45,name='RechatDelay_name',description='RechatDelay_description',argument={integer=true,min=15,max=3600}},
-        {key='rechatMaxDepth',renderer='number',default=10,name='RechatMaxDepth_name',description='RechatMaxDepth_description',argument={integer=true,min=1,max=10}},
-        {key='boredom',renderer='checkbox',default=false,name='Boredom_name',description='Boredom_description'},
-        {key='boredomDelaySeconds',renderer='number',default=180,name='BoredomDelay_name',description='BoredomDelay_description',argument={integer=true,min=30,max=7200}},
-        {key='avoidAutonomyInMenus',renderer='checkbox',default=true,name='AvoidAutonomyInMenus_name',description='AvoidAutonomyInMenus_description'},
-        {key='avoidAutonomyInCombat',renderer='checkbox',default=true,name='AvoidAutonomyInCombat_name',description='AvoidAutonomyInCombat_description'},
-        {key='avoidAutonomyWhenSneaking',renderer='checkbox',default=true,name='AvoidAutonomyWhenSneaking_name',description='AvoidAutonomyWhenSneaking_description'},
         {key='cancelDialogueOnCombat',renderer='checkbox',default=true,name='CancelDialogueOnCombat_name',description='CancelDialogueOnCombat_description'},
-        {key='combatBarks',renderer='checkbox',default=true,name='CombatBarks_name',description='CombatBarks_description'},
-        {key='combatBarkPeriodSeconds',renderer='number',default=30,name='CombatBarkPeriod_name',description='CombatBarkPeriod_description',argument={integer=true,min=10,max=300}},
     },
 })
 

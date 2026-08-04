@@ -193,9 +193,6 @@ return {
                 orchestrator.configureSession(state,session.session_id)
             end
             if state.events then orchestrator.poll(state) end
-            orchestrator.pollVoice(state)
-            orchestrator.pollOpenMic(state)
-            orchestrator.pollAutonomy(state)
         end,
     },
     eventHandlers={
@@ -221,7 +218,7 @@ return {
             emit('ALMSIVI_ACTIVATION_STATUS',{status='nearby',added=added,retained=retained})
         end,
         ALMSIVI_AUTO_ACTIVATE_SCAN=function(event)
-            orchestrator.scanAgents(state,event.candidates,event.safe_for_autonomy==true)
+            orchestrator.scanAgents(state,event.candidates,false)
         end,
         ALMSIVI_ACTOR_COMBAT_STATUS=function(event) orchestrator.actorCombatStatus(state,event) end,
         ALMSIVI_CLEAR_AUDIENCE=function() orchestrator.clearAudience(state) end,
@@ -236,16 +233,6 @@ return {
                 print('[ALMSIVI] text turn rejected: '..tostring(reason))
                 emit('ALMSIVI_TURN',{status='failed',reason=reason})
             end
-        end,
-        ALMSIVI_VOICE_START=function(event) orchestrator.startVoice(state,event) end,
-        ALMSIVI_VOICE_STOP=function() orchestrator.stopVoice(state) end,
-        ALMSIVI_OPEN_MIC_START=function(event) orchestrator.enableOpenMic(state,event) end,
-        ALMSIVI_OPEN_MIC_STOP=function() orchestrator.disableOpenMic(state) end,
-        ALMSIVI_OPEN_MIC_CONTEXT=function(event) orchestrator.runOpenMicContext(state,event) end,
-        ALMSIVI_AUTONOMY_CONTEXT=function(event) orchestrator.runAutonomy(state,event) end,
-        ALMSIVI_LOCAL_AUTONOMY_REQUEST=function(event)
-            local directive,reason=orchestrator.requestLocalAutonomy(state,event.kind,event.actor)
-            if not directive then emit('ALMSIVI_AUTONOMY_STATUS',{status='skipped',reason=reason,kind=event.kind}) end
         end,
         ALMSIVI_HALT_REQUEST=function() orchestrator.interrupt(state,'halt_ai_actions') end,
         ALMSIVI_STOP_DIALOGUE_REQUEST=function() orchestrator.stopDialogue(state,'stop_dialogue') end,

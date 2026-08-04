@@ -197,6 +197,25 @@ class FoundationTests(unittest.TestCase):
         with self.assertRaises(SchemaError):
             validate({"unexpected":"global"}, patterned)
 
+    def test_excluded_stt_and_autonomy_have_no_shipped_entry_points(self):
+        script_root = ROOT / "almsivi/files/scripts/ALMSIVI"
+        settings = (script_root / "settings.lua").read_text(encoding="utf-8")
+        player = (script_root / "player.lua").read_text(encoding="utf-8")
+        global_script = (script_root / "global.lua").read_text(encoding="utf-8")
+        native_bindings = (ROOT / "apps/openmw/mwlua/almsivibindings.cpp").read_text(encoding="utf-8")
+        patch_bindings = (ROOT / "openmw-patches/overlay/apps/openmw/mwlua/almsivibindings.cpp").read_text(encoding="utf-8")
+        for token in ("ALMSIVI_OpenMic", "ALMSIVI_PushToTalk", "key='autoGreeting'", "key='rechat'",
+                      "key='boredom'", "key='combatBarks'"):
+            self.assertNotIn(token, settings)
+        for token in ("speech.listen", "ALMSIVI_OPEN_MIC", "ALMSIVI_LOCAL_AUTONOMY_REQUEST",
+                      "updateLocalAutonomy", "updateCombatBarks"):
+            self.assertNotIn(token, player)
+        for token in ("orchestrator.pollVoice", "orchestrator.pollOpenMic", "orchestrator.pollAutonomy",
+                      "ALMSIVI_OPEN_MIC", "ALMSIVI_LOCAL_AUTONOMY_REQUEST"):
+            self.assertNotIn(token, global_script)
+        self.assertNotIn("speech.listen", native_bindings)
+        self.assertNotIn("speech.listen", patch_bindings)
+
     def test_offline_cache_miss(self):
         result = self.command(sys.executable, str(BOOTSTRAP), "bootstrap", "--cache-dir", str(self.temp / "none"),
                               "--source-dir", str(self.temp / "source"), "--manifest", str(self.temp / "run.json"), check=False)
