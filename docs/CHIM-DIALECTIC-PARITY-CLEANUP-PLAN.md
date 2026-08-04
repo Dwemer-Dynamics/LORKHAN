@@ -1,6 +1,6 @@
 # ALMSIVI CHIM/Dialectic parity cleanup plan
 
-Status: implementation plan based on a live client, server, browser, protocol, and test audit on 2026-08-03.
+Status: active implementation record based on a live client, server, browser, protocol, and test audit on 2026-08-03.
 
 This document is the master cleanup and parity plan for ALMSIVI and ALMSIVIserver. It supersedes the fragmented parity checklists as the execution order, but it does not replace the protocol, architecture, packaging, or local-testing references.
 
@@ -40,28 +40,30 @@ The foundations are substantially present, but the product is not yet at full pa
 | Area | Current assessment | Main gap |
 |---|---|---|
 | Typed server and PostgreSQL persistence | Strong foundation | Browser workflows and status metadata are not all proven against it |
-| Browser shell and main hubs | Visually close and responsive in the live deployment | No reproducible 1:1 visual baseline; copied CSS can drift page by page |
-| Configuration pages | Broad route coverage | Mixed wiring depth and too few visible disabled placeholder controls |
-| Roleplay pages | Events, responses, records, memories, books, and Journal are present | Feature registry still describes stale Active Quests and Relationships surfaces |
-| Control Panel | Major diagnostic and operational page families are present | Canonical routes and orphan legacy pages need reconciliation |
-| Text conversation | Targeting, chat submission, cancellation, generation, and delivery paths exist | Requires complete in-game acceptance testing and failure UX cleanup |
+| Browser shell and main hubs | Pinned Herika shell, assets, navbar geometry, hubs, and dashboard layout are deployed | Mobile screenshot proof remains outstanding because the available browser viewport stayed fixed at 1280x720 |
+| Configuration pages | Herika page structures and controls are wired across all declared page families | Live external-provider actions and every responsive viewport still need final acceptance evidence |
+| Roleplay pages | Events, responses, records, memories, books, and canonical Journal are present | Final populated/empty/error-state visual matrix remains |
+| Control Panel | Diagnostic, monitoring, and data/tool families use canonical routes | Final destructive-confirmation and empty/error-state visual matrix remains |
+| Text conversation | Targeting, target confirmation, chat submission, cancellation, generation, delivery, History, Diagnostics, and HUD paths exist | Requires complete in-game acceptance testing |
 | TTS | Actor/narrator playback, ordered delivery, cancellation, and ALMSIVI boost exist | Full per-NPC voice and volume acceptance matrix remains unproven |
-| In-game controls | Most actions have trigger handlers | Several applicable bindings are not exposed; History and Diagnostics route to the wrong panel |
-| Morrowind context | Broad player, actor, world, inventory, journal, book, and environment coverage | Captured vanilla dialogue is not included in turn context |
-| Autonomy | Legacy paths exist but are outside this implementation goal | Keep unadvertised and unreachable; browser controls remain disabled Excluded placeholders |
-| Settings hierarchy | Server resolves Global -> Core Profile -> NPC for prompt/routing work | Effective target settings are not propagated to client runtime behavior |
-| Exclusions | Browser labels STT, ITT, and Background Life | STT/open-mic protocol and client code still advertise functional paths |
-| Validation | Core server integration passes; live outer/mobile pages render without browser errors | Management browser test has a current HTTP 422 regression; Lua runtime unavailable locally |
+| In-game controls | All applicable controls are exposed; History and Diagnostics open their named panels; Diagnostics uses the configured server URL and native bridge/session state | Requires keyboard/controller and scene-safety acceptance in OpenMW |
+| Morrowind context | Bounded player, actor, world, inventory, Journal, book, environment, and recent vanilla-dialogue context is present | Requires prompt inspection against live representative actors and scenes |
+| Autonomy | Shipped UI/event wiring is removed and current capabilities do not advertise autonomy | Compatibility internals remain quarantined and negative runtime acceptance remains |
+| Settings hierarchy | Global -> Core Profile -> NPC effective settings, provenance, and change token reach the client | Representative target-switch acceptance remains |
+| Exclusions | STT, ITT, Background Life, and autonomy are disabled placeholders; shipped bindings and advertised capabilities are removed | Negative in-game acceptance remains |
+| Validation | Client structural checks, 46 Lua runtime tests, native CTest, server integration, migrations/jobs, management HTTP, deployment health, and 1280x720 browser comparisons pass | In-game and mobile visual acceptance remain unverified |
 
 ## 4. Immediate parity blockers
 
 These are correctness or scope contradictions and should be fixed before broad UI polishing.
 
-### P0.1 Incorrect in-game panel routing
+### P0.1 Incorrect in-game panel routing — resolved
 
 `ALMSIVI_History` and `ALMSIVI_Diagnostics` currently open the Actor Tools panel. Each binding must open its named panel. Add direct keyboard/controller acceptance checks so the structural test cannot preserve the wrong mapping.
 
-### P0.2 Incomplete applicable hotkey exposure
+Resolution: both triggers now open their named panels, with structural coverage. Keyboard/controller runtime acceptance remains part of the final in-game gate.
+
+### P0.2 Incomplete applicable hotkey exposure — resolved
 
 The client registers more applicable actions than the Settings page exposes. Add visible configurable rows for:
 
@@ -72,11 +74,15 @@ The client registers more applicable actions than the Settings page exposes. Add
 
 Keep Talk, Manual Activate, Mode, Model, Profile, Halt, and Actor Tools. Remove the legacy duplicate Master Menu from the public settings model. Do not expose Push-to-Talk, Open Mic, or Open Mic Mute while STT is excluded.
 
-### P0.3 Vanilla dialogue is captured but discarded
+Resolution: every applicable row is visible in OpenMW Settings, the duplicate Master Menu is compatibility-only and not public, and excluded voice controls are not registered.
+
+### P0.3 Vanilla dialogue is captured but discarded — resolved
 
 The global script receives `DialogueResponse` and stores `lastVanillaDialogue`, but the turn-context builder does not consume it. Add a bounded, provenance-labelled recent-dialogue context field and clear or age it predictably. It must never grow without bounds or repeat stale dialogue indefinitely.
 
-### P0.4 Layered settings stop at the server
+Resolution: recent vanilla dialogue is bounded, provenance-labelled, forwarded to the next accepted turn, then consumed.
+
+### P0.4 Layered settings stop at the server — resolved
 
 The server resolves effective settings for prompt and routing work, but session initialization only sends installation-wide settings, and controls query does not return target-effective settings or provenance. Define and implement a typed effective-settings response that includes:
 
@@ -87,25 +93,37 @@ The server resolves effective settings for prompt and routing work, but session 
 
 Only target-scoped gameplay behavior may come from Core/NPC settings. Local player preferences such as key bindings, panel placement, HUD visibility, and local audio presentation must remain local and must not change when the target changes.
 
-### P0.5 STT scope contradiction
+Resolution: the controls snapshot carries effective values, provenance, revisions, and a change token; the player applies target-scoped safety while keeping local presentation and audio settings client-owned.
+
+### P0.5 STT scope contradiction — resolved for the shipped client surface
 
 The client and protocol still contain speech-listening, open-mic, capture, and STT paths while the product scope excludes functional STT. Remove `speech.listen` from current negotiated capabilities, prevent voice capture from starting, hide voice bindings, and ensure no STT worker/request can be triggered by the shipped client. If the database schema or server handlers are retained for future compatibility, mark them quarantined and cover them with negative tests.
 
-### P0.6 Stale browser feature metadata
+Resolution: shipped settings, player events, global polling, and advertised capabilities no longer expose STT. Deep compatibility code remains quarantined for future work and is not called by the shipped scripts.
+
+### P0.6 Stale browser feature metadata — resolved
 
 The centralized registry still labels Active Quests as planned and Relationships as live. Make Journal the canonical live Roleplay destination, remove Relationships from the visible Roleplay navigation, and keep Relationship Logs only as a diagnostic/administrative surface. Legacy `?tab=quests` and `?tab=relationships` URLs may redirect to the canonical destination, but they must not create duplicate navigation concepts.
 
-### P0.7 Player speech-style generation fails its HTTP workflow
+Resolution: Journal is canonical, the Roleplay submenu is removed, and legacy quest/relationship tab URLs redirect without recreating visible destinations.
+
+### P0.7 Player speech-style generation fails its HTTP workflow — resolved
 
 The current management browser suite receives HTTP 422 from `player-speech-style-generate` when it expects a successful redirect. Determine whether the created player profile and recent input belong to different installation scope, whether the form is offered too broadly, or whether the repository lookup is wrong. The page must show the control only when the same installation has usable inputs, and the test fixture must prove that exact invariant.
 
-### P0.8 Canonical route drift and orphan pages
+Resolution: the workflow is installation-scoped and the browser-like management suite proves the successful CSRF form path.
+
+### P0.8 Canonical route drift and orphan pages — resolved
 
 Reconcile management aliases and visible hubs so every supported capability has one canonical page. Current risks include legacy Character Manager versus NPC Master, Diagnostics aliases that land on Server Logs, orphan backup-health/diagnostics pages, and a directly routable Narrative Autonomy page that is not represented consistently in the hub. Legacy links should redirect; they should not fork behavior or styling.
 
-### P0.9 No reproducible 1:1 visual proof
+Resolution: visible hubs use canonical pages, legacy aliases redirect, and the excluded autonomy route is not exposed as a live destination.
+
+### P0.9 No reproducible 1:1 visual proof — partially resolved
 
 The live shell is responsive, but page-specific copied CSS is not a durable presentation contract. Pin the exact Herika assets and structural markup used by the rebuild, isolate ALMSIVI branding into the smallest token layer, and add screenshot comparison evidence for each page family. Visual parity should be judged at the same viewport, content fixture, scroll position, and UI state.
+
+Current evidence: the pinned Herika shell/assets, shared navbar geometry, Home, Configuration, Roleplay, Control Panel, NPCs, Profiles, Player, LLM, Global Settings, and NPC modal states were compared live at 1280x720. The remaining gate is the full fixed-viewport responsive screenshot matrix.
 
 ## 5. Browser UI coverage plan
 

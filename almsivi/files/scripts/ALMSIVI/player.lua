@@ -80,6 +80,17 @@ local function audienceNames()
     return #names>0 and table.concat(names,', ') or 'None'
 end
 local function speechActive() return next(speechActors)~=nil end
+local function nativeValue(name,fallback)
+    if not nativeOk or not native or type(native[name])~='function' then return fallback end
+    local ok,value=pcall(native[name])
+    return ok and value~=nil and value~='' and value or fallback
+end
+local function serverUiUrl()
+    local base=nativeValue('serverBaseUrl',nil)
+    if type(base)~='string' then return 'Unavailable (check ALMSIVI client configuration)' end
+    local root=base:gsub('/api/v1/?$','')
+    return root..'/ui/home.php'
+end
 local function reportNarrator(status,reason)
     local command=narratorSpeech
     if not command then return end
@@ -384,14 +395,23 @@ render=function()
                 state.ui.visible=false leaveUiMode() render()
             end)}}
     elseif state.ui.panel=='diagnostics' then
+        local session=nativeValue('sessionInfo',nil)
+        local bridge=nativeValue('diagnostics',nil)
         local rows={
             'Runtime status: '..tostring(state.ui.status),
+            'Server connection: '..tostring(nativeValue('status','unavailable')),
+            'Server URL: '..serverUiUrl(),
+            'Session ID: '..tostring(session and session.session_id or 'unavailable'),
+            'Generation: '..tostring(session and session.generation or nativeValue('generation','unavailable')),
             'Target: '..displayName(state.ui.target),
             'Conversation group: '..audienceNames(),
             'Managed agents: '..tostring(#state.ui.agents),
             'Turn active: '..tostring(turnActive),
             'Generated speech: '..tostring(speechActive()),
             'Nearby combat: '..tostring(nearbyCombat),
+            'Bridge queue: '..tostring(bridge and bridge.outbound or 'unavailable')..' outbound / '..
+                tostring(bridge and bridge.inbound or 'unavailable')..' inbound',
+            'Last bridge error: '..tostring(nativeValue('lastError','none')),
         }
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Diagnostics',textSize=20,
             textColor=util.color.rgb(0.95,0.9,0.82)}}
@@ -403,8 +423,6 @@ render=function()
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Last detail: '..tostring(state.ui.diagnostics),
                 textSize=15,textColor=util.color.rgb(1.0,0.58,0.18)}}
         end
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Server UI: http://127.0.0.1:8089/ALMSIVIserver/manage',
-            textSize=14,textColor=util.color.rgb(0.72,0.68,0.62)}}
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
             textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
                 state.ui.panel='actor-tools' render()

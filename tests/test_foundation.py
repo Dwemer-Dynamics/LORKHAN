@@ -215,6 +215,9 @@ class FoundationTests(unittest.TestCase):
             self.assertNotIn(token, global_script)
         self.assertNotIn("speech.listen", native_bindings)
         self.assertNotIn("speech.listen", patch_bindings)
+        self.assertIn('api["serverBaseUrl"]', native_bindings)
+        self.assertIn('api["serverBaseUrl"]', patch_bindings)
+        self.assertNotIn("http://127.0.0.1:8089/ALMSIVIserver/manage", player)
 
     def test_offline_cache_miss(self):
         result = self.command(sys.executable, str(BOOTSTRAP), "bootstrap", "--cache-dir", str(self.temp / "none"),

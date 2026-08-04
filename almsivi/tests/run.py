@@ -99,6 +99,10 @@ player_lua = text(SCRIPTS / "player.lua")
 check("history and diagnostics bindings open their named panels", all(fragment in player_lua for fragment in [
     "ALMSIVI_History',adapter.callback(function() togglePanel('history')",
     "ALMSIVI_Diagnostics',adapter.callback(function() togglePanel('diagnostics')"]))
+check("diagnostics use configured server and native bridge state", all(fragment in player_lua for fragment in [
+    "nativeValue('serverBaseUrl',nil)", "'/ui/home.php'", "'Server connection: '",
+    "'Session ID: '", "'Bridge queue: '", "nativeValue('lastError','none')",
+]) and 'http://127.0.0.1:8089/ALMSIVIserver/manage' not in player_lua)
 check("player-local vanilla dialogue is forwarded as bounded context", all(fragment in player_lua for fragment in [
     "DialogueResponse=function(event)", "adapter.dialogueResponse(event)", "ALMSIVI_VANILLA_DIALOGUE"]))
 controls_schema = text(ROOT / "almsivi" / "schemas" / "v1" / "controls.schema.json")

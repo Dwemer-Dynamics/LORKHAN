@@ -381,6 +381,11 @@ namespace MWLua
             std::uint64_t generation() const { return m_service ? m_service->generation().value() : 0; }
             bool ready() const { return m_service && m_session.has_value() && m_status == "ready"; }
 
+            std::string serverBaseUrl() const
+            {
+                return m_config ? "http://" + m_config->baseUrl.authority() + m_config->baseUrl.basePath : "";
+            }
+
             sol::table diagnostics(sol::state_view lua) const
             {
                 sol::table result(lua, sol::create);
@@ -1047,6 +1052,7 @@ namespace MWLua
             };
             api["status"] = [] { return client().status(); };
             api["lastError"] = [] { return client().error(); };
+            api["serverBaseUrl"] = [] { return client().serverBaseUrl(); };
             api["generation"] = [] { return client().generation(); };
             api["diagnostics"] = [lua] { return client().diagnostics(lua); };
             api["isExpired"] = [](const std::string& timestamp) {
