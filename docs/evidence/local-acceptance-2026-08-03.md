@@ -13,11 +13,11 @@ Server source commit: `40ebe0e59be36c13d1a8e115f4432c2fd4d9097c` on `codex/herik
 | Local client deployment | PASS - `C:\Modlists\ALMSIVI`; source and deployed `openmw.exe` SHA-256 both `63892e2445fd1ea651e2b00a806a7f0431c0468a49df38b8d8691ac041d8aaed` |
 | Lua deployment | PASS - source and deployed `player.lua` SHA-256 both `997778ec2617dd99865d57a9904f38085fcebe5abef7507fa7d534f082244188` |
 | Server deployment and health | PASS - `/var/www/html/ALMSIVIserver`, `almsivi.health.v1`, Apache running, worker loop and PHP worker use the active tree |
-| Browser desktop acceptance | PASS at the available 1280x720 browser viewport for Home, Config Hub, Roleplay Hub, Control Panel, NPCs, Profiles, Player, LLM, Global Settings, and NPC modal |
+| Browser visual acceptance | PASS at 1280x720 desktop and true 390x844 mobile emulation for the principal hubs and page families; Config and Control embedded documents have no horizontal overflow |
 
 The local Windows product build and deployment are proven. No unmodified OpenMW control build,
 formal release package, clean uninstall, game launch, in-game interaction, controller matrix,
-compatibility-mod matrix, or mobile browser viewport is claimed. ITT, STT, Background Life, and
+compatibility-mod matrix is claimed. ITT, STT, Background Life, and
 model-triggering autonomy remain excluded from the active product scope. The durable evidence
 recorder was not used because its standalone Clang lane is unavailable in this WSL distro; the
 successful CMake native test is recorded above without relabelling it as standalone-Clang proof.
