@@ -26,12 +26,12 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 | Group conversation | Keep | Explicit speaker/addressee/audience registry and one ordered no-overlap speech lane. |
 | Typed player input | Keep | Custom TextEdit overlay, size/UTF-8 validation. |
 | In-game controls | Adapt | Dialectic-style focused Hotkeys/Auto Activate/Behavior/Sound/AI Agents/Tools settings; compact mode/model/profile selectors and one targeted-NPC tools menu replace the master dashboard. |
-| Push-to-talk/STT | Keep | Semantic input action, native/server bounded audio upload, transcript event. |
-| Open microphone | Keep, opt-in | VAD/rate/privacy indicator; default off. |
+| Push-to-talk/STT | Exclude | Baseline control remains visible and disabled; no shipped client capability, hotkey, capture, or request path. |
+| Open microphone | Exclude | Baseline control remains visible and disabled; no shipped client capability, hotkey, capture, or request path. |
 | Subtitles/transcript | Keep | Custom UI with speaker and status, independent of stock subtitle toggle. |
 | Interrupt/skip/hard halt | Keep | Reserved control lane; speech/action/server cancellation. |
-| Automatic greeting | Keep, opt-in | Activity/distance/cooldown/rate rules. |
-| Rechat/boredom | Keep, opt-in | Server scheduler plus current-game safety checks. |
+| Automatic greeting | Exclude | Baseline control remains visible and disabled; no automatic model-triggering. |
+| Rechat/boredom | Exclude | Baseline controls remain visible and disabled; no scheduler, cooldown, or automatic model-triggering. |
 | Vanilla dialogue context | Adapt | Passive `DialogueResponse` capture; never replace vanilla UI. |
 | Skyrim/Fallout HUD widgets | Adapt | OpenMW Lua UI built from scratch; no copied SWF/Papyrus. |
 
@@ -61,9 +61,9 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 | Dynamic profiles | Keep | Server-controlled revisions with source/event history. |
 | World knowledge | Keep | Scoped documents/facts with retrieval trace. |
 | Narrator and diary | Keep | Opt-in narrator persona, inline routing, player-local speech, and revision-safe PHP/in-game narrator generation are implemented; dedicated narrator/diary/summary CRUD exists, while automatic diary generation remains deferred. |
-| Rechat, boredom and greetings | Keep | Runtime-backed Global Settings schedules are editable, default off, bounded to 30-86400 seconds, and require an active session in the exact playthrough scope before enabling. |
+| Rechat, boredom, greetings and combat barks | Exclude | Baseline controls remain visible and disabled; no runtime scheduler or automatic model-triggering is shipped. |
 | Playthrough export/restore | Keep | Transactional server snapshot plus binding safeguards. |
-| LLM/STT/TTS providers | Keep | Full CHIM-lineage TTS/STT catalogs, bounded adapters, health and secret handling, per-profile routing, portable LLM/TTS/STT preset export/import/clone with in-use deletion guards, and a persistent voice studio with traversal-safe bounded ZIP batch import, explicit OmniVoice/Chatterbox/XTTS voice discovery, revisioned default-voice selection, per-voice testing, and sample sync to compatible local services. |
+| LLM/TTS providers | Keep | Typed LLM/TTS catalogs, bounded adapters, health and secret handling, per-profile routing, portable preset workflows, and persistent voice management. STT remains a disabled compatibility placeholder only. |
 | Prompt/action editor | Keep | Validated schemas, revisions, rollback, portable prompt export/import/clone, explicit per-NPC prompt selection with in-use deletion guards, and labelled per-action policy controls that cannot broaden the server-owned OpenMW catalog. |
 | Request/event logs | Keep | Structured/redacted correlation and retention. |
 | Workers/backups/health | Keep | Supervised worker, retry/dead-letter queue, health/audit/provider diagnostics, bounded redacted server-log viewer, schema migrations, retention controls, scoped playthrough export/restore, and hash-verified same-installation configuration backup/restore that excludes secrets and runtime data. |

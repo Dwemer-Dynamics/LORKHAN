@@ -4,17 +4,19 @@ Status: implementation plan based on a live client, server, browser, protocol, a
 
 This document is the master cleanup and parity plan for ALMSIVI and ALMSIVIserver. It supersedes the fragmented parity checklists as the execution order, but it does not replace the protocol, architecture, packaging, or local-testing references.
 
+Scope override for this implementation goal: autonomy is excluded. Do not implement or expose functional automatic greetings, rechat, boredom events, combat barks, autonomous scheduling, cooldowns, or other model-triggering behavior. ITT, STT, and Background Life are also excluded. Baseline controls for these capabilities stay visible only as centrally labelled disabled placeholders.
+
 ## 1. Target outcome
 
 ALMSIVI should deliver the same understandable product shape as CHIM and Dialectic while remaining native to Morrowind and OpenMW:
 
 - The browser UI uses the pinned HerikaServer presentation baseline 1:1 for its shell, navigation, page structure, controls, assets, CSS behavior, density, and responsive layout.
 - Browser controls use ALMSIVI's typed PHP services, PostgreSQL repositories, browser session, and CSRF workflows.
-- In-game interaction reaches outcome parity with the applicable CHIM/Dialectic controls: discoverable hotkeys, targeting, text conversation, response management, TTS, HUD/history/diagnostics, behavior controls, profile/model selection, agent controls, and safe autonomy.
+- In-game interaction reaches outcome parity with the applicable CHIM/Dialectic controls: discoverable hotkeys, targeting, text conversation, response management, TTS, HUD/history/diagnostics, profile/model selection, agent controls, context, and actions.
 - Settings resolve predictably through Global settings, a Core Profile, and explicit NPC overrides.
 - Morrowind-specific context and actions are surfaced using OpenMW-native APIs and terminology.
 - Unsupported Herika controls remain visible in the browser baseline but are disabled and labelled centrally as `Planned`, `Excluded`, `Not Applicable`, or `Replaced`.
-- ITT, STT, and Background Life remain functionally excluded. Their presentation may remain as disabled compatibility landmarks, but no active client capability, hotkey, request path, or background worker should expose them as usable features.
+- Autonomy, ITT, STT, and Background Life remain functionally excluded. Their presentation may remain as disabled compatibility landmarks, but no active client capability, hotkey, request path, scheduler, or background worker should expose them as usable features.
 
 Parity means equivalent user outcomes, not blind runtime code copying. HerikaServer supplies the browser presentation contract. CHIM and Dialectic supply applicable behavior and control expectations. ALMSIVI keeps its own typed backend, protocol, database, OpenMW implementation, branding, terminology, and game-specific constraints.
 
