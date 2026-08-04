@@ -97,9 +97,9 @@
       "sha256": "25edf3ac9c412e7e2876006c680c13bb64c5f83852943d59423f45bdeae34d58"
     },
     {
-      "bytes": 1200,
+      "bytes": 2777,
       "path": "almsivi/fixtures/v1/valid/controls.json",
-      "sha256": "4eff67553d143ba3b4850dbc02d6a149d6bd2f2ea4ca530024b7e31ef099eec1"
+      "sha256": "fb25d3b2c7bd8304880464952d5fafa0b1574601519b217bb7b7ae03a51a68f7"
     },
     {
       "bytes": 602,
@@ -207,9 +207,9 @@
       "sha256": "a61bb07705dba7eff27077ed1d59c6ee391cd6162a43dfa712727031288142c4"
     },
     {
-      "bytes": 2631,
+      "bytes": 7772,
       "path": "almsivi/schemas/v1/controls.schema.json",
-      "sha256": "abb7157beef1a77e6942b6a62cdcb5dc4c10f3f5e78e1c63528ab6fb1598d294"
+      "sha256": "63f497536ee50056e6df0b17e7090e4e1b08d2b20d963e921e89673df8cc4e9e"
     },
     {
       "bytes": 1184,

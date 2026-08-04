@@ -76,7 +76,7 @@ def check_schema_shape(node: Any, path: str, registry: dict[str, dict[str, Any]]
         if not isinstance(node["required"], list) or not all(key in properties for key in node["required"]):
             raise ValidationError(f"{path}: required must name declared properties")
     for key, child in node.items():
-        if key in {"properties", "$defs"} and isinstance(child, dict):
+        if key in {"properties", "patternProperties", "$defs"} and isinstance(child, dict):
             for name, subschema in child.items():
                 check_schema_shape(subschema, f"{path}.{key}.{name}", registry)
         elif key in {"items", "contains", "not", "if", "then", "else"}:
@@ -123,9 +123,16 @@ def validate(value: Any, schema: dict[str, Any], registry: dict[str, dict[str, A
         if missing:
             raise ValidationError(f"{path}: missing required keys {missing}")
         properties = schema.get("properties", {})
+        pattern_properties = schema.get("patternProperties", {})
         for key, item in value.items():
             if key in properties:
                 validate(item, properties[key], registry, f"{path}.{key}")
+                continue
+            matched_patterns = [pattern_schema for pattern, pattern_schema in pattern_properties.items()
+                                if re.search(pattern, key) is not None]
+            if matched_patterns:
+                for pattern_schema in matched_patterns:
+                    validate(item, pattern_schema, registry, f"{path}.{key}")
             elif schema.get("additionalProperties") is False:
                 raise ValidationError(f"{path}: unexpected key {key!r}")
     if isinstance(value, list):
@@ -172,7 +179,8 @@ def main() -> int:
             raise ValidationError(f"{path.name}: wrong Draft 2020-12 declaration or canonical $id")
         check_schema_shape(schema, path.name, registry)
 
-    use_jsonschema = importlib.util.find_spec("jsonschema") is not None
+    use_jsonschema = (importlib.util.find_spec("jsonschema") is not None
+                      and importlib.util.find_spec("referencing") is not None)
     if args.require_jsonschema and not use_jsonschema:
         raise ValidationError("jsonschema is not installed; dependency fetching is forbidden")
     official = None

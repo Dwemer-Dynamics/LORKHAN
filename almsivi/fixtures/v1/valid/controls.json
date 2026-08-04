@@ -17,6 +17,36 @@
     "selected_model_slot_id": "10000000-0000-4000-8000-000000000406",
     "selected_profile_id": null,
     "narrator_profile_id": "10000000-0000-4000-8000-000000000408",
+    "effective_settings": {
+      "schema": "almsivi.effective-settings.v1",
+      "change_token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "profile_id": null,
+      "profile_revision": null,
+      "core_profile_id": "10000000-0000-4000-8000-000000000409",
+      "core_profile_revision": 1,
+      "settings": {
+        "memory": {"recent_turn_limit": 20, "knowledge_limit": 5},
+        "narrator": {"enabled": false, "name": "The Narrator", "context_visibility": true, "inline_mode": "Disabled", "welcome_events": false, "random_events": false, "quest_events": false, "book_events": false},
+        "safety": {"actions_enabled": true, "allow_hostile": false, "allow_creatures": false}
+      },
+      "routing": {"llm_configuration_id": "10000000-0000-4000-8000-000000000406"},
+      "source_map": {
+        "settings.memory.recent_turn_limit": "global",
+        "settings.memory.knowledge_limit": "global",
+        "settings.narrator.enabled": "global",
+        "settings.narrator.name": "global",
+        "settings.narrator.context_visibility": "global",
+        "settings.narrator.inline_mode": "global",
+        "settings.narrator.welcome_events": "global",
+        "settings.narrator.random_events": "global",
+        "settings.narrator.quest_events": "global",
+        "settings.narrator.book_events": "global",
+        "settings.safety.actions_enabled": "global",
+        "settings.safety.allow_hostile": "global",
+        "settings.safety.allow_creatures": "global",
+        "routing.llm_configuration_id": "core_profile"
+      }
+    },
     "model_slots": [{
       "configuration_id": "10000000-0000-4000-8000-000000000406",
       "name": "Dialogue",

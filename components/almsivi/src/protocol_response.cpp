@@ -397,6 +397,103 @@ Result<ClientSettings> parseClientSettings(const json::Value& value)
         {actionsEnabled.value(),allowHostile.value(),allowCreatures.value()}});
 }
 
+// Parse the target-scoped, secret-free settings snapshot returned by the controls endpoint.
+Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::Value& value)
+{
+    using Snapshot=ControlsResponse::EffectiveSettings;
+    const auto* root=value.object();
+    if(!root||!hasExactly(*root,{"schema","change_token","profile_id","profile_revision","core_profile_id",
+            "core_profile_revision","settings","routing","source_map"}))
+        return invalidSchemaValue<Snapshot>("effective settings fields mismatch");
+    auto schema=requireString(*root,"schema",1,64);auto token=requireString(*root,"change_token",64,64);
+    if(!schema||schema.value()!="almsivi.effective-settings.v1"||!token
+        ||!std::all_of(token.value().begin(),token.value().end(),[](unsigned char c){return(c>='0'&&c<='9')||(c>='a'&&c<='f');}))
+        return invalidSchemaValue<Snapshot>("effective settings schema or change token mismatch");
+    const auto nullableUuid=[&](std::string_view key)->Result<std::optional<std::string>>{
+        const auto* item=json::find(*root,key);if(!item)return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" is missing");
+        if(item->isNull())return Result<std::optional<std::string>>::success(std::nullopt);
+        if(!item->string()||!isCanonicalUuid(*item->string()))
+            return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" must be null or a canonical UUID");
+        return Result<std::optional<std::string>>::success(*item->string());};
+    const auto nullableRevision=[&](std::string_view key)->Result<std::optional<std::uint64_t>>{
+        const auto* item=json::find(*root,key);if(!item)return invalidSchemaValue<std::optional<std::uint64_t>>(std::string(key)+" is missing");
+        if(item->isNull())return Result<std::optional<std::uint64_t>>::success(std::nullopt);
+        auto parsed=requireUnsigned(*root,key,kMaximumProtocolInteger,1);if(!parsed)return invalidSchemaValue<std::optional<std::uint64_t>>(parsed.error().message);
+        return Result<std::optional<std::uint64_t>>::success(parsed.value());};
+    auto profileId=nullableUuid("profile_id");auto profileRevision=nullableRevision("profile_revision");
+    auto coreId=nullableUuid("core_profile_id");auto coreRevision=nullableRevision("core_profile_revision");
+    if(!profileId||!profileRevision||!coreId||!coreRevision)return invalidSchemaValue<Snapshot>("effective settings identity mismatch");
+    if(profileId.value().has_value()!=profileRevision.value().has_value()
+        ||coreId.value().has_value()!=coreRevision.value().has_value())
+        return invalidSchemaValue<Snapshot>("effective settings identity revision mismatch");
+
+    const auto* settingsValue=json::find(*root,"settings");const auto* settings=settingsValue?settingsValue->object():nullptr;
+    const auto* routingValue=json::find(*root,"routing");const auto* routing=routingValue?routingValue->object():nullptr;
+    const auto* sourcesValue=json::find(*root,"source_map");const auto* sources=sourcesValue?sourcesValue->object():nullptr;
+    if(!settings||!hasExactly(*settings,{"memory","narrator","safety"})||!routing||!sources||sources->size()>32)
+        return invalidSchemaValue<Snapshot>("effective settings section mismatch");
+    const auto objectFor=[&](std::string_view key)->const json::Object*{const auto* item=json::find(*settings,key);return item?item->object():nullptr;};
+    const auto* memory=objectFor("memory");const auto* narrator=objectFor("narrator");const auto* safety=objectFor("safety");
+    if(!memory||!hasExactly(*memory,{"recent_turn_limit","knowledge_limit"})
+        ||!narrator||!hasExactly(*narrator,{"enabled","name","context_visibility","inline_mode","welcome_events","random_events","quest_events","book_events"})
+        ||!safety||!hasExactly(*safety,{"actions_enabled","allow_hostile","allow_creatures"}))
+        return invalidSchemaValue<Snapshot>("effective settings value sections mismatch");
+    auto recentTurns=requireUnsigned(*memory,"recent_turn_limit",100,1);auto knowledgeLimit=requireUnsigned(*memory,"knowledge_limit",20);
+    auto narratorEnabled=requireBoolean(*narrator,"enabled");auto narratorName=requireString(*narrator,"name",1,128);
+    auto contextVisibility=requireBoolean(*narrator,"context_visibility");auto inlineMode=requireString(*narrator,"inline_mode",1,16);
+    auto welcomeEvents=requireBoolean(*narrator,"welcome_events");auto randomEvents=requireBoolean(*narrator,"random_events");
+    auto questEvents=requireBoolean(*narrator,"quest_events");auto bookEvents=requireBoolean(*narrator,"book_events");
+    auto actionsEnabled=requireBoolean(*safety,"actions_enabled");auto allowHostile=requireBoolean(*safety,"allow_hostile");
+    auto allowCreatures=requireBoolean(*safety,"allow_creatures");
+    if(!recentTurns||!knowledgeLimit||!narratorEnabled||!narratorName||!contextVisibility||!inlineMode
+        ||!welcomeEvents||!randomEvents||!questEvents||!bookEvents||!actionsEnabled||!allowHostile||!allowCreatures)
+        return invalidSchemaValue<Snapshot>("effective settings value mismatch");
+    if(inlineMode.value()!="Disabled"&&inlineMode.value()!="Narrator"&&inlineMode.value()!="NPC"&&inlineMode.value()!="Text Only")
+        return invalidSchemaValue<Snapshot>("effective inline narration mode is invalid");
+
+    Snapshot parsed;parsed.schema=std::move(schema).value();parsed.changeToken=std::move(token).value();
+    parsed.profileId=std::move(profileId).value();parsed.profileRevision=std::move(profileRevision).value();
+    parsed.coreProfileId=std::move(coreId).value();parsed.coreProfileRevision=std::move(coreRevision).value();
+    parsed.memory={recentTurns.value(),knowledgeLimit.value()};
+    parsed.narrator={narratorEnabled.value(),std::move(narratorName).value(),contextVisibility.value(),std::move(inlineMode).value(),
+        welcomeEvents.value(),randomEvents.value(),questEvents.value(),bookEvents.value()};
+    parsed.safety={actionsEnabled.value(),allowHostile.value(),allowCreatures.value()};
+    static constexpr std::array<std::string_view,7> routingIds={"prompt_configuration_id","llm_configuration_id",
+        "llm_fast_configuration_id","llm_powerful_configuration_id","llm_experimental_configuration_id",
+        "llm_fallback_configuration_id","tts_configuration_id"};
+    static constexpr std::array<std::string_view,2> routingFlags={"llm_randomizer_enabled","llm_fallback_enabled"};
+    for(const auto&[key,item]:*routing){
+        const bool uuidField=std::find(routingIds.begin(),routingIds.end(),key)!=routingIds.end();
+        const bool flagField=std::find(routingFlags.begin(),routingFlags.end(),key)!=routingFlags.end();
+        if(uuidField){if(!item.string()||(!item.string()->empty()&&!isCanonicalUuid(*item.string())))
+                return invalidSchemaValue<Snapshot>("effective routing UUID mismatch");
+            parsed.routing.emplace_back(key,*item.string());}
+        else if(flagField){if(!item.boolean())return invalidSchemaValue<Snapshot>("effective routing flag mismatch");
+            parsed.routing.emplace_back(key,*item.boolean());}
+        else return invalidSchemaValue<Snapshot>("unknown effective routing field");
+    }
+    static constexpr std::array<std::string_view,2> memoryFields={"recent_turn_limit","knowledge_limit"};
+    static constexpr std::array<std::string_view,8> narratorFields={"enabled","name","context_visibility","inline_mode",
+        "welcome_events","random_events","quest_events","book_events"};
+    static constexpr std::array<std::string_view,3> safetyFields={"actions_enabled","allow_hostile","allow_creatures"};
+    const auto validSettingPath=[&](std::string_view path,std::string_view prefix,const auto& fields){
+        if(!path.starts_with(prefix))return false;
+        const auto suffix=path.substr(prefix.size());
+        return std::find(fields.begin(),fields.end(),suffix)!=fields.end();};
+    for(const auto&[key,item]:*sources){
+        const bool validPath=validSettingPath(key,"settings.memory.",memoryFields)
+            ||validSettingPath(key,"settings.narrator.",narratorFields)||validSettingPath(key,"settings.safety.",safetyFields)
+            ||(std::string_view(key).starts_with("routing.")
+                &&(std::find(routingIds.begin(),routingIds.end(),std::string_view(key).substr(8))!=routingIds.end()
+                    ||std::find(routingFlags.begin(),routingFlags.end(),std::string_view(key).substr(8))!=routingFlags.end()));
+        if(!validPath||!item.string()||(*item.string()!="default"&&*item.string()!="global"
+                &&*item.string()!="core_profile"&&*item.string()!="npc"))
+            return invalidSchemaValue<Snapshot>("effective settings source map mismatch");
+        parsed.sourceMap.emplace_back(key,*item.string());
+    }
+    return Result<Snapshot>::success(std::move(parsed));
+}
+
 Result<ActionTerminalStatus> parseTerminalStatus(const json::Object& object)
 {
     auto status = requireString(object, "status");
@@ -855,7 +952,7 @@ Result<ControlsResponse> parseControlsResponse(
     auto object=parseObject(body,headers,"almsivi.controls.v1",limits);
     if(!object)return Result<ControlsResponse>::failure(object.error());
     if(!hasExactly(object.value(),{"schema","message_id","request_id","session_id","generation","target",
-            "selected_model_slot_id","selected_profile_id","narrator_profile_id","model_slots","profiles"}))
+            "selected_model_slot_id","selected_profile_id","narrator_profile_id","effective_settings","model_slots","profiles"}))
         return invalidSchemaValue<ControlsResponse>("controls response fields mismatch");
     auto message=requireUuid(object.value(),"message_id");auto request=requireUuid(object.value(),"request_id");
     auto session=requireUuid(object.value(),"session_id");auto generation=requireUnsigned(object.value(),"generation");
@@ -878,13 +975,16 @@ Result<ControlsResponse> parseControlsResponse(
     if(!selectedModel)return invalidSchemaValue<ControlsResponse>(selectedModel.error().message);
     if(!selectedProfile)return invalidSchemaValue<ControlsResponse>(selectedProfile.error().message);
     if(!narratorProfile)return invalidSchemaValue<ControlsResponse>(narratorProfile.error().message);
+    const auto* effectiveValue=json::find(object.value(),"effective_settings");auto effective=parseEffectiveSettings(*effectiveValue);
+    if(!effective)return invalidSchemaValue<ControlsResponse>(effective.error().message);
     const auto* slotsValue=json::find(object.value(),"model_slots");const auto* slots=slotsValue?slotsValue->array():nullptr;
     const auto* profilesValue=json::find(object.value(),"profiles");const auto* profiles=profilesValue?profilesValue->array():nullptr;
     if(!slots||slots->size()>32)return invalidSchemaValue<ControlsResponse>("model slots must be an array of at most 32 items");
     if(!profiles||profiles->size()>100)return invalidSchemaValue<ControlsResponse>("profiles must be an array of at most 100 items");
     ControlsResponse parsed{MessageId(std::move(message).value()),RequestId(std::move(request).value()),
         SessionId(std::move(session).value()),Generation(generation.value()),std::move(target).value(),
-        std::move(selectedModel).value(),std::move(selectedProfile).value(),std::move(narratorProfile).value(),{}, {}};
+        std::move(selectedModel).value(),std::move(selectedProfile).value(),std::move(narratorProfile).value(),
+        std::move(effective).value(),{}, {}};
     std::set<std::string> unique;
     for(const auto& value:*slots){const auto* row=value.object();
         if(!row||!hasExactly(*row,{"configuration_id","name","revision","driver","model"}))

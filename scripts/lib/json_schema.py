@@ -31,10 +31,17 @@ def validate(value: Any, schema: dict[str, Any], path: str = "$") -> None:
         if missing:
             raise SchemaError(f"{path}: missing required keys {missing}")
         properties = schema.get("properties", {})
+        pattern_properties = schema.get("patternProperties", {})
         additional = schema.get("additionalProperties", True)
         for key, item in value.items():
             if key in properties:
                 validate(item, properties[key], f"{path}.{key}")
+                continue
+            matched_patterns = [pattern_schema for pattern, pattern_schema in pattern_properties.items()
+                                if re.search(pattern, key) is not None]
+            if matched_patterns:
+                for pattern_schema in matched_patterns:
+                    validate(item, pattern_schema, f"{path}.{key}")
             elif additional is False:
                 raise SchemaError(f"{path}: unexpected key {key!r}")
             elif isinstance(additional, dict):

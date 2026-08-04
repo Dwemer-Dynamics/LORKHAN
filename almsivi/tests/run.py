@@ -100,6 +100,15 @@ check("history and diagnostics bindings open their named panels", all(fragment i
     "ALMSIVI_Diagnostics',adapter.callback(function() togglePanel('diagnostics')"]))
 check("player-local vanilla dialogue is forwarded as bounded context", all(fragment in player_lua for fragment in [
     "DialogueResponse=function(event)", "adapter.dialogueResponse(event)", "ALMSIVI_VANILLA_DIALOGUE"]))
+controls_schema = text(ROOT / "almsivi" / "schemas" / "v1" / "controls.schema.json")
+native_parser = text(ROOT / "components" / "almsivi" / "src" / "protocol_response.cpp")
+check("target-effective settings are strict and keep local presentation client-owned", all(fragment in controls_schema for fragment in [
+    '"effective_settings"', '"almsivi.effective-settings.v1"', '"change_token"', '"source_map"'])
+      and all(fragment in native_parser for fragment in ["parseEffectiveSettings", "effective settings source map mismatch"])
+      and all(fragment in native_binding for fragment in ['result["effective_settings"]=effective', 'effective["change_token"]'])
+      and all(fragment in player_lua for fragment in ["controls.effective_settings", "targetSettings.safety",
+          "effective and effective.change_token", "refreshSessionControls(nil,true)"])
+      and "serverPresentation" not in player_lua)
 check("OpenMW Scripts page exposes bounded ALMSIVI TTS volume boost", all(fragment in settings for fragment in [
     "key='ttsVolumeBoost'", "default=3", "integer=true,min=1,max=4"]))
 check("conflict-free F6 and F7 defaults seed only once", all(fragment in settings for fragment in [
@@ -129,7 +138,8 @@ check("typed chat captures a target before UI mode and renders only focused chat
 check("typed chat uses one-line Enter submission and waits for target confirmation", all(fragment in player_script for fragment in [
     "player.consumeTextEdit(value)", "pendingTextSubmit=true",
     "event.code==input.KEY.Enter or event.code==input.KEY.NP_Enter",
-    "if shouldSubmit then submitText() elseif controlPanel then refreshSessionControls(controlPanel) else render() end"])
+    "if controlPanel then refreshSessionControls(controlPanel)",
+    "if shouldSubmit then submitText() else render() end"])
       and "multiline=false" in chatbox_script)
 check("focused selectors and targeted NPC tools replace the master dashboard", all(fragment in player_script for fragment in [
     "state.ui.panel=='actor-tools'", "state.ui.panel=='profile-menu'", "state.ui.panel=='modes'",
@@ -140,7 +150,7 @@ check("dynamic profile selector exposes server-validated narrator generation", a
     "native.selectSessionControl('narrator_profile_generate'", "preserves voice routing and enablement."]))
 check("nearby agent manager opens the selected actor profile controls", all(fragment in player_script for fragment in [
     "text='Manage profile for '..label", "pendingControlPanel='profiles'",
-    "elseif controlPanel then refreshSessionControls(controlPanel)", "pendingControlPanel=nil"]))
+    "if controlPanel then refreshSessionControls(controlPanel)", "pendingControlPanel=nil"]))
 global_script = text(SCRIPTS / "global.lua")
 check("global orchestrator output is delivered to the player-local script", all(fragment in global_script for fragment in [
     "local function currentPlayer()", "player:sendEvent(name,payload)", "local function flushPlayerEvents(player)",

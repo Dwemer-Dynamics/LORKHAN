@@ -74,15 +74,15 @@ test('context applies all bounded constants',function()
  eq(#snap.audience.items,12);eq(#snap.actorActivities.items,12);eq(#snap.inventory.items,48);eq(#snap.nearbyObjects.items,32);eq(#snap.activeEffects.items,32);eq(#snap.journal.items,32);eq(#snap.books.items,8);eq(#snap.recentVanillaDialogue.items,8);eq(#snap.contentFiles.items,256);truthy(snap.audience.truncated)
 end)
 test('vanilla dialogue is bounded and consumed by the next accepted turn',function()
- local b=fake.bridge() local s=orchestrator.new(b)
+ local b=fake.bridge() local s=orchestrator.new(b,nil,nil,function() return true end)
  orchestrator.configureSession(s,UUID.session)
  orchestrator.activate(s,npc,{})
- truthy(orchestrator.selectTarget(s,{identity=npc,distance=100,maxDistance=2048,dead=false,available=true}))
- for i=1,10 do truthy(orchestrator.recordVanillaDialogue(s,{source='openmw.DialogueResponse',text='line '..i})) end
+ local selected,selectReason=orchestrator.selectTarget(s,{identity=npc,distance=100,maxDistance=2048,dead=false,available=true});assert(selected,selectReason)
+ for i=1,10 do local recorded,recordReason=orchestrator.recordVanillaDialogue(s,{source='openmw.DialogueResponse',text='line '..i});assert(recorded,recordReason) end
  local request=b.nextTurnMetadata();request.text='What did you say?';request.input_key='vanilla-dialogue'
  request.language='en-US';request.speaker=playerId;request.context={};request.capabilities={'dialogue.text'}
  request.recent_action_results={};request.ui_source='almsivi_text'
- truthy(orchestrator.submitText(s,request))
+ local submitted,reason=orchestrator.submitText(s,request);assert(submitted,reason)
  local recent=b.submitted[1].payload.context.recentVanillaDialogue.items
  eq(#recent,8);eq(recent[1].text,'line 3');eq(recent[8].text,'line 10');eq(#s.recentVanillaDialogue,0)
 end)

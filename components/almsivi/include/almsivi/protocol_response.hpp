@@ -10,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -248,6 +249,20 @@ struct ControlsResponse {
         std::string name;
         std::uint64_t revision{};
     };
+    struct EffectiveSettings {
+        using RoutingValue = std::variant<std::string, bool>;
+        std::string schema;
+        std::string changeToken;
+        std::optional<std::string> profileId;
+        std::optional<std::uint64_t> profileRevision;
+        std::optional<std::string> coreProfileId;
+        std::optional<std::uint64_t> coreProfileRevision;
+        ClientMemorySettings memory;
+        ClientNarratorSettings narrator;
+        ClientSafetySettings safety;
+        std::vector<std::pair<std::string, RoutingValue>> routing;
+        std::vector<std::pair<std::string, std::string>> sourceMap;
+    };
     MessageId message;
     RequestId request;
     SessionId session;
@@ -256,6 +271,7 @@ struct ControlsResponse {
     std::optional<std::string> selectedModelSlotId;
     std::optional<std::string> selectedProfileId;
     std::optional<std::string> narratorProfileId;
+    EffectiveSettings effectiveSettings;
     std::vector<ModelSlot> modelSlots;
     std::vector<Profile> profiles;
 };

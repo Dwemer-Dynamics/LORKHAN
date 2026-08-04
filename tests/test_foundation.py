@@ -191,6 +191,11 @@ class FoundationTests(unittest.TestCase):
         bad = {"schema_version": 1, "rows": [{"id":"x", "claim":"x", "state":"DONE", "evidence":[], "extra":1}]}
         with self.assertRaises(SchemaError):
             validate(bad, schema)
+        patterned = {"type":"object", "additionalProperties":False,
+                     "patternProperties":{"^settings\\.":{"enum":["global", "core_profile", "npc"]}}}
+        validate({"settings.memory.enabled":"core_profile"}, patterned)
+        with self.assertRaises(SchemaError):
+            validate({"unexpected":"global"}, patterned)
 
     def test_offline_cache_miss(self):
         result = self.command(sys.executable, str(BOOTSTRAP), "bootstrap", "--cache-dir", str(self.temp / "none"),

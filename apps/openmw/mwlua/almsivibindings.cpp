@@ -495,6 +495,27 @@ namespace MWLua
                 if(m_controls->selectedModelSlotId)result["selected_model_slot_id"]=*m_controls->selectedModelSlotId;
                 if(m_controls->selectedProfileId)result["selected_profile_id"]=*m_controls->selectedProfileId;
                 if(m_controls->narratorProfileId)result["narrator_profile_id"]=*m_controls->narratorProfileId;
+                const auto& snapshot=m_controls->effectiveSettings;
+                sol::table effective(lua,sol::create),settings(lua,sol::create),memory(lua,sol::create),narrator(lua,sol::create);
+                sol::table safety(lua,sol::create),routing(lua,sol::create),sources(lua,sol::create);
+                effective["schema"]=snapshot.schema;effective["change_token"]=snapshot.changeToken;
+                if(snapshot.profileId)effective["profile_id"]=*snapshot.profileId;
+                if(snapshot.profileRevision)effective["profile_revision"]=*snapshot.profileRevision;
+                if(snapshot.coreProfileId)effective["core_profile_id"]=*snapshot.coreProfileId;
+                if(snapshot.coreProfileRevision)effective["core_profile_revision"]=*snapshot.coreProfileRevision;
+                memory["recent_turn_limit"]=snapshot.memory.recentTurnLimit;memory["knowledge_limit"]=snapshot.memory.knowledgeLimit;
+                narrator["enabled"]=snapshot.narrator.enabled;narrator["name"]=snapshot.narrator.name;
+                narrator["context_visibility"]=snapshot.narrator.contextVisibility;narrator["inline_mode"]=snapshot.narrator.inlineMode;
+                narrator["welcome_events"]=snapshot.narrator.welcomeEvents;narrator["random_events"]=snapshot.narrator.randomEvents;
+                narrator["quest_events"]=snapshot.narrator.questEvents;narrator["book_events"]=snapshot.narrator.bookEvents;
+                safety["actions_enabled"]=snapshot.safety.actionsEnabled;safety["allow_hostile"]=snapshot.safety.allowHostile;
+                safety["allow_creatures"]=snapshot.safety.allowCreatures;
+                settings["memory"]=memory;settings["narrator"]=narrator;settings["safety"]=safety;
+                for(const auto&[key,value]:snapshot.routing){if(const auto* text=std::get_if<std::string>(&value))routing[key]=*text;
+                    else routing[key]=std::get<bool>(value);}
+                for(const auto&[key,source]:snapshot.sourceMap)sources[key]=source;
+                effective["settings"]=settings;effective["routing"]=routing;effective["source_map"]=sources;
+                result["effective_settings"]=effective;
                 for(std::size_t index=0;index<m_controls->modelSlots.size();++index){const auto& slot=m_controls->modelSlots[index];
                     sol::table row(lua,sol::create);row["configuration_id"]=slot.configurationId;row["name"]=slot.name;
                     row["revision"]=slot.revision;row["driver"]=slot.driver;row["model"]=slot.model;slots[index+1]=row;}

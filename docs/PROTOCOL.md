@@ -74,7 +74,7 @@ version/API plus the ordered content list and file identity metadata, never prop
 | `POST /sessions` | `almsivi.session.init.v1` | accepted session/capabilities/config revision |
 | `DELETE /sessions/{id}` | no body; UUID `Idempotency-Key` | `almsivi.session.ended.v1` |
 | `POST /turns` | `almsivi.turn.v1` | accepted request + first event cursor |
-| `POST /controls/query` | `almsivi.controls.query.v1` | safe server-owned model slots, NPC profiles, and installation narrator ID |
+| `POST /controls/query` | `almsivi.controls.query.v1` | safe server-owned model slots, NPC profiles, narrator ID, and target-effective settings snapshot |
 | `POST /controls/select` | `almsivi.controls.select.v1` | idempotent session model/profile selection or revision-safe NPC/narrator generation |
 | `POST /stt` | metadata + audio | transcript event or typed failure |
 | `GET /events` | session/cursor/wait | `almsivi.events.v1` |
@@ -110,6 +110,12 @@ revision-safe narrator-generation operation. The chosen
 profile affects that actor's profile and prompt sources, while memory, relationship, knowledge, and
 narrative retrieval remain scoped to the session profile/playthrough. Every accepted turn freezes the
 assembled prompt and selected provider revision before worker execution.
+
+Every controls response includes `almsivi.effective-settings.v1` for the active target. It carries the
+resolved memory, narrator, safety, and routing values; Global/Core Profile/NPC source metadata; bound profile
+revisions; and a deterministic change token. Local hotkeys, HUD visibility, panel layout, and TTS volume boost
+remain OpenMW preferences and are never replaced when the target changes. Autonomy settings are intentionally
+absent from this milestone's client snapshot.
 
 Server response events have a strictly increasing per-session `sequence`. The current v1 slice contracts exactly `turn.accepted`, `dialogue.delta`, `dialogue.complete`, `speech.ready`, `action.intent`, `turn.complete`, `turn.failed`, and `turn.cancelled`. Bounded `dialogue.delta` text is display-only progress; the validated `dialogue.complete` remains the durable utterance and memory source. TTS runs as a separate durable job after the dialogue is committed, and every `speech.ready` descriptor carries its `dialogue_message_id` so delayed group speech remains correctly ordered. Every envelope includes `message_id`, `request_id`, `turn_id`, `session_id`, `generation`, `sequence`, `created_at`, type and strict payload. The events response is capped at 100 items.
 

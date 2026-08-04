@@ -179,15 +179,18 @@ local function sessionControls()
     return ok and value or nil
 end
 
-local function refreshSessionControls(panel)
+local function refreshSessionControls(panel,quiet)
     if not state.ui.target then state.ui.status='actor target required' render() return end
     if not nativeOk or not native or not native.requestSessionControls then
-        state.ui.status='session controls unavailable' render() return
+        if not quiet then state.ui.status='session controls unavailable' render() end
+        return
     end
     local request,error=native.requestSessionControls(state.ui.target)
-    if not request then state.ui.status=tostring(error or 'session controls unavailable') else state.ui.status='loading controls' end
-    state.ui.panel=panel
-    render()
+    if not quiet then
+        if not request then state.ui.status=tostring(error or 'session controls unavailable') else state.ui.status='loading controls' end
+        if panel then state.ui.panel=panel end
+        render()
+    end
 end
 
 local function selectSessionControl(kind,selection)
@@ -843,8 +846,11 @@ applySettings=function()
     local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
     local server=session and session.settings or nil
     local serverBehavior=server and server.behavior or {}
-    local serverPresentation=server and server.presentation or {}
-    local serverSafety=server and server.safety or {}
+    local controls=sessionControls()
+    local effective=controls and state.ui.target and identity.same(controls.target,state.ui.target)
+        and controls.effective_settings or nil
+    local targetSettings=effective and effective.settings or {}
+    local serverSafety=targetSettings.safety or {}
     local function restricted(localValue,serverValue,localDefault)
         if localValue==nil then localValue=localDefault end
         return localValue==true and serverValue==true
@@ -887,10 +893,10 @@ applySettings=function()
             combatBarkPeriodSeconds=boundedMaximum(behaviorSettings and behaviorSettings:get('combatBarkPeriodSeconds'),serverBehavior.combatBarkPeriodSeconds,20),
             openMicSensitivity=behaviorSettings and behaviorSettings:get('openMicSensitivity'),
             openMicEndDelayMs=behaviorSettings and behaviorSettings:get('openMicEndDelayMs')},
-        presentation={showStatusHud=restricted(presentationSettings and presentationSettings:get('showStatusHud'),serverPresentation.showStatusHud,true),
-            transcriptRows=boundedMinimum(presentationSettings and presentationSettings:get('transcriptRows'),serverPresentation.transcriptRows,8),
-            ttsVolumeBoost=boundedMinimum(ttsVolumeBoost,serverPresentation.ttsVolumeBoost,3)},
-        narrator=server and server.narrator or {},memory=server and server.memory or {},
+        presentation={showStatusHud=presentationSettings and presentationSettings:get('showStatusHud')==true,
+            transcriptRows=tonumber(presentationSettings and presentationSettings:get('transcriptRows')) or 12,
+            ttsVolumeBoost=tonumber(ttsVolumeBoost) or 3},
+        narrator=targetSettings.narrator or {},memory=targetSettings.memory or {},
     }
     local auto=current.autoActivate or {}
     local behavior=current.behavior or {}
@@ -906,7 +912,7 @@ applySettings=function()
         tostring(behavior.combatBarks),tostring(behavior.combatBarkPeriodSeconds),
         tostring(behavior.openMicSensitivity),tostring(behavior.openMicEndDelayMs),
         tostring(presentation.showStatusHud),tostring(presentation.transcriptRows),
-        tostring(presentation.ttsVolumeBoost),tostring(session and session.config_revision)},'|')
+        tostring(presentation.ttsVolumeBoost),tostring(effective and effective.change_token),tostring(session and session.config_revision)},'|')
     if signature==settingsSignature then return end
     settingsSignature=signature
     state.ui.statusHudVisible=presentation.showStatusHud==true
@@ -1054,6 +1060,7 @@ return {
             end
             local controls=sessionControls()
             local signature=controls and table.concat({tostring(controls.selected_model_slot_id),tostring(controls.selected_profile_id),
+                tostring(controls.effective_settings and controls.effective_settings.change_token),
                 tostring(#(controls.model_slots or {})),tostring(#(controls.profiles or {})),tostring(controls.pending)},'|') or ''
             if signature~=controlsSignature then controlsSignature=signature
                 if state.ui.visible and (state.ui.panel=='models' or state.ui.panel=='profiles') then render() end end
@@ -1113,7 +1120,11 @@ return {
             local controlPanel=pendingControlPanel
             pendingTextSubmit=false
             pendingControlPanel=nil
-            if shouldSubmit then submitText() elseif controlPanel then refreshSessionControls(controlPanel) else render() end
+            if controlPanel then refreshSessionControls(controlPanel)
+            else
+                refreshSessionControls(nil,true)
+                if shouldSubmit then submitText() else render() end
+            end
         end,
         ALMSIVI_TARGET_REJECTED=function(event)
             pendingTextSubmit=false

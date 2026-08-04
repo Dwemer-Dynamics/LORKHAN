@@ -47,7 +47,8 @@
         "scripts/test/lua-unix.sh",
         "scripts/test/lua-windows.ps1",
         "scripts/test/native.sh",
-        "scripts/test/validate-ci.sh"
+        "scripts/test/validate-ci.sh",
+        "scripts/tools/manage-openmw-profile.ps1"
       ],
       "source_repository": null,
       "source_commit": null,
@@ -135,6 +136,7 @@
         "almsivi/schemas/v1/action-result-accepted.schema.json",
         "almsivi/schemas/v1/action-result.schema.json",
         "almsivi/schemas/v1/common.schema.json",
+        "almsivi/schemas/v1/client-settings.schema.json",
         "almsivi/schemas/v1/controls-query.schema.json",
         "almsivi/schemas/v1/controls-select.schema.json",
         "almsivi/schemas/v1/controls.schema.json",
@@ -245,6 +247,10 @@
         "almsivi/files/scripts/ALMSIVI/tests/fake_openmw/openmw/core.lua",
         "almsivi/files/scripts/ALMSIVI/tests/fake_openmw/openmw/ui.lua",
         "almsivi/files/scripts/ALMSIVI/tests/run.lua",
+        "almsivi/files/scripts/ALMSIVI/ui/actor_tools.lua",
+        "almsivi/files/scripts/ALMSIVI/ui/chatbox.lua",
+        "almsivi/files/scripts/ALMSIVI/ui/notifications.lua",
+        "almsivi/files/scripts/ALMSIVI/ui/selector.lua",
         "almsivi/files/scripts/ALMSIVI/ui/state.lua",
         "almsivi/files/scripts/ALMSIVI/util.lua"
       ],
@@ -285,6 +291,7 @@
       "target_paths": [
         "README.md",
         "docs/ARCHITECTURE.md",
+        "docs/CHIM-DIALECTIC-PARITY-CLEANUP-PLAN.md",
         "docs/COMPATIBILITY-PLAN.md",
         "docs/CONTENT-ADDON-DEFERRED.md",
         "docs/ENGINE-INTEGRATION-PLAN.md",
