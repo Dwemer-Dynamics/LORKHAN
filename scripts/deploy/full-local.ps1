@@ -6,6 +6,8 @@ param(
     [string]$Configuration = 'Release',
     [string]$EngineSource,
     [string]$BuildRoot,
+    [ValidateRange(1024, 65535)]
+    [int]$ServerPort = 8089,
     [switch]$SkipServer,
     [switch]$SkipBuild,
     [switch]$SkipClient
@@ -24,6 +26,11 @@ $BuildRoot = [IO.Path]::GetFullPath($BuildRoot)
 $ClientRoot = [IO.Path]::GetFullPath($ClientRoot)
 $expectedEnginePin = 'f4bec41444214a7903bebd178389ca22ca13f646'
 $stageResults = [System.Collections.Generic.List[object]]::new()
+$reservedLocalPorts = @(8020, 8021, 8022, 8023, 8024, 8082, 8085, 8086, 12346)
+
+if ($reservedLocalPorts -contains $ServerPort) {
+    throw "Port $ServerPort is reserved by another Dwemer service. ALMSIVI uses dedicated port 8089 by default."
+}
 
 function Get-CMakeExecutable {
     $command = Get-Command cmake.exe -ErrorAction SilentlyContinue
@@ -48,6 +55,25 @@ function Convert-ToWslPath {
     $converted = (& wsl.exe -d $Distro -- wslpath -a -u $WindowsPath 2>&1)
     if ($LASTEXITCODE -ne 0) { throw "Could not convert to a WSL path: $WindowsPath" }
     return ($converted | Select-Object -Last 1).Trim()
+}
+
+function Find-MorrowindDataRoot {
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    $candidates.Add('C:\Program Files (x86)\Steam\steamapps\common\Morrowind\Data Files')
+    $openmwConfig = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games\OpenMW\openmw.cfg'
+    if (Test-Path -LiteralPath $openmwConfig -PathType Leaf) {
+        foreach ($line in [IO.File]::ReadAllLines($openmwConfig)) {
+            if ($line -notmatch '^\s*data\s*=\s*(.+?)\s*$') { continue }
+            $candidate = $Matches[1].Trim().Trim('"')
+            if ($candidate -ne '') { $candidates.Add($candidate) }
+        }
+    }
+    foreach ($candidate in $candidates) {
+        try { $resolved = [IO.Path]::GetFullPath($candidate) } catch { continue }
+        if ((Test-Path -LiteralPath (Join-Path $resolved 'Morrowind.esm') -PathType Leaf) -and
+            (Test-Path -LiteralPath (Join-Path $resolved 'Sound\Vo') -PathType Container)) { return $resolved }
+    }
+    throw 'Morrowind Data Files could not be found for the local voice catalog import.'
 }
 
 function Invoke-RobocopyMirror {
@@ -126,7 +152,10 @@ function Update-OpenMwUserConfiguration {
 }
 
 function Install-LaunchHelpers {
-    param([Parameter(Mandatory)][string]$Root)
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][int]$HttpPort
+    )
 
     $compatibilityProfile = Join-Path $Root 'Profiles\Compatibility'
     New-Item -ItemType Directory -Force -Path $compatibilityProfile | Out-Null
@@ -179,11 +208,12 @@ if (-not (Test-Path -LiteralPath $clientConfig -PathType Leaf)) { throw "The pri
 
 & wsl.exe -d DwemerAI4Skyrim3 -u root -- bash -lc 'service postgresql start >/dev/null; service apache2 start >/dev/null; service almsiviserver-worker start >/dev/null'
 if ($LASTEXITCODE -ne 0) { throw 'The ALMSIVI WSL services could not be started.' }
-$health = Invoke-RestMethod -Uri 'http://127.0.0.1:8089/ALMSIVIserver/api/v1/health' -TimeoutSec 5
+$health = Invoke-RestMethod -Uri 'http://127.0.0.1:@ALMSIVI_HTTP_PORT@/ALMSIVIserver/api/v1/health' -TimeoutSec 5
 if ($health.schema -ne 'almsivi.health.v1') { throw 'ALMSIVIserver returned an unexpected health response.' }
 $env:ALMSIVI_CLIENT_CONFIG = $clientConfig
 & $engine
 '@
+    $launchScript = $launchScript.Replace('@ALMSIVI_HTTP_PORT@', [string]$HttpPort)
     Write-Utf8NoBom -Path (Join-Path $Root 'Launch-ALMSIVI.ps1') -Content $launchScript
     Write-Utf8NoBom -Path (Join-Path $Root 'Play-ALMSIVI.cmd') -Content "@echo off`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0Launch-ALMSIVI.ps1`"`r`nif errorlevel 1 pause`r`n"
 
@@ -208,11 +238,12 @@ foreach ($requiredMod in $requiredMods) {
 
 & wsl.exe -d DwemerAI4Skyrim3 -u root -- bash -lc 'service postgresql start >/dev/null; service apache2 start >/dev/null; service almsiviserver-worker start >/dev/null'
 if ($LASTEXITCODE -ne 0) { throw 'The ALMSIVI WSL services could not be started.' }
-$health = Invoke-RestMethod -Uri 'http://127.0.0.1:8089/ALMSIVIserver/api/v1/health' -TimeoutSec 5
+$health = Invoke-RestMethod -Uri 'http://127.0.0.1:@ALMSIVI_HTTP_PORT@/ALMSIVIserver/api/v1/health' -TimeoutSec 5
 if ($health.schema -ne 'almsivi.health.v1') { throw 'ALMSIVIserver returned an unexpected health response.' }
 $env:ALMSIVI_CLIENT_CONFIG = $clientConfig
 & $engine --config $profile
 '@
+    $compatibilityLaunchScript = $compatibilityLaunchScript.Replace('@ALMSIVI_HTTP_PORT@', [string]$HttpPort)
     Write-Utf8NoBom -Path (Join-Path $Root 'Launch-ALMSIVI-Compatibility.ps1') -Content $compatibilityLaunchScript
     Write-Utf8NoBom -Path (Join-Path $Root 'Play-ALMSIVI-Compatibility.cmd') -Content "@echo off`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0Launch-ALMSIVI-Compatibility.ps1`"`r`nif errorlevel 1 pause`r`n"
     Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts\tools\manage-openmw-profile.ps1') -Destination (Join-Path $Root 'Manage-ALMSIVI-Profile.ps1') -Force
@@ -225,7 +256,7 @@ Play: Play-ALMSIVI.cmd
 Play with the recommended compatibility mods: Play-ALMSIVI-Compatibility.cmd
 Manage OpenMW content: Manage-ALMSIVI-Mods.cmd
 Manage compatibility mods and native OpenMW content: Manage-ALMSIVI-Compatibility-Mods.cmd
-Management UI: http://127.0.0.1:8089/ALMSIVIserver/manage
+Management UI: http://127.0.0.1:$HttpPort/ALMSIVIserver/manage
 
 Install a mod by extracting it into its own Mods\Mod Name folder. Open the
 ALMSIVI Compatibility Mod Manager, enable the folder and its content files,
@@ -276,8 +307,13 @@ try {
             if (-not (Test-Path -LiteralPath $serverDeploy -PathType Leaf)) { throw "Server deploy script not found: $serverDeploy" }
             $serverDeployWsl = Convert-ToWslPath -WindowsPath $serverDeploy
             $serverRootWsl = Convert-ToWslPath -WindowsPath $serverRoot
-            & wsl.exe -d $Distro -u root -- bash $serverDeployWsl $serverRootWsl
+            & wsl.exe -d $Distro -u root -- env "ALMSIVI_HTTP_PORT=$ServerPort" bash $serverDeployWsl $serverRootWsl
             if ($LASTEXITCODE -ne 0) { throw "ALMSIVIserver WSL deploy failed with exit code $LASTEXITCODE." }
+
+            $gameDataRoot = Find-MorrowindDataRoot
+            $gameDataWsl = Convert-ToWslPath -WindowsPath $gameDataRoot
+            & wsl.exe -d $Distro -u root -- env ALMSIVI_CONFIG=/etc/almsiviserver/server.php php /var/www/html/ALMSIVIserver/scripts/import-morrowind-voices.php $gameDataWsl
+            if ($LASTEXITCODE -ne 0) { throw "Morrowind voice catalog import failed with exit code $LASTEXITCODE." }
         }
     }
 
@@ -327,9 +363,9 @@ try {
                 if ($cacheBackup -and (Test-Path -LiteralPath $cacheBackup)) { Remove-Item -LiteralPath $cacheBackup -Recurse -Force }
             }
 
-            & (Join-Path $PSScriptRoot 'configure-local-client.ps1') -Distro $Distro -Output $configTarget -MediaCacheRoot $cacheTarget
+            & (Join-Path $PSScriptRoot 'configure-local-client.ps1') -Distro $Distro -Output $configTarget -MediaCacheRoot $cacheTarget -ServerPort $ServerPort
             Update-OpenMwUserConfiguration -DataRoot $dataTarget
-            Install-LaunchHelpers -Root $ClientRoot
+            Install-LaunchHelpers -Root $ClientRoot -HttpPort $ServerPort
 
             $sourceHash = (Get-FileHash -LiteralPath (Join-Path $runtimeSource 'openmw.exe') -Algorithm SHA256).Hash
             $deployedHash = (Get-FileHash -LiteralPath (Join-Path $runtimeTarget 'openmw.exe') -Algorithm SHA256).Hash

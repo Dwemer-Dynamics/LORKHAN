@@ -442,7 +442,9 @@ local function actorState(actor, player, modules)
             'speechcraft','handtohand'})
     end
     local record=npc and safe(npc.record,actor)
-    if record then state.identity={race=record.race,class=record.class,is_male=record.isMale,is_essential=record.isEssential} end
+    if record then state.identity={race=record.race,class=record.class,gender=record.isMale and 'Male' or 'Female',
+        is_male=record.isMale,is_essential=record.isEssential,primary_faction=record.primaryFaction,
+        is_werewolf=safe(npc.isWerewolf,actor)==true} end
     if modules.types and modules.types.Player and safe(modules.types.Player.objectIsInstance,actor) then
         state.birthsign=safe(modules.types.Player.getBirthSign,actor)
     end

@@ -16,7 +16,7 @@ function M.onAction(state,name,send)
 end
 function M.nearby(state,candidates,registry) local list=targeting.nearby(candidates,registry) ui.setNearby(state.ui,list) return list end
 function M.event(state,event)
-    if event.type=='dialogue.delta' then ui.delta(state.ui,event.payload.speaker,event.payload.text)
+    if event.type=='dialogue.delta' then ui.delta(state.ui,event.payload.speaker or state.ui.target,event.payload.text)
     elseif event.type=='dialogue.complete' then ui.final(state.ui,event.payload.speaker,event.payload.text)
     elseif event.type=='turn.failed' or event.type=='turn.cancelled' then ui.setStatus(state.ui,'failed')
     elseif event.type=='turn.complete' then ui.setStatus(state.ui,'ready')

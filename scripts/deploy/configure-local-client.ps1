@@ -2,7 +2,9 @@
 param(
     [string]$Distro = 'DwemerAI4Skyrim3',
     [string]$Output = (Join-Path $PSScriptRoot '..\..\.local\almsivi-client.conf'),
-    [string]$MediaCacheRoot = 'C:\Modlists\ALMSIVI\Data\ALMSIVI\cache'
+    [string]$MediaCacheRoot = 'C:\Modlists\ALMSIVI\Data\ALMSIVI\cache',
+    [ValidateRange(1024, 65535)]
+    [int]$ServerPort = 8089
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,7 +51,7 @@ if ($contentFingerprint -notmatch '^sha256:[0-9a-f]{64}$') {
     $contentFingerprint = 'sha256:0000000000000000000000000000000000000000000000000000000000000000'
 }
 $lines = @(
-    'base_url=http://127.0.0.1:8089/ALMSIVIserver/api/v1',
+    "base_url=http://127.0.0.1:$ServerPort/ALMSIVIserver/api/v1",
     "pairing_key=$pairingKey",
     "installation_id=$installationId",
     "profile_id=$profileId",

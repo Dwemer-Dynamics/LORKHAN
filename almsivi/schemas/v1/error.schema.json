@@ -6,8 +6,11 @@
     "code": {
       "enum": [
         "action_disabled",
+        "action_parameters_invalid",
         "action_result_expired",
         "action_result_mismatch",
+        "action_target_invalid",
+        "action_tier_mismatch",
         "cursor_expired",
         "duplicate_conflict",
         "forbidden",

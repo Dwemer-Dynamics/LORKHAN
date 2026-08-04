@@ -111,9 +111,9 @@ profile affects that actor's profile and prompt sources, while memory, relations
 narrative retrieval remain scoped to the session profile/playthrough. Every accepted turn freezes the
 assembled prompt and selected provider revision before worker execution.
 
-Server response events have a strictly increasing per-session `sequence`. The current v1 slice contracts exactly `turn.accepted`, `dialogue.complete`, `speech.ready`, `action.intent`, `turn.complete`, `turn.failed`, and `turn.cancelled`. Every envelope includes `message_id`, `request_id`, `turn_id`, `session_id`, `generation`, `sequence`, `created_at`, type and strict payload. The events response is capped at 100 items.
+Server response events have a strictly increasing per-session `sequence`. The current v1 slice contracts exactly `turn.accepted`, `dialogue.delta`, `dialogue.complete`, `speech.ready`, `action.intent`, `turn.complete`, `turn.failed`, and `turn.cancelled`. Bounded `dialogue.delta` text is display-only progress; the validated `dialogue.complete` remains the durable utterance and memory source. TTS runs as a separate durable job after the dialogue is committed, and every `speech.ready` descriptor carries its `dialogue_message_id` so delayed group speech remains correctly ordered. Every envelope includes `message_id`, `request_id`, `turn_id`, `session_id`, `generation`, `sequence`, `created_at`, type and strict payload. The events response is capped at 100 items.
 
-`dialogue.complete` is the final utterance. Duplicate events by `(session_id, sequence, message_id)` are ignored. Cursor gaps force bounded replay, never guessed ordering. Streaming deltas/status, configuration/notice and resync variants remain a future v1 amendment rather than accepted open variants.
+`dialogue.complete` is the final utterance. Duplicate events by `(session_id, sequence, message_id)` are ignored. Cursor gaps force bounded replay, never guessed ordering. Configuration/notice and resync variants remain future amendments rather than accepted open variants.
 
 ## Action intent and result
 

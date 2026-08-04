@@ -402,6 +402,25 @@ namespace MWLua
                 sol::table result(lua, sol::create);
                 result["session_id"] = m_session->value();
                 result["generation"] = m_service->generation().value();
+                result["config_revision"]=m_configRevision;
+                if(m_clientSettings){const auto& settings=*m_clientSettings;
+                    sol::table document(lua,sol::create),behavior(lua,sol::create),memory(lua,sol::create),narrator(lua,sol::create),presentation(lua,sol::create),safety(lua,sol::create);
+                    document["schema"]="almsivi.client-settings.v1";
+                    behavior["autoGreeting"]=settings.behavior.autoGreeting;behavior["rechat"]=settings.behavior.rechat;
+                    behavior["rechatDelaySeconds"]=settings.behavior.rechatDelaySeconds;behavior["rechatMaxDepth"]=settings.behavior.rechatMaxDepth;
+                    behavior["boredom"]=settings.behavior.boredom;behavior["boredomDelaySeconds"]=settings.behavior.boredomDelaySeconds;
+                    behavior["combatBarks"]=settings.behavior.combatBarks;behavior["combatBarkPeriodSeconds"]=settings.behavior.combatBarkPeriodSeconds;
+                    memory["recentTurnLimit"]=settings.memory.recentTurnLimit;memory["knowledgeLimit"]=settings.memory.knowledgeLimit;
+                    narrator["enabled"]=settings.narrator.enabled;narrator["name"]=settings.narrator.name;
+                    narrator["contextVisibility"]=settings.narrator.contextVisibility;narrator["inlineMode"]=settings.narrator.inlineMode;
+                    narrator["welcomeEvents"]=settings.narrator.welcomeEvents;narrator["randomEvents"]=settings.narrator.randomEvents;
+                    narrator["questEvents"]=settings.narrator.questEvents;narrator["bookEvents"]=settings.narrator.bookEvents;
+                    presentation["showStatusHud"]=settings.presentation.showStatusHud;presentation["transcriptRows"]=settings.presentation.transcriptRows;
+                    presentation["ttsVolumeBoost"]=settings.presentation.ttsVolumeBoost;
+                    safety["actionsEnabled"]=settings.safety.actionsEnabled;safety["allowHostile"]=settings.safety.allowHostile;
+                    safety["allowCreatures"]=settings.safety.allowCreatures;
+                    document["behavior"]=behavior;document["memory"]=memory;document["narrator"]=narrator;
+                    document["presentation"]=presentation;document["safety"]=safety;result["settings"]=document;}
                 return sol::make_object(lua, result);
             }
 
@@ -769,7 +788,8 @@ namespace MWLua
                         auto parsed = almsivi::parseSessionAcceptedResponse(result.payload, jsonHeaders());
                         if (parsed)
                         {
-                            m_session = parsed.value().session; m_cursor = parsed.value().eventCursor;
+                            m_session = parsed.value().session;m_configRevision=parsed.value().configRevision;
+                            m_clientSettings=parsed.value().clientSettings;m_cursor = parsed.value().eventCursor;
                             m_status = "ready"; m_error.clear(); m_initRequest.reset();
                         }
                         else
@@ -837,7 +857,7 @@ namespace MWLua
                 if (!m_service) return false;
                 auto result = m_service->cancelGeneration(almsivi::Generation(generation));
                 if (!result) return false;
-                m_session.reset(); m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();beginSession();
+                m_session.reset();m_clientSettings.reset();m_configRevision.clear();m_pollRequest.reset();m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();beginSession();
                 m_status = "connecting";
                 return true;
             }
@@ -903,6 +923,9 @@ namespace MWLua
                 switch (event.type)
                 {
                     case almsivi::ProtocolEventType::turn_accepted: result["type"] = "turn.accepted"; break;
+                    case almsivi::ProtocolEventType::dialogue_delta: {
+                        result["type"] = "dialogue.delta";
+                        payload["text"] = std::get<almsivi::DialogueDeltaEventPayload>(event.payload).text; break; }
                     case almsivi::ProtocolEventType::dialogue_complete: {
                         result["type"] = "dialogue.complete";
                         const auto& item = std::get<almsivi::DialogueCompleteEventPayload>(event.payload);
@@ -974,7 +997,8 @@ namespace MWLua
                         break; }
                     case almsivi::ProtocolEventType::speech_ready: {
                         result["type"] = "speech.ready"; const auto& item = std::get<almsivi::SpeechReadyEventPayload>(event.payload);
-                        payload["media_id"] = item.media.value(); payload["sha256"] = item.sha256; payload["bytes"] = item.bytes;
+                        payload["media_id"] = item.media.value(); payload["dialogue_message_id"] = item.dialogueMessage.value();
+                        payload["sha256"] = item.sha256; payload["bytes"] = item.bytes;
                         payload["codec"] = item.codec == almsivi::MediaCodec::wav ? "wav" : item.codec == almsivi::MediaCodec::ogg ? "ogg" : "mp3";
                         payload["duration_ms"] = item.durationMs; payload["expires_at"] = item.expiresAt; break; }
                 }
@@ -985,6 +1009,8 @@ namespace MWLua
             std::optional<ClientConfig> m_config;
             std::unique_ptr<almsivi::BridgeService> m_service;
             std::optional<almsivi::SessionId> m_session;
+            std::optional<almsivi::ClientSettings> m_clientSettings;
+            std::string m_configRevision;
             std::optional<almsivi::RequestId> m_initRequest;
             std::optional<almsivi::RequestId> m_pollRequest;
             std::optional<almsivi::RequestId> m_controlsRequest;

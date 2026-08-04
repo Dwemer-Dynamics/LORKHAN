@@ -80,7 +80,8 @@ check("correlation identifiers require UUID format", "function M.isUuid" in prot
 check("orchestrator does not fabricate identifiers", "local-request-" not in orchestrator and "local-turn-" not in orchestrator)
 check("polled events are internal DTOs", "validatePolledEvent" in protocol and "almsivi.event.v1" not in protocol)
 check("ui source has no invented wire default", "ui_source=args.ui_source" in protocol and "almsivi.overlay" not in protocol)
-check("cursor gaps rejected", "cursor_gap" in text(SCRIPTS / "protocol.lua"))
+check("native-authenticated cursor gaps recover without replaying duplicates",
+      "cursor_resynced" in protocol and "event.sequence <= cursor" in protocol)
 check("actor self identity required", "identity.same(command.actor,state.identity)" in text(SCRIPTS / "actor_executor.lua"))
 check("vanilla Activate not consumed", "return false -- built-in Activate" in text(SCRIPTS / "player_state.lua"))
 settings = text(SCRIPTS / "settings.lua")
@@ -101,6 +102,12 @@ check("OpenMW settings rows have required localization metadata", all(fragment i
     "name='ModeMenu_name',description='ModeMenu_description'",
     "name='ActorTools_name',description='ActorTools_description'"]))
 player_script = text(SCRIPTS / "player.lua")
+check("dialogue responses remain visible when the persistent status HUD is disabled", all(fragment in player_script for fragment in [
+    "local dialogueNotification=notifications.new()", "notifications.active(dialogueNotification)",
+    "notifications.show(dialogueNotification,displayName(speaker)..': '..event.payload.text,duration)",
+    "wordWrap=dialogueVisible"]))
+check("rapid UI state changes update existing elements instead of recreating them", all(fragment in player_script for fragment in [
+    "statusElement.layout=layout statusElement:update()", "element.layout=layout element:update()"]))
 check("player has no duplicate hardcoded ALMSIVI keys", all(key not in player_script for key in [
     "input.KEY.F6", "input.KEY.F7", "input.KEY.F8"]))
 check("typed chat fallback follows the configured semantic binding", all(fragment in player_script for fragment in [

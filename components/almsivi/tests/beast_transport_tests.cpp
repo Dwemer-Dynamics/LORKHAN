@@ -347,7 +347,7 @@ void testSessionTurnAndCorrelation()
             CHECK(request.body.find("\"created_at\":\"2026-07-18T20:00:00Z\"") != std::string::npos);
             sendJson(socket, 201, std::string(R"({"schema":"almsivi.session.accepted.v1","message_id":")")
                 + kMessage + R"(","session_id":")" + kSession
-                + R"(","generation":7,"capabilities":["dialogue.text"],"config_revision":"test","event_cursor":0})");
+                + R"(","generation":7,"capabilities":["dialogue.text"],"config_revision":"test","client_settings":{"schema":"almsivi.client-settings.v1","behavior":{"auto_greeting":false,"rechat":false,"rechat_delay_seconds":45,"rechat_max_depth":10,"boredom":false,"boredom_delay_seconds":180,"combat_barks":false,"combat_bark_period_seconds":20},"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"random_events":false,"quest_events":false,"book_events":false},"presentation":{"show_status_hud":true,"transcript_rows":8,"tts_volume_boost":3},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"event_cursor":0})");
         });
         almsivi::BeastTransport transport(url(server.port()), almsivi::InstallationId(kInstallation), token(), cacheRoot());
         auto result = transport.execute(init(), {});

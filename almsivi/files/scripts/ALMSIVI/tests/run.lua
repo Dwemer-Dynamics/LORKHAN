@@ -37,14 +37,28 @@ end)
 test('wire validators reject uppercase UUID and zero-byte media',function()
  eq(protocol.isUuid('00000000-0000-4000-8000-000000000001'),true)
  eq(protocol.isUuid('00000000-0000-4000-8000-00000000000A'),false)
- local speech=event(1,'speech.ready',3,{media_id=UUID.message,sha256=string.rep('a',64),bytes=0,codec='wav',duration_ms=1,expires_at='2026-07-19T00:00:00Z'})
+ local speech=event(1,'speech.ready',3,{media_id=UUID.message,dialogue_message_id=UUID.message,sha256=string.rep('a',64),bytes=0,codec='wav',duration_ms=1,expires_at='2026-07-19T00:00:00Z'})
  local ok,reason=protocol.validatePolledEvent(speech);eq(ok,nil);eq(reason,'invalid_speech_bytes')
  speech.payload.bytes=4;speech.payload.duration_ms=0;ok,reason=protocol.validatePolledEvent(speech);eq(ok,nil);eq(reason,'invalid_speech_duration')
 end)
-test('event ordering dedup and cursor gaps',function()
+test('event ordering dedup and cursor recovery',function()
  local c=protocol.CursoredEvents(UUID.session,3) truthy(c:accept(event(1,'turn.accepted',3)))
  local ok,reason=c:accept(event(1,'turn.accepted',3)); eq(ok,false);eq(reason,'duplicate_event')
- ok,reason=c:accept(event(3,'turn.complete',3));eq(ok,nil);eq(reason,'cursor_gap');eq(c:cursor(),1)
+ ok,reason=c:accept(event(3,'turn.complete',3));truthy(ok);eq(reason,'cursor_resynced');eq(c:cursor(),3)
+end)
+test('speaker-less streaming delta uses the selected target',function()
+ local s=player.new();s.ui.target=npc
+ player.event(s,event(1,'dialogue.delta',3,{text='Welcome.'}))
+ eq(s.ui.subtitle.speaker.record_id,'fargoth');eq(s.ui.subtitle.text,'Welcome.')
+end)
+test('OpenMW async callback retains its package identifier',function()
+ local savedLoaded=package.loaded['openmw.async'];local savedPreload=package.preload['openmw.async']
+ package.loaded['openmw.async']=nil
+ local asyncPackage={}
+ asyncPackage.callback=function(self,fn)eq(self,asyncPackage);eq(type(fn),'function');return fn end
+ package.preload['openmw.async']=function()return asyncPackage end
+ local fn=function()return true end;eq(openmwAdapter.callback(fn),fn)
+ package.loaded['openmw.async']=savedLoaded;package.preload['openmw.async']=savedPreload
 end)
 test('future save disables and cannot overwrite',function()
  local raw={schemaVersion=99,secret='do-not-touch'} local loaded,meta=storage.load(raw,4)
@@ -67,6 +81,13 @@ test('conversation stale generation and exact terminal',function()
  local s=conversation.new(1);truthy(conversation.setTarget(s,npc));truthy(conversation.begin(s,UUID.request,UUID.turn,'input'))
  local ok,reason=conversation.apply(s,event(1,'turn.complete',0));eq(ok,false);eq(reason,'stale_generation')
  truthy(conversation.apply(s,event(1,'turn.complete',1)));ok,reason=conversation.apply(s,event(2,'turn.complete',1));eq(ok,false);eq(reason,'duplicate_terminal')
+end)
+test('player event delivery failure cannot strand an active turn',function()
+ local b=fake.bridge();local s=orchestrator.new(b,function()error('ui delivery failed')end)
+ s.sessionId=UUID.session;s.events=protocol.CursoredEvents(UUID.session,1)
+ truthy(conversation.setTarget(s.conversation,npc));truthy(conversation.begin(s.conversation,UUID.request,UUID.turn,'input'))
+ b.results={event(1,'turn.accepted',1,{status='accepted'}),event(2,'turn.complete',1,{status='complete'})}
+ eq(orchestrator.poll(s),2);truthy(s.conversation.turn.terminal);eq(s.conversation.turn.status,'complete')
 end)
 test('action capability authority expiry exact parameters and limits',function()
  local state=actions.new({'action.ai.follow'}) local registry=identity.Registry();registry:activate(npc,{});registry:activate(playerId,{})
@@ -119,7 +140,7 @@ test('media prepare handoff is opaque generation-bound and fake-adapter tested',
  orchestrator.configureSession(s,UUID.session);s.conversation.turn={requestId=UUID.request,turnId=UUID.turn,generation=1,status='accepted',terminal=false}
  truthy(s.events:accept(event(1,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Hello.'})))
  truthy(conversation.apply(s.conversation,event(1,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Hello.'})))
- local descriptor={media_id='00000000-0000-4000-8000-000000000005',sha256=string.rep('a',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
+ local descriptor={media_id='00000000-0000-4000-8000-000000000005',dialogue_message_id=UUID.message,sha256=string.rep('a',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
  b.results={event(2,'speech.ready',1,descriptor)};eq(orchestrator.poll(s),1);eq(#b.prepared,1);eq(b.prepared[1].media_id,descriptor.media_id);eq(b.prepared[1].path,nil);eq(b.prepared[1].url,nil)
  b.media[descriptor.media_id]={state='ready'};orchestrator.poll(s)
   local speak=emitted[#emitted];eq(speak.name,'ALMSIVI_ACTOR_SPEAK');eq(speak.payload.media_id,descriptor.media_id);eq(speak.payload.subtitle,'Hello.');eq(speak.payload.generation,1);eq(speak.payload.dialogue_message_id,UUID.message);eq(speak.payload.session_id,UUID.session);eq(speak.payload.tts_volume_boost,4)
@@ -131,13 +152,15 @@ test('multi-speaker media plays in dialogue order without overlap',function()
  local s=orchestrator.new(b,nil,function(_,name,payload)table.insert(sent,{name=name,payload=payload})return true end)
  orchestrator.configureSession(s,UUID.session);s.conversation.turn={requestId=UUID.request,turnId=UUID.turn,generation=1,status='accepted',terminal=false}
  local first=event(1,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='First.'})
+ first.message_id='00000000-0000-4000-8000-000000000041'
  local secondSpeaker=enemy
  local second=event(3,'dialogue.complete',1,{speaker=secondSpeaker,addressee=playerId,text='Second.'})
+ second.message_id='00000000-0000-4000-8000-000000000042'
  truthy(conversation.apply(s.conversation,first))
- local one={media_id='00000000-0000-4000-8000-000000000031',sha256=string.rep('a',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
+ local one={media_id='00000000-0000-4000-8000-000000000031',dialogue_message_id=first.message_id,sha256=string.rep('a',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
  truthy(conversation.apply(s.conversation,event(2,'speech.ready',1,one)))
  truthy(conversation.apply(s.conversation,second))
- local two={media_id='00000000-0000-4000-8000-000000000032',sha256=string.rep('b',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
+ local two={media_id='00000000-0000-4000-8000-000000000032',dialogue_message_id=second.message_id,sha256=string.rep('b',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
  truthy(conversation.apply(s.conversation,event(4,'speech.ready',1,two)))
  orchestrator.poll(s)
  b.media[one.media_id]={state='ready'} b.media[two.media_id]={state='ready'}
@@ -153,7 +176,7 @@ test('narrator media uses the ordered player-local speech lane',function()
  orchestrator.configureSession(s,UUID.session);s.conversation.turn={requestId=UUID.request,turnId=UUID.turn,generation=1,status='accepted',terminal=false}
  local narrator=fake.identity('narrator','almsivi:narrator',0);narrator.display_name='The Narrator'
  truthy(conversation.apply(s.conversation,event(1,'dialogue.complete',1,{speaker=narrator,addressee=playerId,text='The fog gathers.'})))
- local media={media_id='00000000-0000-4000-8000-000000000033',sha256=string.rep('c',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
+ local media={media_id='00000000-0000-4000-8000-000000000033',dialogue_message_id=UUID.message,sha256=string.rep('c',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
  truthy(conversation.apply(s.conversation,event(2,'speech.ready',1,media)));orchestrator.poll(s)
  b.media[media.media_id]={state='ready'};orchestrator.poll(s)
  eq(actorSends,0);eq(emitted[#emitted].name,'ALMSIVI_NARRATOR_SPEAK');eq(emitted[#emitted].payload.actor.kind,'narrator')
@@ -592,7 +615,9 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
   end},AI={getActivePackage=function()return activePackage end,isFleeing=function()return false end,
    startPackage=function(package)started=package end,filterPackages=function(filter)packageFilter=filter end}},
     types={Player={objectIsInstance=function(o)return o==playerTarget end},NPC={objectIsInstance=function(o)return o==object or o==playerTarget end,
-     record=function(o)return{name=o==playerTarget and 'RANGROO' or 'Fargoth'}end},Creature={objectIsInstance=function()return false end},Actor={
+     record=function(o)return{name=o==playerTarget and 'RANGROO' or 'Fargoth',race=o==object and 'wood elf' or 'dark elf',
+      class='commoner',isMale=true,isEssential=false,primaryFaction=o==object and 'hlaalu' or ''}end,
+     isWerewolf=function()return false end},Creature={objectIsInstance=function()return false end},Actor={
      isDead=function()return false end,inventory=function()return inventorySource end,EQUIPMENT_SLOT={CarriedRight=1},
      getEquipment=function()return{[1]={recordId='iron_dagger',type=itemType,count=1}}end},Lockable={
      objectIsInstance=function(o)return o==lockedDoor end,isLocked=function()return true end,getLockLevel=function()return 35 end,
@@ -628,7 +653,9 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
  local equipmentRows=openmwAdapter.targetEquipment(mapped,modules);eq(equipmentRows[1].slot,'carried_right');eq(equipmentRows[1].record_id,'iron_dagger')
  local followers,provider=openmwAdapter.followerContext(modules);eq(#followers,1);eq(followers[1].actor.record_id,'fargoth')
  eq(followers[1].leader.kind,'player');eq(followers[1].follows_player,true);eq(provider.provider,'FollowerDetectionUtil');eq(provider.version,2)
- local context=openmwAdapter.playerContext(mapped,modules);eq(context.followers[1].actor.record_id,'fargoth')
+  local context=openmwAdapter.playerContext(mapped,modules);eq(context.followers[1].actor.record_id,'fargoth')
+  eq(context.targetState.identity.race,'wood elf');eq(context.targetState.identity.gender,'Male')
+  eq(context.targetState.identity.primary_faction,'hlaalu');eq(context.targetState.identity.is_werewolf,false)
  eq(context.capabilities.follower_detection,'FollowerDetectionUtil');eq(context.capabilities.follower_detection_version,2)
  eq(context.playerState.held_items[1].display_name,'Iron Dagger')
  eq(context.nearbyObjects[1].ownership.record_id,'fargoth');eq(context.nearbyObjects[2].lock.locked,true)

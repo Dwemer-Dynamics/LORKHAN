@@ -22,12 +22,60 @@ struct ProtocolError {
     std::optional<std::uint64_t> retryAfterMs;
 };
 
+struct ClientBehaviorSettings {
+    bool autoGreeting{};
+    bool rechat{};
+    std::uint64_t rechatDelaySeconds{45};
+    std::uint64_t rechatMaxDepth{10};
+    bool boredom{};
+    std::uint64_t boredomDelaySeconds{180};
+    bool combatBarks{};
+    std::uint64_t combatBarkPeriodSeconds{20};
+};
+
+struct ClientMemorySettings {
+    std::uint64_t recentTurnLimit{20};
+    std::uint64_t knowledgeLimit{5};
+};
+
+struct ClientNarratorSettings {
+    bool enabled{};
+    std::string name{"The Narrator"};
+    bool contextVisibility{true};
+    std::string inlineMode{"Disabled"};
+    bool welcomeEvents{};
+    bool randomEvents{};
+    bool questEvents{};
+    bool bookEvents{};
+};
+
+struct ClientPresentationSettings {
+    bool showStatusHud{true};
+    std::uint64_t transcriptRows{8};
+    std::uint64_t ttsVolumeBoost{3};
+};
+
+struct ClientSafetySettings {
+    bool actionsEnabled{true};
+    bool allowHostile{};
+    bool allowCreatures{};
+};
+
+struct ClientSettings {
+    ClientBehaviorSettings behavior;
+    ClientMemorySettings memory;
+    ClientNarratorSettings narrator;
+    ClientPresentationSettings presentation;
+    ClientSafetySettings safety;
+};
+
 struct SessionAcceptedResponse {
     MessageId message;
     SessionId session;
     Generation generation;
     std::vector<std::string> capabilities;
     std::string configRevision;
+    ClientSettings clientSettings;
     std::uint64_t eventCursor{};
 };
 
@@ -83,6 +131,7 @@ struct ActionIntent {
 };
 
 struct TurnAcceptedEventPayload {};
+struct DialogueDeltaEventPayload { std::string text; };
 struct DialogueCompleteEventPayload {
     ProtocolIdentity speaker;
     ProtocolIdentity addressee;
@@ -104,6 +153,7 @@ struct SttFailedEventPayload {
 };
 struct SpeechReadyEventPayload {
     MediaId media;
+    MessageId dialogueMessage;
     std::string sha256;
     std::uint64_t bytes{};
     MediaCodec codec{MediaCodec::wav};
@@ -111,13 +161,14 @@ struct SpeechReadyEventPayload {
     std::string expiresAt;
 };
 
-using ProtocolEventPayload = std::variant<TurnAcceptedEventPayload, DialogueCompleteEventPayload,
+using ProtocolEventPayload = std::variant<TurnAcceptedEventPayload, DialogueDeltaEventPayload, DialogueCompleteEventPayload,
     ActionIntentEventPayload, TurnCompleteEventPayload, TurnCancelledEventPayload,
     TurnFailedEventPayload, SttTranscriptEventPayload, SttFailedEventPayload,
     SpeechReadyEventPayload>;
 
 enum class ProtocolEventType {
     turn_accepted,
+    dialogue_delta,
     dialogue_complete,
     action_intent,
     turn_complete,

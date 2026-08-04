@@ -533,7 +533,12 @@ local function preparePendingMedia(state)
         session_id=nextItem.sessionId,dialogue_message_id=nextItem.messageId,generation=nextItem.generation,
         expires_at=nextItem.descriptor.expires_at,tts_volume_boost=ttsVolumeBoost}
     local sent,reason
-    if nextItem.speaker.kind=='narrator' then state.emit('ALMSIVI_NARRATOR_SPEAK',command) sent=true
+    if nextItem.speaker.kind=='narrator' and state.settings and state.settings.narrator
+        and state.settings.narrator.enabled~=true then
+        state.activeSpeechMediaId=nil nextItem.status='failed'
+        reportFailure(nextMediaId,nextItem,'narrator_disabled')
+        return
+    elseif nextItem.speaker.kind=='narrator' then state.emit('ALMSIVI_NARRATOR_SPEAK',command) sent=true
     else sent,reason=state.sendActor(nextItem.speaker,'ALMSIVI_ACTOR_SPEAK',command) end
     if not sent then
         state.activeSpeechMediaId=nil nextItem.status='failed'
@@ -557,6 +562,14 @@ function M.speechStatus(state,event)
     return item~=nil
 end
 
+-- A malformed player-local UI event must not stop the authoritative response lane from reaching
+-- its terminal event or preparing later speech media.
+local function emitInbound(state,name,payload)
+    local ok,reason=pcall(state.emit,name,payload)
+    if not ok then print('[ALMSIVI] player event delivery failed: '..tostring(name)..' '..tostring(reason)) end
+    return ok
+end
+
 function M.poll(state)
     if state.disabled or state.hardHalted then return 0 end
     local results=state.bridge.pollResults(constants.MAX_INBOUND_RESULTS) or {}
@@ -565,6 +578,10 @@ function M.poll(state)
         local event=results[index]
         local ok,reason=state.events:accept(event)
         if ok then
+            if reason=='cursor_resynced' then
+                print('[ALMSIVI] response cursor recovered at sequence '..tostring(event.sequence)
+                    ..' ('..tostring(event.type)..')')
+            end
             if event.type=='stt.transcript' or event.type=='stt.failed' then
                 local pending=state.pendingStt[event.request_id]
                 state.pendingStt[event.request_id]=nil
@@ -585,23 +602,34 @@ function M.poll(state)
                     state.emit('ALMSIVI_VOICE_STATUS',{status='failed',reason=event.payload.code})
                 else state.emit('ALMSIVI_VOICE_STATUS',{status='failed',reason='stt_context_missing'}) end
                 accepted=accepted+1
-                state.emit('ALMSIVI_EVENT',event)
+                emitInbound(state,'ALMSIVI_EVENT',event)
             else
-            local applied,applyReason=conversation.apply(state.conversation,event)
+            local applyOk,applied,applyReason=pcall(conversation.apply,state.conversation,event)
+            if not applyOk then
+                applyReason='lua_exception: '..tostring(applied)
+                applied=false
+            end
             if applied then
                 accepted=accepted+1
                 if event.type=='action.intent' then
                     if event.payload.tier>=2 then
                         state.pendingConfirmations[event.payload.action_id]=util.copy(event.payload)
-                        state.emit('ALMSIVI_ACTION_CONFIRMATION',{action_id=event.payload.action_id,name=event.payload.name,
+                        emitInbound(state,'ALMSIVI_ACTION_CONFIRMATION',{action_id=event.payload.action_id,name=event.payload.name,
                             actor=util.copy(event.payload.actor),target=util.copy(event.payload.target)})
                     else state.sendActor(event.payload.actor,'ALMSIVI_ACTOR_ACTION',event.payload) end
                 end
-                state.emit('ALMSIVI_EVENT',event)
-            else state.emit('ALMSIVI_DROP',{reason=applyReason}) end
+                emitInbound(state,'ALMSIVI_EVENT',event)
+                if event.type=='turn.complete' or event.type=='turn.failed' or event.type=='turn.cancelled' then
+                    print('[ALMSIVI] response turn terminal: '..tostring(event.type)..' '..tostring(event.turn_id))
+                end
+            else
+                print('[ALMSIVI] response event dropped: '..tostring(event.type)..' '..tostring(applyReason))
+                emitInbound(state,'ALMSIVI_DROP',{reason=applyReason})
+            end
             end
         elseif reason~='duplicate_event' and reason~='stale_generation' and reason~='stale_session' then
-            state.emit('ALMSIVI_RESYNC',{reason=reason,cursor=state.events:cursor()})
+            print('[ALMSIVI] response event rejected: '..tostring(reason)..' at sequence '..tostring(event.sequence))
+            emitInbound(state,'ALMSIVI_RESYNC',{reason=reason,cursor=state.events:cursor()})
         end
     end
     preparePendingMedia(state)

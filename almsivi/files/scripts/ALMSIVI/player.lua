@@ -16,6 +16,7 @@ local storageOk,openmwStorage=pcall(require,'openmw.storage')
 local nativeOk,native=pcall(require,'openmw.almsivi')
 local state=player.new()
 local notification=notifications.new()
+local dialogueNotification=notifications.new()
 local lastNotificationStatus
 local element
 local statusElement
@@ -295,30 +296,43 @@ local function beginDestinationTarget(label,name,tier)
 end
 
 local function renderStatusHud()
-    if statusElement then statusElement:destroy() statusElement=nil end
+    local dialogueVisible=notifications.active(dialogueNotification)
+    local statusVisible=notifications.active(notification)
     if state.ui.visible or not uiOk or not utilOk
-        or not state.ui.statusHudVisible and not notifications.active(notification) then return end
+        or not state.ui.statusHudVisible and not statusVisible and not dialogueVisible then
+        if statusElement then statusElement:destroy() statusElement=nil end
+        return
+    end
     local text
-    if state.ui.statusHudVisible then
+    if dialogueVisible then
+        text=tostring(dialogueNotification.text)
+    elseif state.ui.statusHudVisible then
         text='ALMSIVI  |  '..state.ui.status..'  |  '..state.ui.mode..
             '  |  Target: '..actorLabel(state.ui.target)..'  |  Agents: '..tostring(#state.ui.agents)
     else
         text='ALMSIVI  |  '..tostring(notification.text or state.ui.status)
     end
-    statusElement=openmwUi.create({layer='HUD',type=openmwUi.TYPE.Container,
-        props={position=util.vector2(26,24),size=util.vector2(520,42)},content=openmwUi.content({
+    local width=dialogueVisible and 900 or 520
+    local height=dialogueVisible and 72 or 42
+    local layout={layer='HUD',type=openmwUi.TYPE.Container,
+        props={position=util.vector2(26,24),size=util.vector2(width,height)},content=openmwUi.content({
             {type=openmwUi.TYPE.Text,props={text=text,
-                textSize=15,textColor=util.color.rgb(1.0,0.58,0.18)}}
-        })})
+                size=util.vector2(width,height),wordWrap=dialogueVisible,
+                textSize=dialogueVisible and 18 or 15,textColor=util.color.rgb(1.0,0.58,0.18)}}
+        })}
+    if statusElement then statusElement.layout=layout statusElement:update()
+    else statusElement=openmwUi.create(layout) end
 end
 render=function()
-    if element then element:destroy() element=nil end
     if state.ui.status~=lastNotificationStatus then
         lastNotificationStatus=state.ui.status
         notifications.show(notification,tostring(state.ui.status),4)
     end
     renderStatusHud()
-    if not state.ui.visible or not uiOk or not utilOk then return end
+    if not state.ui.visible or not uiOk or not utilOk then
+        if element then element:destroy() element=nil end
+        return
+    end
     local transcript={}
     if state.ui.panel=='conversation' then
         transcript=chatbox.build({ui=openmwUi,util=util,whiteTexture=whiteTexture,text=state.ui.input,
@@ -669,14 +683,16 @@ render=function()
     local panelSize=panelSizes[state.ui.panel] or {680,460}
     local contentWidth=panelSize[1]-20
     local contentHeight=panelSize[2]-20
-    element=openmwUi.create({layer='Windows',type=openmwUi.TYPE.Container,
+    local layout={layer='Windows',type=openmwUi.TYPE.Container,
         props={position=util.vector2(30,60),size=util.vector2(panelSize[1],panelSize[2])},content=openmwUi.content({
             {type=openmwUi.TYPE.Flex,props={horizontal=false,size=util.vector2(contentWidth,contentHeight)},content=openmwUi.content({
                 {type=openmwUi.TYPE.Text,props={text='ALMSIVI  |  '..state.ui.status,textSize=16,
                     textColor=util.color.rgb(1.0,0.45,0.08)}},
                 unpackValues(transcript),
             })},
-        })})
+        })}
+    if element then element.layout=layout element:update()
+    else element=openmwUi.create(layout) end
 end
 
 chooseTarget=function(maxDistance,deferRender)
@@ -824,6 +840,21 @@ end
 
 applySettings=function()
     local exterior=self.cell and self.cell.isExterior==true
+    local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
+    local server=session and session.settings or nil
+    local serverBehavior=server and server.behavior or {}
+    local serverPresentation=server and server.presentation or {}
+    local serverSafety=server and server.safety or {}
+    local function restricted(localValue,serverValue,localDefault)
+        if localValue==nil then localValue=localDefault end
+        return localValue==true and serverValue==true
+    end
+    local function boundedMinimum(localValue,serverValue,defaultValue)
+        return math.min(tonumber(localValue) or defaultValue,tonumber(serverValue) or defaultValue)
+    end
+    local function boundedMaximum(localValue,serverValue,defaultValue)
+        return math.max(tonumber(localValue) or defaultValue,tonumber(serverValue) or defaultValue)
+    end
     local legacyHearing=autoSettings and autoSettings:get('hearingDistance')
     local interiorHearing=autoSettings and autoSettings:get('interiorHearingDistance') or legacyHearing or 500
     local exteriorHearing=autoSettings and autoSettings:get('exteriorHearingDistance') or legacyHearing or 1000
@@ -839,26 +870,27 @@ applySettings=function()
             hearingDistance=exterior and exteriorHearing or interiorHearing,
             interiorHearingDistance=interiorHearing,
             exteriorHearingDistance=exteriorHearing,
-            addHostile=autoSettings and autoSettings:get('addHostile'),
-            addCreatures=autoSettings and autoSettings:get('addCreatures')},
-        behavior={actionsEnabled=actionsEnabled,
-            autoGreeting=behaviorSettings and behaviorSettings:get('autoGreeting'),
-            rechat=behaviorSettings and behaviorSettings:get('rechat'),
-            rechatDelaySeconds=behaviorSettings and behaviorSettings:get('rechatDelaySeconds'),
-            rechatMaxDepth=behaviorSettings and behaviorSettings:get('rechatMaxDepth'),
-            boredom=behaviorSettings and behaviorSettings:get('boredom'),
-            boredomDelaySeconds=behaviorSettings and behaviorSettings:get('boredomDelaySeconds'),
+            addHostile=restricted(autoSettings and autoSettings:get('addHostile'),serverSafety.allowHostile,false),
+            addCreatures=restricted(autoSettings and autoSettings:get('addCreatures'),serverSafety.allowCreatures,false)},
+        behavior={actionsEnabled=restricted(actionsEnabled,serverSafety.actionsEnabled,true),
+            autoGreeting=restricted(behaviorSettings and behaviorSettings:get('autoGreeting'),serverBehavior.autoGreeting,false),
+            rechat=restricted(behaviorSettings and behaviorSettings:get('rechat'),serverBehavior.rechat,false),
+            rechatDelaySeconds=boundedMaximum(behaviorSettings and behaviorSettings:get('rechatDelaySeconds'),serverBehavior.rechatDelaySeconds,45),
+            rechatMaxDepth=boundedMinimum(behaviorSettings and behaviorSettings:get('rechatMaxDepth'),serverBehavior.rechatMaxDepth,10),
+            boredom=restricted(behaviorSettings and behaviorSettings:get('boredom'),serverBehavior.boredom,false),
+            boredomDelaySeconds=boundedMaximum(behaviorSettings and behaviorSettings:get('boredomDelaySeconds'),serverBehavior.boredomDelaySeconds,180),
             avoidAutonomyInMenus=behaviorSettings and behaviorSettings:get('avoidAutonomyInMenus'),
             avoidAutonomyInCombat=behaviorSettings and behaviorSettings:get('avoidAutonomyInCombat'),
             avoidAutonomyWhenSneaking=behaviorSettings and behaviorSettings:get('avoidAutonomyWhenSneaking'),
             cancelDialogueOnCombat=behaviorSettings and behaviorSettings:get('cancelDialogueOnCombat'),
-            combatBarks=behaviorSettings and behaviorSettings:get('combatBarks'),
-            combatBarkPeriodSeconds=behaviorSettings and behaviorSettings:get('combatBarkPeriodSeconds'),
+            combatBarks=restricted(behaviorSettings and behaviorSettings:get('combatBarks'),serverBehavior.combatBarks,false),
+            combatBarkPeriodSeconds=boundedMaximum(behaviorSettings and behaviorSettings:get('combatBarkPeriodSeconds'),serverBehavior.combatBarkPeriodSeconds,20),
             openMicSensitivity=behaviorSettings and behaviorSettings:get('openMicSensitivity'),
             openMicEndDelayMs=behaviorSettings and behaviorSettings:get('openMicEndDelayMs')},
-        presentation={showStatusHud=presentationSettings and presentationSettings:get('showStatusHud'),
-            transcriptRows=presentationSettings and presentationSettings:get('transcriptRows'),
-            ttsVolumeBoost=ttsVolumeBoost or 3},
+        presentation={showStatusHud=restricted(presentationSettings and presentationSettings:get('showStatusHud'),serverPresentation.showStatusHud,true),
+            transcriptRows=boundedMinimum(presentationSettings and presentationSettings:get('transcriptRows'),serverPresentation.transcriptRows,8),
+            ttsVolumeBoost=boundedMinimum(ttsVolumeBoost,serverPresentation.ttsVolumeBoost,3)},
+        narrator=server and server.narrator or {},memory=server and server.memory or {},
     }
     local auto=current.autoActivate or {}
     local behavior=current.behavior or {}
@@ -874,7 +906,7 @@ applySettings=function()
         tostring(behavior.combatBarks),tostring(behavior.combatBarkPeriodSeconds),
         tostring(behavior.openMicSensitivity),tostring(behavior.openMicEndDelayMs),
         tostring(presentation.showStatusHud),tostring(presentation.transcriptRows),
-        tostring(presentation.ttsVolumeBoost)},'|')
+        tostring(presentation.ttsVolumeBoost),tostring(session and session.config_revision)},'|')
     if signature==settingsSignature then return end
     settingsSignature=signature
     state.ui.statusHudVisible=presentation.showStatusHud==true
@@ -990,7 +1022,9 @@ return {
         end,
         onUpdate=function(dt)
             if narratorSpeech and not adapter.isSpeechActive() then reportNarrator('played','playback_completed') end
-            if notifications.update(notification,dt) then renderStatusHud() end
+            local statusChanged=notifications.update(notification,dt)
+            local dialogueChanged=notifications.update(dialogueNotification,dt)
+            if statusChanged or dialogueChanged then renderStatusHud() end
             applySettings()
             updateLocalAutonomy(dt)
             updateCombatBarks(dt)
@@ -1171,6 +1205,13 @@ return {
         end,
         ALMSIVI_EVENT=function(event)
             if event.type=='turn.accepted' then turnActive=true end
+            if (event.type=='dialogue.delta' or event.type=='dialogue.complete') and event.payload
+                and type(event.payload.text)=='string' and event.payload.text~='' then
+                local speaker=event.payload.speaker or state.ui.target
+                local duration=event.type=='dialogue.complete'
+                    and math.max(6,math.min(14,#event.payload.text/12)) or 4
+                notifications.show(dialogueNotification,displayName(speaker)..': '..event.payload.text,duration)
+            end
             if event.type=='dialogue.complete' then
                 hadConversation=true quietElapsed=0
                 if activeAutonomyKind then activeAutonomySpoke=true end

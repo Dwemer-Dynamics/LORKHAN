@@ -3,7 +3,7 @@ local identity = require('scripts.ALMSIVI.identity')
 local util = require('scripts.ALMSIVI.util')
 
 local M = {}
-local knownInternalEvents = {['turn.accepted']=true, ['dialogue.complete']=true,
+local knownInternalEvents = {['turn.accepted']=true, ['dialogue.delta']=true, ['dialogue.complete']=true,
     ['speech.ready']=true, ['action.intent']=true, ['turn.complete']=true,
     ['turn.failed']=true, ['turn.cancelled']=true, ['stt.transcript']=true,
     ['stt.failed']=true}
@@ -90,6 +90,7 @@ function M.validatePolledEvent(event)
     end
     if event.type=='speech.ready' then
         if not M.isUuid(event.payload.media_id) then return nil,'invalid_speech_media_id' end
+        if not M.isUuid(event.payload.dialogue_message_id) then return nil,'invalid_speech_dialogue_message_id' end
         if type(event.payload.sha256)~='string' or #event.payload.sha256~=64 or event.payload.sha256:match('[^0-9a-f]') then return nil,'invalid_speech_sha256' end
         if event.payload.codec~='wav' and event.payload.codec~='ogg' and event.payload.codec~='mp3' then return nil,'invalid_speech_codec' end
         if type(event.payload.bytes)~='number' or event.payload.bytes%1~=0 or event.payload.bytes<1 or event.payload.bytes>33554432 then return nil,'invalid_speech_bytes' end
@@ -128,9 +129,11 @@ function M.CursoredEvents(sessionId, generation)
             if event.generation ~= generation then return nil, 'stale_generation' end
             local key = event.session_id .. '|' .. tostring(event.sequence) .. '|' .. event.message_id
             if seen[key] or event.sequence <= cursor then return false, 'duplicate_event' end
-            if event.sequence ~= cursor + 1 then return nil, 'cursor_gap' end
+            -- The native transport has already authenticated and advanced the server cursor; let
+            -- the Lua mirror recover forward when one native-to-Lua dispatch was missed.
+            local recovered = event.sequence ~= cursor + 1
             seen[key], cursor = true, event.sequence
-            return true
+            return true, recovered and 'cursor_resynced' or nil
         end,
         cursor = function() return cursor end,
     }
