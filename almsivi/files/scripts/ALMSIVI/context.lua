@@ -40,6 +40,7 @@ function M.snapshot(source)
         activeEffects = bounded(source.activeEffects, constants.MAX_ACTIVE_EFFECTS),
         journal = bounded(source.journal, constants.MAX_JOURNAL_ENTRIES),
         books = bounded(source.books, constants.MAX_RECENT_BOOKS),
+        recentVanillaDialogue = bounded(source.recentVanillaDialogue, constants.MAX_RECENT_VANILLA_DIALOGUE),
         contentFiles = bounded(source.contentFiles, constants.MAX_CONTENT_FILES),
         world = util.copy(source.world or {}),
         playerState = util.copy(source.playerState or {}),

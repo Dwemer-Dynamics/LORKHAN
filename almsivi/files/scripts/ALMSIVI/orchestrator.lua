@@ -20,6 +20,7 @@ function M.new(bridge,emit,sendActor,manageActor)
         pendingVoice=nil,pendingStt={},openMic=false,openMicRequested=false,
         pendingAutonomy={},autonomyRequested=false,greetedAgents={},autonomyCounts={},combatThreats={},
         combatVerified={},dialogueMode='Standard',disabled=false,hardHalted=false}
+    state.recentVanillaDialogue={}
     return state
 end
 
@@ -60,6 +61,7 @@ function M.lifecycle(state,kind)
     state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
     state.pendingAutonomy={} state.autonomyRequested=false
     state.greetedAgents={} state.autonomyCounts={} state.combatThreats={} state.combatVerified={}
+    state.recentVanillaDialogue={}
     state.hardHalted=false state.conversation.hardHalted=false
     state.registry:clear()
     agentRegistry.clear(state.agents)
@@ -91,6 +93,18 @@ function M.deactivate(state,actorIdentity,object)
         end
     end
     return removed
+end
+
+function M.recordVanillaDialogue(state,event)
+    if type(event)~='table' or type(event.text)~='string' or event.text=='' then
+        return nil,'invalid_vanilla_dialogue'
+    end
+    state.recentVanillaDialogue=state.recentVanillaDialogue or {}
+    state.recentVanillaDialogue[#state.recentVanillaDialogue+1]=util.copy(event)
+    while #state.recentVanillaDialogue>constants.MAX_RECENT_VANILLA_DIALOGUE do
+        table.remove(state.recentVanillaDialogue,1)
+    end
+    return true
 end
 
 local function emitAgents(state)
@@ -468,6 +482,7 @@ function M.submitText(state,args)
     args.context=args.context or {}
     args.context.audience=audience
     args.context.dialogueMode=mode
+    args.context.recentVanillaDialogue=util.arrayCopy(state.recentVanillaDialogue or {},constants.MAX_RECENT_VANILLA_DIALOGUE)
     local dto,buildReason=protocol.turn({message_id=args.message_id,request_id=requestId,turn_id=turnId,
         installation_id=args.installation_id,profile_id=args.profile_id,playthrough_id=args.playthrough_id,
         session_id=state.sessionId,generation=state.generation,created_at=args.created_at,platform=args.platform,
@@ -478,6 +493,7 @@ function M.submitText(state,args)
     if not dto then state.conversation.turn=nil return nil,buildReason end
     local submitted,nativeReason=state.bridge.submitTurn(dto)
     if not submitted then state.conversation.turn=nil return nil,nativeReason end
+    state.recentVanillaDialogue={}
     state.emit('ALMSIVI_TURN',{status='queued',request_id=requestId,turn_id=turnId})
     return requestId
 end

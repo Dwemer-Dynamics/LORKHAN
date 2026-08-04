@@ -65,6 +65,8 @@ I.Settings.registerGroup({
     settings={
         {key='TalkBinding',renderer='inputBinding',default=bindings.talk,
             name='Talk_name',description='Talk_description',argument={type='trigger',key='ALMSIVI_Talk'}},
+        {key='StopDialogueBinding',renderer='inputBinding',default=bindings.stopDialogue,
+            name='StopDialogue_name',description='StopDialogue_description',argument={type='trigger',key='ALMSIVI_StopDialogue'}},
         {key='ManualActivateBinding',renderer='inputBinding',default=bindings.manualActivate,
             name='ManualActivate_name',description='ManualActivate_description',argument={type='trigger',key='ALMSIVI_ManualActivate'}},
         {key='ModeMenuBinding',renderer='inputBinding',default=bindings.modeMenu,
@@ -77,6 +79,12 @@ I.Settings.registerGroup({
             name='Halt_name',description='Halt_description',argument={type='trigger',key='ALMSIVI_Halt'}},
         {key='ActorToolsBinding',renderer='inputBinding',default=bindings.actorTools,
             name='ActorTools_name',description='ActorTools_description',argument={type='trigger',key='ALMSIVI_ActionsMenu'}},
+        {key='StatusHudBinding',renderer='inputBinding',default=bindings.statusHud,
+            name='StatusHud_name',description='StatusHud_description',argument={type='trigger',key='ALMSIVI_StatusHud'}},
+        {key='HistoryBinding',renderer='inputBinding',default=bindings.history,
+            name='History_name',description='History_description',argument={type='trigger',key='ALMSIVI_History'}},
+        {key='DiagnosticsBinding',renderer='inputBinding',default=bindings.diagnostics,
+            name='Diagnostics_name',description='Diagnostics_description',argument={type='trigger',key='ALMSIVI_Diagnostics'}},
     },
 })
 

@@ -96,6 +96,39 @@ function M.identity(object, modules)
         content_file=contentFile,cell=cellIdentity,display_name=display}
 end
 
+-- Convert the player-local OpenMW DialogueResponse event into bounded serializable context.
+function M.dialogueResponse(event, modules)
+    modules=modules or loaded()
+    if type(event)~='table' or not modules.core then return nil,'dialogue_event_unavailable' end
+    local dialogueType=event.type
+    if not ({greeting=true,journal=true,persuasion=true,topic=true,voice=true})[dialogueType] then
+        return nil,'dialogue_type_unavailable'
+    end
+    if type(event.recordId)~='string' or type(event.infoId)~='string' then
+        return nil,'dialogue_identity_unavailable'
+    end
+    local actor,reason=M.identity(event.actor,modules)
+    if not actor then return nil,reason end
+    local records=modules.core.dialogue and modules.core.dialogue[dialogueType]
+        and modules.core.dialogue[dialogueType].records
+    local record=records and records[event.recordId]
+    if not record or not record.infos then return nil,'dialogue_record_unavailable' end
+    local text
+    for _,info in pairs(record.infos) do
+        if info.id==event.infoId and type(info.text)=='string' then text=info.text break end
+    end
+    if not text or text=='' then return nil,'dialogue_info_unavailable' end
+    if #text>4096 then text=text:sub(1,4096) end
+    local gameTime
+    if modules.core.getGameTime then
+        local ok,value=pcall(modules.core.getGameTime)
+        if ok and type(value)=='number' then gameTime=value end
+    end
+    return {source='openmw.DialogueResponse',actor=actor,dialogue_type=dialogueType,
+        record_id=event.recordId:sub(1,256),info_id=event.infoId:sub(1,256),text=text,
+        captured_game_time=gameTime}
+end
+
 function M.resolve(identity, modules)
     modules=modules or loaded()
     if not identity or not modules.core or not modules.nearby then return nil,'resolver_unavailable' end

@@ -985,8 +985,8 @@ if inputOk then
         if presentationSettings then presentationSettings:set('showStatusHud',state.ui.statusHudVisible) end
         render()
     end))
-    input.registerTriggerHandler('ALMSIVI_History',adapter.callback(function() togglePanel('actor-tools') end))
-    input.registerTriggerHandler('ALMSIVI_Diagnostics',adapter.callback(function() togglePanel('actor-tools') end))
+    input.registerTriggerHandler('ALMSIVI_History',adapter.callback(function() togglePanel('history') end))
+    input.registerTriggerHandler('ALMSIVI_Diagnostics',adapter.callback(function() togglePanel('diagnostics') end))
     input.registerTriggerHandler('ALMSIVI_OpenMic',adapter.callback(function()
         if not controlsAllowed() then return end
         if not openMicEnabled and not state.ui.target then chooseTarget(2048) return end
@@ -1073,6 +1073,10 @@ return {
         end,
     },
     eventHandlers={
+        DialogueResponse=function(event)
+            local response=adapter.dialogueResponse(event)
+            if response then send('ALMSIVI_VANILLA_DIALOGUE',response) end
+        end,
         ALMSIVI_NARRATOR_SPEAK=function(command)
             stopNarrator('speech_replaced')
             local ok,reason=adapter.playSpeech(command.media_id,command.subtitle,command.tts_volume_boost)

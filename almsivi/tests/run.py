@@ -85,13 +85,21 @@ check("native-authenticated cursor gaps recover without replaying duplicates",
 check("actor self identity required", "identity.same(command.actor,state.identity)" in text(SCRIPTS / "actor_executor.lua"))
 check("vanilla Activate not consumed", "return false -- built-in Activate" in text(SCRIPTS / "player_state.lua"))
 settings = text(SCRIPTS / "settings.lua")
-check("OpenMW Scripts page exposes the focused seven-hotkey layout", settings.count("renderer='inputBinding'") == 7
+check("OpenMW Scripts page exposes all applicable focused hotkeys", settings.count("renderer='inputBinding'") == 11
       and all(fragment in settings for fragment in ["I.Settings.registerPage", "key='ALMSIVI_Talk'",
-          "key='ALMSIVI_ManualActivate'", "key='ALMSIVI_ToggleMode'", "key='ALMSIVI_ModelMenu'",
-          "key='ALMSIVI_ProfileMenu'", "key='ALMSIVI_Halt'", "key='ALMSIVI_ActionsMenu'"]))
+          "key='ALMSIVI_StopDialogue'", "key='ALMSIVI_ManualActivate'", "key='ALMSIVI_ToggleMode'",
+          "key='ALMSIVI_ModelMenu'", "key='ALMSIVI_ProfileMenu'", "key='ALMSIVI_Halt'",
+          "key='ALMSIVI_ActionsMenu'", "key='ALMSIVI_StatusHud'", "key='ALMSIVI_History'",
+          "key='ALMSIVI_Diagnostics'"]))
 check("legacy and voice controls remain compatibility triggers but are not visible settings rows",
       all(fragment in settings for fragment in ["trigger('ALMSIVI_MasterMenu'", "trigger('ALMSIVI_OpenMic'",
           "registerAction({key='ALMSIVI_PushToTalk'"]))
+player_lua = text(SCRIPTS / "player.lua")
+check("history and diagnostics bindings open their named panels", all(fragment in player_lua for fragment in [
+    "ALMSIVI_History',adapter.callback(function() togglePanel('history')",
+    "ALMSIVI_Diagnostics',adapter.callback(function() togglePanel('diagnostics')"]))
+check("player-local vanilla dialogue is forwarded as bounded context", all(fragment in player_lua for fragment in [
+    "DialogueResponse=function(event)", "adapter.dialogueResponse(event)", "ALMSIVI_VANILLA_DIALOGUE"]))
 check("OpenMW Scripts page exposes bounded ALMSIVI TTS volume boost", all(fragment in settings for fragment in [
     "key='ttsVolumeBoost'", "default=3", "integer=true,min=1,max=4"]))
 check("conflict-free F6 and F7 defaults seed only once", all(fragment in settings for fragment in [

@@ -70,8 +70,21 @@ test('old save migrates and drops inflight',function()
 end)
 test('context applies all bounded constants',function()
  local many={} for i=1,300 do many[i]={n=i} end
- local snap=context.snapshot({audience=many,actorActivities=many,inventory=many,nearbyObjects=many,activeEffects=many,journal=many,books=many,contentFiles=many})
- eq(#snap.audience.items,12);eq(#snap.actorActivities.items,12);eq(#snap.inventory.items,48);eq(#snap.nearbyObjects.items,32);eq(#snap.activeEffects.items,32);eq(#snap.journal.items,32);eq(#snap.books.items,8);eq(#snap.contentFiles.items,256);truthy(snap.audience.truncated)
+ local snap=context.snapshot({audience=many,actorActivities=many,inventory=many,nearbyObjects=many,activeEffects=many,journal=many,books=many,recentVanillaDialogue=many,contentFiles=many})
+ eq(#snap.audience.items,12);eq(#snap.actorActivities.items,12);eq(#snap.inventory.items,48);eq(#snap.nearbyObjects.items,32);eq(#snap.activeEffects.items,32);eq(#snap.journal.items,32);eq(#snap.books.items,8);eq(#snap.recentVanillaDialogue.items,8);eq(#snap.contentFiles.items,256);truthy(snap.audience.truncated)
+end)
+test('vanilla dialogue is bounded and consumed by the next accepted turn',function()
+ local b=fake.bridge() local s=orchestrator.new(b)
+ orchestrator.configureSession(s,UUID.session)
+ orchestrator.activate(s,npc,{})
+ truthy(orchestrator.selectTarget(s,{identity=npc,distance=100,maxDistance=2048,dead=false,available=true}))
+ for i=1,10 do truthy(orchestrator.recordVanillaDialogue(s,{source='openmw.DialogueResponse',text='line '..i})) end
+ local request=b.nextTurnMetadata();request.text='What did you say?';request.input_key='vanilla-dialogue'
+ request.language='en-US';request.speaker=playerId;request.context={};request.capabilities={'dialogue.text'}
+ request.recent_action_results={};request.ui_source='almsivi_text'
+ truthy(orchestrator.submitText(s,request))
+ local recent=b.submitted[1].payload.context.recentVanillaDialogue.items
+ eq(#recent,8);eq(recent[1].text,'line 3');eq(recent[8].text,'line 10');eq(#s.recentVanillaDialogue,0)
 end)
 test('identity registry refuses substitution and ambiguity',function()
  local r=identity.Registry() local one={} truthy(r:activate(npc,one)); eq(r:activate(npc,{}),nil)
@@ -412,7 +425,7 @@ test('OpenMW settings page registers controls and seeds conflict-free defaults o
  package.loaded['scripts.ALMSIVI.settings']=nil
  local settingsEntry=require('scripts.ALMSIVI.settings')
  eq(next(settingsEntry),nil)
- eq(registered.pages[1].key,'ALMSIVI');eq(#registered.groups,6);eq(registered.groups[1].page,'ALMSIVI');eq(#registered.groups[1].settings,7)
+ eq(registered.pages[1].key,'ALMSIVI');eq(#registered.groups,6);eq(registered.groups[1].page,'ALMSIVI');eq(#registered.groups[1].settings,11)
  for _,setting in ipairs(registered.groups[1].settings) do truthy(setting.name);truthy(setting.description) end
  truthy(registered.triggers.ALMSIVI_Talk);truthy(registered.triggers.ALMSIVI_Halt)
  truthy(registered.triggers.ALMSIVI_StopDialogue);truthy(registered.triggers.ALMSIVI_ManualActivate)
@@ -425,6 +438,8 @@ test('OpenMW settings page registers controls and seeds conflict-free defaults o
  local function setting(group,key)
   for _,candidate in ipairs(group.settings) do if candidate.key==key then return candidate end end
  end
+ truthy(setting(registered.groups[1],'StopDialogueBinding'));truthy(setting(registered.groups[1],'StatusHudBinding'))
+ truthy(setting(registered.groups[1],'HistoryBinding'));truthy(setting(registered.groups[1],'DiagnosticsBinding'))
  eq(registered.groups[2].key,'SettingsALMSIVIAutoActivate');eq(setting(registered.groups[2],'enabled').default,true)
  eq(setting(registered.groups[2],'interiorDistance').default,1200);eq(setting(registered.groups[2],'exteriorDistance').default,2400)
  eq(setting(registered.groups[2],'interiorHearingDistance').default,500)
@@ -608,7 +623,8 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
   owner={factionId='hlaalu'},position=vector(0,96,0)}
  local started,packageFilter
  local activePackage={type='Combat',target=playerTarget}
- local modules={core={contentFiles={list={'Morrowind.esm','Test.esp'}},
+ local modules={core={contentFiles={list={'Morrowind.esm','Test.esp'}},getGameTime=function()return 1234 end,
+  dialogue={topic={records={vivec={infos={{id='vivec-info',text='The city is named for our god.'}}}}}},
   getFormId=function(_,index)if index==playerId.refnum.index then return 0x00000014 end return 0x01000070 end},self=selfObject,
   interfaces={FollowerDetectionUtil={version=2,getFollowerList=function()return{
     follower={actor=object,leader=playerTarget,superLeader=nil,followsPlayer=true}}
@@ -633,6 +649,8 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
  eq(mapped.refnum.content_file,1);eq(mapped.content_file,'Test.esp');eq(mapped.display_name,'Fargoth')
  local mappedPlayer=openmwAdapter.identity(playerTarget,modules);eq(mappedPlayer.kind,'player');eq(mappedPlayer.refnum.index,0)
  eq(mappedPlayer.refnum.content_file,0);eq(mappedPlayer.content_file,'Morrowind.esm');eq(mappedPlayer.display_name,'RANGROO')
+ local response=openmwAdapter.dialogueResponse({actor=object,type='topic',recordId='vivec',infoId='vivec-info'},modules)
+ eq(response.text,'The city is named for our god.');eq(response.actor.record_id,'fargoth');eq(response.captured_game_time,1234)
  eq(openmwAdapter.resolve(mappedPlayer,modules),playerTarget)
  local aimed=openmwAdapter.resolveActorRay(512,modules);eq(aimed.identity.record_id,'fargoth');eq(aimed.distance,300)
  local candidate=openmwAdapter.resolveCameraTarget(512,modules);eq(candidate.identity.record_id,'fargoth');eq(candidate.distance,300)

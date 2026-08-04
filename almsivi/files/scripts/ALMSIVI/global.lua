@@ -252,6 +252,7 @@ return {
         ALMSIVI_HALT_ACTIONS_REQUEST=function() orchestrator.haltActions(state,'halt_ai_actions') end,
         ALMSIVI_HARD_HALT_REQUEST=function() orchestrator.hardHalt(state) end,
         ALMSIVI_SETTINGS_UPDATE=function(event) state.settings=event end,
+        ALMSIVI_VANILLA_DIALOGUE=function(event) orchestrator.recordVanillaDialogue(state,event) end,
         ALMSIVI_MODE_CHANGED=function(event) state.dialogueMode=event.mode end,
         ALMSIVI_CONFIRM_ACTION=function(event) orchestrator.confirmAction(state,event.action_id,event.approved==true) end,
         ALMSIVI_ACTION_RESULT=function(event)
@@ -265,6 +266,5 @@ return {
             orchestrator.speechStatus(state,event)
             emit('ALMSIVI_SPEECH_STATUS',event)
         end,
-        DialogueResponse=function(event) state.lastVanillaDialogue=event end,
     },
 }
