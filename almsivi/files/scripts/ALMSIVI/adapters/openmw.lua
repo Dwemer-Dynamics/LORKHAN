@@ -1,5 +1,6 @@
 local M = {}
 local recentBooks = {}
+local equipment
 
 local function optional(name)
     local ok, value = pcall(require, name)
@@ -285,6 +286,24 @@ function M.nearbyActors(maxDistance, modules)
     return result
 end
 
+-- Enrich actors only while a turn is being submitted; periodic targeting scans keep using
+-- nearbyActors so equipment inspection cannot become a frame-time polling cost.
+local function nearbyActorContext(maxDistance, modules)
+    local result={}
+    for _,candidate in ipairs(M.nearbyActors(maxDistance,modules)) do
+        local actor=M.resolve(candidate.identity,modules)
+        local row={}
+        for key,value in pairs(candidate.identity) do row[key]=value end
+        row.distance=math.floor(candidate.distance+0.5)
+        row.available=candidate.available~=false
+        row.hostile=candidate.hostile==true
+        row.equipment=actor and equipment(actor,modules) or {}
+        result[#result+1]=row
+        if #result>=12 then break end
+    end
+    return result
+end
+
 -- Read follower relationships from Follower Detection Util when it is installed. The interface is
 -- optional: the core ALMSIVI target and group flow remains dependency-free.
 function M.followerContext(modules)
@@ -396,7 +415,7 @@ local equipmentSlots={helmet='Helmet',cuirass='Cuirass',greaves='Greaves',left_p
     shirt='Shirt',pants='Pants',skirt='Skirt',robe='Robe',left_ring='LeftRing',right_ring='RightRing',
     amulet='Amulet',belt='Belt',carried_right='CarriedRight',carried_left='CarriedLeft',ammunition='Ammunition'}
 
-local function equipment(actor, modules)
+equipment=function(actor, modules)
     local actorType=modules.types and modules.types.Actor
     local equipped=actorType and safe(actorType.getEquipment,actor) or {}
     local names={}
@@ -494,9 +513,12 @@ local function nearbyObjects(maxDistance, modules)
             local distance=object.position and (object.position-modules.self.position):length() or 0
             if distance<=maxDistance then
                 local owner=safe(function() return object.owner end)
+                local hex=type(object.id)=='string' and object.id:match('^0x([0-9a-fA-F]+)$') or nil
+                local formId=hex and tonumber(hex,16) or nil
                 local row={kind=collectionName,record_id=object.recordId,display_name=objectDisplayName(object),
                     content_file=safe(function() return object.contentFile end),distance=math.floor(distance+0.5),
-                    position={x=object.position.x,y=object.position.y,z=object.position.z},
+                    refnum=formId and {index=formId%0x1000000,content_file=math.floor(formId/0x1000000)} or nil,
+                    count=tonumber(safe(function() return object.count end)) or 1,
                     ownership=owner and {record_id=safe(function() return owner.recordId end),
                         faction_id=safe(function() return owner.factionId end),
                         faction_rank=safe(function() return owner.factionRank end)} or nil}
@@ -521,23 +543,30 @@ function M.playerContext(target, modules)
     modules=modules or loaded()
     local playerIdentity=M.identity(modules.self,modules)
     local targetObject=target and M.resolve(target,modules) or nil
-    local nearby=M.nearbyActors(2048,modules)
-    local actors={}
-    for index,candidate in ipairs(nearby) do actors[index]=candidate.identity end
+    local actors=nearbyActorContext(2048,modules)
     local weather=modules.core and modules.core.weather and modules.self and modules.self.cell
         and safe(modules.core.weather.getCurrent,modules.self.cell) or nil
     local followers,followerProvider=M.followerContext(modules)
     local contentFiles={}
     local loadedFiles=modules.core and modules.core.contentFiles and modules.core.contentFiles.list or {}
     for index,name in ipairs(loadedFiles) do contentFiles[index]=name end
+    local cell=modules.self and modules.self.cell or nil
+    local cellIdentity
+    if cell and cell.isExterior then cellIdentity={kind='exterior',grid_x=cell.gridX,grid_y=cell.gridY}
+    elseif cell then cellIdentity={kind='interior',name=cell.name~='' and cell.name or cell.displayName} end
+    local regionId=cell and safe(function() return cell.region end) or nil
+    local regionRecord=regionId and modules.core and modules.core.regions and modules.core.regions.records
+        and modules.core.regions.records[regionId] or nil
     return {player=playerIdentity,target=target,nearbyActors=actors,nearbyObjects=nearbyObjects(2048,modules),
         followers=followers,
         inventory=inventory(modules.self,modules),activeEffects=effects(modules.self,modules),journal=journal(modules.self,modules),
         books=recentBooks,
         contentFiles=contentFiles,
         world={game_time=modules.core and safe(modules.core.getGameTime) or nil,
-            cell=modules.self and modules.self.cell and (modules.self.cell.name~='' and modules.self.cell.name or modules.self.cell.displayName) or nil,
-            weather=weather and {id=weather.id,name=weather.name,is_storm=weather.isStorm} or nil},
+            cell=cell and (cell.name~='' and cell.name or cell.displayName) or nil,
+            cell_identity=cellIdentity,region=regionRecord and regionRecord.name or regionId,region_id=regionId,
+            weather=weather and {record_id=weather.recordId,name=weather.name,is_storm=weather.isStorm} or nil,
+            indoors=cell and cell.isExterior~=true or nil},
         playerState=actorState(modules.self,nil,modules),targetState=actorState(targetObject,modules.self,modules),
         capabilities={targeting='camera_ray',ui='text',group_dialogue=true,inventory='read_only',journal='read_only',stats='read_only',
             follower_detection=followerProvider and followerProvider.provider or 'unavailable',

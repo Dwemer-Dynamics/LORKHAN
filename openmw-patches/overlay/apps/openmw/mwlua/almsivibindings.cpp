@@ -6,7 +6,6 @@
 #include <almsivi/bridge_service.hpp>
 #include <almsivi/protocol_response.hpp>
 #include <almsivi/validation.hpp>
-#include <almsivi/voice_capture.hpp>
 #include <components/lua/configuration.hpp>
 #include <components/lua/scriptscontainer.hpp>
 #include <components/files/constrainedfilestream.hpp>
@@ -370,7 +369,6 @@ namespace MWLua
 
             ~NativeClient()
             {
-                almsivi::VoiceCaptureService::instance().halt();
                 if (m_service) m_service->halt();
             }
             NativeClient(const NativeClient&) = delete;
@@ -529,76 +527,6 @@ namespace MWLua
                     row["revision"]=profile.revision;profiles[index+1]=row;}
                 result["model_slots"]=slots;result["profiles"]=profiles;result["pending"]=m_controlsRequest.has_value();
                 return sol::make_object(lua,result);
-            }
-
-            std::tuple<sol::object, sol::object> startVoiceCapture(
-                sol::state_view lua, bool automatic, int rmsThreshold, int trailingSilenceMs)
-            {
-                if (!ready()) return failure(lua, "bridge_not_ready");
-                if (rmsThreshold < 100 || rmsThreshold > 5000
-                    || trailingSilenceMs < 500 || trailingSilenceMs > 5000)
-                    return failure(lua, "invalid_voice_activity_settings");
-                auto started = almsivi::VoiceCaptureService::instance().start(
-                    automatic, static_cast<std::uint16_t>(rmsThreshold), static_cast<std::uint32_t>(trailingSilenceMs));
-                if (!started) return failure(lua, started.error().message);
-                return success(lua, "recording");
-            }
-
-            void stopVoiceCapture()
-            {
-                almsivi::VoiceCaptureService::instance().stop();
-            }
-
-            void cancelVoiceCapture()
-            {
-                almsivi::VoiceCaptureService::instance().halt();
-            }
-
-            sol::table voiceCaptureStatus(sol::state_view lua) const
-            {
-                const auto& capture = almsivi::VoiceCaptureService::instance();
-                sol::table result(lua, sol::create);
-                const char* name = "idle";
-                switch (capture.state()) {
-                    case almsivi::VoiceCaptureState::unsupported: name = "unsupported"; break;
-                    case almsivi::VoiceCaptureState::idle: break;
-                    case almsivi::VoiceCaptureState::recording: name = "recording"; break;
-                    case almsivi::VoiceCaptureState::ready: name = "ready"; break;
-                    case almsivi::VoiceCaptureState::failed: name = "failed"; break;
-                }
-                result["state"] = name;
-                result["bytes"] = capture.capturedBytes();
-                result["duration_ms"] = capture.durationMs();
-                result["automatic"] = capture.automatic();
-                result["voice_detected"] = capture.voiceDetected();
-                const std::string error = capture.error();
-                if (!error.empty()) result["error"] = error;
-                return result;
-            }
-
-            std::tuple<sol::object, sol::object> submitCapturedStt(sol::state_view lua, const std::string& language)
-            {
-                if (!ready()) return failure(lua, "bridge_not_ready");
-                auto captured = almsivi::VoiceCaptureService::instance().takeReady();
-                if (!captured) return failure(lua, "voice_capture_not_ready");
-                try
-                {
-                    const almsivi::RequestId request(uuid());
-                    almsivi::EnvelopeIds ids{ m_config->installation, m_config->profile, m_config->playthrough,
-                        *m_session, request, almsivi::TurnId(uuid()), almsivi::MessageId(uuid()), m_service->generation() };
-                    const std::string createdAt = utcNow();
-                    almsivi::OutboundRequest outbound{ request, *m_session, ids.generation, almsivi::RequestKind::stt,
-                        almsivi::SttRequest{ ids, createdAt, "wav", language, captured->sha256,
-                            std::move(captured->wav) } };
-                    auto accepted = m_service->enqueue(std::move(outbound));
-                    if (!accepted) return failure(lua, accepted.error().message);
-                    sol::table result(lua, sol::create);
-                    result["message_id"] = ids.message.value(); result["request_id"] = ids.request.value();
-                    result["turn_id"] = ids.turn.value(); result["session_id"] = ids.session.value();
-                    result["generation"] = ids.generation.value(); result["created_at"] = createdAt;
-                    return { sol::make_object(lua, result), sol::make_object(lua, sol::nil) };
-                }
-                catch (const std::exception& error) { return failure(lua, error.what()); }
             }
 
             std::tuple<sol::object, sol::object> prepareMedia(sol::state_view lua, sol::table dto)
@@ -816,8 +744,6 @@ namespace MWLua
                                 m_cursor = parsed.value().nextAfter;
                                 for (const auto& event : parsed.value().events)
                                     output[outIndex++] = eventTable(lua, event);
-                                for (const auto& directive : parsed.value().autonomy)
-                                    m_autonomy.push_back(directive);
                             }
                         }
                     }
@@ -843,23 +769,6 @@ namespace MWLua
                 return output;
             }
 
-            sol::table pollAutonomy(sol::state_view lua, std::size_t maximum)
-            {
-                maximum = std::min<std::size_t>(maximum, 3);
-                sol::table output(lua, sol::create);
-                const std::size_t count = std::min(maximum, m_autonomy.size());
-                for (std::size_t index = 0; index < count; ++index) {
-                    sol::table directive(lua, sol::create);
-                    directive["schema"] = "almsivi.autonomy-directive.v1";
-                    directive["schedule_id"] = m_autonomy[index].scheduleId;
-                    directive["kind"] = m_autonomy[index].kind;
-                    directive["issued_at"] = m_autonomy[index].issuedAt;
-                    output[index + 1] = directive;
-                }
-                m_autonomy.erase(m_autonomy.begin(), m_autonomy.begin() + static_cast<std::ptrdiff_t>(count));
-                return output;
-            }
-
             bool cancelGeneration(std::uint64_t generation)
             {
                 if (!m_service) return false;
@@ -872,7 +781,6 @@ namespace MWLua
 
             void halt()
             {
-                almsivi::VoiceCaptureService::instance().halt();
                 if (m_service) m_service->halt();
                 m_status = "halted";
             }
@@ -1032,7 +940,6 @@ namespace MWLua
                 std::optional<almsivi::RequestId> request;
             };
             std::map<std::string, MediaState> m_media;
-            std::vector<almsivi::EventsResponse::AutonomyDirective> m_autonomy;
             std::string m_status{"unconfigured"};
             std::string m_error;
             std::uint64_t m_resultsSeen{};
@@ -1077,20 +984,7 @@ namespace MWLua
                 return client().selectControl(lua,kind,std::move(selection),std::move(target));
             };
             api["sessionControls"] = [lua] { return client().sessionControls(lua); };
-            api["voiceCaptureSupported"] = [] { return almsivi::VoiceCaptureService::instance().supported(); };
-            api["startVoiceCapture"] = [lua](sol::optional<bool> automatic, sol::optional<int> rmsThreshold,
-                                               sol::optional<int> trailingSilenceMs) {
-                return client().startVoiceCapture(
-                    lua, automatic.value_or(false), rmsThreshold.value_or(700), trailingSilenceMs.value_or(900));
-            };
-            api["stopVoiceCapture"] = [] { client().stopVoiceCapture(); };
-            api["cancelVoiceCapture"] = [] { client().cancelVoiceCapture(); };
-            api["voiceCaptureStatus"] = [lua] { return client().voiceCaptureStatus(lua); };
-            api["submitCapturedStt"] = [lua](const std::string& language) {
-                return client().submitCapturedStt(lua, language);
-            };
             api["pollResults"] = [lua](std::size_t maximum) { return client().poll(lua, maximum); };
-            api["pollAutonomy"] = [lua](std::size_t maximum) { return client().pollAutonomy(lua, maximum); };
             api["prepareMedia"] = [lua](sol::table dto) { return client().prepareMedia(lua, std::move(dto)); };
             api["mediaStatus"] = [lua](const std::string& id) { return client().mediaStatus(lua, id); };
             api["playSpeech"] = [lua, luaManager](const std::string& id, const sol::object& actor,

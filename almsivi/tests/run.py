@@ -102,7 +102,31 @@ check("legacy master menu remains hidden while excluded voice controls are unreg
       "trigger('ALMSIVI_MasterMenu'" in settings
       and "trigger('ALMSIVI_OpenMic'" not in settings
       and "registerAction({key='ALMSIVI_PushToTalk'" not in settings)
+excluded_native_entries = [
+    'api["voiceCaptureSupported"]', 'api["startVoiceCapture"]', 'api["stopVoiceCapture"]',
+    'api["cancelVoiceCapture"]', 'api["voiceCaptureStatus"]', 'api["submitCapturedStt"]',
+    'api["pollAutonomy"]', 'RequestKind::stt',
+]
+check("shipped native package has no STT open-mic or autonomy entry point",
+      all(fragment not in binding for fragment in excluded_native_entries
+          for binding in [native_binding, native_overlay]))
+check("Lua orchestration has no STT open-mic or general autonomy execution path",
+      all(fragment not in orchestrator for fragment in [
+          "function M.startVoice", "function M.enableOpenMic", "function M.requestLocalAutonomy",
+          "function M.pollAutonomy", "function M.runAutonomy", "ui_source='almsivi_autonomy'",
+          "ALMSIVI_AUTONOMY_CONTEXT_REQUEST", "ALMSIVI_OPEN_MIC_CONTEXT_REQUEST",
+      ]))
 player_lua = text(SCRIPTS / "player.lua")
+openmw_adapter = text(SCRIPTS / "adapters" / "openmw.lua")
+context_lua = text(SCRIPTS / "context.lua")
+global_lua = text(SCRIPTS / "global.lua")
+check("turn-time OpenMW context includes shallow actors, semantic objects, and authoritative calendar timing",
+      "local function nearbyActorContext" in openmw_adapter
+      and "row.equipment=actor and equipment(actor,modules) or {}" in openmw_adapter
+      and "refnum=formId and {index=formId%0x1000000" in openmw_adapter
+      and "cell_identity=cellIdentity" in openmw_adapter
+      and "enrichWorldCalendar(event)" in global_lua
+      and "averageCollectionMs = snapshot.collectionTiming.averageMs" in context_lua)
 check("history and diagnostics bindings open their named panels", all(fragment in player_lua for fragment in [
     "ALMSIVI_History',adapter.callback(function() togglePanel('history')",
     "ALMSIVI_Diagnostics',adapter.callback(function() togglePanel('diagnostics')"]))
@@ -137,10 +161,10 @@ check("OpenMW settings rows have required localization metadata", all(fragment i
     "name='ModeMenu_name',description='ModeMenu_description'",
     "name='ActorTools_name',description='ActorTools_description'"]))
 player_script = text(SCRIPTS / "player.lua")
-check("dialogue responses remain visible when the persistent status HUD is disabled", all(fragment in player_script for fragment in [
-    "local dialogueNotification=notifications.new()", "notifications.active(dialogueNotification)",
-    "notifications.show(dialogueNotification,displayName(speaker)..': '..event.payload.text,duration)",
-    "wordWrap=dialogueVisible"]))
+actor_script = text(SCRIPTS / "actor.lua")
+check("dialogue playback uses native Morrowind subtitles without a duplicate status-HUD notification",
+      "playSpeech=function(mediaId,actorIdentity,subtitle,volumeBoost) return adapter.playSpeech(mediaId,subtitle,volumeBoost) end" in actor_script
+      and "dialogueNotification" not in player_script)
 check("rapid UI state changes update existing elements instead of recreating them", all(fragment in player_script for fragment in [
     "statusElement.layout=layout statusElement:update()", "element.layout=layout element:update()"]))
 check("player has no duplicate hardcoded ALMSIVI keys", all(key not in player_script for key in [

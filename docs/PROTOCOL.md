@@ -6,9 +6,9 @@ JSON Schemas and fixtures live in both repos and CI compares their SHA-256 manif
 ## Transport
 
 - Base: `http://127.0.0.1:8089/ALMSIVIserver/api/v1` by default.
-- Authentication uses `hmac-sha256-v1` request MACs. Fixed native headers carry installation ID, canonical UTC timestamp, unique random nonce, body SHA-256 and signature over algorithm/method/canonical target/content type/body digest/installation/timestamp/nonce. The 256-bit pairing MAC key is never transmitted routinely. Server persistence binds it to one installation, accepts active or bounded-overlap keys, rejects revoked keys, enforces clock skew and database nonce uniqueness, and covers JSON, STT, event, session and media routes. Plaintext loopback still does not provide payload confidentiality against privileged local software; TLS is not claimed without server support.
+- Authentication uses `hmac-sha256-v1` request MACs. Fixed native headers carry installation ID, canonical UTC timestamp, unique random nonce, body SHA-256 and signature over algorithm/method/canonical target/content type/body digest/installation/timestamp/nonce. The 256-bit pairing MAC key is never transmitted routinely. Server persistence binds it to one installation, accepts active or bounded-overlap keys, rejects revoked keys, enforces clock skew and database nonce uniqueness, and covers JSON, event, session and media routes. Plaintext loopback still does not provide payload confidentiality against privileged local software; TLS is not claimed without server support.
 - Requests and ordinary responses: `application/json; charset=utf-8`.
-- STT upload: bounded WAV body only (`codec: wav`) plus metadata headers/schema.
+- STT schemas remain in the compatibility fixture set, but the shipped client exposes no capture or request path.
 - Response progress: `GET /events?session_id=...&after=<sequence>&wait_ms<=15000`, returning bounded
   ordered JSON events. Long polling avoids exposing streaming parser complexity to Lua.
 - Media: authenticated fixed route by opaque media ID; descriptor supplies hash/size/codec. No
@@ -76,7 +76,7 @@ version/API plus the ordered content list and file identity metadata, never prop
 | `POST /turns` | `almsivi.turn.v1` | accepted request + first event cursor |
 | `POST /controls/query` | `almsivi.controls.query.v1` | safe server-owned model slots, NPC profiles, narrator ID, and target-effective settings snapshot |
 | `POST /controls/select` | `almsivi.controls.select.v1` | idempotent session model/profile selection or revision-safe NPC/narrator generation |
-| `POST /stt` | compatibility-only metadata + audio | Not called by the shipped ALMSIVI client; STT is excluded. |
+| `POST /stt` | reserved compatibility path | The shipped server returns `not_found`; STT is excluded. |
 | `GET /events` | session/cursor/wait | `almsivi.events.v1` |
 | `POST /action-results` | `almsivi.action-result.v1` | persisted acknowledgement |
 | `POST /interruptions` | `almsivi.interrupt.v1` | cancellation acknowledgement |
@@ -183,7 +183,7 @@ server logs with correlation IDs. Retriability and `retry_after_ms` are explicit
 
 ## Limits and compatibility
 
-Default server caps mirror or tighten native caps: 2 MiB JSON, 16 MiB STT, 32 MiB media, 128 KiB
+Default server caps mirror or tighten native caps: 2 MiB JSON, 32 MiB media, 128 KiB
 context, 12 audience actors, 4 actions/turn, 1 result-aware continuation/action, 15 s event wait,
 60 s turn and 120 s provider hard deadline. Negotiation may lower caps only.
 

@@ -48,11 +48,15 @@ function M.snapshot(source)
         capabilities = util.copy(source.capabilities or {}),
         unavailable = util.copy(source.unavailable or {}),
         rechat = source.rechat and util.copy(source.rechat) or nil,
+        collectionTiming = util.copy(source.collectionTiming or {}),
     }
     local estimated = estimate(snapshot)
     snapshot.budget = {maxBytes = constants.MAX_CONTEXT_BYTES, estimatedBytes = estimated,
         truncated = estimated > constants.MAX_CONTEXT_BYTES,
-        averageCollectionMs = constants.COLLECTION_AVERAGE_MS, p99CollectionMs = constants.COLLECTION_P99_MS}
+        latestCollectionMs = snapshot.collectionTiming.latestMs,
+        averageCollectionMs = snapshot.collectionTiming.averageMs,
+        p99CollectionMs = snapshot.collectionTiming.p99Ms,
+        collectionSamples = snapshot.collectionTiming.samples}
     if snapshot.budget.truncated then
         snapshot.nearbyObjects.items = {}
         snapshot.nearbyObjects.truncated = snapshot.nearbyObjects.total > 0

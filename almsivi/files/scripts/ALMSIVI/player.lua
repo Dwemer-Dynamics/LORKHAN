@@ -24,6 +24,7 @@ local autoScanElapsed=0
 local turnActive=false
 local nearbyCombat=false
 local actorActivities={}
+local contextCollectionSamples={}
 local speechActors={}
 local narratorSpeech
 local ownsUiMode=false
@@ -58,12 +59,24 @@ local CAPABILITIES={'dialogue.text','speech.say','action.ai.follow','action.ai.s
     'action.animation.play','action.item.equip','action.item.unequip','action.item.use'}
 
 local function conversationContext(target)
+    local started=core and core.getRealTime and core.getRealTime() or nil
     local snapshot=adapter.playerContext(target)
     local activities={}
     for _,status in pairs(actorActivities) do activities[#activities+1]=status end
     table.sort(activities,function(left,right) return identity.key(left.actor)<identity.key(right.actor) end)
     while #activities>12 do table.remove(activities) end
     snapshot.actorActivities=activities
+    if started and core and core.getRealTime then
+        local elapsed=math.max(0,(core.getRealTime()-started)*1000)
+        contextCollectionSamples[#contextCollectionSamples+1]=elapsed
+        while #contextCollectionSamples>64 do table.remove(contextCollectionSamples,1) end
+        local sorted={}
+        local total=0
+        for index,value in ipairs(contextCollectionSamples) do sorted[index]=value total=total+value end
+        table.sort(sorted)
+        snapshot.collectionTiming={latestMs=elapsed,averageMs=total/#sorted,
+            p99Ms=sorted[math.max(1,math.ceil(#sorted*0.99))],samples=#sorted}
+    end
     return snapshot
 end
 

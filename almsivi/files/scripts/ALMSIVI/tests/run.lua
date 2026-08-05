@@ -503,103 +503,20 @@ test('OpenMW settings page registers controls and seeds conflict-free defaults o
  package.loaded['openmw.input']=nil package.loaded['openmw.storage']=nil package.loaded['openmw.interfaces']=nil
  package.loaded['scripts.ALMSIVI.settings']=nil
 end)
-test('push to talk capture submits STT and transcript becomes a normal turn',function()
- local b=fake.bridge() local emitted={}
- local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end)
- orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
- truthy(conversation.setTarget(s.conversation,npc))
- truthy(orchestrator.startVoice(s,{speaker=playerId,target=npc,context={inventory={}},language='en-US',
-  capabilities={'dialogue.text','speech.listen'},ui_source='almsivi_voice'}))
- eq(b.voiceState,'recording');truthy(orchestrator.stopVoice(s));eq(b.voiceState,'ready')
- truthy(orchestrator.pollVoice(s));eq(#b.voiceSubmissions,1)
- b.results={{message_id='00000000-0000-4000-8000-000000000043',request_id='00000000-0000-4000-8000-000000000041',
-  turn_id='00000000-0000-4000-8000-000000000042',session_id=UUID.session,generation=1,sequence=1,
-  type='stt.transcript',payload={text='Where is Caius Cosades?',language='en-US'}}}
- eq(orchestrator.poll(s),1);eq(#b.submitted,1);eq(b.submitted[1].payload.input.text,'Where is Caius Cosades?')
- eq(b.submitted[1].payload.input.kind,'text');eq(b.submitted[1].payload.ui_source,'almsivi_voice')
+test('STT open microphone and general autonomy have no Lua execution entry points',function()
+ for _,name in ipairs({'startVoice','stopVoice','pollVoice','enableOpenMic','disableOpenMic','pollOpenMic',
+  'runOpenMicContext','requestLocalAutonomy','pollAutonomy','runAutonomy'}) do eq(orchestrator[name],nil) end
 end)
-test('auto greeting selects one newly managed NPC once per session',function()
+test('agent scanning never starts excluded greeting boredom or combat dialogue',function()
  local b=fake.bridge() local emitted={}
  local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end,nil,function()return true end)
- s.settings={autoActivate={enabled=true},behavior={autoGreeting=true}}
+ s.settings={autoActivate={enabled=true},behavior={autoGreeting=true,boredom=true,combatBarks=true}}
  orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
  local candidate={identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true}
- eq(orchestrator.scanAgents(s,{candidate},true),1);eq(s.conversation.target,nil)
+ eq(orchestrator.scanAgents(s,{candidate}),1)
  orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false})
- eq(orchestrator.scanAgents(s,{candidate},true),0);eq(s.conversation.target.record_id,npc.record_id)
- eq(emitted[#emitted].name,'ALMSIVI_AUTONOMY_CONTEXT_REQUEST')
- local directive=emitted[#emitted].payload.directive
- truthy(orchestrator.runAutonomy(s,{directive=directive,speaker=playerId,context={},language='en-US',
-  capabilities={'dialogue.text'},recent_action_results={}}))
- eq(#b.submitted,1);truthy(b.submitted[1].payload.input.text:match('natural, context%-aware greeting'))
- s.conversation.turn.terminal=true;conversation.clearTarget(s.conversation)
- orchestrator.scanAgents(s,{candidate},true);eq(#b.submitted,1);eq(#s.pendingAutonomy,0)
-end)
-test('opt-in open microphone uses VAD and rearms only after the turn',function()
- local b=fake.bridge() local emitted={}
- local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end)
- orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{});truthy(conversation.setTarget(s.conversation,npc))
- s.conversation.turn={terminal=false}
- truthy(orchestrator.enableOpenMic(s,{speaker=playerId,target=npc,context={inventory={}},language='en-US',
-  capabilities={'dialogue.text','speech.listen'}}));truthy(s.openMic);eq(b.voiceState,'idle');eq(emitted[#emitted].payload.status,'waiting')
- s.conversation.turn.terminal=true;truthy(orchestrator.pollOpenMic(s));eq(emitted[#emitted].name,'ALMSIVI_OPEN_MIC_CONTEXT_REQUEST')
- truthy(orchestrator.runOpenMicContext(s,{speaker=playerId,target=npc,context={inventory={}},language='en-US',
-  capabilities={'dialogue.text','speech.listen'},vad_sensitivity=1200,end_delay_ms=1500}));truthy(b.voiceAutomatic);eq(b.voiceState,'recording')
- eq(b.voiceSensitivity,1200);eq(b.voiceEndDelay,1500)
- b.voiceState='ready';truthy(orchestrator.pollVoice(s));eq(#b.voiceSubmissions,1)
- b.results={{message_id='00000000-0000-4000-8000-000000000043',request_id='00000000-0000-4000-8000-000000000041',
-  turn_id='00000000-0000-4000-8000-000000000042',session_id=UUID.session,generation=1,sequence=1,
-  type='stt.transcript',payload={text='Tell me about Balmora.',language='en-US'}}}
- eq(orchestrator.poll(s),1);eq(#b.submitted,1);eq(b.submitted[1].payload.ui_source,'almsivi_open_mic')
- eq(orchestrator.pollOpenMic(s),false)
- s.conversation.turn.terminal=true;truthy(orchestrator.pollOpenMic(s));eq(emitted[#emitted].name,'ALMSIVI_OPEN_MIC_CONTEXT_REQUEST')
- truthy(orchestrator.runOpenMicContext(s,{speaker=playerId,target=npc,context={journal={}},language='en-US',
-  capabilities={'dialogue.text','speech.listen'}}));eq(b.voiceState,'recording');truthy(b.voiceAutomatic)
- truthy(orchestrator.disableOpenMic(s));eq(b.voiceState,'idle');eq(s.openMic,false)
-end)
-test('server autonomy directive becomes a fresh context-aware dialogue turn',function()
- local b=fake.bridge() local emitted={}
- local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end)
- s.settings={behavior={rechat=true}}
- orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
- truthy(conversation.setTarget(s.conversation,npc))
- local directive={schema='almsivi.autonomy-directive.v1',schedule_id='00000000-0000-4000-8000-000000000070',
-  kind='rechat',issued_at='2026-07-19T20:00:00Z'}
- b.autonomy={directive};eq(orchestrator.pollAutonomy(s),1)
- eq(emitted[#emitted].name,'ALMSIVI_AUTONOMY_CONTEXT_REQUEST')
- truthy(orchestrator.runAutonomy(s,{directive=directive,speaker=playerId,context={journal={}},language='en-US',
-  capabilities={'dialogue.text'},recent_action_results={}}))
- eq(#b.submitted,1);eq(b.submitted[1].payload.ui_source,'almsivi_autonomy')
- truthy(b.submitted[1].payload.input.text:match('Continue the recent conversation'))
-end)
-test('local rechat and boredom controls create bounded autonomy turns',function()
- local b=fake.bridge() local emitted={}
- local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end,nil,function()return true end)
- s.settings={behavior={rechat=true,boredom=true,combatBarks=true}}
- orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
- truthy(conversation.setTarget(s.conversation,npc))
- local directive=orchestrator.requestLocalAutonomy(s,'rechat');eq(directive.kind,'rechat')
- eq(emitted[#emitted].name,'ALMSIVI_AUTONOMY_CONTEXT_REQUEST')
- truthy(orchestrator.runAutonomy(s,{directive=directive,speaker=playerId,context={},language='en-US',
-  capabilities={'dialogue.text'},recent_action_results={}}));eq(#b.submitted,1)
- s.conversation.turn.terminal=true;conversation.clearTarget(s.conversation)
- local candidate={identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true}
- truthy(orchestrator.manageCandidate(s,candidate,'manual'))
- directive=orchestrator.requestLocalAutonomy(s,'boredom');eq(directive.kind,'boredom')
- eq(s.conversation.target.record_id,npc.record_id)
- s.pendingAutonomy={} s.autonomyRequested=false
- directive=orchestrator.requestLocalAutonomy(s,'combat_bark',npc);eq(directive.kind,'combat_bark')
-end)
-test('idle conversation rotates across managed agents before repeating',function()
- local b=fake.bridge() local s=orchestrator.new(b,nil,nil,function()return true end)
- local other=fake.identity('npc','ajira',88)
- s.settings={behavior={boredom=true}}
- for _,actorId in ipairs({npc,other}) do orchestrator.activate(s,actorId,{}) end
- truthy(orchestrator.manageCandidate(s,{identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true},'auto'))
- truthy(orchestrator.manageCandidate(s,{identity=other,distance=200,maxDistance=1200,dead=false,hostile=false,available=true},'auto'))
- truthy(orchestrator.requestLocalAutonomy(s,'boredom'));eq(s.conversation.target.record_id,npc.record_id)
- s.pendingAutonomy={} s.autonomyRequested=false conversation.clearTarget(s.conversation)
- truthy(orchestrator.requestLocalAutonomy(s,'boredom'));eq(s.conversation.target.record_id,other.record_id)
+ eq(orchestrator.scanAgents(s,{candidate}),0);eq(s.conversation.target,nil);eq(#b.submitted,0)
+ for _,event in ipairs(emitted) do truthy(event.name~='ALMSIVI_AUTONOMY_CONTEXT_REQUEST') end
 end)
 test('safe movement and combat actions enforce tiers and bounds',function()
  local registry=identity.Registry();registry:activate(npc,{});registry:activate(playerId,{})

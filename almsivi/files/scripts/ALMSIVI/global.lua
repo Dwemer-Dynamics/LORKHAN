@@ -59,6 +59,30 @@ local function manageActor(actor,generation)
 end
 state=orchestrator.new(bridge,emit,sendActor,manageActor)
 local configuredSession
+local morrowindMonths={'Morning Star','Sun\'s Dawn','First Seed','Rain\'s Hand','Second Seed','Midyear',
+    'Sun\'s Height','Last Seed','Hearthfire','Frostfall','Sun\'s Dusk','Evening Star'}
+
+-- Calendar globals are authoritative only in global context. Add them immediately before the
+-- immutable turn envelope is created so prompts receive Morrowind dates rather than wall-clock time.
+local function enrichWorldCalendar(event)
+    if type(event)~='table' or type(event.context)~='table' then return end
+    event.context.world=type(event.context.world)=='table' and event.context.world or {}
+    local player=currentPlayer()
+    local mwscript=worldOk and world and world.mwscript
+    if not player or not mwscript or type(mwscript.getGlobalVariables)~='function' then
+        event.context.unavailable=type(event.context.unavailable)=='table' and event.context.unavailable or {}
+        event.context.unavailable[#event.context.unavailable+1]='morrowind_calendar'
+        return
+    end
+    local ok,variables=pcall(mwscript.getGlobalVariables,player)
+    if not ok or not variables then return end
+    local month=tonumber(variables.month)
+    local hour=tonumber(variables.gamehour)
+    event.context.world.calendar={year=tonumber(variables.year),month=month,
+        month_name=month and morrowindMonths[month+1] or nil,day=tonumber(variables.day),
+        days_passed=tonumber(variables.dayspassed),hour=hour,
+        time=hour and string.format('%02d:%02d',math.floor(hour)%24,math.floor((hour%1)*60)) or nil}
+end
 
 -- Observe vanilla NPC/creature activation as a target hint without consuming or replacing the
 -- standard Morrowind activation action. Dedicated ALMSIVI controls remain the primary input path.
@@ -223,11 +247,12 @@ return {
             emit('ALMSIVI_ACTIVATION_STATUS',{status='nearby',added=added,retained=retained})
         end,
         ALMSIVI_AUTO_ACTIVATE_SCAN=function(event)
-            orchestrator.scanAgents(state,event.candidates,false)
+    orchestrator.scanAgents(state,event.candidates)
         end,
         ALMSIVI_ACTOR_COMBAT_STATUS=function(event) orchestrator.actorCombatStatus(state,event) end,
         ALMSIVI_CLEAR_AUDIENCE=function() orchestrator.clearAudience(state) end,
         ALMSIVI_SUBMIT_TEXT=function(event)
+            enrichWorldCalendar(event)
             local metadata=bridge.nextTurnMetadata and bridge.nextTurnMetadata() or {}
             for key,value in pairs(metadata) do if event[key]==nil then event[key]=value end end
             if event.input_key==nil then event.input_key=event.request_id end
