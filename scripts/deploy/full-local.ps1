@@ -96,6 +96,29 @@ function Invoke-RobocopyMirror {
     if ($exitCode -gt 7) { throw "robocopy failed with exit code $exitCode while mirroring $Source" }
 }
 
+# Refresh the generated exact-pin OpenMW worktree from every tracked overlay file before compiling.
+function Sync-OpenMwOverlay {
+    param([Parameter(Mandatory)][string]$Destination)
+
+    $overlayPrefix = 'openmw-patches/overlay/'
+    $trackedFiles = @(& git -C $repoRoot ls-files -- 'openmw-patches/overlay')
+    if ($LASTEXITCODE -ne 0 -or $trackedFiles.Count -eq 0) { throw 'Tracked OpenMW overlay files could not be listed.' }
+    $destinationRoot = [IO.Path]::GetFullPath($Destination).TrimEnd('\') + '\'
+    foreach ($trackedFile in $trackedFiles) {
+        if (-not $trackedFile.StartsWith($overlayPrefix, [StringComparison]::Ordinal)) {
+            throw "Unexpected OpenMW overlay path: $trackedFile"
+        }
+        $relativePath = $trackedFile.Substring($overlayPrefix.Length).Replace('/', '\')
+        $sourcePath = Join-Path $repoRoot $trackedFile.Replace('/', '\')
+        $targetPath = [IO.Path]::GetFullPath((Join-Path $Destination $relativePath))
+        if (-not $targetPath.StartsWith($destinationRoot, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "OpenMW overlay path escapes the pinned worktree: $trackedFile"
+        }
+        New-Item -ItemType Directory -Force -Path (Split-Path $targetPath -Parent) | Out-Null
+        Copy-Item -LiteralPath $sourcePath -Destination $targetPath -Force
+    }
+}
+
 function Write-Utf8NoBom {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Content)
     [IO.File]::WriteAllText($Path, $Content, [Text.UTF8Encoding]::new($false))
@@ -324,6 +347,7 @@ try {
             if ($LASTEXITCODE -ne 0 -or $engineHead -ne $expectedEnginePin) {
                 throw "Expected OpenMW pin $expectedEnginePin, found $engineHead"
             }
+            Sync-OpenMwOverlay -Destination $EngineSource
             if (-not $SkipBuild) {
                 $cmake = Get-CMakeExecutable
                 foreach ($target in @('openmw', 'openmw-launcher')) {

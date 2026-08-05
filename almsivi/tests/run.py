@@ -230,6 +230,9 @@ check("mod-manager launcher starts the private ALMSIVI runtime before OpenMW", a
     "function Start-AlmsiviServices", "$env:ALMSIVI_CLIENT_CONFIG = $clientConfigPath",
     "service almsiviserver-worker start", "almsivi.health.v1"]) and all(fragment in deploy_script for fragment in [
     "Manage-ALMSIVI-Mods.cmd", "service almsiviserver-worker start", "ALMSIVI_CLIENT_CONFIG=%~dp0Config\\almsivi-client.conf"]))
+check("client deployment refreshes every tracked OpenMW overlay before compiling", all(fragment in deploy_script for fragment in [
+    "function Sync-OpenMwOverlay", "git -C $repoRoot ls-files -- 'openmw-patches/overlay'",
+    "Sync-OpenMwOverlay -Destination $EngineSource"]))
 check("deploy installs the ALMSIVI profile manager instead of the limited launcher wrapper", all(fragment in deploy_script for fragment in [
     "scripts\\tools\\manage-openmw-profile.ps1", "Manage-ALMSIVI-Profile.ps1", "-ProfileName Compatibility",
     "extracting it into its own Mods\\Mod Name folder"]))
