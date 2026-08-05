@@ -932,6 +932,10 @@ namespace MWLua
                 switch (event.type)
                 {
                     case almsivi::ProtocolEventType::turn_accepted: result["type"] = "turn.accepted"; break;
+                    case almsivi::ProtocolEventType::dialogue_delta: {
+                        result["type"] = "dialogue.delta";
+                        const auto& item = std::get<almsivi::DialogueDeltaEventPayload>(event.payload);
+                        payload["text"] = item.text; break; }
                     case almsivi::ProtocolEventType::dialogue_complete: {
                         result["type"] = "dialogue.complete";
                         const auto& item = std::get<almsivi::DialogueCompleteEventPayload>(event.payload);

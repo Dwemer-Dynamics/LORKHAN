@@ -61,10 +61,15 @@ Display names are never authoritative. A stale or ambiguous identity fails close
 3. GLOBAL discovers active actors through engine handlers and attaches the CUSTOM action script only
    to participants as needed.
 4. PLAYER input starts a turn; GLOBAL freezes target/audience/context DTOs and submits them.
-5. Responses enter the per-actor queue only if all identity/generation fields still match.
-6. Save, load, new game, menu return, profile switch, halt or shutdown cancels transport, clears
+5. Responses enter one ordered per-actor speech lane only if all identity/generation fields still match.
+6. A rechat continuation may be submitted only after the originating turn is terminal, every queued
+   utterance has reached a terminal delivery result, the final result is `played`, and the inherited
+   rechat depth has not been exhausted. Rechat cannot emit game actions.
+7. New player input, target loss, delivery failure, save/load, cell transition, interruption, halt,
+   or generation change cancels the active rechat chain.
+8. Save, load, new game, menu return, profile switch, halt or shutdown cancels transport, clears
    queues/UI/speech/temporary AI and increments generation.
-7. `onSave` stores only versioned lightweight Lua state; requests, tokens, raw prompts/audio and
+9. `onSave` stores only versioned lightweight Lua state; requests, tokens, raw prompts/audio and
    engine pointers are never serialized.
 
 ## Configuration

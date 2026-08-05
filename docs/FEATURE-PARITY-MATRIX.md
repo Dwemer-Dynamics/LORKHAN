@@ -31,7 +31,8 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 | Subtitles/transcript | Keep | Custom UI with speaker and status, independent of stock subtitle toggle. |
 | Interrupt/skip/hard halt | Keep | Reserved control lane; speech/action/server cancellation. |
 | Automatic greeting | Exclude | Baseline control remains visible and disabled; no automatic model-triggering. |
-| Rechat/boredom | Exclude | Baseline controls remain visible and disabled; no scheduler, cooldown, or automatic model-triggering. |
+| Rechat | Keep | Playback-driven continuation of a player-started conversation with a bounded chain ID/depth; only final `played` delivery advances the chain, and rechat cannot emit actions. |
+| Boredom | Exclude | Baseline control remains visible and disabled; no scheduler, cooldown, or automatic model-triggering. |
 | Vanilla dialogue context | Adapt | Passive `DialogueResponse` capture; never replace vanilla UI. |
 | Skyrim/Fallout HUD widgets | Adapt | OpenMW Lua UI built from scratch; no copied SWF/Papyrus. |
 
@@ -61,11 +62,12 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 | Dynamic profiles | Keep | Server-controlled revisions with source/event history. |
 | World knowledge | Keep | Scoped documents/facts with retrieval trace. |
 | Narrator and diary | Keep | Opt-in narrator persona, inline routing, player-local speech, and revision-safe PHP/in-game narrator generation are implemented; dedicated narrator/diary/summary CRUD exists, while automatic diary generation remains deferred. |
-| Rechat, boredom, greetings and combat barks | Exclude | Baseline controls remain visible and disabled; no runtime scheduler or automatic model-triggering is shipped. |
+| Rechat | Keep | Uses the CHIM-style history/prompt/response records and a typed playback-gated chain; new player input or any invalid/stale/failed delivery cancels continuation. |
+| Boredom, greetings and combat barks | Exclude | Baseline controls remain visible and disabled; no runtime scheduler or automatic model-triggering is shipped. |
 | Playthrough export/restore | Keep | Transactional server snapshot plus binding safeguards. |
 | LLM/TTS providers | Keep | Typed LLM/TTS catalogs, bounded adapters, health and secret handling, per-profile routing, portable preset workflows, and persistent voice management. STT remains a disabled compatibility placeholder only. |
 | Prompt/action editor | Keep | Validated schemas, revisions, rollback, portable prompt export/import/clone, explicit per-NPC prompt selection with in-use deletion guards, and labelled per-action policy controls that cannot broaden the server-owned OpenMW catalog. |
-| Request/event logs | Keep | Structured/redacted correlation and retention. |
+| Request/event logs | Keep | Scoped CHIM-style `eventlog`, `speech`, `responselog`, `prompts`, and prompt-source traces retain typed request/turn/session correlation and delivery state. |
 | Workers/backups/health | Keep | Supervised worker, retry/dead-letter queue, health/audit/provider diagnostics, bounded redacted server-log viewer, schema migrations, retention controls, scoped playthrough export/restore, and hash-verified same-installation configuration backup/restore that excludes secrets and runtime data. |
 
 ## Actions

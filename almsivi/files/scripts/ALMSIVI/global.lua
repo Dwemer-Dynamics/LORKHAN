@@ -8,6 +8,8 @@ local worldOk,world=pcall(require,'openmw.world')
 local state
 local pendingPlayerEvents={}
 local bridgeStatus
+local bridgePollElapsed=0.05
+local BRIDGE_POLL_INTERVAL=0.05
 
 local function currentPlayer()
     if not worldOk or not world then return nil end
@@ -167,7 +169,10 @@ return {
             activate(object)
             flushPlayerEvents(object)
         end,
-        onUpdate=function()
+        onUpdate=function(dt)
+            bridgePollElapsed=bridgePollElapsed+(tonumber(dt) or 0)
+            if bridgePollElapsed<BRIDGE_POLL_INTERVAL then return end
+            bridgePollElapsed=0
             flushPlayerEvents()
             local session=bridge.sessionInfo and bridge.sessionInfo()
             -- Session initialization completes through the same inbound queue as gameplay events.

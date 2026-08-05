@@ -173,6 +173,27 @@ test('media prepare handoff is opaque generation-bound and fake-adapter tested',
   truthy(orchestrator.speechStatus(s,{media_id=descriptor.media_id,active=false,status='played'}));eq(next(s.conversation.pendingMedia),nil);eq(s.activeSpeechMediaId,nil)
   orchestrator.lifecycle(s,'load');eq(next(s.conversation.pendingMedia),nil)
  end)
+test('rechat waits for terminal playback and submits one correlated continuation',function()
+ local b=fake.bridge() local s=orchestrator.new(b,nil,function()return true end)
+ s.settings={behavior={rechat=true,rechatMaxDepth=2},presentation={ttsVolumeBoost=3}}
+ orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+ truthy(conversation.setTarget(s.conversation,npc))
+ truthy(orchestrator.submitText(s,{message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,
+  installation_id='00000000-0000-4000-8000-000000000060',profile_id='00000000-0000-4000-8000-000000000061',
+  playthrough_id='00000000-0000-4000-8000-000000000062',created_at='2026-07-19T20:00:00Z',platform='windows',
+  content_fingerprint='sha256:'..string.rep('a',64),text='Hello.',input_key='player:1',language='en-US',
+  speaker=playerId,context={},capabilities={'dialogue.text','speech.say'},recent_action_results={},ui_source='almsivi_text'}))
+ local dialogue=event(1,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Greetings.'})
+ local descriptor={media_id='00000000-0000-4000-8000-000000000005',dialogue_message_id=UUID.message,
+  sha256=string.rep('a',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
+ b.results={dialogue,event(2,'speech.ready',1,descriptor),event(3,'turn.complete',1,{status='complete'})}
+ eq(orchestrator.poll(s),3);eq(#b.submitted,1)
+ b.media[descriptor.media_id]={state='ready'};orchestrator.poll(s);eq(#b.submitted,1)
+ truthy(orchestrator.speechStatus(s,{media_id=descriptor.media_id,active=false,status='played'}))
+ eq(#b.submitted,2);eq(b.submitted[2].payload.ui_source,'almsivi_rechat')
+ eq(b.submitted[2].payload.context.rechat.depth,1);eq(b.submitted[2].payload.context.rechat.origin_turn_id,UUID.turn)
+ eq(s.rechat.originTurnId,UUID.turn)
+end)
 test('multi-speaker media plays in dialogue order without overlap',function()
  local b=fake.bridge() local sent={}
  local s=orchestrator.new(b,nil,function(_,name,payload)table.insert(sent,{name=name,payload=payload})return true end)
@@ -289,8 +310,9 @@ test('typed player action request remains inside the strict turn envelope',funct
  eq(dto,nil);eq(reason,'invalid_action_request')
 end)
 test('managed agents activate in bounded batches and manual pins survive distance cleanup',function()
- local b=fake.bridge() local managed=0 local detached=0
- local s=orchestrator.new(b,nil,function(_,name)if name=='ALMSIVI_ACTOR_DETACH'then detached=detached+1 end return true end,
+ local b=fake.bridge() local managed=0 local detached=0 local agentEvents=0
+ local s=orchestrator.new(b,function(name)if name=='ALMSIVI_AGENTS'then agentEvents=agentEvents+1 end end,
+  function(_,name)if name=='ALMSIVI_ACTOR_DETACH'then detached=detached+1 end return true end,
   function()managed=managed+1 return true end)
  local candidates={}
  for i=1,8 do
@@ -298,10 +320,13 @@ test('managed agents activate in bounded batches and manual pins survive distanc
   orchestrator.activate(s,actorId,{})
   candidates[i]={identity=actorId,distance=i*10,maxDistance=1200,dead=false,hostile=false,available=true}
  end
- eq(orchestrator.scanAgents(s,candidates),6);eq(#agentRegistry.snapshot(s.agents),6)
- eq(orchestrator.scanAgents(s,candidates),2);eq(managed,8)
+ eq(orchestrator.scanAgents(s,candidates),6);eq(#agentRegistry.snapshot(s.agents),6);eq(agentEvents,1)
+ eq(orchestrator.scanAgents(s,candidates),2);eq(managed,8);eq(agentEvents,2)
+ eq(orchestrator.scanAgents(s,candidates),0);eq(agentEvents,2)
  local actor,status=orchestrator.manageCandidate(s,candidates[1],'manual');truthy(actor);eq(status,'upgraded')
+ eq(agentEvents,3)
  for _=1,4 do orchestrator.scanAgents(s,{}) end
+ eq(agentEvents,4)
  local snapshot=agentRegistry.snapshot(s.agents);eq(#snapshot,1);eq(snapshot[1].source,'manual')
  actor,status=orchestrator.manageCandidate(s,candidates[1],'manual');truthy(actor);eq(status,'deactivated');eq(detached,8)
 end)

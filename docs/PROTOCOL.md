@@ -76,7 +76,7 @@ version/API plus the ordered content list and file identity metadata, never prop
 | `POST /turns` | `almsivi.turn.v1` | accepted request + first event cursor |
 | `POST /controls/query` | `almsivi.controls.query.v1` | safe server-owned model slots, NPC profiles, narrator ID, and target-effective settings snapshot |
 | `POST /controls/select` | `almsivi.controls.select.v1` | idempotent session model/profile selection or revision-safe NPC/narrator generation |
-| `POST /stt` | metadata + audio | transcript event or typed failure |
+| `POST /stt` | compatibility-only metadata + audio | Not called by the shipped ALMSIVI client; STT is excluded. |
 | `GET /events` | session/cursor/wait | `almsivi.events.v1` |
 | `POST /action-results` | `almsivi.action-result.v1` | persisted acknowledgement |
 | `POST /interruptions` | `almsivi.interrupt.v1` | cancellation acknowledgement |
@@ -84,10 +84,17 @@ version/API plus the ordered content list and file identity metadata, never prop
 
 ## Turn payload
 
-A turn includes input `{kind: text|stt, text, language}`, resolved speaker/target/audience identities,
+A shipped turn includes typed text input, resolved speaker/target/audience identities,
 bounded context snapshot/delta, recent terminal action results, and UI source. It never includes the
 pairing token, provider key, host file path, save bytes, proprietary assets, engine pointers, or raw
 unbounded logs.
+
+A playback-driven rechat turn sets `ui_source` to `almsivi_rechat` and carries bounded typed context:
+`chain_id`, current `depth`, `max_depth`, `origin_turn_id`, `previous_speaker`, and
+`previous_listener`. The server accepts only monotonic continuation in the same active
+session/generation. Rechat is not timer autonomy: it is submitted only after the preceding ordered
+speech lane is terminal and its final delivery result is `played`. Rechat provider actions are always
+discarded, and a chain closes at maximum depth or cancels on new player input/failure/stale state.
 
 An in-game action menu may add `action_request` with a catalog action name, exact tier, bounded
 parameters, and an optional explicit target. The server derives the actor from the resolved turn target.
@@ -114,12 +121,17 @@ assembled prompt and selected provider revision before worker execution.
 Every controls response includes `almsivi.effective-settings.v1` for the active target. It carries the
 resolved memory, narrator, safety, and routing values; Global/Core Profile/NPC source metadata; bound profile
 revisions; and a deterministic change token. Local hotkeys, HUD visibility, panel layout, and TTS volume boost
-remain OpenMW preferences and are never replaced when the target changes. Autonomy settings are intentionally
-absent from this milestone's client snapshot.
+remain OpenMW preferences and are never replaced when the target changes. The effective settings
+snapshot includes the layered rechat enable/depth values; timer scheduling, boredom, greetings,
+combat barks, STT, ITT, and Background Life remain excluded.
 
 Server response events have a strictly increasing per-session `sequence`. The current v1 slice contracts exactly `turn.accepted`, `dialogue.delta`, `dialogue.complete`, `speech.ready`, `action.intent`, `turn.complete`, `turn.failed`, and `turn.cancelled`. Bounded `dialogue.delta` text is display-only progress; the validated `dialogue.complete` remains the durable utterance and memory source. TTS runs as a separate durable job after the dialogue is committed, and every `speech.ready` descriptor carries its `dialogue_message_id` so delayed group speech remains correctly ordered. Every envelope includes `message_id`, `request_id`, `turn_id`, `session_id`, `generation`, `sequence`, `created_at`, type and strict payload. The events response is capped at 100 items.
 
-`dialogue.complete` is the final utterance. Duplicate events by `(session_id, sequence, message_id)` are ignored. Cursor gaps force bounded replay, never guessed ordering. Configuration/notice and resync variants remain future amendments rather than accepted open variants.
+`dialogue.complete` is the final utterance. The client reports one terminal delivery result for each
+utterance, and the server mirrors it into durable speech state (`spoken`, failure, cancellation, or
+expiry). Duplicate events by `(session_id, sequence, message_id)` are ignored. Cursor gaps force
+bounded replay, never guessed ordering. Configuration/notice and resync variants remain future
+amendments rather than accepted open variants.
 
 ## Action intent and result
 

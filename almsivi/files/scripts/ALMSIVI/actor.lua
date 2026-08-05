@@ -5,6 +5,8 @@ local protocol=require('scripts.ALMSIVI.protocol')
 local core=adapter.event()
 local state
 local lastCombatSignature
+local combatStatusElapsed=0
+local COMBAT_STATUS_INTERVAL=0.25
 local engine={
     followSelf=function(target) return adapter.follow(target) end,
     travelSelf=function(target,parameters) return adapter.travel(parameters) end,
@@ -75,9 +77,17 @@ local function cancelFace(reason)
 end
 return {
     engineHandlers={onInit=function(data) state=executor.new(data.actor,data.generation,data.capabilities) end,
-        onActive=function() if state then state.attached=true lastCombatSignature=nil reportCombatStatus() end end,
+        onActive=function()
+            if state then
+                state.attached=true lastCombatSignature=nil combatStatusElapsed=0 reportCombatStatus()
+            end
+        end,
         onUpdate=function(dt)
-            reportCombatStatus()
+            combatStatusElapsed=combatStatusElapsed+(tonumber(dt) or 0)
+            if combatStatusElapsed>=COMBAT_STATUS_INTERVAL then
+                combatStatusElapsed=0
+                reportCombatStatus()
+            end
             if state and state.activeFace then
                 local result,command=executor.updateFace(state,engine,dt)
                 report(result,command)

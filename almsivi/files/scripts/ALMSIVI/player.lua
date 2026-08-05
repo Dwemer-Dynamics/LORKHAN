@@ -49,6 +49,10 @@ local pendingControlPanel
 local aimCandidate
 local aimScanElapsed=0
 local aimSignature=''
+local settingsRefreshElapsed=0.5
+local SETTINGS_REFRESH_INTERVAL=0.5
+local AIM_SCAN_INTERVAL=0.25
+local AUTO_SCAN_INTERVAL=1.0
 local function send(name,payload) if core and core.sendGlobalEvent then core.sendGlobalEvent(name,payload) end end
 local CAPABILITIES={'dialogue.text','speech.say','action.ai.follow','action.ai.stop',
     'action.ai.travel','action.ai.escort','action.ai.face','action.ai.wander','action.combat.start','action.combat.stop','action.inspect.report',
@@ -835,10 +839,8 @@ local function confirmSecondaryTarget()
     return true
 end
 
-applySettings=function()
+applySettings=function(session,controls)
     local exterior=self.cell and self.cell.isExterior==true
-    local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
-    local controls=sessionControls()
     local effective=controls and state.ui.target and identity.same(controls.target,state.ui.target)
         and controls.effective_settings or nil
     local targetSettings=effective and effective.settings or {}
@@ -865,7 +867,9 @@ applySettings=function()
             addHostile=restricted(autoSettings and autoSettings:get('addHostile'),serverSafety.allowHostile,false),
             addCreatures=restricted(autoSettings and autoSettings:get('addCreatures'),serverSafety.allowCreatures,false)},
         behavior={actionsEnabled=restricted(actionsEnabled,serverSafety.actionsEnabled,true),
-            cancelDialogueOnCombat=behaviorSettings and behaviorSettings:get('cancelDialogueOnCombat')},
+            cancelDialogueOnCombat=behaviorSettings and behaviorSettings:get('cancelDialogueOnCombat'),
+            rechat=targetSettings.behavior and targetSettings.behavior.rechat==true,
+            rechatMaxDepth=targetSettings.behavior and targetSettings.behavior.rechat_max_depth or 10},
         presentation={showStatusHud=presentationSettings and presentationSettings:get('showStatusHud')==true,
             transcriptRows=tonumber(presentationSettings and presentationSettings:get('transcriptRows')) or 12,
             ttsVolumeBoost=tonumber(ttsVolumeBoost) or 3},
@@ -877,7 +881,7 @@ applySettings=function()
     local signature=table.concat({tostring(auto.enabled),tostring(auto.interiorDistance),tostring(auto.exteriorDistance),
         tostring(auto.hearingDistance),tostring(auto.interiorHearingDistance),tostring(auto.exteriorHearingDistance),
         tostring(auto.addHostile),tostring(auto.addCreatures),tostring(behavior.actionsEnabled),
-        tostring(behavior.cancelDialogueOnCombat),
+        tostring(behavior.cancelDialogueOnCombat),tostring(behavior.rechat),tostring(behavior.rechatMaxDepth),
         tostring(presentation.showStatusHud),tostring(presentation.transcriptRows),
         tostring(presentation.ttsVolumeBoost),tostring(effective and effective.change_token),tostring(session and session.config_revision)},'|')
     if signature==settingsSignature then return end
@@ -934,9 +938,21 @@ return {
             local statusChanged=notifications.update(notification,dt)
             local dialogueChanged=notifications.update(dialogueNotification,dt)
             if statusChanged or dialogueChanged then renderStatusHud() end
-            applySettings()
-            aimScanElapsed=aimScanElapsed+(tonumber(dt) or 0)
-            if aimScanElapsed>=0.1 and not state.ui.visible and controlsAllowed() then
+            local elapsed=tonumber(dt) or 0
+            settingsRefreshElapsed=settingsRefreshElapsed+elapsed
+            if settingsRefreshElapsed>=SETTINGS_REFRESH_INTERVAL then
+                settingsRefreshElapsed=0
+                local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
+                local controls=sessionControls()
+                applySettings(session,controls)
+                local signature=controls and table.concat({tostring(controls.selected_model_slot_id),tostring(controls.selected_profile_id),
+                    tostring(controls.effective_settings and controls.effective_settings.change_token),
+                    tostring(#(controls.model_slots or {})),tostring(#(controls.profiles or {})),tostring(controls.pending)},'|') or ''
+                if signature~=controlsSignature then controlsSignature=signature
+                    if state.ui.visible and (state.ui.panel=='models' or state.ui.panel=='profiles') then render() end end
+            end
+            aimScanElapsed=aimScanElapsed+elapsed
+            if aimScanElapsed>=AIM_SCAN_INTERVAL and not state.ui.visible and controlsAllowed() then
                 aimScanElapsed=0
                 local candidate=adapter.resolveActorRay(2048)
                 local signature=candidate and identity.key(candidate.identity) or ''
@@ -944,8 +960,8 @@ return {
                     aimCandidate=candidate aimSignature=signature render()
                 elseif candidate then aimCandidate=candidate end
             end
-            autoScanElapsed=autoScanElapsed+(tonumber(dt) or 0)
-            if autoScanElapsed>=0.25 then
+            autoScanElapsed=autoScanElapsed+elapsed
+            if autoScanElapsed>=AUTO_SCAN_INTERVAL then
                 autoScanElapsed=0
                 local enabled=not autoSettings or autoSettings:get('enabled')~=false
                 local candidates={}
@@ -958,12 +974,6 @@ return {
                 end
                 send('ALMSIVI_AUTO_ACTIVATE_SCAN',{candidates=candidates})
             end
-            local controls=sessionControls()
-            local signature=controls and table.concat({tostring(controls.selected_model_slot_id),tostring(controls.selected_profile_id),
-                tostring(controls.effective_settings and controls.effective_settings.change_token),
-                tostring(#(controls.model_slots or {})),tostring(#(controls.profiles or {})),tostring(controls.pending)},'|') or ''
-            if signature~=controlsSignature then controlsSignature=signature
-                if state.ui.visible and (state.ui.panel=='models' or state.ui.panel=='profiles') then render() end end
         end,
     },
     eventHandlers={

@@ -16,10 +16,10 @@ function M.new(bridge,emit,sendActor,manageActor)
         generation=generation,sessionId=nil,registry=identity.Registry(),agents=agentRegistry.new(),
         manageActor=manageActor or function() return nil,'actor_manager_unavailable' end,
         conversation=conversation.new(generation),events=nil,attachments={},media={},pendingConfirmations={},
-        activeSpeechMediaId=nil,
+        activeSpeechMediaId=nil,rechat=nil,rechatSeed=nil,
         pendingVoice=nil,pendingStt={},openMic=false,openMicRequested=false,
         pendingAutonomy={},autonomyRequested=false,greetedAgents={},autonomyCounts={},combatThreats={},
-        combatVerified={},dialogueMode='Standard',disabled=false,hardHalted=false}
+        combatVerified={},dialogueMode='Standard',disabled=false,hardHalted=false,agentsSignature=nil}
     state.recentVanillaDialogue={}
     return state
 end
@@ -58,12 +58,14 @@ function M.lifecycle(state,kind)
     state.events=state.sessionId and protocol.CursoredEvents(state.sessionId,state.generation) or nil
     state.pendingConfirmations={}
     state.activeSpeechMediaId=nil
+    state.rechat=nil state.rechatSeed=nil
     state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
     state.pendingAutonomy={} state.autonomyRequested=false
     state.greetedAgents={} state.autonomyCounts={} state.combatThreats={} state.combatVerified={}
     state.recentVanillaDialogue={}
     state.hardHalted=false state.conversation.hardHalted=false
     state.registry:clear()
+    state.agentsSignature=nil
     agentRegistry.clear(state.agents)
     emitCombatState(state)
     state.emit('ALMSIVI_ACTOR_ACTIVITY',{reset=true})
@@ -108,7 +110,21 @@ function M.recordVanillaDialogue(state,event)
 end
 
 local function emitAgents(state)
-    state.emit('ALMSIVI_AGENTS',{agents=agentRegistry.snapshot(state.agents)})
+    local snapshot=agentRegistry.snapshot(state.agents)
+    local signatureParts={}
+    for _,agent in ipairs(snapshot) do
+        signatureParts[#signatureParts+1]=table.concat({
+            identity.key(agent.identity) or '',
+            tostring(agent.source or ''),
+            tostring(agent.pinned==true),
+            tostring(math.floor((tonumber(agent.distance) or 0)/64)),
+        },':')
+    end
+    local signature=table.concat(signatureParts,'|')
+    if signature==state.agentsSignature then return false end
+    state.agentsSignature=signature
+    state.emit('ALMSIVI_AGENTS',{agents=snapshot})
+    return true
 end
 
 local function detachAgent(state,actor,reason)
@@ -449,6 +465,8 @@ function M.submitText(state,args)
     for _,key in ipairs({'request_id','turn_id','message_id'}) do
         if not protocol.isUuid(args[key]) then return nil,'invalid_'..key end
     end
+    local isRechat=args.ui_source=='almsivi_rechat'
+    if not isRechat then state.rechat=nil end
     local requestId=args.request_id
     local turnId=args.turn_id
     local ok,reason=conversation.begin(state.conversation,requestId,turnId,args.input_key or args.text)
@@ -493,6 +511,11 @@ function M.submitText(state,args)
     if not dto then state.conversation.turn=nil return nil,buildReason end
     local submitted,nativeReason=state.bridge.submitTurn(dto)
     if not submitted then state.conversation.turn=nil return nil,nativeReason end
+    if not isRechat then
+        state.rechatSeed=util.copy(args)
+        state.rechat={chainId=state.bridge.newMessageId and state.bridge.newMessageId() or args.request_id,
+            originTurnId=args.turn_id,depth=0,lastSpeaker=nil,lastAddressee=nil,cancelled=false}
+    end
     state.recentVanillaDialogue={}
     state.emit('ALMSIVI_TURN',{status='queued',message_id=args.message_id,request_id=requestId,turn_id=turnId,
         created_at=args.created_at})
@@ -564,6 +587,39 @@ local function preparePendingMedia(state)
     end
 end
 
+-- Continue only a player-started conversation and only after the complete speech queue has played.
+local function submitPlaybackRechat(state)
+    local chain=state.rechat
+    local settings=state.settings and state.settings.behavior or {}
+    local maxDepth=math.max(1,math.min(20,math.floor(tonumber(settings.rechatMaxDepth or settings.rechat_max_depth) or 10)))
+    if not chain or chain.cancelled or settings.rechat~=true or chain.depth>=maxDepth
+        or state.dialogueMode=='Whisper' or state.dialogueMode=='Close' or not state.rechatSeed
+        or not state.conversation.turn or not state.conversation.turn.terminal then return false end
+    if state.activeSpeechMediaId or next(state.conversation.pendingMedia)~=nil then return false end
+    local target=chain.lastSpeaker
+    if not target or target.kind=='player' or not state.registry:resolve(target) then
+        chain.cancelled=true return false
+    end
+    local metadata=state.bridge.nextTurnMetadata and state.bridge.nextTurnMetadata() or {}
+    if not protocol.isUuid(metadata.message_id) or not protocol.isUuid(metadata.request_id)
+        or not protocol.isUuid(metadata.turn_id) then chain.cancelled=true return false end
+    conversation.setTarget(state.conversation,target)
+    local args=util.copy(state.rechatSeed)
+    for key,value in pairs(metadata) do args[key]=value end
+    chain.depth=chain.depth+1
+    args.input_key='rechat:'..chain.chainId..':'..tostring(chain.depth)
+    args.text='Continue the active conversation naturally. Address the previous speaker or listener directly and do not repeat prior dialogue.'
+    args.ui_source='almsivi_rechat'
+    args.context=args.context or {}
+    args.context.rechat={chain_id=chain.chainId,depth=chain.depth,max_depth=maxDepth,
+        origin_turn_id=chain.originTurnId,previous_speaker=util.copy(chain.lastSpeaker),
+        previous_listener=util.copy(chain.lastAddressee)}
+    local submitted,reason=M.submitText(state,args)
+    if not submitted then chain.cancelled=true print('[ALMSIVI] rechat rejected: '..tostring(reason)) return false end
+    state.emit('ALMSIVI_RECHAT',{status='queued',chain_id=chain.chainId,depth=chain.depth,turn_id=metadata.turn_id})
+    return true
+end
+
 -- Advance the single ordered speech lane only after the actor reports a terminal playback state.
 function M.speechStatus(state,event)
     if type(event)~='table' or type(event.media_id)~='string' then return false end
@@ -576,6 +632,7 @@ function M.speechStatus(state,event)
     if item then state.conversation.pendingMedia[event.media_id]=nil end
     if state.activeSpeechMediaId==event.media_id then state.activeSpeechMediaId=nil end
     if state.bridge and state.bridge.releaseMedia then state.bridge.releaseMedia(event.media_id) end
+    if item and event.status=='played' then submitPlaybackRechat(state) end
     return item~=nil
 end
 
@@ -628,6 +685,12 @@ function M.poll(state)
             end
             if applied then
                 accepted=accepted+1
+                if event.type=='dialogue.complete' and state.rechat then
+                    state.rechat.lastSpeaker=util.copy(event.payload.speaker)
+                    state.rechat.lastAddressee=util.copy(event.payload.addressee)
+                elseif (event.type=='turn.failed' or event.type=='turn.cancelled') and state.rechat then
+                    state.rechat.cancelled=true
+                end
                 if event.type=='action.intent' then
                     if event.payload.tier>=2 then
                         state.pendingConfirmations[event.payload.action_id]=util.copy(event.payload)
@@ -673,6 +736,7 @@ function M.interrupt(state,reason)
     if state.bridge and state.bridge.cancelGeneration then state.bridge.cancelGeneration(previousGeneration) end
     state.events=nil
     state.activeSpeechMediaId=nil
+    state.rechat=nil state.rechatSeed=nil
     state.pendingConfirmations={}
     state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
     state.pendingAutonomy={} state.autonomyRequested=false
@@ -692,6 +756,7 @@ function M.stopDialogue(state,reason)
     if state.bridge and state.bridge.cancelGeneration then state.bridge.cancelGeneration(previousGeneration) end
     state.events=nil
     state.activeSpeechMediaId=nil
+    state.rechat=nil state.rechatSeed=nil
     state.pendingConfirmations={}
     state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
     state.pendingAutonomy={} state.autonomyRequested=false
@@ -712,6 +777,7 @@ function M.hardHalt(state)
     state.bridge.halt() conversation.halt(state.conversation)
     state.generation=state.conversation.generation state.hardHalted=true state.pendingConfirmations={}
     state.activeSpeechMediaId=nil
+    state.rechat=nil state.rechatSeed=nil
     state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
     state.pendingAutonomy={} state.autonomyRequested=false
     state.emit('ALMSIVI_NARRATOR_STOP',{reason='hard_halt'})

@@ -47,6 +47,7 @@ function M.snapshot(source)
         targetState = util.copy(source.targetState or {}),
         capabilities = util.copy(source.capabilities or {}),
         unavailable = util.copy(source.unavailable or {}),
+        rechat = source.rechat and util.copy(source.rechat) or nil,
     }
     local estimated = estimate(snapshot)
     snapshot.budget = {maxBytes = constants.MAX_CONTEXT_BYTES, estimatedBytes = estimated,
