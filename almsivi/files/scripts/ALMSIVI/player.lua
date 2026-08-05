@@ -878,7 +878,12 @@ applySettings=function(session,controls)
         behavior={actionsEnabled=restricted(actionsEnabled,serverSafety.actionsEnabled,true),
             cancelDialogueOnCombat=behaviorSettings and behaviorSettings:get('cancelDialogueOnCombat'),
             rechat=targetSettings.behavior and targetSettings.behavior.rechat==true,
-            rechatMaxDepth=targetSettings.behavior and targetSettings.behavior.rechat_max_depth or 10},
+            rechatMaxDepth=targetSettings.behavior and targetSettings.behavior.rechat_max_depth or 2,
+            rechatProbabilityPercent=targetSettings.behavior and targetSettings.behavior.rechat_probability_percent or 50,
+            rechatMode=targetSettings.behavior and targetSettings.behavior.rechat_mode or 'random',
+            rechatStrictTargeting=targetSettings.behavior and targetSettings.behavior.rechat_strict_targeting==true,
+            openRechat=not targetSettings.behavior or targetSettings.behavior.open_rechat~=false,
+            endConversationCooldownSeconds=targetSettings.behavior and targetSettings.behavior.end_conversation_cooldown_seconds or 60},
         presentation={showStatusHud=presentationSettings and presentationSettings:get('showStatusHud')==true,
             transcriptRows=tonumber(presentationSettings and presentationSettings:get('transcriptRows')) or 12,
             ttsVolumeBoost=tonumber(ttsVolumeBoost) or 3},
@@ -891,6 +896,8 @@ applySettings=function(session,controls)
         tostring(auto.hearingDistance),tostring(auto.interiorHearingDistance),tostring(auto.exteriorHearingDistance),
         tostring(auto.addHostile),tostring(auto.addCreatures),tostring(behavior.actionsEnabled),
         tostring(behavior.cancelDialogueOnCombat),tostring(behavior.rechat),tostring(behavior.rechatMaxDepth),
+        tostring(behavior.rechatProbabilityPercent),tostring(behavior.rechatMode),tostring(behavior.rechatStrictTargeting),
+        tostring(behavior.openRechat),tostring(behavior.endConversationCooldownSeconds),
         tostring(presentation.showStatusHud),tostring(presentation.transcriptRows),
         tostring(presentation.ttsVolumeBoost),tostring(effective and effective.change_token),tostring(session and session.config_revision)},'|')
     if signature==settingsSignature then return end

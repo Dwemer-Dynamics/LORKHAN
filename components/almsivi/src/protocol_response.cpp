@@ -365,7 +365,7 @@ Result<ClientSettings> parseClientSettings(const json::Value& value)
     const auto objectFor=[&](std::string_view key)->const json::Object*{const auto* item=json::find(*root,key);return item?item->object():nullptr;};
     const auto* behavior=objectFor("behavior");const auto* memory=objectFor("memory");const auto* narrator=objectFor("narrator");
     const auto* presentation=objectFor("presentation");const auto* safety=objectFor("safety");
-    if(!behavior||!hasExactly(*behavior,{"auto_greeting","rechat","rechat_delay_seconds","rechat_max_depth","boredom","boredom_delay_seconds","combat_barks","combat_bark_period_seconds"})
+    if(!behavior||!hasExactly(*behavior,{"auto_greeting","rechat","rechat_delay_seconds","rechat_max_depth","rechat_probability_percent","rechat_mode","rechat_strict_targeting","open_rechat","rechat_allow_actions","end_conversation_cooldown_seconds","boredom","boredom_delay_seconds","combat_barks","combat_bark_period_seconds"})
         ||!memory||!hasExactly(*memory,{"recent_turn_limit","knowledge_limit"})
         ||!narrator||!hasExactly(*narrator,{"enabled","name","context_visibility","inline_mode","welcome_events","random_events","quest_events","book_events"})
         ||!presentation||!hasExactly(*presentation,{"show_status_hud","transcript_rows","tts_volume_boost"})
@@ -373,6 +373,9 @@ Result<ClientSettings> parseClientSettings(const json::Value& value)
         return invalidSchemaValue<ClientSettings>("client settings section mismatch");
     auto autoGreeting=requireBoolean(*behavior,"auto_greeting");auto rechat=requireBoolean(*behavior,"rechat");
     auto rechatDelay=requireUnsigned(*behavior,"rechat_delay_seconds",3600,30);auto rechatDepth=requireUnsigned(*behavior,"rechat_max_depth",20,1);
+    auto rechatProbability=requireUnsigned(*behavior,"rechat_probability_percent",100);auto rechatMode=requireString(*behavior,"rechat_mode",1,16);
+    auto strictRechat=requireBoolean(*behavior,"rechat_strict_targeting");auto openRechat=requireBoolean(*behavior,"open_rechat");
+    auto rechatActions=requireBoolean(*behavior,"rechat_allow_actions");auto conversationCooldown=requireUnsigned(*behavior,"end_conversation_cooldown_seconds",300);
     auto boredom=requireBoolean(*behavior,"boredom");auto boredomDelay=requireUnsigned(*behavior,"boredom_delay_seconds",86400,30);
     auto combatBarks=requireBoolean(*behavior,"combat_barks");auto combatPeriod=requireUnsigned(*behavior,"combat_bark_period_seconds",300,5);
     auto recentTurns=requireUnsigned(*memory,"recent_turn_limit",100,1);auto knowledgeLimit=requireUnsigned(*memory,"knowledge_limit",20);
@@ -383,14 +386,18 @@ Result<ClientSettings> parseClientSettings(const json::Value& value)
     auto showStatus=requireBoolean(*presentation,"show_status_hud");auto transcriptRows=requireUnsigned(*presentation,"transcript_rows",20,2);
     auto volumeBoost=requireUnsigned(*presentation,"tts_volume_boost",4,1);auto actionsEnabled=requireBoolean(*safety,"actions_enabled");
     auto allowHostile=requireBoolean(*safety,"allow_hostile");auto allowCreatures=requireBoolean(*safety,"allow_creatures");
-    if(!autoGreeting||!rechat||!rechatDelay||!rechatDepth||!boredom||!boredomDelay||!combatBarks||!combatPeriod
+    if(!autoGreeting||!rechat||!rechatDelay||!rechatDepth||!rechatProbability||!rechatMode||!strictRechat||!openRechat
+        ||!rechatActions||!conversationCooldown||!boredom||!boredomDelay||!combatBarks||!combatPeriod
         ||!recentTurns||!knowledgeLimit||!narratorEnabled||!narratorName||!contextVisibility||!inlineMode
         ||!welcomeEvents||!randomEvents||!questEvents||!bookEvents||!showStatus||!transcriptRows||!volumeBoost
         ||!actionsEnabled||!allowHostile||!allowCreatures)return invalidSchemaValue<ClientSettings>("client settings value mismatch");
     if(inlineMode.value()!="Disabled"&&inlineMode.value()!="Narrator"&&inlineMode.value()!="NPC"&&inlineMode.value()!="Text Only")
         return invalidSchemaValue<ClientSettings>("inline narration mode is invalid");
+    if(rechatMode.value()!="tight"&&rechatMode.value()!="conversational"&&rechatMode.value()!="group"&&rechatMode.value()!="random")
+        return invalidSchemaValue<ClientSettings>("rechat mode is invalid");
     return Result<ClientSettings>::success({
-        {autoGreeting.value(),rechat.value(),rechatDelay.value(),rechatDepth.value(),boredom.value(),boredomDelay.value(),combatBarks.value(),combatPeriod.value()},
+        {autoGreeting.value(),rechat.value(),rechatDelay.value(),rechatDepth.value(),rechatProbability.value(),std::move(rechatMode).value(),
+            strictRechat.value(),openRechat.value(),rechatActions.value(),conversationCooldown.value(),boredom.value(),boredomDelay.value(),combatBarks.value(),combatPeriod.value()},
         {recentTurns.value(),knowledgeLimit.value()},
         {narratorEnabled.value(),std::move(narratorName).value(),contextVisibility.value(),std::move(inlineMode).value(),welcomeEvents.value(),randomEvents.value(),questEvents.value(),bookEvents.value()},
         {showStatus.value(),transcriptRows.value(),volumeBoost.value()},
@@ -430,33 +437,54 @@ Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::V
     const auto* settingsValue=json::find(*root,"settings");const auto* settings=settingsValue?settingsValue->object():nullptr;
     const auto* routingValue=json::find(*root,"routing");const auto* routing=routingValue?routingValue->object():nullptr;
     const auto* sourcesValue=json::find(*root,"source_map");const auto* sources=sourcesValue?sourcesValue->object():nullptr;
-    if(!settings||!hasExactly(*settings,{"memory","narrator","safety"})||!routing||!sources||sources->size()>32)
+    if(!settings||!hasExactly(*settings,{"behavior","memory","narrator","presentation","safety"})||!routing||!sources||sources->size()>64)
         return invalidSchemaValue<Snapshot>("effective settings section mismatch");
     const auto objectFor=[&](std::string_view key)->const json::Object*{const auto* item=json::find(*settings,key);return item?item->object():nullptr;};
-    const auto* memory=objectFor("memory");const auto* narrator=objectFor("narrator");const auto* safety=objectFor("safety");
-    if(!memory||!hasExactly(*memory,{"recent_turn_limit","knowledge_limit"})
+    const auto* behavior=objectFor("behavior");const auto* memory=objectFor("memory");const auto* narrator=objectFor("narrator");
+    const auto* presentation=objectFor("presentation");const auto* safety=objectFor("safety");
+    if(!behavior||!hasExactly(*behavior,{"auto_greeting","rechat","rechat_delay_seconds","rechat_max_depth","rechat_probability_percent","rechat_mode","rechat_strict_targeting","open_rechat","rechat_allow_actions","end_conversation_cooldown_seconds","boredom","boredom_delay_seconds","combat_barks","combat_bark_period_seconds"})
+        ||!memory||!hasExactly(*memory,{"recent_turn_limit","knowledge_limit"})
         ||!narrator||!hasExactly(*narrator,{"enabled","name","context_visibility","inline_mode","welcome_events","random_events","quest_events","book_events"})
+        ||!presentation||!hasExactly(*presentation,{"show_status_hud","transcript_rows","tts_volume_boost"})
         ||!safety||!hasExactly(*safety,{"actions_enabled","allow_hostile","allow_creatures"}))
         return invalidSchemaValue<Snapshot>("effective settings value sections mismatch");
+    auto autoGreeting=requireBoolean(*behavior,"auto_greeting");auto rechat=requireBoolean(*behavior,"rechat");
+    auto rechatDelay=requireUnsigned(*behavior,"rechat_delay_seconds",3600,30);auto rechatDepth=requireUnsigned(*behavior,"rechat_max_depth",20,1);
+    auto rechatProbability=requireUnsigned(*behavior,"rechat_probability_percent",100);auto rechatMode=requireString(*behavior,"rechat_mode",1,16);
+    auto strictRechat=requireBoolean(*behavior,"rechat_strict_targeting");auto openRechat=requireBoolean(*behavior,"open_rechat");
+    auto rechatActions=requireBoolean(*behavior,"rechat_allow_actions");auto conversationCooldown=requireUnsigned(*behavior,"end_conversation_cooldown_seconds",300);
+    auto boredom=requireBoolean(*behavior,"boredom");auto boredomDelay=requireUnsigned(*behavior,"boredom_delay_seconds",86400,30);
+    auto combatBarks=requireBoolean(*behavior,"combat_barks");auto combatPeriod=requireUnsigned(*behavior,"combat_bark_period_seconds",300,5);
     auto recentTurns=requireUnsigned(*memory,"recent_turn_limit",100,1);auto knowledgeLimit=requireUnsigned(*memory,"knowledge_limit",20);
     auto narratorEnabled=requireBoolean(*narrator,"enabled");auto narratorName=requireString(*narrator,"name",1,128);
     auto contextVisibility=requireBoolean(*narrator,"context_visibility");auto inlineMode=requireString(*narrator,"inline_mode",1,16);
     auto welcomeEvents=requireBoolean(*narrator,"welcome_events");auto randomEvents=requireBoolean(*narrator,"random_events");
     auto questEvents=requireBoolean(*narrator,"quest_events");auto bookEvents=requireBoolean(*narrator,"book_events");
+    auto showStatus=requireBoolean(*presentation,"show_status_hud");auto transcriptRows=requireUnsigned(*presentation,"transcript_rows",20,2);
+    auto volumeBoost=requireUnsigned(*presentation,"tts_volume_boost",4,1);
     auto actionsEnabled=requireBoolean(*safety,"actions_enabled");auto allowHostile=requireBoolean(*safety,"allow_hostile");
     auto allowCreatures=requireBoolean(*safety,"allow_creatures");
-    if(!recentTurns||!knowledgeLimit||!narratorEnabled||!narratorName||!contextVisibility||!inlineMode
-        ||!welcomeEvents||!randomEvents||!questEvents||!bookEvents||!actionsEnabled||!allowHostile||!allowCreatures)
+    if(!autoGreeting||!rechat||!rechatDelay||!rechatDepth||!rechatProbability||!rechatMode||!strictRechat||!openRechat
+        ||!rechatActions||!conversationCooldown||!boredom||!boredomDelay||!combatBarks||!combatPeriod
+        ||!recentTurns||!knowledgeLimit||!narratorEnabled||!narratorName||!contextVisibility||!inlineMode
+        ||!welcomeEvents||!randomEvents||!questEvents||!bookEvents||!showStatus||!transcriptRows||!volumeBoost
+        ||!actionsEnabled||!allowHostile||!allowCreatures)
         return invalidSchemaValue<Snapshot>("effective settings value mismatch");
     if(inlineMode.value()!="Disabled"&&inlineMode.value()!="Narrator"&&inlineMode.value()!="NPC"&&inlineMode.value()!="Text Only")
         return invalidSchemaValue<Snapshot>("effective inline narration mode is invalid");
+    if(rechatMode.value()!="tight"&&rechatMode.value()!="conversational"&&rechatMode.value()!="group"&&rechatMode.value()!="random")
+        return invalidSchemaValue<Snapshot>("effective rechat mode is invalid");
 
     Snapshot parsed;parsed.schema=std::move(schema).value();parsed.changeToken=std::move(token).value();
     parsed.profileId=std::move(profileId).value();parsed.profileRevision=std::move(profileRevision).value();
     parsed.coreProfileId=std::move(coreId).value();parsed.coreProfileRevision=std::move(coreRevision).value();
+    parsed.behavior={autoGreeting.value(),rechat.value(),rechatDelay.value(),rechatDepth.value(),rechatProbability.value(),
+        std::move(rechatMode).value(),strictRechat.value(),openRechat.value(),rechatActions.value(),conversationCooldown.value(),
+        boredom.value(),boredomDelay.value(),combatBarks.value(),combatPeriod.value()};
     parsed.memory={recentTurns.value(),knowledgeLimit.value()};
     parsed.narrator={narratorEnabled.value(),std::move(narratorName).value(),contextVisibility.value(),std::move(inlineMode).value(),
         welcomeEvents.value(),randomEvents.value(),questEvents.value(),bookEvents.value()};
+    parsed.presentation={showStatus.value(),transcriptRows.value(),volumeBoost.value()};
     parsed.safety={actionsEnabled.value(),allowHostile.value(),allowCreatures.value()};
     static constexpr std::array<std::string_view,7> routingIds={"prompt_configuration_id","llm_configuration_id",
         "llm_fast_configuration_id","llm_powerful_configuration_id","llm_experimental_configuration_id",
@@ -472,17 +500,23 @@ Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::V
             parsed.routing.emplace_back(key,*item.boolean());}
         else return invalidSchemaValue<Snapshot>("unknown effective routing field");
     }
+    static constexpr std::array<std::string_view,14> behaviorFields={"auto_greeting","rechat","rechat_delay_seconds","rechat_max_depth",
+        "rechat_probability_percent","rechat_mode","rechat_strict_targeting","open_rechat","rechat_allow_actions",
+        "end_conversation_cooldown_seconds","boredom","boredom_delay_seconds","combat_barks","combat_bark_period_seconds"};
     static constexpr std::array<std::string_view,2> memoryFields={"recent_turn_limit","knowledge_limit"};
     static constexpr std::array<std::string_view,8> narratorFields={"enabled","name","context_visibility","inline_mode",
         "welcome_events","random_events","quest_events","book_events"};
     static constexpr std::array<std::string_view,3> safetyFields={"actions_enabled","allow_hostile","allow_creatures"};
+    static constexpr std::array<std::string_view,3> presentationFields={"show_status_hud","transcript_rows","tts_volume_boost"};
     const auto validSettingPath=[&](std::string_view path,std::string_view prefix,const auto& fields){
         if(!path.starts_with(prefix))return false;
         const auto suffix=path.substr(prefix.size());
         return std::find(fields.begin(),fields.end(),suffix)!=fields.end();};
     for(const auto&[key,item]:*sources){
-        const bool validPath=validSettingPath(key,"settings.memory.",memoryFields)
+        const bool validPath=validSettingPath(key,"settings.behavior.",behaviorFields)
+            ||validSettingPath(key,"settings.memory.",memoryFields)
             ||validSettingPath(key,"settings.narrator.",narratorFields)||validSettingPath(key,"settings.safety.",safetyFields)
+            ||validSettingPath(key,"settings.presentation.",presentationFields)
             ||(std::string_view(key).starts_with("routing.")
                 &&(std::find(routingIds.begin(),routingIds.end(),std::string_view(key).substr(8))!=routingIds.end()
                     ||std::find(routingFlags.begin(),routingFlags.end(),std::string_view(key).substr(8))!=routingFlags.end()));
@@ -539,6 +573,12 @@ std::optional<ErrorCode> protocolCode(std::string_view code)
         Mapping{"provider_timeout", ErrorCode::timeout},
         Mapping{"provider_unavailable", ErrorCode::provider_unavailable},
         Mapping{"rate_limited", ErrorCode::rate_limited},
+        Mapping{"rechat_chain_conflict", ErrorCode::duplicate_conflict},
+        Mapping{"rechat_complete", ErrorCode::cancelled},
+        Mapping{"rechat_cooldown", ErrorCode::cancelled},
+        Mapping{"rechat_no_responder", ErrorCode::cancelled},
+        Mapping{"rechat_unavailable", ErrorCode::cancelled},
+        Mapping{"invalid_rechat_context", ErrorCode::invalid_schema},
         Mapping{"request_mismatch", ErrorCode::duplicate_conflict},
         Mapping{"service_unavailable", ErrorCode::provider_unavailable},
         Mapping{"stale_generation", ErrorCode::stale_generation},

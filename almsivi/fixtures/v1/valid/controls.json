@@ -25,8 +25,10 @@
       "core_profile_id": "10000000-0000-4000-8000-000000000409",
       "core_profile_revision": 1,
       "settings": {
+        "behavior": {"auto_greeting": false, "rechat": false, "rechat_delay_seconds": 45, "rechat_max_depth": 2, "rechat_probability_percent": 50, "rechat_mode": "random", "rechat_strict_targeting": false, "open_rechat": true, "rechat_allow_actions": false, "end_conversation_cooldown_seconds": 60, "boredom": false, "boredom_delay_seconds": 180, "combat_barks": false, "combat_bark_period_seconds": 20},
         "memory": {"recent_turn_limit": 20, "knowledge_limit": 5},
         "narrator": {"enabled": false, "name": "The Narrator", "context_visibility": true, "inline_mode": "Disabled", "welcome_events": false, "random_events": false, "quest_events": false, "book_events": false},
+        "presentation": {"show_status_hud": true, "transcript_rows": 8, "tts_volume_boost": 3},
         "safety": {"actions_enabled": true, "allow_hostile": false, "allow_creatures": false}
       },
       "routing": {"llm_configuration_id": "10000000-0000-4000-8000-000000000406"},

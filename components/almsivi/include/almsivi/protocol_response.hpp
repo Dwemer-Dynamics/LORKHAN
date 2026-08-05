@@ -27,7 +27,13 @@ struct ClientBehaviorSettings {
     bool autoGreeting{};
     bool rechat{};
     std::uint64_t rechatDelaySeconds{45};
-    std::uint64_t rechatMaxDepth{10};
+    std::uint64_t rechatMaxDepth{2};
+    std::uint64_t rechatProbabilityPercent{50};
+    std::string rechatMode{"random"};
+    bool rechatStrictTargeting{};
+    bool openRechat{true};
+    bool rechatAllowActions{};
+    std::uint64_t endConversationCooldownSeconds{60};
     bool boredom{};
     std::uint64_t boredomDelaySeconds{180};
     bool combatBarks{};
@@ -257,8 +263,10 @@ struct ControlsResponse {
         std::optional<std::uint64_t> profileRevision;
         std::optional<std::string> coreProfileId;
         std::optional<std::uint64_t> coreProfileRevision;
+        ClientBehaviorSettings behavior;
         ClientMemorySettings memory;
         ClientNarratorSettings narrator;
+        ClientPresentationSettings presentation;
         ClientSafetySettings safety;
         std::vector<std::pair<std::string, RoutingValue>> routing;
         std::vector<std::pair<std::string, std::string>> sourceMap;

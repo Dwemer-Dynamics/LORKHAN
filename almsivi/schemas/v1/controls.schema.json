@@ -32,6 +32,27 @@
         "settings": {
           "additionalProperties": false,
           "properties": {
+            "behavior": {
+              "additionalProperties": false,
+              "properties": {
+                "auto_greeting": {"type": "boolean"},
+                "rechat": {"type": "boolean"},
+                "rechat_delay_seconds": {"type": "integer", "minimum": 30, "maximum": 3600},
+                "rechat_max_depth": {"type": "integer", "minimum": 1, "maximum": 20},
+                "rechat_probability_percent": {"type": "integer", "minimum": 0, "maximum": 100},
+                "rechat_mode": {"enum": ["tight", "conversational", "group", "random"], "type": "string"},
+                "rechat_strict_targeting": {"type": "boolean"},
+                "open_rechat": {"type": "boolean"},
+                "rechat_allow_actions": {"type": "boolean"},
+                "end_conversation_cooldown_seconds": {"type": "integer", "minimum": 0, "maximum": 300},
+                "boredom": {"type": "boolean"},
+                "boredom_delay_seconds": {"type": "integer", "minimum": 30, "maximum": 86400},
+                "combat_barks": {"type": "boolean"},
+                "combat_bark_period_seconds": {"type": "integer", "minimum": 5, "maximum": 300}
+              },
+              "required": ["auto_greeting", "rechat", "rechat_delay_seconds", "rechat_max_depth", "rechat_probability_percent", "rechat_mode", "rechat_strict_targeting", "open_rechat", "rechat_allow_actions", "end_conversation_cooldown_seconds", "boredom", "boredom_delay_seconds", "combat_barks", "combat_bark_period_seconds"],
+              "type": "object"
+            },
             "memory": {
               "additionalProperties": false,
               "properties": {
@@ -56,6 +77,16 @@
               "required": ["enabled", "name", "context_visibility", "inline_mode", "welcome_events", "random_events", "quest_events", "book_events"],
               "type": "object"
             },
+            "presentation": {
+              "additionalProperties": false,
+              "properties": {
+                "show_status_hud": {"type": "boolean"},
+                "transcript_rows": {"type": "integer", "minimum": 2, "maximum": 20},
+                "tts_volume_boost": {"type": "integer", "minimum": 1, "maximum": 4}
+              },
+              "required": ["show_status_hud", "transcript_rows", "tts_volume_boost"],
+              "type": "object"
+            },
             "safety": {
               "additionalProperties": false,
               "properties": {
@@ -67,7 +98,7 @@
               "type": "object"
             }
           },
-          "required": ["memory", "narrator", "safety"],
+          "required": ["behavior", "memory", "narrator", "presentation", "safety"],
           "type": "object"
         },
         "routing": {
@@ -87,9 +118,9 @@
         },
         "source_map": {
           "additionalProperties": false,
-          "maxProperties": 32,
+          "maxProperties": 64,
           "patternProperties": {
-            "^(settings\\.(memory\\.(recent_turn_limit|knowledge_limit)|narrator\\.(enabled|name|context_visibility|inline_mode|welcome_events|random_events|quest_events|book_events)|safety\\.(actions_enabled|allow_hostile|allow_creatures))|routing\\.(prompt_configuration_id|llm_configuration_id|llm_fast_configuration_id|llm_powerful_configuration_id|llm_experimental_configuration_id|llm_fallback_configuration_id|tts_configuration_id|llm_randomizer_enabled|llm_fallback_enabled))$": {"enum": ["default", "global", "core_profile", "npc"], "type": "string"}
+            "^(settings\\.(behavior\\.(auto_greeting|rechat|rechat_delay_seconds|rechat_max_depth|rechat_probability_percent|rechat_mode|rechat_strict_targeting|open_rechat|rechat_allow_actions|end_conversation_cooldown_seconds|boredom|boredom_delay_seconds|combat_barks|combat_bark_period_seconds)|memory\\.(recent_turn_limit|knowledge_limit)|narrator\\.(enabled|name|context_visibility|inline_mode|welcome_events|random_events|quest_events|book_events)|presentation\\.(show_status_hud|transcript_rows|tts_volume_boost)|safety\\.(actions_enabled|allow_hostile|allow_creatures))|routing\\.(prompt_configuration_id|llm_configuration_id|llm_fast_configuration_id|llm_powerful_configuration_id|llm_experimental_configuration_id|llm_fallback_configuration_id|tts_configuration_id|llm_randomizer_enabled|llm_fallback_enabled))$": {"enum": ["default", "global", "core_profile", "npc"], "type": "string"}
           },
           "type": "object"
         }

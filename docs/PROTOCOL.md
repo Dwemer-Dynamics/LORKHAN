@@ -89,12 +89,14 @@ bounded context snapshot/delta, recent terminal action results, and UI source. I
 pairing token, provider key, host file path, save bytes, proprietary assets, engine pointers, or raw
 unbounded logs.
 
-A playback-driven rechat turn sets `ui_source` to `almsivi_rechat` and carries bounded typed context:
-`chain_id`, current `depth`, `max_depth`, `origin_turn_id`, `previous_speaker`, and
-`previous_listener`. The server accepts only monotonic continuation in the same active
-session/generation. Rechat is not timer autonomy: it is submitted only after the preceding ordered
-speech lane is terminal and its final delivery result is `played`. Rechat provider actions are always
-discarded, and a chain closes at maximum depth or cancels on new player input/failure/stale state.
+A playback-driven rechat turn sets `ui_source` to `almsivi_rechat` and carries the Herika-compatible
+typed hint vocabulary: `speaker`, `listener_hint`, `rechat_target_hint`, `origin_line`,
+`rechat_depth`, and `chain_id` (plus the originating turn correlation). The server owns mode,
+probability pre-roll, round budget, and responder selection, then resolves that NPC's profile, LLM,
+TTS, and voice. The client owns ordered playback and cancellation. It submits only after the complete
+speech lane is terminal and its final delivery result is `played`, with at most one rechat request in
+flight. Rechat provider actions are always discarded, and a chain closes at its server-owned budget
+or cancels on new player input, failure, combat, lifecycle changes, stop, or stale state.
 
 An in-game action menu may add `action_request` with a catalog action name, exact tier, bounded
 parameters, and an optional explicit target. The server derives the actor from the resolved turn target.

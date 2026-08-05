@@ -212,6 +212,11 @@ function M.actorCombatStatus(state,event)
     if event.hostile_to_player==true then state.combatThreats[key]=util.copy(event.actor)
     else state.combatThreats[key]=nil end
     emitCombatState(state)
+    if next(state.combatThreats)~=nil and state.settings and state.settings.behavior
+        and state.settings.behavior.cancelDialogueOnCombat==true and state.rechat then
+        state.rechat.cancelled=true
+        state.rechatSeed=nil
+    end
     state.emit('ALMSIVI_ACTOR_ACTIVITY',{actor=util.copy(event.actor),activity=event.activity,target=util.copy(event.target)})
     local entry=agentRegistry.get(state.agents,event.actor)
     if not entry then return nil,'agent_not_found' end
@@ -309,7 +314,10 @@ function M.submitText(state,args)
     if not isRechat then
         state.rechatSeed=util.copy(args)
         state.rechat={chainId=state.bridge.newMessageId and state.bridge.newMessageId() or args.request_id,
-            originTurnId=args.turn_id,depth=0,lastSpeaker=nil,lastAddressee=nil,cancelled=false}
+            originTurnId=args.turn_id,originLine=args.text,depth=0,lastSpeaker=nil,lastAddressee=nil,
+            targetHint=util.copy(state.conversation.target),cancelled=false,requestInFlight=false}
+    elseif state.rechat then
+        state.rechat.requestInFlight=true
     end
     state.recentVanillaDialogue={}
     state.emit('ALMSIVI_TURN',{status='queued',message_id=args.message_id,request_id=requestId,turn_id=turnId,
@@ -386,19 +394,16 @@ end
 local function submitPlaybackRechat(state)
     local chain=state.rechat
     local settings=state.settings and state.settings.behavior or {}
-    local maxDepth=math.max(1,math.min(20,math.floor(tonumber(settings.rechatMaxDepth or settings.rechat_max_depth) or 10)))
-    if not chain or chain.cancelled or settings.rechat~=true or chain.depth>=maxDepth
+    if not chain or chain.cancelled or chain.requestInFlight or settings.rechat~=true
         or state.dialogueMode=='Whisper' or state.dialogueMode=='Close' or not state.rechatSeed
         or not state.conversation.turn or not state.conversation.turn.terminal then return false end
     if state.activeSpeechMediaId or next(state.conversation.pendingMedia)~=nil then return false end
-    local target=chain.lastSpeaker
-    if not target or target.kind=='player' or not state.registry:resolve(target) then
+    if not chain.lastSpeaker or chain.lastSpeaker.kind=='player' then
         chain.cancelled=true return false
     end
     local metadata=state.bridge.nextTurnMetadata and state.bridge.nextTurnMetadata() or {}
     if not protocol.isUuid(metadata.message_id) or not protocol.isUuid(metadata.request_id)
         or not protocol.isUuid(metadata.turn_id) then chain.cancelled=true return false end
-    conversation.setTarget(state.conversation,target)
     local args=util.copy(state.rechatSeed)
     for key,value in pairs(metadata) do args[key]=value end
     chain.depth=chain.depth+1
@@ -406,9 +411,9 @@ local function submitPlaybackRechat(state)
     args.text='Continue the active conversation naturally. Address the previous speaker or listener directly and do not repeat prior dialogue.'
     args.ui_source='almsivi_rechat'
     args.context=args.context or {}
-    args.context.rechat={chain_id=chain.chainId,depth=chain.depth,max_depth=maxDepth,
-        origin_turn_id=chain.originTurnId,previous_speaker=util.copy(chain.lastSpeaker),
-        previous_listener=util.copy(chain.lastAddressee)}
+    args.context.rechat={speaker=util.copy(chain.lastSpeaker),listener_hint=util.copy(chain.lastAddressee),
+        rechat_target_hint=util.copy(chain.targetHint),origin_line=chain.originLine,rechat_depth=chain.depth,
+        chain_id=chain.chainId,origin_turn_id=chain.originTurnId}
     local submitted,reason=M.submitText(state,args)
     if not submitted then chain.cancelled=true print('[ALMSIVI] rechat rejected: '..tostring(reason)) return false end
     state.emit('ALMSIVI_RECHAT',{status='queued',chain_id=chain.chainId,depth=chain.depth,turn_id=metadata.turn_id})
@@ -473,6 +478,7 @@ function M.poll(state)
                 end
                 emitInbound(state,'ALMSIVI_EVENT',event)
                 if event.type=='turn.complete' or event.type=='turn.failed' or event.type=='turn.cancelled' then
+                    if state.rechat then state.rechat.requestInFlight=false end
                     print('[ALMSIVI] response turn terminal: '..tostring(event.type)..' '..tostring(event.turn_id))
                 end
             else
