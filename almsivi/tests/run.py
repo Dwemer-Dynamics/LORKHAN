@@ -49,11 +49,15 @@ for forbidden in ["io.open", "os.execute", "loadstring", "dofile", "package.load
 check("native seam exposes typed bridge only", "require, 'openmw.almsivi'" in text(SCRIPTS / "adapters" / "openmw.lua"))
 adapter_script = text(SCRIPTS / "adapters" / "openmw.lua")
 native_binding = text(ROOT / "apps" / "openmw" / "mwlua" / "almsivibindings.cpp")
+native_overlay = text(ROOT / "openmw-patches" / "overlay" / "apps" / "openmw" / "mwlua" / "almsivibindings.cpp")
 check("verified speech bypasses the startup-only VFS index", all(fragment in native_binding for fragment in [
     'api["playSpeech"]', "sayAlmsiviMedia", "openConstrainedFileStream", "cachePath"])
     and 'api["mediaVfsName"]' not in native_binding
     and "bridge.playSpeech(mediaId,modules.self,subtitle or '',tonumber(volumeBoost) or 3)" in adapter_script
     and "modules.core.sound.say" not in adapter_script)
+check("speech-ready correlation reaches Lua from both tracked OpenMW bindings",
+      all('payload["dialogue_message_id"] = item.dialogueMessage.value();' in binding
+          for binding in [native_binding, native_overlay]))
 check("ALMSIVI-only TTS boost is bounded and reaches native playback", all(fragment in native_binding for fragment in [
     "invalid_tts_volume_boost", "volumeBoost.value_or(3.f)", "sayAlmsiviMedia("])
     and "tts_volume_boost=ttsVolumeBoost" in text(SCRIPTS / "orchestrator.lua")

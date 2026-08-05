@@ -1001,7 +1001,8 @@ namespace MWLua
                         break; }
                     case almsivi::ProtocolEventType::speech_ready: {
                         result["type"] = "speech.ready"; const auto& item = std::get<almsivi::SpeechReadyEventPayload>(event.payload);
-                        payload["media_id"] = item.media.value(); payload["sha256"] = item.sha256; payload["bytes"] = item.bytes;
+                        payload["media_id"] = item.media.value(); payload["dialogue_message_id"] = item.dialogueMessage.value();
+                        payload["sha256"] = item.sha256; payload["bytes"] = item.bytes;
                         payload["codec"] = item.codec == almsivi::MediaCodec::wav ? "wav" : item.codec == almsivi::MediaCodec::ogg ? "ogg" : "mp3";
                         payload["duration_ms"] = item.durationMs; payload["expires_at"] = item.expiresAt; break; }
                 }
