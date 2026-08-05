@@ -784,8 +784,10 @@ namespace MWLua
                                 m_status = "ready";
                         }
                         if(m_controlsRequest&&result.request==*m_controlsRequest)m_controlsRequest.reset();
-                        if ((!pollFailure && !mediaFailure) || !m_session)
+                        if (!m_session)
                             m_status = "error";
+                        else if (!mediaFailure)
+                            m_status = "ready";
                         if (!mediaFailure)
                             m_error = result.failure ? result.failure->message : "transport_failure";
                     }

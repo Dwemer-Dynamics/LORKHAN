@@ -58,6 +58,9 @@ check("verified speech bypasses the startup-only VFS index", all(fragment in nat
 check("speech-ready correlation reaches Lua from both tracked OpenMW bindings",
       all('payload["dialogue_message_id"] = item.dialogueMessage.value();' in binding
           for binding in [native_binding, native_overlay]))
+check("one failed request does not poison an established native session", all(
+    'if (!m_session)\n                            m_status = "error";\n                        else if (!mediaFailure)\n                            m_status = "ready";' in binding
+    for binding in [native_binding, native_overlay]))
 check("ALMSIVI-only TTS boost is bounded and reaches native playback", all(fragment in native_binding for fragment in [
     "invalid_tts_volume_boost", "volumeBoost.value_or(3.f)", "sayAlmsiviMedia("])
     and "tts_volume_boost=ttsVolumeBoost" in text(SCRIPTS / "orchestrator.lua")
