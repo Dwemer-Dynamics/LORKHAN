@@ -16,7 +16,6 @@ local storageOk,openmwStorage=pcall(require,'openmw.storage')
 local nativeOk,native=pcall(require,'openmw.almsivi')
 local state=player.new()
 local notification=notifications.new()
-local dialogueNotification=notifications.new()
 local lastNotificationStatus
 local element
 local statusElement
@@ -292,17 +291,14 @@ local function beginDestinationTarget(label,name,tier)
 end
 
 local function renderStatusHud()
-    local dialogueVisible=notifications.active(dialogueNotification)
     local statusVisible=notifications.active(notification)
     if state.ui.visible or not uiOk or not utilOk
-        or not state.ui.statusHudVisible and not statusVisible and not dialogueVisible then
+        or not state.ui.statusHudVisible and not statusVisible then
         if statusElement then statusElement:destroy() statusElement=nil end
         return
     end
     local text
-    if dialogueVisible then
-        text=tostring(dialogueNotification.text)
-    elseif state.ui.statusHudVisible then
+    if state.ui.statusHudVisible then
         text='ALMSIVI  |  Connection: '..tostring(nativeValue('status','unavailable'))..
             '  |  Request: '..(turnActive and 'active' or 'idle')..
             '  |  Speech: '..(speechActive() and 'speaking' or 'idle')..
@@ -310,13 +306,13 @@ local function renderStatusHud()
     else
         text='ALMSIVI  |  '..tostring(notification.text or state.ui.status)
     end
-    local width=dialogueVisible and 900 or 520
-    local height=dialogueVisible and 72 or 42
+    local width=520
+    local height=42
     local layout={layer='HUD',type=openmwUi.TYPE.Container,
         props={position=util.vector2(26,24),size=util.vector2(width,height)},content=openmwUi.content({
             {type=openmwUi.TYPE.Text,props={text=text,
-                size=util.vector2(width,height),wordWrap=dialogueVisible,
-                textSize=dialogueVisible and 18 or 15,textColor=util.color.rgb(1.0,0.58,0.18)}}
+                size=util.vector2(width,height),wordWrap=false,
+                textSize=15,textColor=util.color.rgb(1.0,0.58,0.18)}}
         })}
     if statusElement then statusElement.layout=layout statusElement:update()
     else statusElement=openmwUi.create(layout) end
@@ -936,8 +932,7 @@ return {
         onUpdate=function(dt)
             if narratorSpeech and not adapter.isSpeechActive() then reportNarrator('played','playback_completed') end
             local statusChanged=notifications.update(notification,dt)
-            local dialogueChanged=notifications.update(dialogueNotification,dt)
-            if statusChanged or dialogueChanged then renderStatusHud() end
+            if statusChanged then renderStatusHud() end
             local elapsed=tonumber(dt) or 0
             settingsRefreshElapsed=settingsRefreshElapsed+elapsed
             if settingsRefreshElapsed>=SETTINGS_REFRESH_INTERVAL then
@@ -1086,13 +1081,6 @@ return {
         end,
         ALMSIVI_EVENT=function(event)
             if event.type=='turn.accepted' then turnActive=true end
-            if (event.type=='dialogue.delta' or event.type=='dialogue.complete') and event.payload
-                and type(event.payload.text)=='string' and event.payload.text~='' then
-                local speaker=event.payload.speaker or state.ui.target
-                local duration=event.type=='dialogue.complete'
-                    and math.max(6,math.min(14,#event.payload.text/12)) or 4
-                notifications.show(dialogueNotification,displayName(speaker)..': '..event.payload.text,duration)
-            end
             if event.type=='turn.complete' or event.type=='turn.failed' or event.type=='turn.cancelled' then
                 turnActive=false
             end
