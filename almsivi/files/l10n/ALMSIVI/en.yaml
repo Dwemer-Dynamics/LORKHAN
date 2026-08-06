@@ -86,6 +86,10 @@ OpenMicSensitivity_name: Open microphone sensitivity
 OpenMicSensitivity_description: RMS level required to detect speech. Higher values require louder speech.
 OpenMicEndDelay_name: Open microphone end delay
 OpenMicEndDelay_description: Milliseconds of silence after speech before ALMSIVI submits the recording.
+RecordingDevice_name: Recording device ID
+RecordingDevice_description: WinMM recording device used by ALMSIVI. Use -1 for the Windows default; Diagnostics lists every available ID and name. Restart capture after changing it.
+CurrentRecordingDevice_name: Selected recording device
+CurrentRecordingDevice_description: Read-only name resolved for the configured recording device ID when ALMSIVI loaded.
 SoundGroup_name: Sound
 SoundGroup_description: Configure ALMSIVI-generated speech playback without changing other OpenMW audio.
 AgentsGroup_name: AI Agents

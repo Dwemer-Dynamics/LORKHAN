@@ -222,6 +222,8 @@ return {
                 orchestrator.configureSession(state,session.session_id)
             end
             if state.events then orchestrator.poll(state) end
+            orchestrator.pollVoice(state)
+            orchestrator.pollOpenMic(state)
         end,
     },
     eventHandlers={
@@ -266,6 +268,26 @@ return {
         end,
         ALMSIVI_HALT_REQUEST=function() orchestrator.interrupt(state,'halt_ai_actions') end,
         ALMSIVI_STOP_DIALOGUE_REQUEST=function() orchestrator.stopDialogue(state,'stop_dialogue') end,
+        ALMSIVI_VOICE_START=function(event)
+            print('[ALMSIVI] voice capture start event received')
+            local started,reason=orchestrator.startVoice(state,event)
+            if not started then
+                print('[ALMSIVI] voice capture start rejected: '..tostring(reason))
+                emit('ALMSIVI_VOICE_STATUS',{status='failed',reason=reason,continuous=false})
+            else print('[ALMSIVI] voice capture started') end
+        end,
+        ALMSIVI_VOICE_STOP=function()
+            local stopped,reason=orchestrator.stopVoice(state)
+            if stopped then print('[ALMSIVI] voice capture stop requested')
+            else print('[ALMSIVI] voice capture stop rejected: '..tostring(reason)) end
+        end,
+        ALMSIVI_OPEN_MIC_START=function(event)
+            local started,reason=orchestrator.enableOpenMic(state,event)
+            if not started then emit('ALMSIVI_VOICE_STATUS',{status='failed',reason=reason,continuous=true}) end
+        end,
+        ALMSIVI_OPEN_MIC_STOP=function() orchestrator.disableOpenMic(state) end,
+        ALMSIVI_OPEN_MIC_MUTE=function() orchestrator.muteOpenMic(state) end,
+        ALMSIVI_OPEN_MIC_CONTEXT=function(event) orchestrator.runOpenMicContext(state,event) end,
         ALMSIVI_HALT_ACTIONS_REQUEST=function() orchestrator.haltActions(state,'halt_ai_actions') end,
         ALMSIVI_HARD_HALT_REQUEST=function() orchestrator.hardHalt(state) end,
         ALMSIVI_SETTINGS_UPDATE=function(event) state.settings=event end,

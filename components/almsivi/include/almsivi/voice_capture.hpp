@@ -18,6 +18,11 @@ struct CapturedVoice {
     std::vector<std::byte> wav;
     std::string sha256;
     std::uint64_t durationMs{};
+    std::size_t pcmBytes{};
+    std::uint16_t peakAmplitude{};
+    std::uint16_t rmsAmplitude{};
+    std::int32_t deviceId{-1};
+    std::string deviceName;
 };
 
 enum class VoiceCaptureState { unsupported, idle, recording, ready, failed };
@@ -33,7 +38,8 @@ public:
     ~VoiceCaptureService();
     [[nodiscard]] bool supported() const noexcept;
     [[nodiscard]] Result<void> start(
-        bool automatic = false, std::uint16_t rmsThreshold = 700, std::uint32_t trailingSilenceMs = 900);
+        bool automatic = false, std::uint16_t rmsThreshold = 700,
+        std::uint32_t trailingSilenceMs = 900, std::int32_t deviceId = -1);
     void stop() noexcept;
     void halt() noexcept;
     [[nodiscard]] VoiceCaptureState state() const noexcept;
@@ -43,6 +49,13 @@ public:
     [[nodiscard]] bool automatic() const noexcept;
     [[nodiscard]] bool voiceDetected() const noexcept;
     [[nodiscard]] std::optional<CapturedVoice> takeReady();
+    [[nodiscard]] std::size_t deviceCount() const noexcept;
+    [[nodiscard]] std::int32_t deviceId() const noexcept;
+    [[nodiscard]] std::string currentDeviceName(std::int32_t deviceId = -1) const;
+    [[nodiscard]] std::string selectedDeviceName() const;
+    [[nodiscard]] std::size_t capturedPcmBytes() const noexcept;
+    [[nodiscard]] std::uint16_t peakAmplitude() const noexcept;
+    [[nodiscard]] std::uint16_t rmsAmplitude() const noexcept;
 
 private:
     VoiceCaptureService() = default;
@@ -57,6 +70,10 @@ private:
     std::atomic_bool m_voiceDetected{false};
     std::atomic<std::uint16_t> m_rmsThreshold{700};
     std::atomic<std::uint32_t> m_trailingSilenceMs{900};
+    std::atomic<std::int32_t> m_deviceId{-1};
+    std::atomic<std::size_t> m_capturedPcmBytes{0};
+    std::atomic<std::uint16_t> m_peakAmplitude{0};
+    std::atomic<std::uint16_t> m_rmsAmplitude{0};
     VoiceCaptureState m_state{
 #ifdef _WIN32
         VoiceCaptureState::idle
@@ -66,6 +83,7 @@ private:
     };
     std::optional<CapturedVoice> m_ready;
     std::string m_error;
+    std::string m_deviceName{"Windows default"};
 };
 
 // Stable helpers keep WAV framing and hashing independently testable without a microphone.

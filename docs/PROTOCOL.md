@@ -8,7 +8,7 @@ JSON Schemas and fixtures live in both repos and CI compares their SHA-256 manif
 - Base: `http://127.0.0.1:8089/ALMSIVIserver/api/v1` by default.
 - Authentication uses `hmac-sha256-v1` request MACs. Fixed native headers carry installation ID, canonical UTC timestamp, unique random nonce, body SHA-256 and signature over algorithm/method/canonical target/content type/body digest/installation/timestamp/nonce. The 256-bit pairing MAC key is never transmitted routinely. Server persistence binds it to one installation, accepts active or bounded-overlap keys, rejects revoked keys, enforces clock skew and database nonce uniqueness, and covers JSON, event, session and media routes. Plaintext loopback still does not provide payload confidentiality against privileged local software; TLS is not claimed without server support.
 - Requests and ordinary responses: `application/json; charset=utf-8`.
-- STT schemas remain in the compatibility fixture set, but the shipped client exposes no capture or request path.
+- STT uses bounded native WAV capture, authenticated binary upload, durable transcription, and fenced transcript events.
 - Response progress: `GET /events?session_id=...&after=<sequence>&wait_ms<=15000`, returning bounded
   ordered JSON events. Long polling avoids exposing streaming parser complexity to Lua.
 - Media: authenticated fixed route by opaque media ID; descriptor supplies hash/size/codec. No
@@ -76,7 +76,7 @@ version/API plus the ordered content list and file identity metadata, never prop
 | `POST /turns` | `almsivi.turn.v1` | accepted request + first event cursor |
 | `POST /controls/query` | `almsivi.controls.query.v1` | safe server-owned model slots, NPC profiles, narrator ID, and target-effective settings snapshot |
 | `POST /controls/select` | `almsivi.controls.select.v1` | idempotent session model/profile selection or revision-safe NPC/narrator generation |
-| `POST /stt` | reserved compatibility path | The shipped server returns `not_found`; STT is excluded. |
+| `POST /stt` | `almsivi.stt.request.v1` metadata headers plus a binary WAV body | `almsivi.stt.accepted.v1`; durable work later emits `stt.transcript` or `stt.failed`. |
 | `GET /events` | session/cursor/wait | `almsivi.events.v1` |
 | `POST /action-results` | `almsivi.action-result.v1` | persisted acknowledgement |
 | `POST /interruptions` | `almsivi.interrupt.v1` | cancellation acknowledgement |
@@ -125,9 +125,9 @@ resolved memory, narrator, safety, and routing values; Global/Core Profile/NPC s
 revisions; and a deterministic change token. Local hotkeys, HUD visibility, panel layout, and TTS volume boost
 remain OpenMW preferences and are never replaced when the target changes. The effective settings
 snapshot includes the layered rechat enable/depth values; timer scheduling, boredom, greetings,
-combat barks, STT, ITT, and Background Life remain excluded.
+combat barks, ITT, and Background Life remain excluded. STT uses one installation-global connector and does not enter the Global/Core Profile/NPC resolver.
 
-Server response events have a strictly increasing per-session `sequence`. The current v1 slice contracts exactly `turn.accepted`, `dialogue.delta`, `dialogue.complete`, `speech.ready`, `action.intent`, `turn.complete`, `turn.failed`, and `turn.cancelled`. Bounded `dialogue.delta` text is display-only progress; the validated `dialogue.complete` remains the durable utterance and memory source. TTS runs as a separate durable job after the dialogue is committed, and every `speech.ready` descriptor carries its `dialogue_message_id` so delayed group speech remains correctly ordered. Every envelope includes `message_id`, `request_id`, `turn_id`, `session_id`, `generation`, `sequence`, `created_at`, type and strict payload. The events response is capped at 100 items.
+Server response events have a strictly increasing per-session `sequence`. The current v1 slice contracts `turn.accepted`, `dialogue.delta`, `dialogue.complete`, `speech.ready`, `stt.transcript`, `stt.failed`, `action.intent`, `turn.complete`, `turn.failed`, and `turn.cancelled`. Bounded `dialogue.delta` text is display-only progress; the validated `dialogue.complete` remains the durable utterance and memory source. TTS runs as a separate durable job after the dialogue is committed, and every `speech.ready` descriptor carries its `dialogue_message_id` so delayed group speech remains correctly ordered. Every envelope includes `message_id`, `request_id`, `turn_id`, `session_id`, `generation`, `sequence`, `created_at`, type and strict payload. The events response is capped at 100 items.
 
 `dialogue.complete` is the final utterance. The client reports one terminal delivery result for each
 utterance, and the server mirrors it into durable speech state (`spoken`, failure, cancellation, or

@@ -197,24 +197,41 @@ class FoundationTests(unittest.TestCase):
         with self.assertRaises(SchemaError):
             validate({"unexpected":"global"}, patterned)
 
-    def test_excluded_stt_and_autonomy_have_no_shipped_entry_points(self):
+    def test_stt_is_shipped_but_timer_autonomy_has_no_entry_points(self):
         script_root = ROOT / "almsivi/files/scripts/ALMSIVI"
         settings = (script_root / "settings.lua").read_text(encoding="utf-8")
         player = (script_root / "player.lua").read_text(encoding="utf-8")
         global_script = (script_root / "global.lua").read_text(encoding="utf-8")
         native_bindings = (ROOT / "apps/openmw/mwlua/almsivibindings.cpp").read_text(encoding="utf-8")
         patch_bindings = (ROOT / "openmw-patches/overlay/apps/openmw/mwlua/almsivibindings.cpp").read_text(encoding="utf-8")
-        for token in ("ALMSIVI_OpenMic", "ALMSIVI_PushToTalk", "key='autoGreeting'", "key='rechat'",
-                      "key='boredom'", "key='combatBarks'"):
+        for token in ("key='autoGreeting'", "key='rechat'", "key='boredom'", "key='combatBarks'"):
             self.assertNotIn(token, settings)
-        for token in ("speech.listen", "ALMSIVI_OPEN_MIC", "ALMSIVI_LOCAL_AUTONOMY_REQUEST",
-                      "updateLocalAutonomy", "updateCombatBarks"):
+        for token in ("ALMSIVI_LOCAL_AUTONOMY_REQUEST", "updateLocalAutonomy", "updateCombatBarks"):
             self.assertNotIn(token, player)
-        for token in ("orchestrator.pollVoice", "orchestrator.pollOpenMic", "orchestrator.pollAutonomy",
-                      "ALMSIVI_OPEN_MIC", "ALMSIVI_LOCAL_AUTONOMY_REQUEST"):
+        for token in ("orchestrator.pollAutonomy", "ALMSIVI_LOCAL_AUTONOMY_REQUEST"):
             self.assertNotIn(token, global_script)
-        self.assertNotIn("speech.listen", native_bindings)
-        self.assertNotIn("speech.listen", patch_bindings)
+        for token in ("ALMSIVI_OpenMic", "ALMSIVI_OpenMicMute", "ALMSIVI_PushToTalk"):
+            self.assertIn(token, settings)
+        self.assertIn("argument={type='action',key='ALMSIVI_PushToTalk'}", settings)
+        self.assertIn("input.registerActionHandler('ALMSIVI_PushToTalk'", player)
+        self.assertIn("onKeyRelease=function(event)", player)
+        self.assertIn("handlePushToTalk(true,'configured_key')", player)
+        self.assertIn("handlePushToTalk(false,'configured_key')", player)
+        self.assertIn("not controlsAllowed() and not ownsUiMode", player)
+        self.assertIn("speech.listen", player)
+        self.assertIn("orchestrator.pollVoice", global_script)
+        self.assertIn("orchestrator.pollOpenMic", global_script)
+        self.assertIn("speech.listen", native_bindings)
+        self.assertIn("speech.listen", patch_bindings)
+        for binding in (native_bindings, patch_bindings):
+            self.assertGreaterEqual(binding.count('"speech.listen"'), 2)
+            self.assertIn(
+                '"dialogue.text", "speech.say", "speech.listen", "controls.session"',
+                binding,
+            )
+            self.assertIn('api["currentVoiceCaptureDeviceName"]', binding)
+            self.assertIn('api["voiceCaptureDevices"]', binding)
+            self.assertNotIn('api["selectVoiceCaptureDevice"]', binding)
         self.assertIn('api["serverBaseUrl"]', native_bindings)
         self.assertIn('api["serverBaseUrl"]', patch_bindings)
         self.assertIn('result["created_at"] = event.createdAt', native_bindings)

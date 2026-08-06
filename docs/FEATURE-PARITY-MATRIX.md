@@ -26,8 +26,8 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 | Group conversation | Keep | Explicit speaker/addressee/audience registry and one ordered no-overlap speech lane. |
 | Typed player input | Keep | Custom TextEdit overlay, size/UTF-8 validation. |
 | In-game controls | Adapt | Dialectic-style focused Hotkeys/Auto Activate/Behavior/Sound/AI Agents/Tools settings; compact mode/model/profile selectors and one targeted-NPC tools menu replace the master dashboard. |
-| Push-to-talk/STT | Exclude | Baseline control remains visible and disabled; no shipped client capability, hotkey, capture, or request path. |
-| Open microphone | Exclude | Baseline control remains visible and disabled; no shipped client capability, hotkey, capture, or request path. |
+| Push-to-talk/STT | Keep | Configurable semantic hold action, bounded PCM16 WAV capture, authenticated upload, durable provider work, fenced transcript event, and normal player-text pipeline. |
+| Open microphone | Adapt | Explicit toggle and mute controls with bounded VAD sensitivity, end delay, maximum recording, no-voice timeout, device selection, and zero native microphone polling while idle. |
 | Subtitles/transcript | Keep | Custom UI with speaker and status, independent of stock subtitle toggle. |
 | Interrupt/skip/hard halt | Keep | Reserved control lane; speech/action/server cancellation. |
 | Automatic greeting | Exclude | Baseline control remains visible and disabled; no automatic model-triggering. |
@@ -65,7 +65,7 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 | Rechat | Keep | Uses the CHIM-style history/prompt/response records and a typed playback-gated chain; new player input or any invalid/stale/failed delivery cancels continuation. |
 | Boredom, greetings and combat barks | Exclude | Baseline controls remain visible and disabled; no runtime scheduler or automatic model-triggering is shipped. |
 | Playthrough export/restore | Keep | Transactional server snapshot plus binding safeguards. |
-| LLM/TTS providers | Keep | Typed LLM/TTS catalogs, bounded adapters, health and secret handling, per-profile routing, portable preset workflows, and persistent voice management. STT remains a disabled compatibility placeholder only. |
+| LLM/TTS/STT providers | Keep | Typed LLM/TTS catalogs plus one installation-global STT connector, bounded adapters, health and secret handling, API Badge integration, per-profile LLM/TTS routing, portable preset workflows, and persistent voice management. |
 | Prompt/action editor | Keep | Validated schemas, revisions, rollback, portable prompt export/import/clone, explicit per-NPC prompt selection with in-use deletion guards, and labelled per-action policy controls that cannot broaden the server-owned OpenMW catalog. |
 | Request/event logs | Keep | Scoped CHIM-style `eventlog`, `speech`, `responselog`, `prompts`, and prompt-source traces retain typed request/turn/session correlation and delivery state. |
 | Workers/backups/health | Keep | Supervised worker, retry/dead-letter queue, health/audit/provider diagnostics, bounded redacted server-log viewer, schema migrations, retention controls, scoped playthrough export/restore, and hash-verified same-installation configuration backup/restore that excludes secrets and runtime data. |

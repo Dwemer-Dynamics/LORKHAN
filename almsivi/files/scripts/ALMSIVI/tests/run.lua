@@ -464,11 +464,19 @@ test('OpenMW settings page registers controls and seeds conflict-free defaults o
   registerPage=function(value)table.insert(registered.pages,value)end,
   registerGroup=function(value)table.insert(registered.groups,value)end,
  }} end
+package.preload['openmw.almsivi']=function() return {
+  currentVoiceCaptureDeviceName=function()return 'Test microphone'end,
+  voiceCaptureDevices=function()return {
+   {id=-1,name='Windows default'},{id=0,name='Virtual microphone'},{id=1,name='Headset microphone'},
+   {id=2,name='Razer microphone'},{id=3,name='Streaming microphone'},{id=4,name='Test microphone'},
+  }end,
+ } end
  package.loaded['openmw.input']=nil package.loaded['openmw.storage']=nil package.loaded['openmw.interfaces']=nil
+ package.loaded['openmw.almsivi']=nil
  package.loaded['scripts.ALMSIVI.settings']=nil
  local settingsEntry=require('scripts.ALMSIVI.settings')
  eq(next(settingsEntry),nil)
- eq(registered.pages[1].key,'ALMSIVI');eq(#registered.groups,6);eq(registered.groups[1].page,'ALMSIVI');eq(#registered.groups[1].settings,11)
+ eq(registered.pages[1].key,'ALMSIVI');eq(#registered.groups,6);eq(registered.groups[1].page,'ALMSIVI');eq(#registered.groups[1].settings,14)
  for _,setting in ipairs(registered.groups[1].settings) do truthy(setting.name);truthy(setting.description) end
  truthy(registered.triggers.ALMSIVI_Talk);truthy(registered.triggers.ALMSIVI_Halt)
  truthy(registered.triggers.ALMSIVI_StopDialogue);truthy(registered.triggers.ALMSIVI_ManualActivate)
@@ -476,19 +484,31 @@ test('OpenMW settings page registers controls and seeds conflict-free defaults o
  truthy(registered.triggers.ALMSIVI_ToggleMode);truthy(registered.triggers.ALMSIVI_StatusHud)
  truthy(registered.triggers.ALMSIVI_ModelMenu);truthy(registered.triggers.ALMSIVI_ProfileMenu)
  truthy(registered.triggers.ALMSIVI_History);truthy(registered.triggers.ALMSIVI_Diagnostics)
- eq(registered.triggers.ALMSIVI_OpenMic,nil);eq(registered.triggers.ALMSIVI_OpenMicMute,nil)
- eq(registered.actions.ALMSIVI_PushToTalk,nil)
+ truthy(registered.triggers.ALMSIVI_OpenMic);truthy(registered.triggers.ALMSIVI_OpenMicMute)
+ truthy(registered.actions.ALMSIVI_PushToTalk)
  local function setting(group,key)
   for _,candidate in ipairs(group.settings) do if candidate.key==key then return candidate end end
  end
  truthy(setting(registered.groups[1],'StopDialogueBinding'));truthy(setting(registered.groups[1],'StatusHudBinding'))
  truthy(setting(registered.groups[1],'HistoryBinding'));truthy(setting(registered.groups[1],'DiagnosticsBinding'))
+ truthy(setting(registered.groups[1],'PushToTalkBinding'));truthy(setting(registered.groups[1],'OpenMicBinding'))
+ truthy(setting(registered.groups[1],'OpenMicMuteBinding'))
  eq(registered.groups[2].key,'SettingsALMSIVIAutoActivate');eq(setting(registered.groups[2],'enabled').default,true)
  eq(setting(registered.groups[2],'interiorDistance').default,1200);eq(setting(registered.groups[2],'exteriorDistance').default,2400)
  eq(setting(registered.groups[2],'interiorHearingDistance').default,500)
  eq(setting(registered.groups[2],'exteriorHearingDistance').default,1000)
- eq(registered.groups[3].key,'SettingsALMSIVIBehavior');eq(#registered.groups[3].settings,1)
+ eq(registered.groups[3].key,'SettingsALMSIVIBehavior');eq(#registered.groups[3].settings,5)
  eq(setting(registered.groups[3],'cancelDialogueOnCombat').default,true)
+ eq(setting(registered.groups[3],'openMicSensitivity').default,700)
+ eq(setting(registered.groups[3],'openMicEndDelayMs').default,900)
+ eq(setting(registered.groups[3],'recordingDevice').default,-1)
+ eq(setting(registered.groups[3],'recordingDevice').renderer,'number')
+ eq(setting(registered.groups[3],'recordingDevice').argument.min,-1)
+ eq(setting(registered.groups[3],'recordingDevice').argument.max,4)
+ eq(setting(registered.groups[3],'recordingDeviceName').default,'Test microphone')
+ eq(setting(registered.groups[3],'recordingDeviceName').renderer,'textLine')
+ eq(setting(registered.groups[3],'recordingDeviceName').argument.disabled,true)
+ eq(data.SettingsALMSIVIBehavior.recordingDeviceName,'Test microphone')
  eq(setting(registered.groups[3],'rechat'),nil);eq(setting(registered.groups[3],'boredom'),nil)
  eq(setting(registered.groups[3],'combatBarks'),nil);eq(setting(registered.groups[3],'autoGreeting'),nil)
  eq(registered.groups[4].key,'SettingsALMSIVISound');eq(setting(registered.groups[4],'ttsVolumeBoost').default,3)
@@ -499,18 +519,24 @@ test('OpenMW settings page registers controls and seeds conflict-free defaults o
  eq(talk.device,'keyboard');eq(talk.button,6);eq(talk.type,'trigger');eq(talk.key,'ALMSIVI_Talk')
  eq(halt.button,7);eq(data.OMWInputBindings.ALMSIVI_ActionsMenu_Binding,nil)
  eq(data.OMWInputBindings.ALMSIVI_MasterMenu_Binding,nil)
- eq(data.ALMSIVIInputDefaults.version,4)
+ eq(data.ALMSIVIInputDefaults.version,7)
  data.OMWInputBindings.ALMSIVI_Talk_Binding=nil
  package.loaded['scripts.ALMSIVI.settings']=nil
  require('scripts.ALMSIVI.settings')
  eq(data.OMWInputBindings.ALMSIVI_Talk_Binding,nil)
  package.preload['openmw.input']=nil package.preload['openmw.storage']=nil package.preload['openmw.interfaces']=nil
+ package.preload['openmw.almsivi']=nil
  package.loaded['openmw.input']=nil package.loaded['openmw.storage']=nil package.loaded['openmw.interfaces']=nil
+ package.loaded['openmw.almsivi']=nil
  package.loaded['scripts.ALMSIVI.settings']=nil
 end)
-test('STT open microphone and general autonomy have no Lua execution entry points',function()
- for _,name in ipairs({'startVoice','stopVoice','pollVoice','enableOpenMic','disableOpenMic','pollOpenMic',
-  'runOpenMicContext','requestLocalAutonomy','pollAutonomy','runAutonomy'}) do eq(orchestrator[name],nil) end
+test('STT voice controls are exposed while general autonomy has no Lua execution entry points',function()
+ for _,name in ipairs({'startVoice','stopVoice','pollVoice','enableOpenMic','disableOpenMic','muteOpenMic','pollOpenMic','runOpenMicContext'}) do
+  truthy(type(orchestrator[name])=='function')
+ end
+ for _,name in ipairs({'requestLocalAutonomy','pollAutonomy','runAutonomy'}) do
+  eq(orchestrator[name],nil)
+ end
 end)
 test('agent scanning never starts excluded greeting boredom or combat dialogue',function()
  local b=fake.bridge() local emitted={}

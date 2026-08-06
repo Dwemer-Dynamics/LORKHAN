@@ -4,7 +4,7 @@ Status: active implementation record based on a live client, server, browser, pr
 
 This document is the master cleanup and parity plan for ALMSIVI and ALMSIVIserver. It supersedes the fragmented parity checklists as the execution order, but it does not replace the protocol, architecture, packaging, or local-testing references.
 
-Scope override for this implementation goal: autonomy is excluded. Do not implement or expose functional automatic greetings, rechat, boredom events, combat barks, autonomous scheduling, cooldowns, or other model-triggering behavior. ITT, STT, and Background Life are also excluded. Baseline controls for these capabilities stay visible only as centrally labelled disabled placeholders.
+Scope override for this implementation goal: timer-driven autonomy is excluded. Do not implement or expose functional automatic greetings, boredom events, combat barks, autonomous scheduling, cooldowns, or other timer-triggered model behavior. ITT and Background Life remain excluded. STT is active through manual Push-to-Talk and bounded Open Mic controls.
 
 ## 1. Target outcome
 
@@ -16,7 +16,7 @@ ALMSIVI should deliver the same understandable product shape as CHIM and Dialect
 - Settings resolve predictably through Global settings, a Core Profile, and explicit NPC overrides.
 - Morrowind-specific context and actions are surfaced using OpenMW-native APIs and terminology.
 - Unsupported Herika controls remain visible in the browser baseline but are disabled and labelled centrally as `Planned`, `Excluded`, `Not Applicable`, or `Replaced`.
-- Autonomy, ITT, STT, and Background Life remain functionally excluded. Their presentation may remain as disabled compatibility landmarks, but no active client capability, hotkey, request path, scheduler, or background worker should expose them as usable features.
+- Timer-driven autonomy, ITT, and Background Life remain functionally excluded. STT is installation-global and intentionally sits outside the Global/Core Profile/NPC settings hierarchy.
 
 Parity means equivalent user outcomes, not blind runtime code copying. HerikaServer supplies the browser presentation contract. CHIM and Dialectic supply applicable behavior and control expectations. ALMSIVI keeps its own typed backend, protocol, database, OpenMW implementation, branding, terminology, and game-specific constraints.
 
@@ -50,7 +50,8 @@ The foundations are substantially present, but the product is not yet at full pa
 | Morrowind context | Bounded player, actor, world, inventory, Journal, book, environment, and recent vanilla-dialogue context is present | Requires prompt inspection against live representative actors and scenes |
 | Autonomy | Shipped UI/event wiring is removed and current capabilities do not advertise autonomy | Compatibility internals remain quarantined and negative runtime acceptance remains |
 | Settings hierarchy | Global -> Core Profile -> NPC effective settings, provenance, and change token reach the client | Representative target-switch acceptance remains |
-| Exclusions | STT, ITT, Background Life, and autonomy are disabled placeholders; shipped bindings and advertised capabilities are removed | Negative in-game acceptance remains |
+| STT | Push-to-Talk, bounded Open Mic, mute, sensitivity, end delay, recording-device selection, native WAV capture, authenticated upload, and transcript fencing are active | Live provider credentials and in-game acceptance remain |
+| Exclusions | ITT, Background Life, and timer-driven autonomy remain disabled; no scheduler or background model trigger is exposed | Negative in-game acceptance remains |
 | Validation | Client structural checks, 46 Lua runtime tests, native CTest, server integration, migrations/jobs, management HTTP, deployment health, and 1280x720 browser comparisons pass | In-game and mobile visual acceptance remain unverified |
 
 ## 4. Immediate parity blockers
@@ -72,7 +73,7 @@ The client registers more applicable actions than the Settings page exposes. Add
 - Conversation History
 - Diagnostics
 
-Keep Talk, Manual Activate, Mode, Model, Profile, Halt, and Actor Tools. Remove the legacy duplicate Master Menu from the public settings model. Do not expose Push-to-Talk, Open Mic, or Open Mic Mute while STT is excluded.
+Keep Talk, Manual Activate, Mode, Model, Profile, Halt, Actor Tools, Push-to-Talk, Open Mic, and Open Mic Mute. Remove the legacy duplicate Master Menu from the public settings model.
 
 Resolution: every applicable row is visible in OpenMW Settings, the duplicate Master Menu is compatibility-only and not public, and excluded voice controls are not registered.
 
@@ -95,11 +96,11 @@ Only target-scoped gameplay behavior may come from Core/NPC settings. Local play
 
 Resolution: the controls snapshot carries effective values, provenance, revisions, and a change token; the player applies target-scoped safety while keeping local presentation and audio settings client-owned.
 
-### P0.5 STT scope contradiction — resolved for the shipped client surface
+### P0.5 STT activation — superseded by the STT parity implementation
 
-The client and protocol still contain speech-listening, open-mic, capture, and STT paths while the product scope excludes functional STT. Remove `speech.listen` from current negotiated capabilities, prevent voice capture from starting, hide voice bindings, and ensure no STT worker/request can be triggered by the shipped client. If the database schema or server handlers are retained for future compatibility, mark them quarantined and cover them with negative tests.
+The retained speech-listening, capture, protocol, and durable worker foundations are reactivated for Push-to-Talk and bounded Open Mic. Every transcript is fenced to its captured target, session, and generation before it enters the normal player-text pipeline.
 
-Resolution: shipped settings, player events, global polling, and advertised capabilities no longer expose STT. Deep compatibility code remains quarantined for future work and is not called by the shipped scripts.
+Resolution: shipped settings, player events, bounded idle polling, native bindings, advertised capabilities, binary ingress, PostgreSQL state, workers, and connector UI expose STT without enabling any timer-driven autonomy.
 
 ### P0.6 Stale browser feature metadata — resolved
 
@@ -152,7 +153,7 @@ Create one presentation manifest containing the pinned source path/ref and the a
 | LLM | Live | Preserve provider list, editor, selection, test, import/export/clone, and safe optional-key handling. Clearly distinguish conversation, profile generation, and relationship worker routing where applicable. |
 | TTS | Live | Preserve connector list, editor, selection, test, clone/import/export, and default voice behavior. PocketTTS remains the preferred recommendation without breaking OmniVoice or other supported providers. |
 | TTS Studio | Live | Preserve voice browsing, samples, upload/delete lifecycle, provider filtering, and actor assignment workflows. Prove exact Morrowind voice selection. |
-| STT | Excluded | Keep the baseline control visible and disabled. Do not expose working forms or runtime capability. |
+| STT | Live | Preserve the single-global Herika connector page, provider groups, API Badge status, settings, Save/Test controls, and responsive layout; wire it to typed PostgreSQL configuration. |
 | ITT | Excluded | Keep the baseline control visible and disabled. Do not expose working forms or runtime capability. |
 | API Keys | Live | Preserve provider-scoped secure entry and never render secrets back to the browser. |
 | Global Settings | Live | Make every setting's ownership and inheritance behavior explicit. Show effective value and source when meaningful. |
@@ -356,14 +357,14 @@ Exit gate: every visible baseline control has one disposition and one canonical 
 ### Phase 1 - Correct P0 behavior and enforce exclusions
 
 1. Fix History and Diagnostics bindings.
-2. Expose every applicable binding and remove public legacy/voice-input bindings.
+2. Expose every applicable binding, including Push-to-Talk, Open Mic, and Mute, and remove only legacy duplicate bindings.
 3. Add recent vanilla dialogue to bounded turn context.
 4. Make Journal canonical and remove stale Relationships/Active Quests navigation metadata.
 5. Fix the player speech-style HTTP 422 workflow.
-6. Remove STT from negotiated/current client behavior and add negative exclusion tests.
+6. Activate STT with target/session/generation fencing and retain negative tests for timer-driven autonomy.
 7. Reconcile canonical routes and redirects.
 
-Exit gate: focused client structural/runtime checks and management HTTP tests pass; no excluded capability can be activated; live navigation contains no stale duplicate destination.
+Exit gate: focused client structural/runtime checks and management HTTP tests pass; no excluded capability can be activated; STT is player-triggered and bounded; live navigation contains no stale duplicate destination.
 
 ### Phase 2 - Lock the Herika presentation shell
 
@@ -462,7 +463,7 @@ Correlate OpenMW, ALMSIVI client, server, Apache/PHP, provider, TTS, and worker 
 Keep implementation reviewable and avoid another all-at-once rewrite:
 
 1. Feature manifest, Journal/Relationships cleanup, and canonical routes.
-2. In-game binding/panel correctness and excluded STT quarantine.
+2. In-game binding/panel correctness and bounded STT activation.
 3. Player speech-style workflow repair.
 4. Shared Herika shell and visual fixture lock.
 5. Character page family.
@@ -490,7 +491,7 @@ ALMSIVI reaches this parity milestone only when all of the following are true:
 - Text conversation, cancellation, response queuing, subtitles, and TTS pass the lifecycle matrix.
 - Exact actor voice routing and ALMSIVI volume boost pass representative in-game tests.
 - Morrowind context, including Journal, books, and recent vanilla dialogue, is bounded and reaches prompts correctly.
-- Autonomy, ITT, STT, and Background Life cannot be activated by the shipped product.
+- Timer-driven autonomy, ITT, and Background Life cannot be activated by the shipped product.
 - Fresh-install and upgrade migrations, server integration, management HTTP, client checks, browser comparisons, and in-game smoke tests pass.
 - Deployment records the exact client/server refs and destinations and preserves user configuration, profiles, voices, and database state.
 
@@ -498,7 +499,7 @@ ALMSIVI reaches this parity milestone only when all of the following are true:
 
 - Do not copy Herika runtime/database code into ALMSIVI merely to make a page render.
 - Do not remove ALMSIVI's typed services, repositories, session, CSRF, revision, job, or protocol boundaries.
-- Do not add functional ITT, STT, Background Life, Soulgaze, PipVision, or Skyrim-only quest systems in this milestone.
+- Do not add functional ITT, Background Life, Soulgaze, PipVision, or Skyrim-only quest systems in this milestone.
 - Do not allow per-NPC settings to override local hotkeys or local UI/audio preferences.
 - Do not advertise capabilities or actions that the current client and server cannot complete.
 - Do not use broad generic management forms as the finished implementation for a copied Herika control.

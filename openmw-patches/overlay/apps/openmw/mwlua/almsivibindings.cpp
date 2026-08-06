@@ -6,6 +6,7 @@
 #include <almsivi/bridge_service.hpp>
 #include <almsivi/protocol_response.hpp>
 #include <almsivi/validation.hpp>
+#include <almsivi/voice_capture.hpp>
 #include <components/lua/configuration.hpp>
 #include <components/lua/scriptscontainer.hpp>
 #include <components/files/constrainedfilestream.hpp>
@@ -369,7 +370,53 @@ namespace MWLua
 
             ~NativeClient()
             {
+                almsivi::VoiceCaptureService::instance().halt();
                 if (m_service) m_service->halt();
+            }
+
+            std::tuple<sol::object, sol::object> startVoiceCapture(
+                sol::state_view lua, bool automatic, int rmsThreshold, int trailingSilenceMs, int deviceId)
+            {
+                if (!ready()) return failure(lua, "bridge_not_ready");
+                auto started = almsivi::VoiceCaptureService::instance().start(automatic,
+                    static_cast<std::uint16_t>(rmsThreshold), static_cast<std::uint32_t>(trailingSilenceMs), deviceId);
+                if (!started) return failure(lua, started.error().message);
+                return success(lua, "recording");
+            }
+
+            void stopVoiceCapture() { almsivi::VoiceCaptureService::instance().stop(); }
+            void cancelVoiceCapture() { almsivi::VoiceCaptureService::instance().halt(); }
+
+            sol::table voiceCaptureStatus(sol::state_view lua) const
+            {
+                const auto& capture=almsivi::VoiceCaptureService::instance();sol::table result(lua,sol::create);
+                const char* name="idle";switch(capture.state()){
+                    case almsivi::VoiceCaptureState::unsupported:name="unsupported";break;
+                    case almsivi::VoiceCaptureState::idle:break;
+                    case almsivi::VoiceCaptureState::recording:name="recording";break;
+                    case almsivi::VoiceCaptureState::ready:name="ready";break;
+                    case almsivi::VoiceCaptureState::failed:name="failed";break;}
+                result["state"]=name;result["bytes"]=capture.capturedBytes();result["duration_ms"]=capture.durationMs();
+                result["automatic"]=capture.automatic();result["voice_detected"]=capture.voiceDetected();
+                result["device_id"]=capture.deviceId();result["device_name"]=capture.selectedDeviceName();
+                result["pcm_bytes"]=capture.capturedPcmBytes();result["peak_amplitude"]=capture.peakAmplitude();
+                result["rms_amplitude"]=capture.rmsAmplitude();
+                const std::string error=capture.error();if(!error.empty())result["error"]=error;return result;
+            }
+
+            std::tuple<sol::object, sol::object> submitCapturedStt(sol::state_view lua,const std::string& language)
+            {
+                if(!ready())return failure(lua,"bridge_not_ready");auto captured=almsivi::VoiceCaptureService::instance().takeReady();
+                if(!captured)return failure(lua,"voice_capture_not_ready");try{
+                    const almsivi::RequestId request(uuid());almsivi::EnvelopeIds ids{m_config->installation,m_config->profile,
+                        m_config->playthrough,*m_session,request,almsivi::TurnId(uuid()),almsivi::MessageId(uuid()),m_service->generation()};
+                    const std::string createdAt=utcNow();almsivi::OutboundRequest outbound{request,*m_session,ids.generation,
+                        almsivi::RequestKind::stt,almsivi::SttRequest{ids,createdAt,"wav",language,captured->sha256,std::move(captured->wav)}};
+                    auto accepted=m_service->enqueue(std::move(outbound));if(!accepted)return failure(lua,accepted.error().message);
+                    sol::table result(lua,sol::create);result["message_id"]=ids.message.value();result["request_id"]=ids.request.value();
+                    result["turn_id"]=ids.turn.value();result["session_id"]=ids.session.value();result["generation"]=ids.generation.value();
+                    result["created_at"]=createdAt;return{sol::make_object(lua,result),sol::make_object(lua,sol::nil)};
+                }catch(const std::exception& error){return failure(lua,error.what());}
             }
             NativeClient(const NativeClient&) = delete;
             NativeClient& operator=(const NativeClient&) = delete;
@@ -781,6 +828,7 @@ namespace MWLua
 
             void halt()
             {
+                almsivi::VoiceCaptureService::instance().halt();
                 if (m_service) m_service->halt();
                 m_status = "halted";
             }
@@ -825,7 +873,7 @@ namespace MWLua
             }
 
             static std::vector<std::string> capabilities()
-            { return { "dialogue.text", "speech.say", "controls.session", "action.ai.follow", "action.ai.stop",
+            { return { "dialogue.text", "speech.say", "speech.listen", "controls.session", "action.ai.follow", "action.ai.stop",
                 "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
                 "action.inspect.report" }; }
@@ -958,7 +1006,7 @@ namespace MWLua
             api["version"] = std::string(almsivi::kClientVersion);
             api["capabilities"] = [lua] {
                 sol::table result(lua, sol::create); std::size_t index = 1;
-            for (const auto& capability : std::vector<std::string>{ "dialogue.text", "speech.say", "controls.session",
+            for (const auto& capability : std::vector<std::string>{ "dialogue.text", "speech.say", "speech.listen", "controls.session",
                 "action.ai.follow", "action.ai.stop", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
                 "action.combat.start", "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip",
                 "action.item.use", "action.inspect.report" })
@@ -984,6 +1032,23 @@ namespace MWLua
                 return client().selectControl(lua,kind,std::move(selection),std::move(target));
             };
             api["sessionControls"] = [lua] { return client().sessionControls(lua); };
+            api["voiceCaptureSupported"] = [] { return almsivi::VoiceCaptureService::instance().supported(); };
+            api["startVoiceCapture"] = [lua](sol::optional<bool> automatic,sol::optional<int> threshold,
+                sol::optional<int> delay,sol::optional<int> deviceId) {
+                return client().startVoiceCapture(lua,automatic.value_or(false),threshold.value_or(700),
+                    delay.value_or(900),deviceId.value_or(-1)); };
+            api["stopVoiceCapture"] = [] { client().stopVoiceCapture(); };
+            api["cancelVoiceCapture"] = [] { client().cancelVoiceCapture(); };
+            api["voiceCaptureStatus"] = [lua] { return client().voiceCaptureStatus(lua); };
+            api["currentVoiceCaptureDeviceName"] = [](sol::optional<int> deviceId) {
+                return almsivi::VoiceCaptureService::instance().currentDeviceName(deviceId.value_or(-1)); };
+            api["voiceCaptureDevices"] = [lua] {
+                const auto& capture=almsivi::VoiceCaptureService::instance();sol::table result(lua,sol::create);
+                sol::table mapper(lua,sol::create);mapper["id"]=-1;mapper["name"]=capture.currentDeviceName(-1);result[1]=mapper;
+                for(std::size_t id=0;id<capture.deviceCount();++id){sol::table device(lua,sol::create);
+                    device["id"]=static_cast<int>(id);device["name"]=capture.currentDeviceName(static_cast<int>(id));
+                    result[id+2]=device;}return result; };
+            api["submitCapturedStt"] = [lua](const std::string& language) { return client().submitCapturedStt(lua,language); };
             api["pollResults"] = [lua](std::size_t maximum) { return client().poll(lua, maximum); };
             api["prepareMedia"] = [lua](sol::table dto) { return client().prepareMedia(lua, std::move(dto)); };
             api["mediaStatus"] = [lua](const std::string& id) { return client().mediaStatus(lua, id); };

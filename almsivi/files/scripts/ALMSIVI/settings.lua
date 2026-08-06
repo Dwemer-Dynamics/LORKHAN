@@ -1,6 +1,7 @@
 local input = require('openmw.input')
 local storage = require('openmw.storage')
 local I = require('openmw.interfaces')
+local nativeOk,native = pcall(require,'openmw.almsivi')
 
 local PAGE_KEY = 'ALMSIVI'
 local HOTKEY_GROUP_KEY = 'SettingsALMSIVIControls'
@@ -11,12 +12,28 @@ local AGENTS_GROUP_KEY = 'SettingsALMSIVIAgents'
 local TOOLS_GROUP_KEY = 'SettingsALMSIVIPresentation'
 local DEFAULTS_SECTION = 'ALMSIVIInputDefaults'
 local LAYOUT_MIGRATION_SECTION = 'ALMSIVISettingsLayout'
-local DEFAULTS_VERSION = 4
+local DEFAULTS_VERSION = 7
+
+local behaviorSection = storage.playerSection(BEHAVIOR_GROUP_KEY)
+local recordingDeviceId = math.floor(tonumber(behaviorSection:get('recordingDevice')) or -1)
+local recordingDeviceMax = 31
+local recordingDeviceName = 'Windows default'
+if nativeOk and native.currentVoiceCaptureDeviceName then
+    local called,name=pcall(native.currentVoiceCaptureDeviceName,recordingDeviceId)
+    if called and type(name)=='string' and name~='' then recordingDeviceName=name end
+end
+if nativeOk and native.voiceCaptureDevices then
+    local called,devices=pcall(native.voiceCaptureDevices)
+    if called and type(devices)=='table' and #devices>1 then recordingDeviceMax=#devices-2 end
+end
 
 local bindings = {
     talk = 'ALMSIVI_Talk_Binding',
+    pushToTalk = 'ALMSIVI_PushToTalk_Binding',
     stopDialogue = 'ALMSIVI_StopDialogue_Binding',
     halt = 'ALMSIVI_Halt_Binding',
+    openMic = 'ALMSIVI_OpenMic_Binding',
+    openMicMute = 'ALMSIVI_OpenMicMute_Binding',
     manualActivate = 'ALMSIVI_ManualActivate_Binding',
     actorTools = 'ALMSIVI_ActionsMenu_Binding',
     masterMenu = 'ALMSIVI_MasterMenu_Binding',
@@ -35,6 +52,8 @@ end
 trigger('ALMSIVI_Talk','Talk_name','Talk_description')
 trigger('ALMSIVI_StopDialogue','StopDialogue_name','StopDialogue_description')
 trigger('ALMSIVI_Halt','Halt_name','Halt_description')
+trigger('ALMSIVI_OpenMic','OpenMic_name','OpenMic_description')
+trigger('ALMSIVI_OpenMicMute','OpenMicMute_name','OpenMicMute_description')
 trigger('ALMSIVI_ManualActivate','ManualActivate_name','ManualActivate_description')
 trigger('ALMSIVI_ActionsMenu','ActorTools_name','ActorTools_description')
 trigger('ALMSIVI_MasterMenu','ActorTools_name','ActorTools_description')
@@ -44,6 +63,8 @@ trigger('ALMSIVI_ProfileMenu','ProfileMenu_name','ProfileMenu_description')
 trigger('ALMSIVI_StatusHud','StatusHud_name','StatusHud_description')
 trigger('ALMSIVI_History','History_name','History_description')
 trigger('ALMSIVI_Diagnostics','Diagnostics_name','Diagnostics_description')
+input.registerAction({key='ALMSIVI_PushToTalk',l10n='ALMSIVI',name='PushToTalk_name',
+    description='PushToTalk_description',type=input.ACTION_TYPE.Boolean,defaultValue=false})
 
 I.Settings.registerPage({
     key=PAGE_KEY,
@@ -70,6 +91,12 @@ I.Settings.registerGroup({
             name='ProfileMenu_name',description='ProfileMenu_description',argument={type='trigger',key='ALMSIVI_ProfileMenu'}},
         {key='HaltBinding',renderer='inputBinding',default=bindings.halt,
             name='Halt_name',description='Halt_description',argument={type='trigger',key='ALMSIVI_Halt'}},
+        {key='PushToTalkBinding',renderer='inputBinding',default=bindings.pushToTalk,
+            name='PushToTalk_name',description='PushToTalk_description',argument={type='action',key='ALMSIVI_PushToTalk'}},
+        {key='OpenMicBinding',renderer='inputBinding',default=bindings.openMic,
+            name='OpenMic_name',description='OpenMic_description',argument={type='trigger',key='ALMSIVI_OpenMic'}},
+        {key='OpenMicMuteBinding',renderer='inputBinding',default=bindings.openMicMute,
+            name='OpenMicMute_name',description='OpenMicMute_description',argument={type='trigger',key='ALMSIVI_OpenMicMute'}},
         {key='ActorToolsBinding',renderer='inputBinding',default=bindings.actorTools,
             name='ActorTools_name',description='ActorTools_description',argument={type='trigger',key='ALMSIVI_ActionsMenu'}},
         {key='StatusHudBinding',renderer='inputBinding',default=bindings.statusHud,
@@ -100,8 +127,14 @@ I.Settings.registerGroup({
     description='BehaviorGroup_description',permanentStorage=true,order=2,
     settings={
         {key='cancelDialogueOnCombat',renderer='checkbox',default=true,name='CancelDialogueOnCombat_name',description='CancelDialogueOnCombat_description'},
+        {key='openMicSensitivity',renderer='number',default=700,name='OpenMicSensitivity_name',description='OpenMicSensitivity_description',argument={integer=true,min=100,max=5000}},
+        {key='openMicEndDelayMs',renderer='number',default=900,name='OpenMicEndDelay_name',description='OpenMicEndDelay_description',argument={integer=true,min=500,max=5000}},
+        {key='recordingDevice',renderer='number',default=-1,name='RecordingDevice_name',description='RecordingDevice_description',argument={integer=true,min=-1,max=recordingDeviceMax}},
+        {key='recordingDeviceName',renderer='textLine',default=recordingDeviceName,name='CurrentRecordingDevice_name',description='CurrentRecordingDevice_description',argument={disabled=true}},
     },
 })
+
+behaviorSection:set('recordingDeviceName',recordingDeviceName)
 
 I.Settings.registerGroup({
     key=SOUND_GROUP_KEY,page=PAGE_KEY,l10n='ALMSIVI',name='SoundGroup_name',

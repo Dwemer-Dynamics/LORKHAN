@@ -665,6 +665,7 @@ void testVoiceCapturePrimitives()
     auto& capture = almsivi::VoiceCaptureService::instance();
     CHECK(!capture.supported());
     CHECK(capture.state() == almsivi::VoiceCaptureState::unsupported);
+    CHECK(capture.currentDeviceName() == "Unavailable");
     CHECK(!capture.start());
 #endif
 }

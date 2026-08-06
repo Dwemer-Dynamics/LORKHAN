@@ -19,6 +19,10 @@ local notification=notifications.new()
 local lastNotificationStatus
 local element
 local statusElement
+local voiceRecording=false
+local pttHeld=false
+local openMicEnabled=false
+local openMicMuted=false
 local settingsSignature
 local autoScanElapsed=0
 local turnActive=false
@@ -54,7 +58,7 @@ local SETTINGS_REFRESH_INTERVAL=0.5
 local AIM_SCAN_INTERVAL=0.25
 local AUTO_SCAN_INTERVAL=1.0
 local function send(name,payload) if core and core.sendGlobalEvent then core.sendGlobalEvent(name,payload) end end
-local CAPABILITIES={'dialogue.text','speech.say','action.ai.follow','action.ai.stop',
+local CAPABILITIES={'dialogue.text','speech.say','speech.listen','action.ai.follow','action.ai.stop',
     'action.ai.travel','action.ai.escort','action.ai.face','action.ai.wander','action.combat.start','action.combat.stop','action.inspect.report',
     'action.animation.play','action.item.equip','action.item.unequip','action.item.use'}
 
@@ -78,6 +82,15 @@ local function conversationContext(target)
             p99Ms=sorted[math.max(1,math.ceil(#sorted*0.99))],samples=#sorted}
     end
     return snapshot
+end
+
+local function voicePayload(uiSource)
+    local snapshot=conversationContext(state.ui.target);snapshot.dialogueMode=state.ui.mode
+    return {speaker=adapter.identity(self),target=state.ui.target,context=snapshot,language='en-US',capabilities=CAPABILITIES,
+        recent_action_results={},ui_source=uiSource,
+        vad_sensitivity=tonumber(behaviorSettings and behaviorSettings:get('openMicSensitivity')) or 700,
+        end_delay_ms=tonumber(behaviorSettings and behaviorSettings:get('openMicEndDelayMs')) or 900,
+        recording_device=math.floor(tonumber(behaviorSettings and behaviorSettings:get('recordingDevice')) or -1)}
 end
 
 local function displayName(actor) return actor and actor.display_name or 'No target' end
@@ -447,12 +460,30 @@ render=function()
             'Conversation group: '..audienceNames(),
             'Managed agents: '..tostring(#state.ui.agents),
             'Turn active: '..tostring(turnActive),
+            'Voice recording: '..tostring(voiceRecording),
+            'Open microphone: '..tostring(openMicEnabled),
+            'Open microphone muted: '..tostring(openMicMuted),
             'Generated speech: '..tostring(speechActive()),
             'Nearby combat: '..tostring(nearbyCombat),
             'Bridge queue: '..tostring(bridge and bridge.outbound or 'unavailable')..' outbound / '..
                 tostring(bridge and bridge.inbound or 'unavailable')..' inbound',
             'Last bridge error: '..tostring(nativeValue('lastError','none')),
         }
+        local selectedDeviceId=math.floor(tonumber(behaviorSettings and behaviorSettings:get('recordingDevice')) or -1)
+        local selectedDeviceName='Unavailable'
+        if nativeOk and native.currentVoiceCaptureDeviceName then
+            local called,name=pcall(native.currentVoiceCaptureDeviceName,selectedDeviceId)
+            if called and type(name)=='string' then selectedDeviceName=name end
+        end
+        rows[#rows+1]='Selected recording device: '..tostring(selectedDeviceId)..' - '..selectedDeviceName
+        if nativeOk and native.voiceCaptureDevices then
+            local called,devices=pcall(native.voiceCaptureDevices)
+            if called and type(devices)=='table' then
+                for _,device in ipairs(devices) do
+                    rows[#rows+1]='Recording device '..tostring(device.id)..': '..tostring(device.name)
+                end
+            end
+        end
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Diagnostics',textSize=20,
             textColor=util.color.rgb(0.95,0.9,0.82)}}
         for _,row in ipairs(rows) do
@@ -731,6 +762,39 @@ chooseTarget=function(maxDistance,deferRender)
     return true
 end
 
+-- Owns the press/release transition shared by OpenMW's semantic action and the configured-key fallback.
+local function handlePushToTalk(held,source)
+    held=held==true
+    if held==pttHeld then return end
+    if held then
+        if not controlsAllowed() and not ownsUiMode then
+            print('[ALMSIVI] push-to-talk blocked by another UI mode via '..tostring(source))
+            return
+        end
+        if not state.ui.target then
+            print('[ALMSIVI] push-to-talk needs a target; starting target selection via '..tostring(source))
+            chooseTarget(2048)
+            return
+        end
+        pttHeld=true
+        if openMicEnabled then
+            openMicEnabled=false;openMicMuted=false
+            send('ALMSIVI_OPEN_MIC_STOP',{})
+        end
+        voiceRecording=true
+        print('[ALMSIVI] push-to-talk pressed; requesting voice capture via '..tostring(source))
+        send('ALMSIVI_VOICE_START',voicePayload('almsivi_voice'))
+    else
+        pttHeld=false
+        if voiceRecording then
+            voiceRecording=false
+            print('[ALMSIVI] push-to-talk released; stopping voice capture via '..tostring(source))
+            send('ALMSIVI_VOICE_STOP',{})
+        end
+    end
+    render()
+end
+
 local function chooseAudience(maxDistance)
     local candidate=aimCandidate
     local reason=candidate and 'live_aim_preview' or nil
@@ -773,6 +837,13 @@ local function isConfiguredTalkKey(event)
     local binding=inputBindings:get('ALMSIVI_Talk_Binding')
     return binding and binding.device=='keyboard' and binding.type=='trigger'
         and binding.key=='ALMSIVI_Talk' and binding.button==event.code
+end
+
+local function isConfiguredPushToTalkKey(event)
+    if not event or not inputBindings then return false end
+    local binding=inputBindings:get('ALMSIVI_PushToTalk_Binding')
+    return binding and binding.device=='keyboard' and binding.type=='action'
+        and binding.key=='ALMSIVI_PushToTalk' and binding.button==event.code
 end
 
 local function openPanel(panel)
@@ -935,6 +1006,23 @@ if inputOk then
     end))
     input.registerTriggerHandler('ALMSIVI_History',adapter.callback(function() togglePanel('history') end))
     input.registerTriggerHandler('ALMSIVI_Diagnostics',adapter.callback(function() togglePanel('diagnostics') end))
+    input.registerActionHandler('ALMSIVI_PushToTalk',adapter.callback(function(value)
+        handlePushToTalk(value==true,'action_handler')
+    end))
+    input.registerTriggerHandler('ALMSIVI_OpenMic',adapter.callback(function()
+        if not controlsAllowed() then return end
+        if not openMicEnabled and not state.ui.target then chooseTarget(2048) return end
+        openMicEnabled=not openMicEnabled;openMicMuted=false;voiceRecording=openMicEnabled
+        send(openMicEnabled and 'ALMSIVI_OPEN_MIC_START' or 'ALMSIVI_OPEN_MIC_STOP',openMicEnabled and voicePayload('almsivi_open_mic') or {})
+        state.ui.status=openMicEnabled and 'open mic listening' or 'open mic off';render()
+    end))
+    input.registerTriggerHandler('ALMSIVI_OpenMicMute',adapter.callback(function()
+        if not controlsAllowed() then return end
+        if not openMicEnabled then state.ui.status='open mic is off';render();return end
+        openMicMuted=not openMicMuted;voiceRecording=not openMicMuted
+        send(openMicMuted and 'ALMSIVI_OPEN_MIC_MUTE' or 'ALMSIVI_OPEN_MIC_START',openMicMuted and {} or voicePayload('almsivi_open_mic'))
+        state.ui.status=openMicMuted and 'open mic muted' or 'open mic listening';render()
+    end))
 end
 
 return {
@@ -947,7 +1035,16 @@ return {
                 submitText()
                 return
             end
+            if inputOk and isConfiguredPushToTalkKey(event) then
+                handlePushToTalk(true,'configured_key')
+                return
+            end
             if inputOk and isConfiguredTalkKey(event) then requestTalkToggle() end
+        end,
+        onKeyRelease=function(event)
+            if inputOk and isConfiguredPushToTalkKey(event) then
+                handlePushToTalk(false,'configured_key')
+            end
         end,
         onUpdate=function(dt)
             if narratorSpeech and not adapter.isSpeechActive() then reportNarrator('played','playback_completed') end
@@ -1005,6 +1102,15 @@ return {
         end,
         ALMSIVI_NARRATOR_STOP=function(event) stopNarrator(event and event.reason or 'client_interrupted') end,
         ALMSIVI_STATUS=function(event) state.ui.status=event.status state.ui.diagnostics=event.reason render() end,
+        ALMSIVI_VOICE_STATUS=function(event)
+            state.ui.status=event.status;state.ui.diagnostics=event.reason
+            if event.status=='failed' or event.status=='queued' then voiceRecording=false end
+            if event.status=='open mic off' or event.status=='failed' and event.continuous then openMicEnabled=false;openMicMuted=false end
+            render()
+        end,
+        ALMSIVI_OPEN_MIC_CONTEXT_REQUEST=function()
+            if openMicEnabled and not openMicMuted and state.ui.target then send('ALMSIVI_OPEN_MIC_CONTEXT',voicePayload('almsivi_open_mic')) end
+        end,
         ALMSIVI_TURN=function(event)
             if not awaitingTextQueue then return end
             awaitingTextQueue=false
@@ -1053,9 +1159,9 @@ return {
             local started=event.active==true and not nearbyCombat
             nearbyCombat=event.active==true
             if started and (not behaviorSettings or behaviorSettings:get('cancelDialogueOnCombat')~=false)
-                and (turnActive or speechActive()) then
+                and (turnActive or voiceRecording or openMicEnabled or speechActive()) then
                 send('ALMSIVI_STOP_DIALOGUE_REQUEST',{})
-                turnActive=false
+                voiceRecording=false;openMicEnabled=false;openMicMuted=false;pttHeld=false;turnActive=false
                 speechActors={}
                 state.ui.status='dialogue stopped for combat'
                 render()

@@ -14,7 +14,7 @@ target_include_directories(almsivi_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inclu
 target_compile_features(almsivi_core PUBLIC cxx_std_20)
 target_link_libraries(almsivi_core PUBLIC Threads::Threads)
 if(WIN32)
-    target_link_libraries(almsivi_core PRIVATE winmm)
+    target_link_libraries(almsivi_core PRIVATE ole32 winmm)
     target_compile_definitions(almsivi_core PRIVATE _WIN32_WINNT=0x0A00)
 endif()
 set_target_properties(almsivi_core PROPERTIES CXX_EXTENSIONS OFF)

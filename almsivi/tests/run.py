@@ -92,30 +92,39 @@ check("native-authenticated cursor gaps recover without replaying duplicates",
 check("actor self identity required", "identity.same(command.actor,state.identity)" in text(SCRIPTS / "actor_executor.lua"))
 check("vanilla Activate not consumed", "return false -- built-in Activate" in text(SCRIPTS / "player_state.lua"))
 settings = text(SCRIPTS / "settings.lua")
-check("OpenMW Scripts page exposes all applicable focused hotkeys", settings.count("renderer='inputBinding'") == 11
+player_script = text(SCRIPTS / "player.lua")
+check("OpenMW Scripts page exposes all applicable focused hotkeys", settings.count("renderer='inputBinding'") == 14
       and all(fragment in settings for fragment in ["I.Settings.registerPage", "key='ALMSIVI_Talk'",
           "key='ALMSIVI_StopDialogue'", "key='ALMSIVI_ManualActivate'", "key='ALMSIVI_ToggleMode'",
           "key='ALMSIVI_ModelMenu'", "key='ALMSIVI_ProfileMenu'", "key='ALMSIVI_Halt'",
           "key='ALMSIVI_ActionsMenu'", "key='ALMSIVI_StatusHud'", "key='ALMSIVI_History'",
-          "key='ALMSIVI_Diagnostics'"]))
-check("legacy master menu remains hidden while excluded voice controls are unregistered",
+          "key='ALMSIVI_Diagnostics'", "key='ALMSIVI_OpenMic'", "key='ALMSIVI_OpenMicMute'"]))
+check("legacy master menu remains hidden while typed voice controls are registered",
       "trigger('ALMSIVI_MasterMenu'" in settings
-      and "trigger('ALMSIVI_OpenMic'" not in settings
-      and "registerAction({key='ALMSIVI_PushToTalk'" not in settings)
-excluded_native_entries = [
-    'api["voiceCaptureSupported"]', 'api["startVoiceCapture"]', 'api["stopVoiceCapture"]',
-    'api["cancelVoiceCapture"]', 'api["voiceCaptureStatus"]', 'api["submitCapturedStt"]',
-    'api["pollAutonomy"]', 'RequestKind::stt',
-]
-check("shipped native package has no STT open-mic or autonomy entry point",
-      all(fragment not in binding for fragment in excluded_native_entries
-          for binding in [native_binding, native_overlay]))
-check("Lua orchestration has no STT open-mic or general autonomy execution path",
-      all(fragment not in orchestrator for fragment in [
-          "function M.startVoice", "function M.enableOpenMic", "function M.requestLocalAutonomy",
-          "function M.pollAutonomy", "function M.runAutonomy", "ui_source='almsivi_autonomy'",
-          "ALMSIVI_AUTONOMY_CONTEXT_REQUEST", "ALMSIVI_OPEN_MIC_CONTEXT_REQUEST",
-      ]))
+      and "trigger('ALMSIVI_OpenMic'" in settings
+      and "registerAction({key='ALMSIVI_PushToTalk'" in settings
+      and "argument={type='action',key='ALMSIVI_PushToTalk'}" in settings)
+check("push-to-talk uses action transitions with a configured keyboard fallback", all(fragment in player_script for fragment in [
+      "input.registerActionHandler('ALMSIVI_PushToTalk'", "isConfiguredPushToTalkKey(event)",
+      "onKeyRelease=function(event)", "handlePushToTalk(true,'configured_key')",
+      "handlePushToTalk(false,'configured_key')", "not controlsAllowed() and not ownsUiMode"]))
+required_native_voice_entries = ['api["voiceCaptureSupported"]','api["startVoiceCapture"]','api["stopVoiceCapture"]',
+    'api["cancelVoiceCapture"]','api["voiceCaptureStatus"]','api["currentVoiceCaptureDeviceName"]',
+    'api["voiceCaptureDevices"]',
+    'api["submitCapturedStt"]','RequestKind::stt']
+check("shipped native package exposes typed STT while autonomy stays absent", all(
+    all(fragment in binding for fragment in required_native_voice_entries)
+    and 'api["selectVoiceCaptureDevice"]' not in binding
+    and 'api["pollAutonomy"]' not in binding for binding in [native_binding,native_overlay]))
+check("native handshake negotiates speech input", all(
+    binding.count('"speech.listen"') >= 2
+    and '"dialogue.text", "speech.say", "speech.listen", "controls.session"' in binding
+    for binding in [native_binding,native_overlay]))
+check("Lua orchestration exposes fenced STT and no general autonomy execution path",
+      all(fragment in orchestrator for fragment in ["function M.startVoice","function M.enableOpenMic",
+          "pending.session_id==state.sessionId","pending.generation==state.generation","ALMSIVI_OPEN_MIC_CONTEXT_REQUEST"])
+      and all(fragment not in orchestrator for fragment in ["function M.requestLocalAutonomy","function M.pollAutonomy",
+          "function M.runAutonomy","ui_source='almsivi_autonomy'","ALMSIVI_AUTONOMY_CONTEXT_REQUEST"]))
 player_lua = text(SCRIPTS / "player.lua")
 openmw_adapter = text(SCRIPTS / "adapters" / "openmw.lua")
 context_lua = text(SCRIPTS / "context.lua")
@@ -160,7 +169,6 @@ check("OpenMW settings rows have required localization metadata", all(fragment i
     "name='Talk_name',description='Talk_description'", "name='Halt_name',description='Halt_description'",
     "name='ModeMenu_name',description='ModeMenu_description'",
     "name='ActorTools_name',description='ActorTools_description'"]))
-player_script = text(SCRIPTS / "player.lua")
 actor_script = text(SCRIPTS / "actor.lua")
 check("dialogue playback uses native Morrowind subtitles without a duplicate status-HUD notification",
       "playSpeech=function(mediaId,actorIdentity,subtitle,volumeBoost) return adapter.playSpeech(mediaId,subtitle,volumeBoost) end" in actor_script

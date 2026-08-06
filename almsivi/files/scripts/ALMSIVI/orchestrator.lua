@@ -16,7 +16,8 @@ function M.new(bridge,emit,sendActor,manageActor)
         generation=generation,sessionId=nil,registry=identity.Registry(),agents=agentRegistry.new(),
         manageActor=manageActor or function() return nil,'actor_manager_unavailable' end,
         conversation=conversation.new(generation),events=nil,attachments={},media={},pendingConfirmations={},
-        activeSpeechMediaId=nil,rechat=nil,rechatSeed=nil,combatThreats={},combatVerified={},
+        activeSpeechMediaId=nil,rechat=nil,rechatSeed=nil,pendingVoice=nil,pendingStt={},openMic=false,openMicRequested=false,
+        combatThreats={},combatVerified={},
         dialogueMode='Standard',disabled=false,hardHalted=false,agentsSignature=nil}
     state.recentVanillaDialogue={}
     return state
@@ -48,6 +49,7 @@ local function signalAllActors(state,eventName,reason)
 end
 
 function M.lifecycle(state,kind)
+    if state.bridge and state.bridge.cancelVoiceCapture then state.bridge.cancelVoiceCapture() end
     detachAll(state,kind)
     state.generation=conversation.invalidate(state.conversation,kind)
     if state.bridge then state.bridge.cancelGeneration(state.generation-1) end
@@ -55,6 +57,7 @@ function M.lifecycle(state,kind)
     state.pendingConfirmations={}
     state.activeSpeechMediaId=nil
     state.rechat=nil state.rechatSeed=nil
+    state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
     state.combatThreats={} state.combatVerified={}
     state.recentVanillaDialogue={}
     state.hardHalted=false state.conversation.hardHalted=false
@@ -236,6 +239,108 @@ function M.selectTarget(state,candidate)
     state.emit('ALMSIVI_TARGET',{target=actor,audience={actor}})
     emitAgents(state)
     return actor
+end
+
+-- Capture one target/session/generation snapshot so a late transcript cannot be routed to a different NPC.
+function M.startVoice(state,args)
+    if state.disabled or state.hardHalted then return nil,'almsivi_disabled' end
+    if not state.bridge or not state.bridge.startVoiceCapture then return nil,'voice_capture_unavailable' end
+    if state.conversation.turn and not state.conversation.turn.terminal then return nil,'turn_in_flight' end
+    if not state.conversation.target then return nil,'target_required' end
+    if not args or not identity.validate(args.speaker) then return nil,'invalid_speaker' end
+    local sensitivity=math.max(100,math.min(5000,math.floor(tonumber(args.vad_sensitivity) or 700)))
+    local endDelay=math.max(500,math.min(5000,math.floor(tonumber(args.end_delay_ms) or 900)))
+    local deviceId=math.max(-1,math.min(31,math.floor(tonumber(args.recording_device) or -1)))
+    local deviceName='Unavailable'
+    if state.bridge.currentVoiceCaptureDeviceName then
+        local called,name=pcall(state.bridge.currentVoiceCaptureDeviceName,deviceId)
+        if called and type(name)=='string' then deviceName=name end
+    end
+    print('[ALMSIVI] voice capture configuration: device_id='..tostring(deviceId)..' device='..deviceName..
+        ' automatic='..tostring(args.automatic==true)..' threshold='..tostring(sensitivity)..' end_delay_ms='..tostring(endDelay))
+    local started,reason=state.bridge.startVoiceCapture(args.automatic==true,sensitivity,endDelay,deviceId)
+    if not started then return nil,reason or 'voice_capture_failed' end
+    state.pendingVoice={speaker=util.copy(args.speaker),target=util.copy(state.conversation.target),
+        target_key=identity.key(state.conversation.target),session_id=state.sessionId,generation=state.generation,
+        context=util.copy(args.context or {}),language=args.language or 'en-US',
+        capabilities=util.arrayCopy(args.capabilities or {}),recent_action_results=util.arrayCopy(args.recent_action_results or {}),
+        ui_source=args.ui_source or 'almsivi_voice',continuous=args.continuous==true}
+    state.emit('ALMSIVI_VOICE_STATUS',{status=args.automatic and 'listening' or 'recording',continuous=args.continuous==true})
+    return true
+end
+
+function M.stopVoice(state)
+    if not state.pendingVoice then return nil,'voice_capture_not_recording' end
+    state.bridge.stopVoiceCapture();state.pendingVoice.stopping=true
+    state.emit('ALMSIVI_VOICE_STATUS',{status='processing',continuous=state.pendingVoice.continuous==true});return true
+end
+
+function M.enableOpenMic(state,args)
+    state.openMic=true state.openMicRequested=false
+    args=args or {} args.automatic=true args.continuous=true args.ui_source='almsivi_open_mic'
+    local started,reason=M.startVoice(state,args)
+    if not started then state.openMic=false state.emit('ALMSIVI_VOICE_STATUS',{status='failed',reason=reason}) end
+    return started,reason
+end
+
+function M.disableOpenMic(state)
+    state.openMic=false state.openMicRequested=false
+    if state.pendingVoice and state.pendingVoice.continuous then state.bridge.cancelVoiceCapture();state.pendingVoice=nil end
+    state.emit('ALMSIVI_VOICE_STATUS',{status='open mic off'});return true
+end
+
+function M.muteOpenMic(state)
+    if not state.openMic then return nil,'open_mic_disabled' end
+    state.openMicRequested=false
+    if state.pendingVoice and state.pendingVoice.continuous then
+        state.bridge.cancelVoiceCapture();state.pendingVoice=nil
+    end
+    state.emit('ALMSIVI_VOICE_STATUS',{status='open mic muted',continuous=true});return true
+end
+
+function M.pollOpenMic(state)
+    if not state.openMic or state.openMicRequested or state.pendingVoice or next(state.pendingStt) then return false end
+    if state.conversation.turn and not state.conversation.turn.terminal then return false end
+    if not state.conversation.target or not state.registry:resolve(state.conversation.target) then
+        state.openMic=false state.emit('ALMSIVI_VOICE_STATUS',{status='failed',reason='target_inactive'});return false end
+    state.openMicRequested=true;state.emit('ALMSIVI_OPEN_MIC_CONTEXT_REQUEST',{target=util.copy(state.conversation.target)});return true
+end
+
+function M.runOpenMicContext(state,args)
+    if not state.openMic then return nil,'open_mic_disabled' end
+    state.openMicRequested=false;args=args or {};args.automatic=true;args.continuous=true;args.ui_source='almsivi_open_mic'
+    return M.startVoice(state,args)
+end
+
+function M.pollVoice(state)
+    if not state.pendingVoice or not state.bridge or not state.bridge.voiceCaptureStatus then return false end
+    local status=state.bridge.voiceCaptureStatus();if not status or status.state=='recording' or status.state=='idle' then return false end
+    if status.state=='ready' then
+        print('[ALMSIVI] captured voice ready: device_id='..tostring(status.device_id)..
+            ' device='..tostring(status.device_name)..' wav_bytes='..tostring(status.bytes)..
+            ' pcm_bytes='..tostring(status.pcm_bytes)..' duration_ms='..tostring(status.duration_ms)..
+            ' peak='..tostring(status.peak_amplitude)..' rms='..tostring(status.rms_amplitude))
+        local metadata,reason=state.bridge.submitCapturedStt(state.pendingVoice.language)
+        if not metadata then
+            print('[ALMSIVI] captured voice submission failed: '..tostring(reason or 'stt_submit_failed'))
+            state.emit('ALMSIVI_VOICE_STATUS',{status='failed',reason=reason or 'stt_submit_failed'});state.pendingVoice=nil;return false
+        end
+        state.pendingStt[metadata.request_id]=state.pendingVoice;state.pendingVoice=nil
+        print('[ALMSIVI] captured voice submitted for transcription: '..tostring(metadata.request_id))
+        state.emit('ALMSIVI_VOICE_STATUS',{status='transcribing',request_id=metadata.request_id,
+            continuous=state.pendingStt[metadata.request_id].continuous==true});return true
+    end
+    local continuous=state.pendingVoice.continuous==true
+    if continuous and status.error=='voice_not_detected' and state.openMic then
+        state.emit('ALMSIVI_VOICE_STATUS',{status='listening',reason='voice_not_detected',continuous=true})
+    else
+        print('[ALMSIVI] voice capture failed: '..tostring(status.error or status.state)..
+            ' device_id='..tostring(status.device_id)..' device='..tostring(status.device_name)..
+            ' pcm_bytes='..tostring(status.pcm_bytes)..' peak='..tostring(status.peak_amplitude)..
+            ' rms='..tostring(status.rms_amplitude))
+        state.emit('ALMSIVI_VOICE_STATUS',{status='failed',reason=status.error or status.state,continuous=continuous});if continuous then state.openMic=false end
+    end
+    state.pendingVoice=nil;return false
 end
 
 function M.addAudience(state,candidate)
@@ -456,6 +561,29 @@ function M.poll(state)
                 print('[ALMSIVI] response cursor recovered at sequence '..tostring(event.sequence)
                     ..' ('..tostring(event.type)..')')
             end
+            if event.type=='stt.transcript' or event.type=='stt.failed' then
+                local pending=state.pendingStt[event.request_id];state.pendingStt[event.request_id]=nil
+                local fenced=pending and pending.session_id==state.sessionId and pending.generation==state.generation
+                    and pending.target_key==identity.key(state.conversation.target) and state.registry:resolve(pending.target)
+                if event.type=='stt.transcript' and fenced and (not pending.continuous or state.openMic) then
+                    local metadata=state.bridge.nextTurnMetadata and state.bridge.nextTurnMetadata() or {}
+                    for key,value in pairs(metadata) do pending[key]=value end
+                    pending.text=event.payload.text;pending.input_key='voice:'..event.message_id;pending.language=event.payload.language
+                    local submitted,submitReason=M.submitText(state,pending)
+                    if not submitted and pending.continuous then state.openMic=false end
+                    state.emit('ALMSIVI_VOICE_STATUS',{status=submitted and 'queued' or 'failed',reason=submitReason,
+                        request_id=submitted,continuous=pending.continuous==true})
+                elseif event.type=='stt.failed' then
+                    if pending and pending.continuous then state.openMic=false end
+                    state.emit('ALMSIVI_VOICE_STATUS',{status='failed',reason=event.payload.code,
+                        continuous=pending and pending.continuous==true})
+                else
+                    if pending and pending.continuous then state.openMic=false end
+                    state.emit('ALMSIVI_VOICE_STATUS',{status='failed',reason=pending and 'stale_voice_context' or 'stt_context_missing',
+                        continuous=pending and pending.continuous==true})
+                end
+                accepted=accepted+1;emitInbound(state,'ALMSIVI_EVENT',event)
+            else
             local applyOk,applied,applyReason=pcall(conversation.apply,state.conversation,event)
             if not applyOk then
                 applyReason='lua_exception: '..tostring(applied)
@@ -485,6 +613,7 @@ function M.poll(state)
                 print('[ALMSIVI] response event dropped: '..tostring(event.type)..' '..tostring(applyReason))
                 emitInbound(state,'ALMSIVI_DROP',{reason=applyReason})
             end
+            end
         elseif reason~='duplicate_event' and reason~='stale_generation' and reason~='stale_session' then
             print('[ALMSIVI] response event rejected: '..tostring(reason)..' at sequence '..tostring(event.sequence))
             emitInbound(state,'ALMSIVI_RESYNC',{reason=reason,cursor=state.events:cursor()})
@@ -505,6 +634,7 @@ end
 
 function M.interrupt(state,reason)
     reason=reason or 'halt_ai_actions'
+    if state.bridge and state.bridge.cancelVoiceCapture then state.bridge.cancelVoiceCapture() end
     signalAllActors(state,'ALMSIVI_ACTOR_STOP',reason)
     state.emit('ALMSIVI_NARRATOR_STOP',{reason=reason})
     local previousGeneration=state.generation
@@ -514,6 +644,7 @@ function M.interrupt(state,reason)
     state.activeSpeechMediaId=nil
     state.rechat=nil state.rechatSeed=nil
     state.pendingConfirmations={}
+    state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
     state.hardHalted=false
     state.emit('ALMSIVI_HALT',{generation=state.generation,reason=reason,recoverable=true})
     return true
@@ -521,6 +652,7 @@ end
 
 function M.stopDialogue(state,reason)
     reason=reason or 'stop_dialogue'
+    if state.bridge and state.bridge.cancelVoiceCapture then state.bridge.cancelVoiceCapture() end
     signalAllActors(state,'ALMSIVI_ACTOR_STOP_SPEECH',reason)
     state.emit('ALMSIVI_NARRATOR_STOP',{reason=reason})
     local previousGeneration=state.generation
@@ -530,6 +662,7 @@ function M.stopDialogue(state,reason)
     state.activeSpeechMediaId=nil
     state.rechat=nil state.rechatSeed=nil
     state.pendingConfirmations={}
+    state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
     state.emit('ALMSIVI_DIALOGUE_STOPPED',{generation=state.generation,reason=reason})
     return true
 end
@@ -548,6 +681,7 @@ function M.hardHalt(state)
     state.generation=state.conversation.generation state.hardHalted=true state.pendingConfirmations={}
     state.activeSpeechMediaId=nil
     state.rechat=nil state.rechatSeed=nil
+    state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
     state.emit('ALMSIVI_NARRATOR_STOP',{reason='hard_halt'})
     state.emit('ALMSIVI_HALT',{generation=state.generation,reason='hard_halt',recoverable=false})
 end

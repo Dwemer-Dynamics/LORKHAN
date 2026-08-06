@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <string_view>
@@ -16,13 +17,88 @@
 #define NOMINMAX
 #endif
 #include <Windows.h>
+#include <mmdeviceapi.h>
 #include <mmsystem.h>
+#include <Functiondiscoverykeys_devpkey.h>
 #endif
 
 namespace almsivi {
 namespace {
 
 using namespace std::chrono_literals;
+
+#ifdef _WIN32
+WAVEFORMATEX recordingFormat()
+{
+    WAVEFORMATEX format{};
+    format.wFormatTag = WAVE_FORMAT_PCM;
+    format.nChannels = 1;
+    format.nSamplesPerSec = 16000;
+    format.wBitsPerSample = 16;
+    format.nBlockAlign = format.wBitsPerSample * format.nChannels / 8;
+    format.nAvgBytesPerSec = format.nBlockAlign * format.nSamplesPerSec;
+    return format;
+}
+
+std::string wideToUtf8(const wchar_t* text)
+{
+    if (text == nullptr || text[0] == L'\0') return {};
+    const int size = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
+    if (size <= 1) return {};
+    std::string result(static_cast<std::size_t>(size), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text, -1, result.data(), size, nullptr, nullptr);
+    result.pop_back();
+    return result;
+}
+
+// Resolve the actual WinMM mapper device when Core Audio endpoint metadata is unavailable.
+std::string waveMapperRecordingDeviceName()
+{
+    const WAVEFORMATEX format = recordingFormat();
+    HWAVEIN input = nullptr;
+    MMRESULT result = waveInOpen(
+        &input, WAVE_MAPPER, &format, 0, 0, CALLBACK_NULL | WAVE_FORMAT_DIRECT);
+    if (result != MMSYSERR_NOERROR)
+        result = waveInOpen(&input, WAVE_MAPPER, &format, 0, 0, CALLBACK_NULL);
+    if (result != MMSYSERR_NOERROR) return "Unavailable";
+
+    UINT deviceId = 0;
+    result = waveInGetID(input, &deviceId);
+    WAVEINCAPSW capabilities{};
+    if (result == MMSYSERR_NOERROR)
+        result = waveInGetDevCapsW(deviceId, &capabilities, sizeof(capabilities));
+    waveInClose(input);
+    if (result != MMSYSERR_NOERROR) return "Unavailable";
+    const std::string name = wideToUtf8(capabilities.szPname);
+    return name.empty() ? "Unavailable" : name;
+}
+#endif
+
+#ifdef _WIN32
+struct PcmLevels {
+    std::uint16_t peak{};
+    std::uint16_t rms{};
+};
+
+PcmLevels pcm16Levels(std::span<const std::byte> pcm)
+{
+    if (pcm.size() < 2 || pcm.size() % 2 != 0) return {};
+    std::uint64_t squares = 0;
+    std::uint32_t peak = 0;
+    const std::size_t samples = pcm.size() / 2;
+    for (std::size_t index = 0; index < pcm.size(); index += 2) {
+        const auto raw = static_cast<std::uint16_t>(std::to_integer<std::uint8_t>(pcm[index]))
+            | static_cast<std::uint16_t>(std::to_integer<std::uint8_t>(pcm[index + 1])) << 8U;
+        const auto sample = static_cast<std::int32_t>(static_cast<std::int16_t>(raw));
+        const auto magnitude = static_cast<std::uint32_t>(sample < 0 ? -sample : sample);
+        peak = std::max(peak, magnitude);
+        squares += static_cast<std::uint64_t>(static_cast<std::int64_t>(sample) * sample);
+    }
+    const auto rms = static_cast<std::uint32_t>(std::sqrt(static_cast<double>(squares) / samples));
+    return {static_cast<std::uint16_t>(std::min<std::uint32_t>(peak, 32767)),
+        static_cast<std::uint16_t>(std::min<std::uint32_t>(rms, 32767))};
+}
+#endif
 
 void append16(std::vector<std::byte>& output, std::uint16_t value)
 {
@@ -188,11 +264,13 @@ bool VoiceCaptureService::supported() const noexcept
 #endif
 }
 
-Result<void> VoiceCaptureService::start(bool automatic, std::uint16_t rmsThreshold, std::uint32_t trailingSilenceMs)
+Result<void> VoiceCaptureService::start(bool automatic, std::uint16_t rmsThreshold,
+    std::uint32_t trailingSilenceMs, std::int32_t deviceId)
 {
     if (!supported())
         return Result<void>::failure(makeError(ErrorCode::invalid_argument, "voice capture is available only on Windows"));
-    if (rmsThreshold < 100 || rmsThreshold > 5000 || trailingSilenceMs < 500 || trailingSilenceMs > 5000)
+    if (rmsThreshold < 100 || rmsThreshold > 5000 || trailingSilenceMs < 500 || trailingSilenceMs > 5000
+        || deviceId < -1 || (deviceId >= 0 && static_cast<std::size_t>(deviceId) >= deviceCount()))
         return Result<void>::failure(makeError(ErrorCode::invalid_argument, "invalid voice activity settings"));
     std::thread finished;
     {
@@ -209,6 +287,11 @@ Result<void> VoiceCaptureService::start(bool automatic, std::uint16_t rmsThresho
         m_voiceDetected.store(false, std::memory_order_release);
         m_rmsThreshold.store(rmsThreshold, std::memory_order_release);
         m_trailingSilenceMs.store(trailingSilenceMs, std::memory_order_release);
+        m_deviceId.store(deviceId, std::memory_order_release);
+        m_capturedPcmBytes.store(0, std::memory_order_release);
+        m_peakAmplitude.store(0, std::memory_order_release);
+        m_rmsAmplitude.store(0, std::memory_order_release);
+        m_deviceName = currentDeviceName(deviceId);
         m_ready.reset();
         m_error.clear();
         m_state = VoiceCaptureState::recording;
@@ -273,6 +356,82 @@ bool VoiceCaptureService::voiceDetected() const noexcept
     return m_voiceDetected.load(std::memory_order_acquire);
 }
 
+std::size_t VoiceCaptureService::deviceCount() const noexcept
+{
+#ifdef _WIN32
+    return static_cast<std::size_t>(waveInGetNumDevs());
+#else
+    return 0;
+#endif
+}
+
+std::int32_t VoiceCaptureService::deviceId() const noexcept
+{
+    return m_deviceId.load(std::memory_order_acquire);
+}
+
+std::string VoiceCaptureService::currentDeviceName(std::int32_t deviceId) const
+{
+#ifdef _WIN32
+    if (deviceId >= 0) {
+        WAVEINCAPSW capabilities{};
+        if (static_cast<std::size_t>(deviceId) >= deviceCount()
+            || waveInGetDevCapsW(static_cast<UINT_PTR>(deviceId), &capabilities,
+                sizeof(capabilities)) != MMSYSERR_NOERROR)
+            return "Unavailable";
+        const std::string name = wideToUtf8(capabilities.szPname);
+        return name.empty() ? "Unavailable" : name;
+    }
+    const HRESULT initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    const bool uninitialize = SUCCEEDED(initialized);
+    if (FAILED(initialized) && initialized != RPC_E_CHANGED_MODE)
+        return waveMapperRecordingDeviceName();
+    IMMDeviceEnumerator* enumerator = nullptr;
+    IMMDevice* endpoint = nullptr;
+    IPropertyStore* properties = nullptr;
+    PROPVARIANT friendlyName;
+    PropVariantInit(&friendlyName);
+    HRESULT result = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+        IID_PPV_ARGS(&enumerator));
+    if (SUCCEEDED(result)) result = enumerator->GetDefaultAudioEndpoint(eCapture, eMultimedia, &endpoint);
+    if (SUCCEEDED(result)) result = endpoint->OpenPropertyStore(STGM_READ, &properties);
+    if (SUCCEEDED(result)) result = properties->GetValue(PKEY_Device_FriendlyName, &friendlyName);
+    std::string name;
+    if (SUCCEEDED(result) && friendlyName.vt == VT_LPWSTR)
+        name = wideToUtf8(friendlyName.pwszVal);
+    PropVariantClear(&friendlyName);
+    if (properties != nullptr) properties->Release();
+    if (endpoint != nullptr) endpoint->Release();
+    if (enumerator != nullptr) enumerator->Release();
+    if (uninitialize) CoUninitialize();
+    return name.empty() ? waveMapperRecordingDeviceName() : name;
+#else
+    static_cast<void>(deviceId);
+    return "Unavailable";
+#endif
+}
+
+std::string VoiceCaptureService::selectedDeviceName() const
+{
+    std::lock_guard lock(m_mutex);
+    return m_deviceName;
+}
+
+std::size_t VoiceCaptureService::capturedPcmBytes() const noexcept
+{
+    return m_capturedPcmBytes.load(std::memory_order_acquire);
+}
+
+std::uint16_t VoiceCaptureService::peakAmplitude() const noexcept
+{
+    return m_peakAmplitude.load(std::memory_order_acquire);
+}
+
+std::uint16_t VoiceCaptureService::rmsAmplitude() const noexcept
+{
+    return m_rmsAmplitude.load(std::memory_order_acquire);
+}
+
 std::optional<CapturedVoice> VoiceCaptureService::takeReady()
 {
     std::thread finished;
@@ -318,18 +477,14 @@ void VoiceCaptureService::capture()
     const auto trailingSilence = std::chrono::milliseconds(
         m_trailingSilenceMs.load(std::memory_order_acquire));
     const auto rmsThreshold = m_rmsThreshold.load(std::memory_order_acquire);
+    const auto selectedDeviceId = m_deviceId.load(std::memory_order_acquire);
 
-    WAVEFORMATEX format{};
-    format.wFormatTag = WAVE_FORMAT_PCM;
-    format.nChannels = 1;
-    format.nSamplesPerSec = sampleRate;
-    format.wBitsPerSample = 16;
-    format.nBlockAlign = 2;
-    format.nAvgBytesPerSec = sampleRate * format.nBlockAlign;
-    format.cbSize = 0;
+    const WAVEFORMATEX format = recordingFormat();
 
     HWAVEIN input = nullptr;
-    if (waveInOpen(&input, WAVE_MAPPER, &format, 0, 0, CALLBACK_NULL) != MMSYSERR_NOERROR) {
+    const UINT captureDevice = selectedDeviceId < 0 ? WAVE_MAPPER : static_cast<UINT>(selectedDeviceId);
+    if (waveInOpen(&input, captureDevice, &format, 0, 0,
+            CALLBACK_NULL | WAVE_FORMAT_DIRECT) != MMSYSERR_NOERROR) {
         fail("microphone_open_failed");
         return;
     }
@@ -401,6 +556,11 @@ void VoiceCaptureService::capture()
     }
     waveInClose(input);
 
+    const PcmLevels levels = pcm16Levels(pcm);
+    m_capturedPcmBytes.store(pcm.size(), std::memory_order_release);
+    m_peakAmplitude.store(levels.peak, std::memory_order_release);
+    m_rmsAmplitude.store(levels.rms, std::memory_order_release);
+
     if (automaticCapture && !heardVoice) {
         fail("voice_not_detected");
         return;
@@ -414,6 +574,11 @@ void VoiceCaptureService::capture()
     if (pcm.size() % 2 != 0) pcm.pop_back();
     CapturedVoice result;
     result.durationMs = static_cast<std::uint64_t>(pcm.size()) * 1000U / (sampleRate * 2U);
+    result.pcmBytes = pcm.size();
+    result.peakAmplitude = levels.peak;
+    result.rmsAmplitude = levels.rms;
+    result.deviceId = selectedDeviceId;
+    result.deviceName = selectedDeviceName();
     result.wav = makePcm16MonoWav(pcm, sampleRate);
     result.sha256 = sha256Hex(result.wav);
     publish(std::move(result));
