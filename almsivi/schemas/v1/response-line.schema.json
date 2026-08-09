@@ -20,7 +20,8 @@
         "animation": {"maxLength": 64, "type": "string"},
         "emotion": {"maxLength": 64, "type": "string"},
         "mood": {"maxLength": 64, "type": "string"},
-        "rechat_depth": {"maximum": 3, "minimum": 0, "type": "integer"},
+        "rechat_depth": {"maximum": 20, "minimum": 0, "type": "integer"},
+        "speech_enabled": {"type": "boolean"},
         "source": {"maxLength": 64, "type": "string"}
       },
       "type": "object"

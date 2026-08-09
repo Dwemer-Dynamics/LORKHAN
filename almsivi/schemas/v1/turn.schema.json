@@ -167,6 +167,11 @@
     "runtime": {
       "$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/runtime"
     },
+    "runtime_generation": {
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
     "schema": {
       "const": "almsivi.turn.v1",
       "type": "string"
@@ -190,6 +195,7 @@
     "generation",
     "created_at",
     "runtime",
+    "runtime_generation",
     "content_fingerprint",
     "payload"
   ],

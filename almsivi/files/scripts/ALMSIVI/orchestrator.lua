@@ -406,9 +406,17 @@ function M.submitText(state,args)
     args.context.audience=audience
     args.context.dialogueMode=mode
     args.context.recentVanillaDialogue=util.arrayCopy(state.recentVanillaDialogue or {},constants.MAX_RECENT_VANILLA_DIALOGUE)
+    local runtimeGeneration=state.generation
+    if state.bridge.generation then
+        local reportedGeneration=state.bridge.generation()
+        if type(reportedGeneration)=='number' and reportedGeneration%1==0 and reportedGeneration>=1 then
+            runtimeGeneration=reportedGeneration
+        end
+    end
     local dto,buildReason=protocol.turn({message_id=args.message_id,request_id=requestId,turn_id=turnId,
         installation_id=args.installation_id,profile_id=args.profile_id,playthrough_id=args.playthrough_id,
-        session_id=state.sessionId,generation=state.generation,created_at=args.created_at,platform=args.platform,
+        session_id=state.sessionId,generation=state.generation,runtime_generation=runtimeGeneration,
+        created_at=args.created_at,platform=args.platform,
         content_fingerprint=args.content_fingerprint,text=args.text,language=args.language,
         speaker=args.speaker,target=state.conversation.target,audience=audience,context=context.snapshot(args.context),
         capabilities=args.capabilities,recent_action_results=args.recent_action_results,ui_source=args.ui_source,

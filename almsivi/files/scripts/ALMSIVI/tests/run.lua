@@ -301,14 +301,15 @@ end)
 test('typed player action request remains inside the strict turn envelope',function()
  local dto,reason=protocol.turn({message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,
   installation_id='00000000-0000-4000-8000-000000000010',profile_id='00000000-0000-4000-8000-000000000011',
-  playthrough_id='00000000-0000-4000-8000-000000000012',session_id=UUID.session,generation=1,
+  playthrough_id='00000000-0000-4000-8000-000000000012',session_id=UUID.session,generation=1,runtime_generation=3,
   created_at='2026-08-01T00:00:00Z',platform='windows',content_fingerprint='sha256:'..string.rep('a',64),
   text='Attack the mudcrab',language='en-US',speaker=playerId,target=npc,audience={npc},context={},capabilities={'action.combat.start'},
   ui_source='almsivi_action_menu',action_request={name='combat.start',tier=2,parameters={},target=enemy}})
  truthy(dto,reason);eq(dto.payload.action_request.name,'combat.start');eq(dto.payload.action_request.target.record_id,'mudcrab')
+ eq(dto.runtime_generation,3)
  dto,reason=protocol.turn({message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,
   installation_id='00000000-0000-4000-8000-000000000010',profile_id='00000000-0000-4000-8000-000000000011',
-  playthrough_id='00000000-0000-4000-8000-000000000012',session_id=UUID.session,generation=1,
+  playthrough_id='00000000-0000-4000-8000-000000000012',session_id=UUID.session,generation=1,runtime_generation=3,
   created_at='2026-08-01T00:00:00Z',platform='windows',content_fingerprint='sha256:'..string.rep('a',64),
   text='Bad',language='en-US',speaker=playerId,target=npc,audience={npc},context={},capabilities={},
   ui_source='almsivi_action_menu',action_request={name='../run',tier=1,parameters={}}})

@@ -19,6 +19,7 @@
     "profile_id": "00000000-0000-4000-8000-000000000004",
     "request_id": "00000000-0000-4000-8000-000000000006",
     "runtime": {"capabilities": ["dialogue.text", "speech.say", "action.ai.follow"], "client_version": "0.1.0", "game": "tes3", "lua_api_revision": 129, "openmw_commit": "f4bec41444214a7903bebd178389ca22ca13f646", "openmw_version": "0.51.0", "platform": "windows-x86_64", "variant": "openmw"},
+    "runtime_generation": 4,
     "schema": "almsivi.turn.v1",
     "session_id": "00000000-0000-4000-8000-000000000007",
     "turn_id": "00000000-0000-4000-8000-000000000008"

@@ -33,10 +33,15 @@ end
 
 function M.turn(args)
     local required = {'message_id','request_id','turn_id','installation_id','profile_id','playthrough_id',
-        'session_id','generation','created_at','platform','content_fingerprint','text','language','speaker','target','audience','context','ui_source'}
+        'session_id','generation','runtime_generation','created_at','platform','content_fingerprint','text','language','speaker','target','audience','context','ui_source'}
     for _, key in ipairs(required) do if args[key] == nil then return nil, 'missing_' .. key end end
     for _, key in ipairs({'message_id','request_id','turn_id','installation_id','profile_id','playthrough_id','session_id'}) do
         if not M.isUuid(args[key]) then return nil,'invalid_'..key end
+    end
+    for _,key in ipairs({'generation','runtime_generation'}) do
+        if type(args[key])~='number' or args[key]%1~=0 or args[key]<1 or args[key]>9007199254740991 then
+            return nil,'invalid_'..key
+        end
     end
     if type(args.text) ~= 'string' or args.text:match('^%s*$') then return nil, 'empty_input' end
     if not isLanguageTag(args.language) then return nil,'invalid_language' end
@@ -59,7 +64,7 @@ function M.turn(args)
     return {
         schema='almsivi.turn.v1', message_id=args.message_id, request_id=args.request_id, turn_id=args.turn_id,
         installation_id=args.installation_id, profile_id=args.profile_id, playthrough_id=args.playthrough_id,
-        session_id=args.session_id, generation=args.generation, created_at=args.created_at,
+        session_id=args.session_id, generation=args.generation, runtime_generation=args.runtime_generation, created_at=args.created_at,
         runtime=M.runtime(args.platform, args.capabilities), content_fingerprint=args.content_fingerprint,
         payload=payload
     }
