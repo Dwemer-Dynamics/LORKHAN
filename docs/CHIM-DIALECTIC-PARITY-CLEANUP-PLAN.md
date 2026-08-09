@@ -294,7 +294,7 @@ Every section needs size limits, update cadence, omission behavior, and prompt f
 
 ### 6.7 Autonomy
 
-Autonomy is excluded from this implementation goal. Automatic greetings, rechat, boredom events, combat barks, schedules, cooldowns, and every other automatic model trigger must remain unadvertised and unreachable. Herika presentation controls remain visible only as disabled `Excluded` placeholders. Background Life cannot be used as a hidden scheduler.
+Timer-driven autonomy is excluded from this implementation goal. Automatic greetings, boredom events, combat barks, schedules, cooldowns, and every other timer-triggered model behavior must remain unadvertised and unreachable. Playback-gated rechat remains in scope only as a bounded continuation of a player-started conversation; it is not scheduled autonomy and cannot emit actions. Herika presentation controls remain visible only as disabled `Excluded` placeholders. Background Life cannot be used as a hidden scheduler.
 
 ### 6.8 Actions
 
@@ -451,7 +451,7 @@ Use a clean OpenMW profile and an existing playthrough. Cover at least:
 - single and group conversation;
 - text-only fallback, exact actor TTS, narrator TTS, missing voice, and provider failure;
 - Talk, Enter, Escape, Stop Dialogue, Halt, History, Diagnostics, HUD, Mode, Model, Profile, and Actor Tools;
-- negative checks proving greetings, rechat, boredom, and combat barks cannot trigger requests;
+- negative checks proving greetings, boredom, and combat barks cannot trigger requests, plus positive and cancellation checks for playback-gated rechat;
 - save/load, cell change, fast travel, menu transition, death, and session reconnect;
 - action allow, deny, confirm, cancel, success, failure, timeout, and stale receipt;
 - Journal, book, vanilla dialogue, inventory, faction/disposition, and nearby-world context.
