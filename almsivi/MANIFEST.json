@@ -12,6 +12,11 @@
       "sha256": "8ff8225544fe91e018b8ea56d43792c8ec6ccdfa5eef555767d406d80d2a0013"
     },
     {
+      "bytes": 1322,
+      "path": "almsivi/fixtures/v1/hostile/response-path-cache-key.json",
+      "sha256": "6991aabd759e722326d02b4a824e5b9378ad24e5c4f0ac80a2e825cde820d7b6"
+    },
+    {
       "bytes": 471,
       "path": "almsivi/fixtures/v1/hostile/wrong-generation-type.json",
       "sha256": "5c0e250037d172271bae6477846865b1e94d74c37e1ed97aa85a039c94a7d9e2"
@@ -27,6 +32,11 @@
       "sha256": "05fc3423bf417e68c76b21b777111dd397a5f841818406ade32131fdc7e3a842"
     },
     {
+      "bytes": 462,
+      "path": "almsivi/fixtures/v1/invalid/events-excluded-autonomy.json",
+      "sha256": "61d7eaed37b103aeef218e58ca87c335b6b2b5b051d9da2f931f1c2373c8ef0d"
+    },
+    {
       "bytes": 842,
       "path": "almsivi/fixtures/v1/invalid/follow-distance.json",
       "sha256": "63d65a6a7db4aba656d62d5fcaf3dfdac98d42c60738bb0eb661de5a100c871c"
@@ -35,6 +45,11 @@
       "bytes": 815,
       "path": "almsivi/fixtures/v1/invalid/follow-name.json",
       "sha256": "e5c6f2a27ed7a16d596f10007c689391f16de3f0280db709fecc3117362403a2"
+    },
+    {
+      "bytes": 561,
+      "path": "almsivi/fixtures/v1/invalid/gamedata-wrong-game.json",
+      "sha256": "96098605572ddb9221ba666217a7f9d56d07faedd12e72bd55a806f630df5213"
     },
     {
       "bytes": 1091,
@@ -50,6 +65,26 @@
       "bytes": 332,
       "path": "almsivi/fixtures/v1/invalid/non-utc-time.json",
       "sha256": "f1462fa532c18c1e6f1def59a64883083f611a1370ab76a0d0080e4f12d3bc80"
+    },
+    {
+      "bytes": 2944,
+      "path": "almsivi/fixtures/v1/invalid/response-duplicate-line.json",
+      "sha256": "bce306de5c8b8448c95a7e7b2e9fe5d04d0b9daaacdba1289e8edd0853c0cba6"
+    },
+    {
+      "bytes": 1335,
+      "path": "almsivi/fixtures/v1/invalid/response-line-over-limit.json",
+      "sha256": "e692bd5a49d719c9f56b55057acd71c316a2ebe2a3a89c9cb910dcea9a91121c"
+    },
+    {
+      "bytes": 768,
+      "path": "almsivi/fixtures/v1/invalid/response-malformed-extra.json",
+      "sha256": "0edebdbdd2d3e230cfd4249f64788b751ac0c4b7bd0c531269e76dd153579288"
+    },
+    {
+      "bytes": 732,
+      "path": "almsivi/fixtures/v1/invalid/response-stale-generation.json",
+      "sha256": "4710585c3b29044eee5261d91e47a9c06eb1b493ef95d0ba1f0390b59f438e66"
     },
     {
       "bytes": 821,
@@ -117,14 +152,29 @@
       "sha256": "6abd255b5545560efa3608128010f927c85e8aa2def1fb2db9f891250826b997"
     },
     {
-      "bytes": 6994,
+      "bytes": 954,
+      "path": "almsivi/fixtures/v1/valid/event-journal-utf8.json",
+      "sha256": "c1d48914963f7923336da2e870413cb737c07d908a85bd2c4dbb2ab7261f0909"
+    },
+    {
+      "bytes": 6789,
       "path": "almsivi/fixtures/v1/valid/events.json",
-      "sha256": "d0f51ef7d20eddef30bd5dc2781e491b545eb07a7aaf45ea243c19e5845a492c"
+      "sha256": "2de33f1ae2f875f0c4885338b2a71d5f6fc0f4b7fbec600ef87ca985d3f936d9"
+    },
+    {
+      "bytes": 952,
+      "path": "almsivi/fixtures/v1/valid/gamedata-morrowind.json",
+      "sha256": "211241d595f89c21e656b8af894cb214f88be2056b584c2a256bd632dad7de8b"
     },
     {
       "bytes": 165,
       "path": "almsivi/fixtures/v1/valid/health.json",
       "sha256": "845da6235d35e48c6e0247c2d6e14be3ff8da6e1f5e979a72d05ad333b51838b"
+    },
+    {
+      "bytes": 1920,
+      "path": "almsivi/fixtures/v1/valid/input-utf8.json",
+      "sha256": "852e68ac544b46920bb7219d33c0b415a193b236a593eafd667aee412690c958"
     },
     {
       "bytes": 453,
@@ -135,6 +185,11 @@
       "bytes": 473,
       "path": "almsivi/fixtures/v1/valid/interruption-accepted.json",
       "sha256": "97193c6e085e5dccdc2cb3983617aab79007bf533f718af77e1bcf3715fa9d8e"
+    },
+    {
+      "bytes": 3995,
+      "path": "almsivi/fixtures/v1/valid/response-utf8-and-action.json",
+      "sha256": "47b72671300db317580533b2d55ef84193b62ed54b2b369ed93fc5b8e58c513e"
     },
     {
       "bytes": 1429,
@@ -227,14 +282,29 @@
       "sha256": "7224885eba8ced03323dd1e2095ee9abcc45c1bf2a8e88ceac3377651b96fd00"
     },
     {
-      "bytes": 21221,
+      "bytes": 4900,
+      "path": "almsivi/schemas/v1/event.schema.json",
+      "sha256": "ef80407e489b935e02971f445b8047517cb13ae2f6b961382c1fea3bc1ef4987"
+    },
+    {
+      "bytes": 21341,
       "path": "almsivi/schemas/v1/events.schema.json",
-      "sha256": "3cfef6aa50f1b45149bf6cefb30f17fdccd26f7954b93c54fe5c16104742d476"
+      "sha256": "f7939f029ed1a613397d47bdb66184a431610a56448d7fa82d3f02d81dc17bd6"
+    },
+    {
+      "bytes": 7465,
+      "path": "almsivi/schemas/v1/gamedata.schema.json",
+      "sha256": "bedc76e7723f0ad75e8675e1affc075d9284db69e7ca40d0ca4e0f131a16fe1c"
     },
     {
       "bytes": 295,
       "path": "almsivi/schemas/v1/health.schema.json",
       "sha256": "a5a26302b6b3870cd30aeff7c41117b26a46991a6a1a2eec8d1e817b9012dc48"
+    },
+    {
+      "bytes": 2312,
+      "path": "almsivi/schemas/v1/input.schema.json",
+      "sha256": "8155b67ad77d1f89d7d8b3398cf2f0df097c47a9e018e6607d036ec82d5374c2"
     },
     {
       "bytes": 1016,
@@ -250,6 +320,16 @@
       "bytes": 908,
       "path": "almsivi/schemas/v1/media-descriptor.schema.json",
       "sha256": "ef70cd54ba32850a465c2c48735e05c85cebec2ca58279074a46e59faad889e4"
+    },
+    {
+      "bytes": 3640,
+      "path": "almsivi/schemas/v1/response-line.schema.json",
+      "sha256": "591cd17cf2adae5376f11ce60682773dab7ee8e7dbb268f390ac2ab857c3c020"
+    },
+    {
+      "bytes": 1715,
+      "path": "almsivi/schemas/v1/response.schema.json",
+      "sha256": "485f9abd08f9e48687e96eee8fa327ccaa746f6fcc8e00af126376454e8564bc"
     },
     {
       "bytes": 1342,

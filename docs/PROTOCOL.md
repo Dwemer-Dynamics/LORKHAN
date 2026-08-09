@@ -48,6 +48,23 @@ Unknown top-level fields and unknown enum values are rejected in v1. IDs are UUI
 UTC RFC 3339, integers have schema bounds, strings are valid UTF-8 and payloads have endpoint caps.
 The server accepts only current sessions/generations for turns and results.
 
+## Canonical input, event, response, and game-data split
+
+`almsivi.input.v1` is the normalized player-text/STT input envelope. `almsivi.event.v1` is the
+typed source-event envelope. `almsivi.response.v1` contains only `ok`, an ordered bounded `lines`
+array, `close`, an error string, and the required installation/profile/playthrough/session/turn/request
+plus response/runtime generation correlation. Every `almsivi.response.line.v1` is either `say` or
+`rolecommand`, carries stable speaker/listener/rechat identities and request/utterance IDs, and has
+bounded text, TTS/media/cache, command, and metadata fields. The server normalizes provider output
+once into this format; persistence, events, TTS, actions, delivery, diagnostics, and rechat consume it.
+
+`almsivi.gamedata.v1` accepts only typed TES3 actor, inventory, nearby-actor, world, Journal,
+captured-dialogue, and prompt-bridge payloads. It does not accept AI quest, boredom, greeting,
+combat-bark, ITT, or Background Life variants. The required `almsivi.events.v1.autonomy` field is
+retained for v1 wire compatibility but must always be an empty array. Rechat is a normal correlated
+turn and never an autonomy directive. All canonical envelopes require both response generation and
+runtime generation values greater than zero.
+
 ## TES3/OpenMW identity
 
 ```json
@@ -127,7 +144,7 @@ remain OpenMW preferences and are never replaced when the target changes. The ef
 snapshot includes the layered rechat enable/depth values; timer scheduling, boredom, greetings,
 combat barks, ITT, and Background Life remain excluded. STT uses one installation-global connector and does not enter the Global/Core Profile/NPC resolver.
 
-Server response events have a strictly increasing per-session `sequence`. The current v1 slice contracts `turn.accepted`, `dialogue.delta`, `dialogue.complete`, `speech.ready`, `stt.transcript`, `stt.failed`, `action.intent`, `turn.complete`, `turn.failed`, and `turn.cancelled`. Bounded `dialogue.delta` text is display-only progress; the validated `dialogue.complete` remains the durable utterance and memory source. TTS runs as a separate durable job after the dialogue is committed, and every `speech.ready` descriptor carries its `dialogue_message_id` so delayed group speech remains correctly ordered. Every envelope includes `message_id`, `request_id`, `turn_id`, `session_id`, `generation`, `sequence`, `created_at`, type and strict payload. The events response is capped at 100 items.
+Server response events have a strictly increasing per-session `sequence`. The current v1 slice contracts `turn.accepted`, `dialogue.delta`, `dialogue.complete`, `speech.ready`, `stt.transcript`, `stt.failed`, `action.intent`, `turn.complete`, `turn.failed`, and `turn.cancelled`. Bounded `dialogue.delta` text is display-only progress; the validated `dialogue.complete` remains the durable utterance and memory source. TTS runs as a separate durable job after the dialogue is committed, and every `speech.ready` descriptor carries its `dialogue_message_id` so delayed group speech remains correctly ordered. Every envelope includes `message_id`, `request_id`, `turn_id`, `session_id`, `generation`, `sequence`, `created_at`, type and strict payload. The events response is capped at 100 items and its required `autonomy` array is always empty.
 
 `dialogue.complete` is the final utterance. The client reports one terminal delivery result for each
 utterance, and the server mirrors it into durable speech state (`spoken`, failure, cancellation, or

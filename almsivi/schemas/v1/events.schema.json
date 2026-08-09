@@ -34,7 +34,8 @@
         ],
         "type": "object"
       },
-      "maxItems": 3,
+      "$comment": "Retained as an always-empty v1 compatibility field. Rechat is emitted as a normal correlated turn.",
+      "maxItems": 0,
       "type": "array"
     },
     "events": {
