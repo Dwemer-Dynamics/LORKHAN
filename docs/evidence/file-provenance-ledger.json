@@ -36,7 +36,6 @@
       "id": "almsivi-original-ci-build-wrappers",
       "classification": "original",
       "target_paths": [
-        ".github/workflows/audit-ready.yml",
         ".github/workflows/foundation.yml",
         ".github/workflows/native-ready.yml",
         "scripts/build/unix.sh",
@@ -55,7 +54,7 @@
       "source_path": null,
       "license": "GPL-3.0-only",
       "copyright_notice": "Copyright (C) 2026 ALMSIVI contributors",
-      "transformation": "Original immutable-action CI definitions and cross-platform build/test/static-validation entrypoints; no external source code copied.",
+      "transformation": "Original immutable-action CI definitions for portable foundation checks and the supported Windows x64 Release native build, plus local build/test/static-validation entrypoints; no external source code copied.",
       "reviewer": "ALMSIVI maintainers"
     },
     {
@@ -291,6 +290,7 @@
       "target_paths": [
         "README.md",
         "docs/ARCHITECTURE.md",
+        "docs/CHIM-DIALECTIC-INTEGRATION-PLAN.md",
         "docs/CHIM-DIALECTIC-PARITY-CLEANUP-PLAN.md",
         "docs/COMPATIBILITY-PLAN.md",
         "docs/CONTENT-ADDON-DEFERRED.md",

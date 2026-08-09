@@ -40,13 +40,13 @@ Other semantic actions are deliberately unbound until the player assigns them in
 | Player speech-style profile | Player Management can analyze up to 200 stored real player turns through the configured profile-generation provider and update only the current profile's speech-style field if its revision is unchanged | IMPLEMENTED; player TTS/respeech remains intentionally unsupported |
 | NPC profile management | CHIM-style search, favorites, edit locking, portraits and bulk operations | IMPLEMENTED with private portrait storage, default-on auto-locking, auditable revisions, bulk unlock/delete/binding switch and portable profile export; live management proof complete |
 | Roleplay memory and relationship management | CHIM-style roleplay tabs create/edit/rebuild/delete scoped memories and create/edit/audit-delete relationships without exposing raw database access | IMPLEMENTED; browser-like CRUD and live layout proof complete |
-| Server behavior settings | Global Settings exposes disabled-by-default rechat, bored-event and greeting schedules with bounded interval/cooldown values and exact active-session scope confirmation | IMPLEMENTED; delivery integration and management form proof complete |
+| Server behavior settings | Global, Core Profile and NPC settings expose bounded playback-gated rechat inheritance; unsupported autonomy controls remain visible only as disabled status landmarks | RECHAT IMPLEMENTED; greetings, boredom, combat barks and timer autonomy EXCLUDED |
 | Profile slot assignment and dynamic profile regeneration | Actor-specific profile binding preserves session memory/playthrough scope; PHP and the OpenMW master menu can queue a bounded, revision-safe LLM generation job for the profile explicitly bound to the current target; Character Management can queue up to 100 unlocked NPC profiles from one installation while excluding locked/player/narrator profiles; Narration management and the OpenMW master menu provide the same revision-safe operation with narrator-specific generation instructions | TARGET, INSTALLATION BATCH AND NARRATOR GENERATION IMPLEMENTED; a nearby-only in-game batch trigger remains pending; in-game proof required |
 | Narrator routing | One opt-in installation narrator profile, deterministic leading `*narration*` separation, narrator/NPC/text-only modes, narrator-specific TTS context, ordered player-local playback and normal delivery receipts | IMPLEMENTED; disabled by default; in-game proof required |
 | Installation configuration transfer | Server-generated, hash-verified backup/restore for profiles, prompts, model slots, speech presets, action policies, selections and profile preferences | IMPLEMENTED; same-installation restore only; secrets, portraits, voices and runtime roleplay data excluded |
 | Nearby actors/activity, items and points of interest | Bounded identities, player/target state, explicit held items, actor-local AI activity, item ownership, door/container locks, keys/traps, cell, weather and journal; activity is reported only for managed actors because API 129 exposes AI packages only to the actor-local script | IMPLEMENTED; in-game prompt proof required |
 | Quests and read books | The client sends the bounded Morrowind journal on every turn; vanilla world activation and inventory use observe opened books without replacing their normal behavior, deduplicate them locally, and attach a bounded recent-books list to subsequent turns | IMPLEMENTED; book observation requires in-game proof |
-| Combat barks | Immediate-on-entry then bounded periodic remarks from managed hostiles, gated by menus, voice, speech and active turns | IMPLEMENTED; in-game proof required |
+| Combat barks | Timer-driven hostile remarks are outside the bounded player-driven conversation scope | EXCLUDED; any inherited control remains visible and disabled |
 | CHIM Browser, Soulgaze, AI Quest Manager and rumor tools | Skyrim/Prisma or server-product features, not core Morrowind conversation-control parity | OUT OF CURRENT IN-GAME CORE |
 | Dialectic `OpenMenu` and `QuickCommand` bindings | Pinned declarations have no GameLoop consumer, so ALMSIVI does not copy dead controls | INTENTIONALLY OMITTED |
 
@@ -59,10 +59,9 @@ Other semantic actions are deliberately unbound until the player assigns them in
 - CHIM's matching popup change only presents the same Skyrim return/teleport workflow and therefore
   has no independent OpenMW user outcome to port.
 - DialecticServer's new "copy profile setting to all" control targets free profile metadata. ALMSIVI
-  stores rechat, boredom, and greeting schedules in exact installation/profile/playthrough/session
-  scopes; copying an enabled value across profiles would invalidate the active-session confirmation
-  boundary. The bounded schedule editor remains the native equivalent rather than silently broadening
-  a setting's scope.
+  preserves Global -> Core Profile -> NPC inheritance for bounded playback-gated rechat only. Greeting,
+  boredom, combat-bark and timer-driven autonomy controls remain disabled and are not copied into
+  runtime scheduling state.
 
 ## Activation, targeting, and groups
 
@@ -79,18 +78,15 @@ Other semantic actions are deliberately unbound until the player assigns them in
 | Explicit group conversation | Aim or nearby picker adds actors; reset returns to primary target; duplicates and oversize fail closed | AUTOMATED |
 | Optional follower awareness | Follower Detection Util 2.x relationships enter bounded prompt context when its interface exists; absence disables only the adapter | AUTOMATED adapter; compatibility/in-game proof required |
 
-Automatic greetings wait until actor-local combat state is known and obey the same menu, combat,
-sneak, voice, turn, targeting and ALMSIVI-panel safety gate as local rechat/boredom.
-
-## Autonomy parity
+## Rechat boundary
 
 | Requirement | Current implementation | Current proof |
 | --- | --- | --- |
-| Automatic greeting | Opt-in, one per managed actor/session, combat-verified and activity-gated | AUTOMATED |
-| Bored conversation | Opt-in quiet timer, least-used then nearest agent rotation | AUTOMATED |
-| Rechat | Opt-in quiet timer, current target, maximum 10 consecutive continuation turns | AUTOMATED logic; full runtime chain proof required |
-| Activity safety | Idle timers reset in menus, combat, sneaking, voice capture, active turns and action targeting; active dialogue stops on combat entry by default | AUTOMATED source checks; in-game state proof required |
-| Server autonomy | Strict directives become fresh correlated turns and cannot overlap an active turn | AUTOMATED |
+| Playback-gated rechat | An enabled profile can continue only after the preceding response finishes, while retaining the current target/session/generation fence and bounded continuation depth | AUTOMATED logic; full runtime chain proof required |
+| Cancellation safety | Halt, target/session/generation changes and newer accepted turns cancel or fence stale continuation work | AUTOMATED source checks; in-game state proof required |
+| Automatic greeting | No scheduler or automatic model-triggering | EXCLUDED |
+| Bored conversation | No quiet timer, actor rotation or automatic model-triggering | EXCLUDED |
+| Combat barks | No entry timer, periodic timer or automatic model-triggering | EXCLUDED |
 
 ## Action parity
 
@@ -120,7 +116,7 @@ Remaining action families, in implementation order:
 Remaining control/runtime parity, in implementation order:
 
 1. Fresh in-game proof for the current popup, model/profile binding, enriched context and voice runtime.
-2. Extend combat dialogue only after the bounded bark scheduler is proven in game; do not allow it to overlap active turns or voice input.
+2. Preserve disabled UI landmarks for excluded greetings, boredom and combat barks without introducing runtime schedulers.
 
 ### Pinned API-129 design gates
 
@@ -142,7 +138,8 @@ Remaining control/runtime parity, in implementation order:
 1. Keep Lua, native, protocol, PHP, PostgreSQL integration and client/server parity checks green.
 2. Deploy the exact worktree into `C:\Modlists\ALMSIVI` and `/var/www/html/ALMSIVIserver`; verify
    representative hashes, Apache, worker and health.
-3. Run the minimal GOTY in-game matrix: target, typed input, voice, group, auto activation, greeting,
-   rechat/boredom, every enabled action, halt, menu/combat/sneak gates, cell transition and save/load.
+3. Run the post-goal minimal GOTY checklist: target, typed input, voice, group, auto activation,
+   playback-gated rechat, every enabled action, halt, menu/combat/sneak gates, cell transition and
+   save/load. Confirm that greetings, boredom and combat barks never trigger automatically.
 4. Capture screenshots/logs and promote only individually observed rows to `IN-GAME PROVEN`.
 5. Repeat the compatibility profiles in `COMPATIBILITY-PLAN.md`; do not infer them from minimal GOTY.

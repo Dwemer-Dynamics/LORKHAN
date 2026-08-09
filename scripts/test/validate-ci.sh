@@ -75,23 +75,21 @@ for workflow in workflows:
     if re.search(r"(?i)\b(?:gh\s+release|npm\s+publish|twine\s+upload|docker\s+push)\b", text):
         raise SystemExit(f"error: release/publish command forbidden: {workflow}")
     if "scripts/evidence/validate.py" in text or re.search(r"package_audit\.py[^\n]*\bprovenance\b", text):
-        checkout_steps = re.findall(
-            r"(?ms)^\s*-\s+name:\s+[^\n]*\n(?:.*?\n)*?^\s*uses:\s*actions/checkout@[0-9a-f]{40}.*?(?=^\s*-\s+(?:name:|uses:)|\Z)",
-            text)
-        if not checkout_steps or any(re.search(r"(?m)^\s*fetch-depth:\s*0\s*$", step) is None
-                                     for step in checkout_steps):
+        checkout_steps = [
+            step for step in re.split(r"(?m)^\s*-\s+(?=name:|uses:)", text)
+            if re.search(r"(?m)^\s*uses:\s*actions/checkout@[0-9a-f]{40}\s*(?:#.*)?$", step)
+        ]
+        if not checkout_steps or any(
+            re.search(r"(?m)^\s*fetch-depth:\s*0\s*$", step) is None
+            for step in checkout_steps
+        ):
             raise SystemExit(f"error: evidence/provenance workflow requires full checkout history: {workflow}")
 print("ok: workflow action pins, mandatory triggers, publish bans, and repository boundaries validated")
 PY
 
-powershell_files=$(find "$ROOT/scripts" -type f -name '*.ps1' -print | LC_ALL=C sort)
-if command -v pwsh >/dev/null 2>&1; then
-  printf '%s\n' "$powershell_files" | while IFS= read -r script; do
-    [ -n "$script" ] || continue
-    pwsh -NoLogo -NoProfile -NonInteractive -Command \
-      '$e=$null; $t=$null; [System.Management.Automation.Language.Parser]::ParseFile($args[0],[ref]$t,[ref]$e)|Out-Null; if($e.Count){$e|ForEach-Object{Write-Error $_};exit 1}' "$script"
-  done
-else
-  printf 'skip: pwsh unavailable; PowerShell parser proof deferred for:\n%s\n' "$powershell_files"
-fi
-printf 'ok: all shell entrypoints and available PowerShell entrypoints validated\n'
+native_workflow="$ROOT/.github/workflows/native-ready.yml"
+grep -F 'Validate PowerShell entrypoints' "$native_workflow" >/dev/null || {
+  printf 'error: Windows native workflow must parse PowerShell entrypoints\n' >&2
+  exit 1
+}
+printf 'ok: shell entrypoints validated; PowerShell parsing is owned by the Windows CI job\n'

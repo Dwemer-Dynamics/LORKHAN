@@ -100,7 +100,8 @@ flowchart LR
 
 - Verify SYNTH/Synthserver completion, clean main branches, test results, licenses, and final SHAs.
 - Create the source/behavior/provenance map before importing code.
-- Create a pinned OpenMW upstream worktree and build an unmodified control on all CI platforms.
+- Create a pinned OpenMW upstream worktree and build an unmodified Windows x64 Release control;
+  keep Ubuntu CI limited to portable foundation/contract checks.
 - Establish patch-series tooling, schemas, identical fixtures, fake server, and evidence ledger.
 
 Gate: source pins and licenses are recorded; upstream control builds; schemas validate in both
@@ -130,7 +131,8 @@ response -> subtitle/speech and interruption across menu/save/cell transitions.
 
 - Add bounded context collectors and explicit unavailable fields rather than fabricated values.
 - Implement server events, profiles, relationships, memories, world knowledge, narrator, diary,
-  rechat, boredom, greetings, summaries, playthrough export/restore, and prompt traceability.
+  playback-gated rechat, summaries, playthrough export/restore, and prompt traceability. Exclude
+  boredom, greetings, combat barks, ITT, Background Life, and timer-driven model triggers.
 - Ensure load order and mod-added records retain stable provenance.
 
 Gate: fixtures cover vanilla and modded identities; context budgets and frame cost pass; server UI
@@ -144,7 +146,8 @@ shows the persisted source event and its derived memory/profile state.
 - Emit exactly one terminal result (`succeeded`, `failed`, `rejected`, `timed_out`, `cancelled`) and
   allow result-aware follow-up without infinite loops.
 
-Gate: allowlist and negative tests pass; each enabled action has an exact in-game acceptance row.
+Gate: allowlist and negative tests pass; each enabled action has automated client/server coverage and
+an exact post-goal in-game acceptance row for later user verification.
 
 ### Phase 5: operations, compatibility, and release hardening
 

@@ -54,16 +54,15 @@ stock OpenMW executable.
    snapshot. For `Go to aimed point` or `Escort me to aimed point`, choose the action, aim at a point
    in the current cell within 2048 units, and use `Targeted NPC tools` again; ALMSIVI captures that ray hit rather than
    accepting model-authored coordinates. `Face me` turns toward the player; `Face aimed actor` uses the
-   same two-stage targeted-tools confirmation and reports success only after the heading is observed. Auto greeting, bounded rechat depth, boredom delays, separate interior/exterior scan and hearing distances, creatures, and hostile
+   same two-stage targeted-tools confirmation and reports success only after the heading is observed. Bounded playback-gated rechat depth, separate interior/exterior scan and hearing distances, creatures, and hostile
    actors are controlled under Options > Scripts > ALMSIVI. Managed NPCs inside the hearing distance join
    the bounded turn audience without replacing manually selected group members. Auto-managed actors already
    fighting the player are removed unless `Add hostile actors` is enabled; actors selected manually remain
-   under user control. By default, idle/rechat timers reset while a menu is open, the player is sneaking, or
-   a managed nearby actor is fighting the player. Those three safety gates can be changed in Behavior settings.
+   under user control. Rechat is evaluated only after completed playback and is fenced by the current
+   target, session, generation and active-turn state. Automatic greetings, boredom, combat barks and
+   timer-driven autonomy are excluded; any inherited controls for them remain disabled.
    The `Dialogue mode` hotkey opens routing choices: Standard adds normal spatial hearing, Close uses only
    the explicit group, Whisper uses the primary target only, and Shout doubles spatial hearing.
-   Combat barks are enabled by default with a 30-second minimum interval and only run for managed hostile
-   actors when menus, voice input, generated speech and other ALMSIVI turns are inactive.
 9. The `LLM model` hotkey lists only revisioned choices created on ALMSIVIserver; `Server default`
    clears the per-session override. Dynamic Profiles > Targeted NPC assigns a server profile to the
    currently confirmed actor for this playthrough; `Playthrough default` clears that actor binding.
@@ -77,7 +76,8 @@ stock OpenMW executable.
 - opt-in open microphone visibly reports listening/muted state, resumes after unmute, and honors the
   configured VAD sensitivity and silence-end delay;
 - Standard, Close, Whisper and Shout produce the expected target/group/spatial audience;
-- a manually managed hostile can bark on combat entry and periodically without overlapping another turn;
+- playback-gated rechat continues only within its configured depth and never starts from an idle timer;
+- automatic greetings, boredom and combat barks do not trigger;
 - the generated short WAV plays through the actor voice path and subtitles remain visible;
 - `inspect.report` returns a terminal result;
 - `ai.follow`, same-cell `ai.travel`/`ai.escort`, `ai.stop`, and bounded `ai.wander` affect only the

@@ -20,8 +20,8 @@ Recorded: 2026-07-19. `AUTOMATED` is local no-game automation in the current dir
 | Input, dialogue, and presentation | Open microphone | PLANNED | Required implementation or no-game proof remains incomplete. |
 | Input, dialogue, and presentation | Subtitles/transcript | PLANNED | Required implementation or no-game proof remains incomplete. |
 | Input, dialogue, and presentation | Interrupt/skip/hard halt | PLANNED | Typed interruption serialization/acknowledgement and transport cancellation are automated no-game; OpenMW input/presentation binding and in-game proof remain incomplete. |
-| Input, dialogue, and presentation | Automatic greeting | PLANNED | Required implementation or no-game proof remains incomplete. |
-| Input, dialogue, and presentation | Rechat/boredom | PLANNED | Required implementation or no-game proof remains incomplete. |
+| Input, dialogue, and presentation | Automatic greeting, boredom, and combat barks | EXCLUDED | Closed by the feature matrix; disabled presentation landmarks may remain, but no runtime scheduler or automatic model-triggering is shipped. |
+| Input, dialogue, and presentation | Playback-gated rechat | AUTOMATED | Bounded continuation is gated by completed playback and retains target/session/generation fencing; no in-game proof is claimed. |
 | Input, dialogue, and presentation | Vanilla dialogue context | PLANNED | Required implementation or no-game proof remains incomplete. |
 | Input, dialogue, and presentation | Skyrim/Fallout HUD widgets | PLANNED | Required implementation or no-game proof remains incomplete. |
 | Game and character context | Player stats/identity | PLANNED | Required implementation or no-game proof remains incomplete. |
