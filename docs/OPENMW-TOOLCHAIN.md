@@ -33,18 +33,17 @@ not a debate, in the source ledger. In both modes, `patch-manifest.json` describ
 - Use the pinned OpenMW 0.51 CI dependency preparation/vcpkg manifest approach, not ad-hoc DLLs.
 - Add Boost `system` to the exact dependency lock.
 - Build upstream control and ALMSIVI with identical compiler/dependency settings.
-- Configurations: Debug and RelWithDebInfo for CI; Release for final package.
+- Configuration: Windows x64 Release for CI and the final package. Debug/RelWithDebInfo remain optional local diagnostics.
 
 ### Linux x64
 
-Use the distribution/dependency versions supported by OpenMW 0.51 CI in a pinned container. Build
-and test control and patched trees with GCC and one Clang warning/sanitizer lane for pure components.
+Linux product/native CI is deferred. Ubuntu remains available only for portable Python/Lua,
+schema/fixture, packaging-input, evidence, and patch-manifest checks that do not claim a Linux product build.
 
 ### macOS arm64
 
-Use a pinned macOS runner/Xcode/CMake/vcpkg dependency set based on OpenMW 0.51 CI. Build/test the app
-bundle and pure bridge/Lua tests. Signing/notarization is a later distribution credential step, not
-required to prove source correctness.
+macOS build, test, signing, notarization, packaging, and CI are deferred. No macOS runner or matrix
+lane is required for the Windows/OpenMW ALMSIVI release goal.
 
 Android is excluded from these targets because background networking, cache permissions, touch UI,
 packaging and proprietary data acquisition require a separate product/acceptance plan.

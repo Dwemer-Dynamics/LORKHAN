@@ -90,8 +90,8 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 
 | Row | Required completion evidence |
 | --- | --- |
-| Windows x64 Debug/Release | Clean exact-pin build/tests, package hashes and logs. |
-| Linux x64/macOS arm64 | Clean build/tests; secondary package only after platform-specific acceptance. |
+| Windows x64 Release | Clean exact-pin build/tests, package hashes and logs; this is the supported product CI and release platform. |
+| Linux x64/macOS arm64 | Deferred and removed from CI. No package or compatibility claim until a separate platform plan is approved. |
 | Upstream control | Unmodified OpenMW pin builds/tests with same environment. |
 | Patch narrowness | Manifest and diff audit, API surface/security tests. |
 | Runtime archive | Deterministic ALMSIVI app, mod/default config, notices/SBOM; no unrelated apps/data. |

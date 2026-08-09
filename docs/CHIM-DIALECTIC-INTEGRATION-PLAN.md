@@ -1,6 +1,6 @@
 # ALMSIVI CHIM/Dialectic integration plan
 
-Status: implementation-ready parity plan, audited 2026-08-09.
+Status: finalized long-running implementation plan, audited and user-confirmed 2026-08-09.
 
 This is the execution contract for bringing ALMSIVI and ALMSIVIserver to the applicable CHIM/HerikaServer and Dialectic/DialecticServer product shape. It replaces feature-by-feature invention with direct, documented reuse of the established systems.
 
@@ -27,6 +27,17 @@ The following are excluded from functional implementation:
 
 Rechat is not autonomy in this plan. It is a bounded continuation of a player-started conversation and may begin only after the final prior utterance has been acknowledged as played.
 
+## 1.1 Confirmed execution decisions
+
+- Consolidate all existing parity, UI, rechat, prompt, eventlog, STT, and planning commits into the two existing draft PRs. Fast-forward ALMSIVI's `codex/full-dialectic-parity` PR branch from `codex/stt-parity`, and ALMSIVIserver's `codex/herika-ui-core-port` PR branch from `codex/stt-parity`, then continue implementation in isolated worktrees from those consolidated heads.
+- Keep both PRs draft and targeted at `main`. Consolidation does not authorize merging either PR into `main`.
+- Freeze the six audited reference commits below for this implementation. Perform one explicit upstream parity refresh after the frozen plan is complete; do not chase moving upstream branches during the work.
+- Keep typed PostgreSQL source tables authoritative while copying the applicable HerikaServer/DialecticServer public table names, column order, types, defaults, indexes, views, and UI formatting as exact compatibility projections/adapters.
+- Store and transport all PHP, SQL, HTML, CSS, JavaScript, Lua, JSON, prompt, subtitle, profile, Journal, and database text as UTF-8. PostgreSQL server/client encoding and JSON serialization must round-trip non-ASCII text without replacement or escaping regressions.
+- Remove macOS CI and other redundant platform/matrix lanes. Retain only CI that protects the supported Windows/OpenMW product, shared contracts, packaging inputs, and the PHP/PostgreSQL server.
+- Implement every safe action with a real OpenMW Lua API 129 equivalent. A CHIM/Dialectic action may be left disabled only when a recorded API/authority investigation proves it cannot be implemented safely.
+- Do not pause the long-running implementation for manual gameplay. Build, test, deploy, and validate every automatable boundary, then record final gameplay checks as pending user verification without claiming they passed.
+
 ## 2. Authority and reuse rules
 
 | Concern | Source of truth | ALMSIVI rule |
@@ -47,7 +58,7 @@ Audited references:
 - Dialectic `origin/unstable`: `5cd2817a6733acbe25ca21bdfb716ed64617f5f8`
 - DialecticServer `origin/unstable`: `4f3d8fed834b283fd53ff0655ddd091d849dea1d`
 
-Refresh reference behavior deliberately. Do not silently change the presentation or protocol baseline mid-workstream.
+The reference commits are frozen for the implementation. Do not silently change the presentation or protocol baseline mid-workstream. Perform one deliberate refresh audit after the planned implementation is complete.
 
 ## 3. Current checkpoint
 
@@ -152,6 +163,7 @@ Use the ALMSIVIserver plan for the full table map. The client-visible rules are:
 - CHIM/Herika names are projections or transactional adapters over those source rows;
 - `eventlog`, `speech`, `responselog`, and `prompts` preserve established useful column names and ordering for UI and diagnostics;
 - JSON payload columns contain Dialectic-shaped canonical JSON rather than alternate page-specific formats;
+- copied table/view contracts preserve applicable HerikaServer/DialecticServer column order, types, defaults, indexes, and UTF-8 behavior;
 - every row carries or can resolve installation, playthrough, session, generation, request, turn, utterance, actor, and timestamp correlation;
 - no prompt, memory, response, or delivery row is keyed only by display name;
 - AI Quest, Background Life, and timer-autonomy compatibility tables remain quarantined, have no worker or writable UI, and are not part of the public product schema.
@@ -205,9 +217,14 @@ Each section must have a recorded typed source, ordering index, inclusion reason
 
 ### P0 - Make the branch releasable
 
-1. Repair current ALMSIVI CI failures: Ubuntu PowerShell path parsing, GCC optimized `-Werror` false positives, macOS floating `from_chars`, and macOS `std::stop_token` compatibility.
-2. Add CI for ALMSIVIserver covering PHP lint, protocol parity, migrations, PostgreSQL integration, workers, and management HTTP flows.
-3. Refresh stale evidence ledgers so implemented behavior is not still marked `PLANNED` and no row claims unperformed in-game proof.
+1. Fast-forward all current work into the existing client and server draft PR branches and continue from isolated worktrees.
+2. Replace the three overlapping ALMSIVI workflows with a minimal supported-product CI surface:
+   - one Ubuntu foundation job for Python/Lua checks, schema/fixture parity, packaging inputs, evidence, and OpenMW patch-manifest validation;
+   - one Windows 2022 x64 Release native job for the standalone bridge/core build and CTest;
+   - no macOS, Linux native compiler matrix, sanitizer matrix, duplicate packaging workflow, or definition-only jobs.
+3. Fix the Ubuntu PowerShell/path validator or replace it with one portable entrypoint rather than preserving redundant workflow plumbing.
+4. Add one ALMSIVIserver Ubuntu workflow covering PHP lint, protocol parity, the existing test suite, disposable PostgreSQL migrations/integration, durable workers, and management HTTP flows.
+5. Refresh stale evidence ledgers so implemented behavior is not still marked `PLANNED` and no row claims unperformed in-game proof.
 
 ### P1 - Canonical schema and data model
 
@@ -237,9 +254,13 @@ Each section must have a recorded typed source, ordering index, inclusion reason
 ### P4 - Applicable game behavior
 
 1. Complete voice selection and volume checks across race/sex/creature/narrator cases.
-2. Finish only negotiated OpenMW-safe action families and their terminal receipts.
-3. Validate group speaker/addressee behavior, interruption, target changes, loads, cell changes, reconnects, and provider failures.
-4. Keep normal Morrowind subtitles as the sole dialogue text surface unless the user opens History/Diagnostics.
+2. Inventory every action exposed by the frozen CHIM, HerikaServer, Dialectic, and DialecticServer references and map it to OpenMW Lua API 129.
+3. Retain and harden the current inspect, follow, stop, travel, escort, face, wander, combat start/stop, animation, equip, unequip, and use actions.
+4. Add every additional safe feasible family, including wait, player pursuit, exact item/gold give/take, consume, lock/unlock, activation, and trade/menu outcomes where OpenMW supplies sufficient authority and observable completion.
+5. Keep generation/session/actor/target fencing, tiered confirmation, bounded parameters, negotiated capabilities, ALMSIVI-owned package cleanup, and exactly one terminal receipt for every action.
+6. For each non-portable action, retain the Herika UI landmark only when useful, mark it `Not Applicable`, and record the exact missing OpenMW API or unsafe authority boundary. Never substitute arbitrary console, Lua, MWScript, filesystem, network, spawn/delete, quest mutation, faction mutation, or unbounded teleport execution.
+7. Validate group speaker/addressee behavior, interruption, target changes, loads, cell changes, reconnects, and provider failures.
+8. Keep normal Morrowind subtitles as the sole dialogue text surface unless the user opens History/Diagnostics.
 
 ### P5 - Browser parity and release acceptance
 
@@ -247,7 +268,7 @@ Each section must have a recorded typed source, ordering index, inclusion reason
 2. Compare at 1920x1080, 1440x900, 1280x720, 390x844, and 375x667.
 3. Prove all forms use browser session, CSRF, typed services, revisions, and PostgreSQL persistence.
 4. Run fresh-install and upgrade migrations, backup/restore, worker restart, and retained-user-data deployment tests.
-5. Run the final in-game matrix on a clean OpenMW profile and an existing playthrough.
+5. Build and deploy the final client/server pair, run the complete automated/fake-client/log matrix, and emit a concise clean-profile/existing-playthrough checklist for later user gameplay verification.
 
 ## 10. Completion gates
 
@@ -259,12 +280,12 @@ Parity is complete only when all applicable rows have evidence for:
 - queue order, cancellation, stale-drop, media, delivery, action, and rechat behavior;
 - representative prompt snapshots and memory provenance;
 - desktop/mobile browser visual and functional checks;
-- clean-profile and existing-profile Windows/OpenMW in-game checks;
+- clean Windows x64 build, local client/server deployment, current health/log checks, and fake-client cross-boundary checks;
 - idle frame-rate and request-rate checks showing no polling or retry regression;
 - green client and server CI;
 - exact deployed source/artifact hashes.
 
-Passing unit or integration tests is not in-game proof. Passing in-game conversation once is not schema, migration, responsive UI, or lifecycle proof.
+Manual gameplay is a post-goal verification step, not a blocker for completing the long-running implementation. Automated/build/deployment evidence must still be complete, and the final report must label gameplay as unverified until the user runs the supplied checklist.
 
 ## 11. Recommended implementation slices
 
@@ -279,6 +300,6 @@ Keep each slice paired across ALMSIVI and ALMSIVIserver:
 7. Prompt/event/memory canonicalization.
 8. Profile/settings provenance and connector routing.
 9. Applicable OpenMW action completion.
-10. Herika browser acceptance and final deployment/in-game matrix.
+10. Herika browser acceptance, final deployment, automated runtime matrix, and user gameplay checklist.
 
 Do not combine the queue cutover, database cutover, and browser rewire into one unreviewable change. Each slice must preserve a working typed conversation path and include an upgrade/rollback boundary.

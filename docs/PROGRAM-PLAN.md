@@ -49,7 +49,7 @@ is a deterministic gate, not an open design question.
 | D07 | Transport is asynchronous HTTP/1.1 over an IP loopback literal using Boost.Asio/Beast and `Boost::system`; redirects, DNS and non-loopback endpoints are rejected. |
 | D08 | Authentication is a 256-bit server-generated pairing token stored only in native configuration and server secret configuration, never returned to Lua or logs. |
 | D09 | Server base is the final tested Synthserver, migrated by explicit semantic mapping to TES3/OpenMW. |
-| D10 | Windows x64 is the first release acceptance platform. Linux x64 and macOS arm64 build/test continuously; Android is deferred. |
+| D10 | Windows x64 Release is the supported product build and CI platform. Linux x64, macOS arm64, and Android are deferred and have no continuous build requirement. |
 | D11 | Vanilla dialogue remains intact. ALMSIVI uses a dedicated configurable action and passively captures `DialogueResponse` context. |
 | D12 | GLOBAL Lua orchestrates; PLAYER Lua owns input/UI; dynamically attached CUSTOM actor scripts own self-only AI/animation/speech. |
 | D13 | Generated speech is downloaded and hash-verified natively into an ALMSIVI cache, mounted/registered through a controlled engine media service, and invoked through opaque media IDs. Lua never supplies host paths. |

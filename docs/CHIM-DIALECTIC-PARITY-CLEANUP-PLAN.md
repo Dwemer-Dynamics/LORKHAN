@@ -2,7 +2,7 @@
 
 Status: active implementation record based on a live client, server, browser, protocol, and test audit on 2026-08-03.
 
-This document is the master cleanup and parity plan for ALMSIVI and ALMSIVIserver. It supersedes the fragmented parity checklists as the execution order, but it does not replace the protocol, architecture, packaging, or local-testing references.
+This document remains the detailed cleanup inventory. The finalized execution decisions, branch consolidation, frozen references, UTF-8 data contract, reduced CI surface, action scope, and completion gates are defined by `CHIM-DIALECTIC-INTEGRATION-PLAN.md`.
 
 Scope override for this implementation goal: timer-driven autonomy is excluded. Do not implement or expose functional automatic greetings, boredom events, combat barks, autonomous scheduling, cooldowns, or other timer-triggered model behavior. ITT and Background Life remain excluded. STT is active through manual Push-to-Talk and bounded Open Mic controls.
 
@@ -62,7 +62,7 @@ These are correctness or scope contradictions and should be fixed before broad U
 
 `ALMSIVI_History` and `ALMSIVI_Diagnostics` currently open the Actor Tools panel. Each binding must open its named panel. Add direct keyboard/controller acceptance checks so the structural test cannot preserve the wrong mapping.
 
-Resolution: both triggers now open their named panels, with structural coverage. Keyboard/controller runtime acceptance remains part of the final in-game gate.
+Resolution: both triggers now open their named panels, with structural coverage. Keyboard/controller runtime acceptance remains on the post-goal user gameplay checklist and does not block the automated build/deployment goal.
 
 ### P0.2 Incomplete applicable hotkey exposure — resolved
 
@@ -413,10 +413,11 @@ Exit gate: the in-game acceptance matrix passes without duplicate replies, stale
 1. Run migrations from both fresh and representative upgrade databases.
 2. Validate logs, queues, workers, provider attempts, backup/restore, and playthrough history.
 3. Deploy with the maintained ALMSIVI full-deploy workflow while preserving local configuration and data.
-4. Run clean-profile and existing-profile OpenMW smoke tests.
-5. Record exact source refs, artifacts, destinations, and remaining engine limitations.
+4. Run all automatable fake-client, protocol, HTTP, worker, deployment, and current-log smoke tests.
+5. Produce a clean-profile and existing-playthrough user gameplay checklist.
+6. Record exact source refs, artifacts, destinations, and remaining engine limitations.
 
-Exit gate: locally deployed browser and client pass the full acceptance matrix; no in-game verification is claimed until Morrowind is actually exercised.
+Exit gate: the browser and client are built and locally deployed with clean automated evidence. Manual gameplay remains a reported post-goal verification and is not claimed until Morrowind is actually exercised.
 
 ## 9. Validation matrix
 
@@ -489,10 +490,10 @@ ALMSIVI reaches this parity milestone only when all of the following are true:
 - Global -> Core Profile -> NPC inheritance is real end to end and its source is visible.
 - Every applicable in-game action is discoverable in OpenMW Settings and opens or performs the correct behavior.
 - Text conversation, cancellation, response queuing, subtitles, and TTS pass the lifecycle matrix.
-- Exact actor voice routing and ALMSIVI volume boost pass representative in-game tests.
+- Exact actor voice routing and ALMSIVI volume boost pass automated routing/configuration tests and are listed on the post-goal gameplay checklist.
 - Morrowind context, including Journal, books, and recent vanilla dialogue, is bounded and reaches prompts correctly.
 - Timer-driven autonomy, ITT, and Background Life cannot be activated by the shipped product.
-- Fresh-install and upgrade migrations, server integration, management HTTP, client checks, browser comparisons, and in-game smoke tests pass.
+- Fresh-install and upgrade migrations, server integration, management HTTP, client checks, browser comparisons, builds, deployment checks, and fake-client smoke tests pass; manual gameplay remains explicitly unverified until performed.
 - Deployment records the exact client/server refs and destinations and preserves user configuration, profiles, voices, and database state.
 
 ## 12. Explicit non-goals and guardrails
