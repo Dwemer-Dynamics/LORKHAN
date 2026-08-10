@@ -106,17 +106,16 @@ coordinates through the server catalog, and rechecked actor-locally before API-1
 Replacement and stop operations match the owned package's target/destination/distance instead of
 removing unrelated packages of the same type.
 
-Remaining action families, in implementation order:
+The frozen action-catalog audit is complete. Sixteen strict action names are negotiated across the
+client/server boundary. Exact inventory/currency transfer, lock mutation, trade/menu activation,
+persistent pursuit/follower state, teleport, spawn/delete, quest/faction/stat mutation, and arbitrary
+console/Lua/MWScript remain Not Applicable or excluded for the authority reasons recorded in
+`docs/evidence/openmw-action-parity-audit.md`; they are not future implementation promises.
 
-1. Pursue only if its player-only API semantics add a distinct useful outcome beyond Follow.
-2. Exact give/take/consume inventory deltas with Tier-2 confirmation and observed counts.
-3. Lock/unlock only if API-129 ownership and target preconditions can fail closed.
-4. Trade/menu opening only through a supported OpenMW interface; never simulated raw input.
-
-Remaining control/runtime parity, in implementation order:
-
-1. Fresh in-game proof for the current popup, model/profile binding, enriched context and voice runtime.
-2. Preserve disabled UI landmarks for excluded greetings, boredom and combat barks without introducing runtime schedulers.
+Remaining control/runtime work is manual proof only: exercise the current popup, model/profile binding,
+enriched context, voice runtime, queue interruption, and enabled actions in the deployed pinned build.
+Disabled greetings, boredom, combat-bark, ITT, Background Life, and timer-autonomy landmarks must remain
+inert throughout that checklist.
 
 ### Pinned API-129 design gates
 
@@ -138,8 +137,12 @@ Remaining control/runtime parity, in implementation order:
 1. Keep Lua, native, protocol, PHP, PostgreSQL integration and client/server parity checks green.
 2. Deploy the exact worktree into `C:\Modlists\ALMSIVI` and `/var/www/html/ALMSIVIserver`; verify
    representative hashes, Apache, worker and health.
-3. Run the post-goal minimal GOTY checklist: target, typed input, voice, group, auto activation,
-   playback-gated rechat, every enabled action, halt, menu/combat/sneak gates, cell transition and
-   save/load. Confirm that greetings, boredom and combat barks never trigger automatically.
+3. Run the post-goal minimal GOTY checklist: target Fargoth and one additional race/sex voice; send
+   UTF-8 typed input; use push-to-talk and bounded open mic; add a two-NPC group; verify normal Morrowind
+   subtitles and ordered TTS; exercise playback-gated rechat; execute inspect, inventory inspect,
+   follow, stop, approach, wait, travel, escort, face, wander, combat start/stop, allowlisted animation,
+   equip, unequip, and use; interrupt active speech/action; replace target/session; cross a cell; save/load;
+   and observe idle frame rate/request rate. Confirm greetings, boredom, combat barks, ITT, Background
+   Life, and timer autonomy never create a request.
 4. Capture screenshots/logs and promote only individually observed rows to `IN-GAME PROVEN`.
 5. Repeat the compatibility profiles in `COMPATIBILITY-PLAN.md`; do not infer them from minimal GOTY.

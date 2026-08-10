@@ -23,3 +23,19 @@ It adds bounded read-only inventory inspection, same-cell approach, and bounded 
 implemented travel, escort, and face actions to provider normalization; and records every unsupported action
 with its API-129 authority reason in `openmw-action-parity-audit.md`. The 47-test Lua suite, 77-file protocol
 manifest, standalone native test, and server checks are automated evidence only; engine behavior remains unverified.
+
+The final 2026-08-09 automated/deployment acceptance used client implementation commit
+`88763b90fcafc4736592e7faf759805f14c462b0`, server implementation commit
+`414a8435b297c5aedd16ee1e1d9afa895f2b5dfc`, and pinned OpenMW
+`f4bec41444214a7903bebd178389ca22ca13f646`. Both draft PR heads and CI were green at those exact
+implementation commits. The full OpenMW x64 Release product and launcher were built and deployed to
+`C:\Modlists\ALMSIVI`; the built/deployed SHA-256 values match (`openmw.exe`
+`1E3CB477477429B9686DFDC2B5FEF4F64F73B9DA648D7A7DFED01B1E1FC17289`, launcher
+`3CE0096D9C6E283C2319FA69A2BE8DE72A5BADA50F608B381789EAB34C385431`). All 26 deployed tracked
+data files matched source and 57 cached WAV files survived deployment. ALMSIVIserver upgraded the
+preserved local lineage through migration 046 after a validated private backup, passed its 171-relation/
+1,565-column schema hash, restarted Apache and the durable worker, returned typed health, and matched the
+pushed server tree with zero rsync differences. Browser checks covered the principal Config, Roleplay,
+and Control Panel routes at 1920x1080, 1440x900, 1280x720, 390x844, and 375x667 without horizontal
+overflow. This is current automated/build/deployment evidence only; the supplied minimal GOTY gameplay
+checklist remains deliberately unclaimed.
