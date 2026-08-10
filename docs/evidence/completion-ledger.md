@@ -17,3 +17,9 @@ deduplication, media/action attachment, terminal delivery receipts, queued-actio
 playback-gated rechat. The 46-test Lua runtime suite, standalone MSVC native CTest, protocol/patch
 validators, and the pinned OpenMW 0.51 Release `openmw` plus `openmw-launcher` build pass locally.
 This is automated/build evidence only; it does not claim deployment or in-game playback proof.
+
+The action-catalog parity checkpoint maps the frozen CHIM/Dialectic catalogs to 16 strict ALMSIVI actions.
+It adds bounded read-only inventory inspection, same-cell approach, and bounded wait; exposes the previously
+implemented travel, escort, and face actions to provider normalization; and records every unsupported action
+with its API-129 authority reason in `openmw-action-parity-audit.md`. The 47-test Lua suite, 77-file protocol
+manifest, standalone native test, and server checks are automated evidence only; engine behavior remains unverified.

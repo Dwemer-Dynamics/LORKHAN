@@ -117,8 +117,8 @@ struct ProtocolIdentity {
     std::string displayName;
 };
 
-enum class ActionIntentKind { ai_follow, ai_stop, ai_travel, ai_escort, ai_face, ai_wander, animation_play, combat_start, combat_stop,
-    inspect_report, item_equip, item_unequip, item_use };
+enum class ActionIntentKind { ai_follow, ai_stop, ai_approach, ai_wait, ai_travel, ai_escort, ai_face, ai_wander, animation_play,
+    combat_start, combat_stop, inspect_report, inventory_inspect, item_equip, item_unequip, item_use };
 struct ActionIntent {
     ActionId action;
     TurnId turn;

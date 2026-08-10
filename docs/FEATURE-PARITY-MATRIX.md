@@ -74,17 +74,19 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 
 | Action family | Decision | Initial enablement |
 | --- | --- | --- |
-| Inspect/report | Keep | Tier 0 on. |
-| Follow/escort/travel/wander/pursue | Keep | Tier 1 opt-in after individual proof. |
-| Start/stop combat | Keep | Tier 1 opt-in with hostility/essential/player safeguards. |
-| Face/look/animation/speech | Keep | Tier 1; allowlisted and restorable. |
-| Equip/use/consume | Keep | Tier 1, owned inventory only. |
-| Give/take item or gold | Keep | Tier 2, exact delta and ownership confirmation. |
-| Lock/unlock | Adapt | Tier 2 only where API/preconditions are proven. |
-| Trade/menu opening | Adapt | Use supported UI/interface only; no simulated raw input. |
-| Teleport/spawn/delete/record creation | Exclude initially | Too destructive; original content gate does not auto-enable it. |
-| Stat/faction/reputation/quest mutation | Exclude initially | Read-only context; no model authority. |
+| Inspect/report and inventory check | Keep | Tier 0 bounded read-only reports. |
+| Follow/stop/approach/wait/travel/escort/wander | Keep | Tier 1 owned, bounded, same-cell API-129 packages. |
+| Start/stop combat | Keep | Start is Tier 2 confirmed; stop cancels only ALMSIVI-owned combat. |
+| Face and generic animation | Keep | Tier 1, allowlisted, bounded, and lifecycle-cancellable. |
+| Equip/unequip/use/consume | Keep | Tier 2, acting-NPC inventory and allowlisted equipment slots only. |
+| Give/take/pickup item or currency | Not Applicable | Local actor scripts lack safe global-object transfer authority. |
+| Crime, service, trade, menu, transport, and persistent follower actions | Not Applicable | No exact bounded actor-local API-129 equivalent. |
+| Teleport/spawn/delete/kill/record creation/director commands | Not Applicable | Arbitrary global mutation violates the action trust boundary. |
+| Stat/faction/reputation/quest mutation | Not Applicable | Read-only context; no owned or reversible mutation boundary. |
 | Arbitrary console/Lua/MWScript/files/network | Exclude permanently | Violates trust boundary. |
+
+The exhaustive frozen-catalog disposition and API evidence are recorded in
+`docs/evidence/openmw-action-parity-audit.md`.
 
 ## Packaging and compatibility
 

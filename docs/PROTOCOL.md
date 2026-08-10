@@ -127,6 +127,11 @@ and `turn.complete` sequence.
 `destination_z`, and canonical `destination_cell`. Both client and server bound those fields, and the
 actor rechecks the current cell before starting an OpenMW package.
 
+The API-129 action set additionally provides bounded read-only `inventory.inspect`, same-cell
+`ai.approach`, and duration-bounded `ai.wait`. Their names, tiers, parameters, negotiated capabilities,
+native parser variants, Lua handlers, server catalog rows, and protocol fixtures are synchronized. The exhaustive
+frozen-catalog disposition is recorded in `docs/evidence/openmw-action-parity-audit.md`.
+
 In-game controls never accept provider endpoints, API keys, or executable configuration. Model choices
 are revisioned server-owned slots: a `configured` slot may override only the model while retaining the
 server process endpoint and credential environment; a `mock` slot remains deterministic. Roleplay

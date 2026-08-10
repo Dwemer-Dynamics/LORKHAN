@@ -502,17 +502,18 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     if (turn.value() != envelopeTurn.value())
         return invalidSchemaValue<ActionIntent>("action intent turn does not match event envelope");
     if (!name || (name.value() != "ai.follow" && name.value() != "ai.stop"
+        && name.value() != "ai.approach" && name.value() != "ai.wait"
         && name.value() != "ai.travel" && name.value() != "ai.escort" && name.value() != "ai.face"
         && name.value() != "ai.wander" && name.value() != "combat.start"
         && name.value() != "combat.stop" && name.value() != "animation.play"
         && name.value() != "item.equip" && name.value() != "item.unequip"
-        && name.value() != "item.use" && name.value() != "inspect.report"))
+        && name.value() != "item.use" && name.value() != "inspect.report" && name.value() != "inventory.inspect"))
         return invalidSchemaValue<ActionIntent>("unknown action intent name");
     if (!tier) return invalidSchemaValue<ActionIntent>(tier.error().message);
-    if ((name.value() == "inspect.report" && tier.value() != 0)
+    if (((name.value() == "inspect.report" || name.value() == "inventory.inspect") && tier.value() != 0)
         || ((name.value() == "combat.start" || name.value() == "item.equip"
             || name.value() == "item.unequip" || name.value() == "item.use") && tier.value() != 2)
-        || (name.value() != "inspect.report" && name.value() != "combat.start"
+        || (name.value() != "inspect.report" && name.value() != "inventory.inspect" && name.value() != "combat.start"
             && name.value() != "item.equip" && name.value() != "item.unequip"
             && name.value() != "item.use" && tier.value() != 1))
         return invalidSchemaValue<ActionIntent>("action intent tier mismatch");
@@ -551,11 +552,20 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
         if (!hasExactly(*parameters, {"distance", "duration_seconds"}))
             return invalidSchemaValue<ActionIntent>("action intent parameters mismatch");
         auto distance = requireUnsigned(*parameters, "distance", 2048, 0);
-        auto duration = requireUnsigned(*parameters, "duration_seconds", 3600, 1);
+        auto duration = requireUnsigned(*parameters, "duration_seconds", 86400, 3600);
         if (!distance) return invalidSchemaValue<ActionIntent>(distance.error().message);
-        if (!duration) return invalidSchemaValue<ActionIntent>(duration.error().message);
+        if (!duration || duration.value() % 3600 != 0)
+            return invalidSchemaValue<ActionIntent>("wander duration must be whole game hours");
         intentKind = ActionIntentKind::ai_wander;
         wanderDistance = static_cast<std::uint32_t>(distance.value());
+        wanderDurationSeconds = static_cast<std::uint32_t>(duration.value());
+    } else if (name.value() == "ai.wait") {
+        if (!hasExactly(*parameters, {"duration_seconds"}))
+            return invalidSchemaValue<ActionIntent>("ai.wait parameters mismatch");
+        auto duration = requireUnsigned(*parameters, "duration_seconds", 86400, 3600);
+        if (!duration || duration.value() % 3600 != 0)
+            return invalidSchemaValue<ActionIntent>("wait duration must be whole game hours");
+        intentKind = ActionIntentKind::ai_wait;
         wanderDurationSeconds = static_cast<std::uint32_t>(duration.value());
     } else if (name.value() == "ai.travel" || name.value() == "ai.escort") {
         if(!hasExactly(*parameters,{"destination_x","destination_y","destination_z","destination_cell"}))
@@ -574,6 +584,9 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     } else if (name.value() == "ai.face") {
         if(!hasExactly(*parameters,{}))return invalidSchemaValue<ActionIntent>("ai.face parameters must be empty");
         intentKind=ActionIntentKind::ai_face;
+    } else if (name.value() == "ai.approach") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("ai.approach parameters must be empty");
+        intentKind = ActionIntentKind::ai_approach;
     } else if (name.value() == "ai.stop") {
         if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("ai.stop parameters must be empty");
         intentKind = ActionIntentKind::ai_stop;
@@ -621,7 +634,9 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
         intentKind = ActionIntentKind::item_use;
         stringParameter = std::move(recordId).value();
     } else if (!hasExactly(*parameters, {})) {
-        return invalidSchemaValue<ActionIntent>("inspect.report parameters must be empty");
+        return invalidSchemaValue<ActionIntent>(name.value() + " parameters must be empty");
+    } else if (name.value() == "inventory.inspect") {
+        intentKind = ActionIntentKind::inventory_inspect;
     }
 
     return Result<ActionIntent>::success({ActionId(std::move(action).value()),

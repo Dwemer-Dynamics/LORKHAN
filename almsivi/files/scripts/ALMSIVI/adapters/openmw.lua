@@ -614,6 +614,7 @@ function M.stopAi(owned, modules)
         if owned.target and (not target or package.target~=target) then return true end
         if owned.destination and not samePosition(package.destPosition,owned.destination) then return true end
         if owned.distance~=nil and package.distance~=owned.distance then return true end
+        if owned.duration~=nil and package.duration~=owned.duration then return true end
         return false
     end)
     return true,'ai_packages_stopped'
@@ -626,6 +627,15 @@ function M.wander(parameters, modules)
     ai.startPackage({type='Wander',distance=parameters.distance,duration=parameters.duration_seconds,
         isRepeat=false,cancelOther=false})
     return true,'wander_started'
+end
+
+function M.wait(parameters, modules)
+    modules=modules or loaded()
+    local ai=modules.interfaces and modules.interfaces.AI
+    if not ai or not ai.startPackage then return nil,'ai_interface_unavailable' end
+    ai.startPackage({type='Wander',distance=0,duration=parameters.duration_seconds,
+        isRepeat=false,cancelOther=false})
+    return true,'wait_started',{distance=0,duration_seconds=parameters.duration_seconds}
 end
 
 local function movementDestination(parameters, modules)
@@ -644,6 +654,19 @@ function M.travel(parameters, modules)
     ai.startPackage({type='Travel',destPosition=destination,isRepeat=false,cancelOther=false})
     return true,'travel_started',{destination_x=parameters.destination_x,destination_y=parameters.destination_y,
         destination_z=parameters.destination_z,destination_cell=parameters.destination_cell}
+end
+
+function M.approach(targetIdentity, modules)
+    modules=modules or loaded()
+    local target,reason=M.resolve(targetIdentity,modules)
+    local ai=modules.interfaces and modules.interfaces.AI
+    if not target or not target.position or not modules.self or not modules.self.cell
+        or not ai or not ai.startPackage then return nil,reason or 'ai_interface_unavailable' end
+    if M.cellKey(target.cell)~=M.cellKey(modules.self.cell) then return nil,'approach_target_cell_changed' end
+    local destination={destination_x=target.position.x,destination_y=target.position.y,destination_z=target.position.z,
+        destination_cell=M.cellKey(modules.self.cell)}
+    ai.startPackage({type='Travel',destPosition=target.position,isRepeat=false,cancelOther=false})
+    return true,'approach_started',destination
 end
 
 function M.escort(targetIdentity, parameters, modules)
@@ -804,6 +827,15 @@ function M.inspect(targetIdentity)
     if not object then return nil,reason end
     return true,'inspection_completed',{record_id=object.recordId,enabled=object.enabled~=false,
         position={x=object.position.x,y=object.position.y,z=object.position.z}}
+end
+
+function M.inventoryReport(modules)
+    modules=modules or loaded()
+    if not modules.self then return nil,'inventory_unavailable' end
+    local rows=inventory(modules.self,modules)
+    local total=#rows
+    while #rows>128 do table.remove(rows) end
+    return true,'inventory_inspected',{items=rows,total_record_types=total,truncated=total>#rows}
 end
 
 function M.playSpeech(mediaId, subtitle, volumeBoost)

@@ -952,9 +952,9 @@ namespace MWLua
 
             static std::vector<std::string> capabilities()
             { return { "dialogue.text", "speech.say", "speech.listen", "controls.session", "action.ai.follow", "action.ai.stop",
-                "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
+                "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
-                "action.inspect.report" }; }
+                "action.inspect.report", "action.inventory.inspect" }; }
 
             static sol::table eventTable(sol::state_view lua, const almsivi::ProtocolEvent& event)
             {
@@ -986,6 +986,8 @@ namespace MWLua
                         switch (item.kind) {
                             case almsivi::ActionIntentKind::ai_follow: name = "ai.follow"; tier = 1; break;
                             case almsivi::ActionIntentKind::ai_stop: name = "ai.stop"; tier = 1; break;
+                            case almsivi::ActionIntentKind::ai_approach: name = "ai.approach"; tier = 1; break;
+                            case almsivi::ActionIntentKind::ai_wait: name = "ai.wait"; tier = 1; break;
                             case almsivi::ActionIntentKind::ai_travel: name = "ai.travel"; tier = 1; break;
                             case almsivi::ActionIntentKind::ai_escort: name = "ai.escort"; tier = 1; break;
                             case almsivi::ActionIntentKind::ai_face: name = "ai.face"; tier = 1; break;
@@ -994,6 +996,7 @@ namespace MWLua
                             case almsivi::ActionIntentKind::combat_start: name = "combat.start"; tier = 2; break;
                             case almsivi::ActionIntentKind::combat_stop: name = "combat.stop"; tier = 1; break;
                             case almsivi::ActionIntentKind::inspect_report: break;
+                            case almsivi::ActionIntentKind::inventory_inspect: name = "inventory.inspect"; break;
                             case almsivi::ActionIntentKind::item_equip: name = "item.equip"; tier = 2; break;
                             case almsivi::ActionIntentKind::item_unequip: name = "item.unequip"; tier = 2; break;
                             case almsivi::ActionIntentKind::item_use: name = "item.use"; tier = 2; break;
@@ -1006,6 +1009,8 @@ namespace MWLua
                             parameters["distance"] = item.wanderDistance;
                             parameters["duration_seconds"] = item.wanderDurationSeconds;
                         }
+                        if (item.kind == almsivi::ActionIntentKind::ai_wait)
+                            parameters["duration_seconds"] = item.wanderDurationSeconds;
                         if(item.kind==almsivi::ActionIntentKind::ai_travel||item.kind==almsivi::ActionIntentKind::ai_escort){
                             parameters["destination_x"]=item.destinationX;parameters["destination_y"]=item.destinationY;
                             parameters["destination_z"]=item.destinationZ;parameters["destination_cell"]=item.destinationCell;
@@ -1089,9 +1094,9 @@ namespace MWLua
             api["capabilities"] = [lua] {
                 sol::table result(lua, sol::create); std::size_t index = 1;
             for (const auto& capability : std::vector<std::string>{ "dialogue.text", "speech.say", "speech.listen", "controls.session",
-                "action.ai.follow", "action.ai.stop", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
+                "action.ai.follow", "action.ai.stop", "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
                 "action.combat.start", "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip",
-                "action.item.use", "action.inspect.report" })
+                "action.item.use", "action.inspect.report", "action.inventory.inspect" })
                     result[index++] = capability;
                 return result;
             };

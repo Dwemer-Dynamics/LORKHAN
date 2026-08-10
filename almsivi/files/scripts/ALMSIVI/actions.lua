@@ -21,8 +21,11 @@ function M.validate(state, intent, authority)
     if type(intent) ~= 'table' or intent.schema ~= 'almsivi.action-intent.v1' then return nil,'invalid_action_schema' end
     local definitions={
         ['inspect.report']={capability='action.inspect.report',tier=0},
+        ['inventory.inspect']={capability='action.inventory.inspect',tier=0},
         ['ai.follow']={capability='action.ai.follow',tier=1},
         ['ai.stop']={capability='action.ai.stop',tier=1},
+        ['ai.approach']={capability='action.ai.approach',tier=1},
+        ['ai.wait']={capability='action.ai.wait',tier=1},
         ['ai.travel']={capability='action.ai.travel',tier=1},
         ['ai.escort']={capability='action.ai.escort',tier=1},
         ['ai.face']={capability='action.ai.face',tier=1},
@@ -69,12 +72,17 @@ function M.validate(state, intent, authority)
             return nil,'invalid_destination_cell'
         end
         parameters.destination_cell=cell
+    elseif intent.name=='ai.wait' then
+        for key in pairs(intent.parameters) do if key~='duration_seconds' then return nil,'unknown_wait_parameter' end end
+        local duration=intent.parameters.duration_seconds
+        if type(duration)~='number' or duration%3600~=0 or duration<3600 or duration>86400 then return nil,'invalid_wait_duration' end
+        parameters.duration_seconds=duration
     elseif intent.name=='ai.wander' then
         for key in pairs(intent.parameters) do if key~='distance' and key~='duration_seconds' then return nil,'unknown_wander_parameter' end end
         local distance=intent.parameters.distance
         local duration=intent.parameters.duration_seconds
         if type(distance)~='number' or distance%1~=0 or distance<0 or distance>2048 then return nil,'invalid_wander_distance' end
-        if type(duration)~='number' or duration%1~=0 or duration<1 or duration>3600 then return nil,'invalid_wander_duration' end
+        if type(duration)~='number' or duration%3600~=0 or duration<3600 or duration>86400 then return nil,'invalid_wander_duration' end
         parameters.distance=distance parameters.duration_seconds=duration
     elseif intent.name=='animation.play' then
         for key in pairs(intent.parameters) do if key~='group' then return nil,'unknown_animation_parameter' end end
@@ -98,6 +106,10 @@ function M.validate(state, intent, authority)
         parameters.slot=intent.parameters.slot
     elseif intent.name=='inspect.report' then
         for _ in pairs(intent.parameters) do return nil,'unknown_inspect_parameter' end
+    elseif intent.name=='inventory.inspect' then
+        for _ in pairs(intent.parameters) do return nil,'unknown_inventory_parameter' end
+    elseif intent.name=='ai.approach' then
+        for _ in pairs(intent.parameters) do return nil,'unknown_approach_parameter' end
     else
         for _ in pairs(intent.parameters) do return nil,'unknown_action_parameter' end
     end

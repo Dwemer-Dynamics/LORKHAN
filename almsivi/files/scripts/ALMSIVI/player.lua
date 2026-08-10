@@ -60,7 +60,8 @@ local AIM_SCAN_INTERVAL=0.25
 local AUTO_SCAN_INTERVAL=1.0
 local function send(name,payload) if core and core.sendGlobalEvent then core.sendGlobalEvent(name,payload) end end
 local CAPABILITIES={'dialogue.text','speech.say','speech.listen','action.ai.follow','action.ai.stop',
-    'action.ai.travel','action.ai.escort','action.ai.face','action.ai.wander','action.combat.start','action.combat.stop','action.inspect.report',
+    'action.ai.approach','action.ai.wait','action.ai.travel','action.ai.escort','action.ai.face','action.ai.wander',
+    'action.combat.start','action.combat.stop','action.inspect.report','action.inventory.inspect',
     'action.animation.play','action.item.equip','action.item.unequip','action.item.use'}
 
 local function conversationContext(target)
@@ -550,6 +551,7 @@ render=function()
         local view=state.ui.actionView or 'root'
         if view=='root' then
             link('Movement...',function() state.ui.actionView='movement' render() end)
+            option('Check inventory','inventory.inspect',0,{})
             option('Stop combat with me','combat.stop',1,{})
             link('Attack aimed actor...',function()
                 beginSecondaryTarget('Attack selected target','combat.start',2,{})
@@ -563,6 +565,7 @@ render=function()
             link('Unequip slot...',function() state.ui.actionView='unequip' state.ui.actionPage=1 render() end)
         elseif view=='movement' then
             option('Follow me','ai.follow',1,{distance=192})
+            option('Come closer','ai.approach',1,{})
             link('Go to aimed point...',function()
                 beginDestinationTarget('Go to selected destination','ai.travel',1)
             end)
@@ -573,8 +576,8 @@ render=function()
             link('Face aimed actor...',function()
                 beginSecondaryTarget('Face selected target','ai.face',1,{})
             end)
-            option('Wait here','ai.wander',1,{distance=0,duration_seconds=3600})
-            option('Wander nearby','ai.wander',1,{distance=512,duration_seconds=300})
+            option('Wait here','ai.wait',1,{duration_seconds=3600})
+            option('Wander nearby','ai.wander',1,{distance=512,duration_seconds=3600})
             option('Stop ALMSIVI movement','ai.stop',1,{})
             link('Back',function() state.ui.actionView='root' render() end)
         elseif view=='use-items' or view=='equip-items' then

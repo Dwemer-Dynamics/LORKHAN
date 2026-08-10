@@ -627,11 +627,34 @@ test('safe movement and combat actions enforce tiers and bounds',function()
  local authority={generation=2,session_id='s',actor=npc,resolve=function(id)return registry:resolve(id)end,expired=function()return false end}
  local state=actions.new({'action.ai.stop','action.ai.wander','action.combat.start','action.combat.stop'})
  local intent={schema='almsivi.action-intent.v1',action_id='wander',request_id='r',turn_id='t',session_id='s',generation=2,
-  name='ai.wander',tier=1,actor=npc,target=playerId,parameters={distance=512,duration_seconds=60},expires_at='soon'}
- local mapped=actions.validate(state,intent,authority);eq(mapped.parameters.distance,512);eq(mapped.parameters.duration_seconds,60)
+  name='ai.wander',tier=1,actor=npc,target=playerId,parameters={distance=512,duration_seconds=3600},expires_at='soon'}
+ local mapped=actions.validate(state,intent,authority);eq(mapped.parameters.distance,512);eq(mapped.parameters.duration_seconds,3600)
  intent.action_id='bad-wander';intent.parameters.distance=2049;local ok,reason=actions.validate(state,intent,authority);eq(ok,nil);eq(reason,'invalid_wander_distance')
  intent.parameters={};intent.name='combat.start';intent.tier=1;intent.action_id='combat';ok,reason=actions.validate(state,intent,authority);eq(ok,nil);eq(reason,'invalid_action_tier')
  intent.tier=2;mapped=actions.validate(state,intent,authority);eq(mapped.name,'combat.start')
+end)
+test('inventory inspect, approach, and bounded wait use owned API-129 actions',function()
+ local registry=identity.Registry();registry:activate(npc,{});registry:activate(playerId,{})
+ local authority={generation=2,session_id='s',actor=npc,resolve=function(id)return registry:resolve(id)end,expired=function()return false end}
+ local capabilities={'action.inventory.inspect','action.ai.approach','action.ai.wait'}
+ local state=actor.new(npc,2,capabilities)
+ local stopped
+ local adapter={
+  inventoryReport=function()return true,'inventory_inspected',{items={{record_id='iron_dagger',count=1}},total_record_types=1,truncated=false} end,
+  approachSelf=function()return true,'approach_started',{destination_x=1,destination_y=2,destination_z=3,destination_cell='exterior:0:0'} end,
+  waitSelf=function(_,parameters)return true,'wait_started',{distance=0,duration_seconds=parameters.duration_seconds} end,
+  stopAi=function(owned)stopped=owned return true,'ai_packages_stopped' end}
+ local intent={schema='almsivi.action-intent.v1',action_id='inventory',request_id='r',turn_id='safe-actions',session_id='s',
+  generation=2,name='inventory.inspect',tier=0,actor=npc,target=playerId,parameters={},expires_at='soon'}
+ local result=actor.execute(state,intent,adapter,authority);eq(result.status,'succeeded');eq(result.observed.items[1].record_id,'iron_dagger')
+ intent.action_id='approach';intent.name='ai.approach';intent.tier=1
+ result=actor.execute(state,intent,adapter,authority);eq(result.status,'succeeded');eq(state.ownedAi.type,'Travel')
+ eq(state.ownedAi.destination.destination_cell,'exterior:0:0')
+ intent.action_id='wait';intent.name='ai.wait';intent.parameters={duration_seconds=3600}
+ result=actor.execute(state,intent,adapter,authority);eq(result.status,'succeeded');eq(stopped.type,'Travel')
+ eq(state.ownedAi.type,'Wander');eq(state.ownedAi.distance,0);eq(state.ownedAi.duration,1)
+ intent.action_id='bad-wait';intent.parameters={duration_seconds=3599}
+ local ok,reason=actions.validate(state.actions,intent,authority);eq(ok,nil);eq(reason,'invalid_wait_duration')
 end)
 test('group audience preserves target and deduplicates actors',function()
  local c=conversation.new(1);truthy(conversation.setTarget(c,npc));truthy(conversation.addAudience(c,npc));eq(#c.audience,1)
@@ -718,11 +741,19 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
  eq(packageFilter({type='Travel',destPosition=vector(0,256,8)}),false)
  eq(packageFilter({type='Travel',destPosition=vector(0,257,8)}),true)
  truthy(openmwAdapter.escort(playerId,destination,modules));eq(started.type,'Escort');eq(started.target,playerTarget)
+ truthy(openmwAdapter.approach(mapped,modules));eq(started.type,'Travel');eq(started.destPosition.y,300)
+ local waitOk,_,waitObserved=openmwAdapter.wait({duration_seconds=3600},modules);truthy(waitOk);eq(started.type,'Wander')
+ eq(started.distance,0);eq(started.duration,3600);eq(waitObserved.duration_seconds,3600)
+ truthy(openmwAdapter.stopAi({type='Wander',distance=0,duration=1},modules))
+ eq(packageFilter({type='Wander',distance=0,duration=1}),false)
+ eq(packageFilter({type='Wander',distance=0,duration=2}),true)
  activePackage=nil
  local faceOk,_,controller=openmwAdapter.beginFace(mapped,{},modules);truthy(faceOk)
  local completed=openmwAdapter.updateFace(controller,0.1,modules);eq(completed,nil);truthy(selfObject.controls.yawChange<0)
  yaw=0;completed=openmwAdapter.updateFace(controller,0.1,modules);eq(completed,true);eq(selfObject.controls.yawChange,0)
  local inventoryRows=openmwAdapter.targetInventory(mapped,modules);eq(inventoryRows[1].record_id,'iron_dagger');eq(#inventoryRows,2)
+ local inventoryOk,_,inventoryObserved=openmwAdapter.inventoryReport(modules);truthy(inventoryOk)
+ eq(inventoryObserved.items[1].record_id,'iron_dagger');eq(inventoryObserved.total_record_types,2);eq(inventoryObserved.truncated,false)
  local equipmentRows=openmwAdapter.targetEquipment(mapped,modules);eq(equipmentRows[1].slot,'carried_right');eq(equipmentRows[1].record_id,'iron_dagger')
  local followers,provider=openmwAdapter.followerContext(modules);eq(#followers,1);eq(followers[1].actor.record_id,'fargoth')
  eq(followers[1].leader.kind,'player');eq(followers[1].follows_player,true);eq(provider.provider,'FollowerDetectionUtil');eq(provider.version,2)

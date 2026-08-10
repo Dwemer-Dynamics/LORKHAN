@@ -71,8 +71,9 @@ check("OpenMW special player identity is stable and resolvable", all(fragment in
     "(kind=='npc' or kind=='player') and modules.types.NPC.record", "modules.nearby.players and modules.nearby.players[1]"]))
 actions = text(SCRIPTS / "actions.lua")
 check("safe action allowlist is explicit", all(name in actions for name in (
-    "'inspect.report'", "'ai.follow'", "'ai.stop'", "'ai.wander'", "'combat.start'", "'combat.stop'",
-    "'animation.play'", "'item.use'")))
+    "'inspect.report'", "'inventory.inspect'", "'ai.follow'", "'ai.stop'", "'ai.approach'", "'ai.wait'",
+    "'ai.travel'", "'ai.escort'", "'ai.face'", "'ai.wander'", "'combat.start'", "'combat.stop'",
+    "'animation.play'", "'item.use'", "'item.equip'", "'item.unequip'")))
 check("combat start requires player confirmation", "command.tier>=2" in text(SCRIPTS / "orchestrator.lua")
       and "ALMSIVI_ACTION_CONFIRMATION" in text(SCRIPTS / "player.lua"))
 check("ai.follow accepts exact integer distance 192", "distance%1~=0 or distance~=192" in actions)

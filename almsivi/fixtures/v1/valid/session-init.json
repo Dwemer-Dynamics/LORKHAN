@@ -8,7 +8,7 @@
     "message_id": "00000000-0000-4000-8000-000000000002",
     "playthrough_id": "00000000-0000-4000-8000-000000000003",
     "profile_id": "00000000-0000-4000-8000-000000000004",
-    "runtime": {"capabilities": ["dialogue.text", "speech.say", "speech.listen", "controls.session", "action.ai.follow", "action.ai.stop", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start", "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use"], "client_version": "0.1.0", "game": "tes3", "lua_api_revision": 129, "openmw_commit": "f4bec41444214a7903bebd178389ca22ca13f646", "openmw_version": "0.51.0", "platform": "windows-x86_64", "variant": "openmw"},
+    "runtime": {"capabilities": ["dialogue.text", "speech.say", "speech.listen", "controls.session", "action.ai.follow", "action.ai.stop", "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start", "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use", "action.inspect.report", "action.inventory.inspect"], "client_version": "0.1.0", "game": "tes3", "lua_api_revision": 129, "openmw_commit": "f4bec41444214a7903bebd178389ca22ca13f646", "openmw_version": "0.51.0", "platform": "windows-x86_64", "variant": "openmw"},
     "schema": "almsivi.session.init.v1"
   },
   "schema": "https://almsivi.invalid/schemas/v1/session-init.schema.json"

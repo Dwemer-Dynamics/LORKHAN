@@ -14,9 +14,10 @@ function M.execute(state, command, adapter, authority)
     authority.actor=state.identity authority.generation=state.generation
     local accepted, reason=actions.validate(state.actions,command,authority)
     if not accepted then return actions.result(state.actions,command.action_id,'rejected',reason,{}) end
-    if accepted.name=='inspect.report' then
-        if type(adapter.inspectReport)~='function' then return actions.result(state.actions,accepted.action_id,'failed','inspect_unavailable',{}) end
-        local ok, detail, observed=adapter.inspectReport(accepted.target)
+    if accepted.name=='inspect.report' or accepted.name=='inventory.inspect' then
+        local method=accepted.name=='inventory.inspect' and 'inventoryReport' or 'inspectReport'
+        if type(adapter[method])~='function' then return actions.result(state.actions,accepted.action_id,'failed','inspect_unavailable',{}) end
+        local ok, detail, observed=adapter[method](accepted.target)
         if ok then return actions.result(state.actions,accepted.action_id,'succeeded',detail or 'inspection_completed',observed or {}) end
         return actions.result(state.actions,accepted.action_id,'failed',detail or 'engine_rejected',{})
     end
@@ -42,14 +43,14 @@ function M.execute(state, command, adapter, authority)
         return nil,'action_pending'
     end
     local handler={
-        ['ai.follow']='followSelf',['ai.travel']='travelSelf',['ai.escort']='escortSelf',
-        ['ai.wander']='wanderSelf',['combat.start']='startCombat',
+        ['ai.follow']='followSelf',['ai.approach']='approachSelf',['ai.wait']='waitSelf',
+        ['ai.travel']='travelSelf',['ai.escort']='escortSelf',['ai.wander']='wanderSelf',['combat.start']='startCombat',
         ['animation.play']='playAnimation',['item.equip']='equipItem',['item.unequip']='unequipItem',['item.use']='useItem',
     }
     local method=handler[accepted.name]
     if type(adapter[method])~='function' then return actions.result(state.actions,accepted.action_id,'failed','action_unavailable',{}) end
-    local movement=accepted.name=='ai.follow' or accepted.name=='ai.travel' or accepted.name=='ai.escort'
-        or accepted.name=='ai.wander'
+    local movement=accepted.name=='ai.follow' or accepted.name=='ai.approach' or accepted.name=='ai.wait'
+        or accepted.name=='ai.travel' or accepted.name=='ai.escort' or accepted.name=='ai.wander'
     if movement and state.ownedAi then
         local replaced,replaceReason=adapter.stopAi(state.ownedAi)
         if not replaced then
@@ -60,12 +61,16 @@ function M.execute(state, command, adapter, authority)
     local ok,detail,observed=adapter[method](accepted.target,accepted.parameters)
     if ok then
         if accepted.name=='ai.follow' then state.ownedAi={type='Follow',actionId=accepted.action_id,target=accepted.target}
+        elseif accepted.name=='ai.approach' then state.ownedAi={type='Travel',actionId=accepted.action_id,
+            destination=util.copy(observed)}
+        elseif accepted.name=='ai.wait' then state.ownedAi={type='Wander',actionId=accepted.action_id,
+            distance=0,duration=accepted.parameters.duration_seconds/3600}
         elseif accepted.name=='ai.travel' then state.ownedAi={type='Travel',actionId=accepted.action_id,
             destination=util.copy(accepted.parameters)}
         elseif accepted.name=='ai.escort' then state.ownedAi={type='Escort',actionId=accepted.action_id,
             target=accepted.target,destination=util.copy(accepted.parameters)}
         elseif accepted.name=='ai.wander' then state.ownedAi={type='Wander',actionId=accepted.action_id,
-            distance=accepted.parameters.distance}
+            distance=accepted.parameters.distance,duration=accepted.parameters.duration_seconds/3600}
         elseif accepted.name=='combat.start' then state.ownedCombat={actionId=accepted.action_id,target=accepted.target} end
         return actions.result(state.actions,accepted.action_id,'succeeded',detail,observed or {})
     end
