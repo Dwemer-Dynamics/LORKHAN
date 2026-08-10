@@ -102,6 +102,22 @@
               "created_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
               "generation": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/generation"},
               "message_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+              "payload": {"$ref": "https://almsivi.invalid/schemas/v1/response.schema.json"},
+              "request_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+              "sequence": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/sequence"},
+              "session_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+              "turn_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+              "type": {"const": "response.complete", "type": "string"}
+            },
+            "required": ["message_id", "request_id", "turn_id", "session_id", "generation", "sequence", "created_at", "type", "payload"],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "created_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+              "generation": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/generation"},
+              "message_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
               "payload": {
                 "additionalProperties": false,
                 "properties": {"text": {"maxLength": 4096, "minLength": 1, "type": "string"}},

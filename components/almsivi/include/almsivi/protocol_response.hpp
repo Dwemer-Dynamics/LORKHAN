@@ -168,8 +168,70 @@ struct SpeechReadyEventPayload {
     std::string expiresAt;
 };
 
+struct CanonicalMediaDescriptor {
+    MediaId media;
+    MessageId dialogueMessage;
+    std::string sha256;
+    std::uint64_t bytes{};
+    MediaCodec codec{MediaCodec::wav};
+    std::uint64_t durationMs{};
+    std::string expiresAt;
+};
+
+struct CanonicalResponseMetadata {
+    std::optional<std::string> animation;
+    std::optional<std::string> emotion;
+    std::optional<std::string> mood;
+    std::optional<std::uint64_t> rechatDepth;
+    std::optional<bool> speechEnabled;
+    std::optional<std::string> source;
+};
+
+struct CanonicalResponseLine {
+    MessageId line;
+    std::uint64_t lineIndex{};
+    std::string speaker;
+    std::string displayName;
+    ProtocolIdentity speakerIdentity;
+    std::string action;
+    std::string text;
+    std::string subtitle;
+    std::string ttsText;
+    RequestId request;
+    MessageId utterance;
+    std::string listener;
+    ProtocolIdentity listenerIdentity;
+    std::string rechatTarget;
+    ProtocolIdentity rechatTargetIdentity;
+    bool finalResponseLine{};
+    CanonicalResponseMetadata metadata;
+    std::optional<CanonicalMediaDescriptor> media;
+    std::optional<std::string> ttsCacheKey;
+    std::optional<std::string> commandName;
+    std::vector<std::string> commandArgs;
+};
+
+struct CanonicalResponse {
+    MessageId response;
+    InstallationId installation;
+    ProfileId profile;
+    PlaythroughId playthrough;
+    SessionId session;
+    TurnId turn;
+    RequestId request;
+    Generation generation;
+    Generation runtimeGeneration;
+    std::string createdAt;
+    bool ok{};
+    std::vector<CanonicalResponseLine> lines;
+    bool close{};
+    std::string error;
+};
+
+struct ResponseCompleteEventPayload { CanonicalResponse response; };
+
 using ProtocolEventPayload = std::variant<TurnAcceptedEventPayload, DialogueDeltaEventPayload, DialogueCompleteEventPayload,
-    ActionIntentEventPayload, TurnCompleteEventPayload, TurnCancelledEventPayload,
+    ActionIntentEventPayload, ResponseCompleteEventPayload, TurnCompleteEventPayload, TurnCancelledEventPayload,
     TurnFailedEventPayload, SttTranscriptEventPayload, SttFailedEventPayload,
     SpeechReadyEventPayload>;
 
@@ -178,6 +240,7 @@ enum class ProtocolEventType {
     dialogue_delta,
     dialogue_complete,
     action_intent,
+    response_complete,
     turn_complete,
     turn_cancelled,
     turn_failed,

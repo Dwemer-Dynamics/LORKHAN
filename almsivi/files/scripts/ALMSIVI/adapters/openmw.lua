@@ -815,6 +815,14 @@ function M.playSpeech(mediaId, subtitle, volumeBoost)
     return bridge.playSpeech(mediaId,modules.self,subtitle or '',tonumber(volumeBoost) or 3)
 end
 
+
+function M.showSubtitle(subtitle)
+    local modules=loaded()
+    local bridge=M.bridge()
+    if not bridge or not bridge.showSubtitle or not modules.self then return nil,'subtitle_unavailable' end
+    return bridge.showSubtitle(modules.self,subtitle or '')
+end
+
 function M.stopSpeech()
     local modules=loaded()
     local bridge=M.bridge()

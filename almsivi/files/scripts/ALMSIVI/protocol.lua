@@ -4,7 +4,7 @@ local util = require('scripts.ALMSIVI.util')
 
 local M = {}
 local knownInternalEvents = {['turn.accepted']=true, ['dialogue.delta']=true, ['dialogue.complete']=true,
-    ['speech.ready']=true, ['action.intent']=true, ['turn.complete']=true,
+    ['speech.ready']=true, ['action.intent']=true, ['response.complete']=true, ['turn.complete']=true,
     ['turn.failed']=true, ['turn.cancelled']=true, ['stt.transcript']=true,
     ['stt.failed']=true}
 
@@ -12,6 +12,84 @@ function M.isUuid(value)
     if type(value)~='string' then return false end
     local a,b,c,d,e=value:match('^([0-9a-f]+)%-([0-9a-f]+)%-([0-9a-f]+)%-([0-9a-f]+)%-([0-9a-f]+)$')
     return a and #a==8 and #b==4 and #c==4 and #d==4 and #e==12 or false
+end
+
+local function validInteger(value,minimum,maximum)
+    return type(value)=='number' and value%1==0 and value>=(minimum or 0) and value<=(maximum or 9007199254740991)
+end
+
+local function validBoundedString(value,minimum,maximum)
+    return type(value)=='string' and #value>=(minimum or 0) and #value<=(maximum or math.huge)
+end
+
+local function validateCanonicalMedia(media,lineId)
+    if type(media)~='table' or not M.isUuid(media.media_id) or media.dialogue_message_id~=lineId
+        or not M.isUuid(media.dialogue_message_id) then return nil,'invalid_response_media_identity' end
+    if not validBoundedString(media.sha256,64,64) or media.sha256:match('[^0-9a-f]') then return nil,'invalid_response_media_sha256' end
+    if not validInteger(media.bytes,1,33554432) or not validInteger(media.duration_ms,1) then return nil,'invalid_response_media_bounds' end
+    if media.codec~='wav' and media.codec~='ogg' and media.codec~='mp3' then return nil,'invalid_response_media_codec' end
+    if not validBoundedString(media.expires_at,20,32) then return nil,'invalid_response_media_expiry' end
+    return true
+end
+
+function M.validateCanonicalResponse(response,event)
+    if type(response)~='table' or response.schema~='almsivi.response.v1' then return nil,'invalid_response_schema' end
+    for _,key in ipairs({'response_id','installation_id','profile_id','playthrough_id','session_id','turn_id','request_id'}) do
+        if not M.isUuid(response[key]) then return nil,'invalid_response_'..key end
+    end
+    if event and (response.response_id~=event.message_id or response.request_id~=event.request_id
+        or response.turn_id~=event.turn_id or response.session_id~=event.session_id
+        or response.generation~=event.generation) then return nil,'response_event_correlation_mismatch' end
+    if not validInteger(response.generation,1) or not validInteger(response.runtime_generation,1) then
+        return nil,'invalid_response_generation'
+    end
+    if not validBoundedString(response.created_at,20,32) or type(response.ok)~='boolean'
+        or type(response.close)~='boolean' or not validBoundedString(response.error,0,256)
+        or (response.ok and response.error~='') or (not response.ok and response.error=='') then
+        return nil,'invalid_response_outcome'
+    end
+    if type(response.lines)~='table' or #response.lines>64 then return nil,'invalid_response_lines' end
+    local seenLine,seenUtterance,seenMedia={},{},{}
+    local sawAction=false
+    local lastDialogue
+    for index,line in ipairs(response.lines) do
+        if type(line)~='table' or line.schema~='almsivi.response.line.v1' or line.line_index~=index-1
+            or not M.isUuid(line.line_id) or not M.isUuid(line.utterance_id) or line.request_id~=response.request_id then
+            return nil,'invalid_response_line'
+        end
+        if seenLine[line.line_id] or seenUtterance[line.utterance_id] then return nil,'duplicate_response_line' end
+        seenLine[line.line_id]=true seenUtterance[line.utterance_id]=true
+        if not validBoundedString(line.speaker,1,256) or not validBoundedString(line.display_name,1,256)
+            or not identity.validate(line.speaker_identity) or not validBoundedString(line.listener,1,256)
+            or not identity.validate(line.listener_identity) or not validBoundedString(line.rechat_target,1,256)
+            or not identity.validate(line.rechat_target_identity) or type(line.final_response_line)~='boolean'
+            or type(line.metadata)~='table' then return nil,'invalid_response_line_identity' end
+        if not validBoundedString(line.text,0,4096) or not validBoundedString(line.subtitle,0,4096)
+            or not validBoundedString(line.tts_text,0,4096) then return nil,'invalid_response_line_text' end
+        if line.action=='say' then
+            if sawAction or line.text=='' or line.subtitle=='' or line.tts_text=='' or line.command_name~=nil
+                or line.command_args~=nil then return nil,'invalid_response_say_line' end
+            lastDialogue=index
+        elseif line.action=='rolecommand' then
+            sawAction=true
+            if not validBoundedString(line.command_name,1,64) or not line.command_name:match('^[a-z][a-z0-9_.]*$')
+                or type(line.command_args)~='table' or #line.command_args>16 or line.media~=nil
+                or line.final_response_line then return nil,'invalid_response_command_line' end
+            for _,argument in ipairs(line.command_args) do
+                if not validBoundedString(argument,0,512) then return nil,'invalid_response_command_argument' end
+            end
+        else return nil,'invalid_response_line_action' end
+        if line.media then
+            local mediaOk,mediaReason=validateCanonicalMedia(line.media,line.line_id)
+            if not mediaOk then return nil,mediaReason end
+            if seenMedia[line.media.media_id] then return nil,'duplicate_response_media' end
+            seenMedia[line.media.media_id]=true
+        end
+    end
+    for index,line in ipairs(response.lines) do
+        if line.final_response_line~=(lastDialogue~=nil and index==lastDialogue) then return nil,'invalid_final_response_line' end
+    end
+    return true
 end
 
 local function isLanguageTag(value)
@@ -101,6 +179,10 @@ function M.validatePolledEvent(event)
         if type(event.payload.bytes)~='number' or event.payload.bytes%1~=0 or event.payload.bytes<1 or event.payload.bytes>33554432 then return nil,'invalid_speech_bytes' end
         if type(event.payload.duration_ms)~='number' or event.payload.duration_ms%1~=0 or event.payload.duration_ms<1 then return nil,'invalid_speech_duration' end
         if type(event.payload.expires_at)~='string' or not event.payload.expires_at:match('^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%dZ$') then return nil,'invalid_speech_expires_at' end
+    end
+    if event.type=='response.complete' then
+        local responseOk,responseReason=M.validateCanonicalResponse(event.payload,event)
+        if not responseOk then return nil,responseReason end
     end
     if event.type=='action.intent' and event.payload.schema~='almsivi.action-intent.v1' then return nil,'invalid_action_intent' end
     return true

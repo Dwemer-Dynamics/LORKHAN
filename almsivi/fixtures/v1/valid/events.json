@@ -113,29 +113,56 @@
         "generation": 7,
         "message_id": "00000000-0000-4000-8000-000000000004",
         "payload": {
-          "status": "complete"
+          "close": false,
+          "created_at": "2026-07-18T20:00:04Z",
+          "error": "provider_unavailable",
+          "generation": 7,
+          "installation_id": "00000000-0000-4000-8000-000000000040",
+          "lines": [],
+          "ok": false,
+          "playthrough_id": "00000000-0000-4000-8000-000000000041",
+          "profile_id": "00000000-0000-4000-8000-000000000042",
+          "request_id": "00000000-0000-4000-8000-000000000010",
+          "response_id": "00000000-0000-4000-8000-000000000004",
+          "runtime_generation": 7,
+          "schema": "almsivi.response.v1",
+          "session_id": "00000000-0000-4000-8000-000000000007",
+          "turn_id": "00000000-0000-4000-8000-000000000008"
         },
         "request_id": "00000000-0000-4000-8000-000000000010",
         "sequence": 4,
         "session_id": "00000000-0000-4000-8000-000000000007",
         "turn_id": "00000000-0000-4000-8000-000000000008",
-        "type": "turn.complete"
+        "type": "response.complete"
       },
       {
         "created_at": "2026-07-18T20:00:05Z",
+        "generation": 7,
+        "message_id": "00000000-0000-4000-8000-000000000014",
+        "payload": {
+          "status": "complete"
+        },
+        "request_id": "00000000-0000-4000-8000-000000000010",
+        "sequence": 5,
+        "session_id": "00000000-0000-4000-8000-000000000007",
+        "turn_id": "00000000-0000-4000-8000-000000000008",
+        "type": "turn.complete"
+      },
+      {
+        "created_at": "2026-07-18T20:00:06Z",
         "generation": 7,
         "message_id": "00000000-0000-4000-8000-000000000005",
         "payload": {
           "reason": "user_interrupt"
         },
         "request_id": "00000000-0000-4000-8000-000000000010",
-        "sequence": 5,
+        "sequence": 6,
         "session_id": "00000000-0000-4000-8000-000000000007",
         "turn_id": "00000000-0000-4000-8000-000000000008",
         "type": "turn.cancelled"
       },
       {
-        "created_at": "2026-07-18T20:00:06Z",
+        "created_at": "2026-07-18T20:00:07Z",
         "generation": 7,
         "message_id": "00000000-0000-4000-8000-000000000006",
         "payload": {
@@ -144,13 +171,13 @@
           "retry_after_ms": 1000
         },
         "request_id": "00000000-0000-4000-8000-000000000010",
-        "sequence": 6,
+        "sequence": 7,
         "session_id": "00000000-0000-4000-8000-000000000007",
         "turn_id": "00000000-0000-4000-8000-000000000008",
         "type": "turn.failed"
       },
       {
-        "created_at": "2026-07-18T20:00:07Z",
+        "created_at": "2026-07-18T20:00:08Z",
         "generation": 7,
         "message_id": "00000000-0000-4000-8000-000000000007",
         "payload": {
@@ -163,13 +190,13 @@
           "sha256": "e12e115acf4552b2568b55e93cbd39394c4ef81c82447faed7738adf06e9ba61"
         },
         "request_id": "00000000-0000-4000-8000-000000000010",
-        "sequence": 7,
+        "sequence": 8,
         "session_id": "00000000-0000-4000-8000-000000000007",
         "turn_id": "00000000-0000-4000-8000-000000000008",
         "type": "speech.ready"
       },
       {
-        "created_at": "2026-07-18T20:00:08Z",
+        "created_at": "2026-07-18T20:00:09Z",
         "generation": 7,
         "message_id": "00000000-0000-4000-8000-000000000008",
         "payload": {
@@ -177,13 +204,13 @@
           "text": "Hello there."
         },
         "request_id": "00000000-0000-4000-8000-000000000031",
-        "sequence": 8,
+        "sequence": 9,
         "session_id": "00000000-0000-4000-8000-000000000007",
         "turn_id": "00000000-0000-4000-8000-000000000032",
         "type": "stt.transcript"
       },
       {
-        "created_at": "2026-07-18T20:00:09Z",
+        "created_at": "2026-07-18T20:00:10Z",
         "generation": 7,
         "message_id": "00000000-0000-4000-8000-000000000009",
         "payload": {
@@ -192,14 +219,14 @@
           "retry_after_ms": 1000
         },
         "request_id": "00000000-0000-4000-8000-000000000031",
-        "sequence": 9,
+        "sequence": 10,
         "session_id": "00000000-0000-4000-8000-000000000007",
         "turn_id": "00000000-0000-4000-8000-000000000032",
         "type": "stt.failed"
       }
     ],
     "generation": 7,
-    "next_after": 9,
+    "next_after": 10,
     "schema": "almsivi.events.v1",
     "session_id": "00000000-0000-4000-8000-000000000007"
   },

@@ -73,7 +73,7 @@ actions = text(SCRIPTS / "actions.lua")
 check("safe action allowlist is explicit", all(name in actions for name in (
     "'inspect.report'", "'ai.follow'", "'ai.stop'", "'ai.wander'", "'combat.start'", "'combat.stop'",
     "'animation.play'", "'item.use'")))
-check("combat start requires player confirmation", "event.payload.tier>=2" in text(SCRIPTS / "orchestrator.lua")
+check("combat start requires player confirmation", "command.tier>=2" in text(SCRIPTS / "orchestrator.lua")
       and "ALMSIVI_ACTION_CONFIRMATION" in text(SCRIPTS / "player.lua"))
 check("ai.follow accepts exact integer distance 192", "distance%1~=0 or distance~=192" in actions)
 check("invented ai.follow range absent", "distance < 64" not in actions and "distance > 512" not in actions)
@@ -211,7 +211,8 @@ check("terminal speech releases bounded client media state",
     all(fragment in global_script for fragment in ["ALMSIVI_SPEECH_STATUS=function(event)",
         "orchestrator.speechStatus(state,event)", "emit('ALMSIVI_SPEECH_STATUS',event)"])
     and all(fragment in orchestrator_script for fragment in ["function M.speechStatus(state,event)",
-        "state.conversation.pendingMedia[event.media_id]=nil", "state.bridge.releaseMedia(event.media_id)"]))
+        "local releaseId=item.media and item.media.media_id or nil", "state.bridge.releaseMedia(releaseId)"])
+    and "state.byMedia[item.media.media_id]=nil" in text(SCRIPTS / "response_queue.lua"))
 check("vanilla actor activation only supplies a passive target hint", all(fragment in global_script for fragment in [
     "interfaces.Activation.addHandlerForType(types.NPC,observeActivatedActor)",
     "interfaces.Activation.addHandlerForType(types.Creature,observeActivatedActor)",

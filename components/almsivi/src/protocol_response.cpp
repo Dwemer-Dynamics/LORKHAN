@@ -207,6 +207,282 @@ Result<ProtocolIdentity> parseIdentity(const json::Value& value)
         std::move(display).value()});
 }
 
+bool isLowercaseHash(std::string_view value)
+{
+    if (value.size() != 64)
+        return false;
+    return std::all_of(value.begin(), value.end(), [](const char character) {
+        return (character >= '0' && character <= '9') || (character >= 'a' && character <= 'f');
+    });
+}
+
+bool isCommandName(std::string_view value)
+{
+    if (value.empty() || value.size() > 64 || value.front() < 'a' || value.front() > 'z')
+        return false;
+    return std::all_of(value.begin() + 1, value.end(), [](const char character) {
+        return (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9')
+            || character == '_' || character == '.';
+    });
+}
+
+bool isCacheKey(std::string_view value)
+{
+    if (value.empty() || value.size() > 256)
+        return false;
+    return std::all_of(value.begin(), value.end(), [](const char character) {
+        return (character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z')
+            || (character >= '0' && character <= '9') || character == '.' || character == '_'
+            || character == ':' || character == '-';
+    });
+}
+
+Result<CanonicalMediaDescriptor> parseCanonicalMedia(const json::Value& value)
+{
+    const auto* object = value.object();
+    if (!object || !hasExactly(*object,
+            {"media_id", "dialogue_message_id", "sha256", "bytes", "codec", "duration_ms", "expires_at"}))
+        return invalidSchemaValue<CanonicalMediaDescriptor>("canonical media fields mismatch");
+    auto media = requireUuid(*object, "media_id");
+    auto dialogue = requireUuid(*object, "dialogue_message_id");
+    auto hash = requireString(*object, "sha256");
+    auto bytes = requireUnsigned(*object, "bytes", kMaxMediaBytes, 1);
+    auto codec = requireString(*object, "codec");
+    auto duration = requireUnsigned(*object, "duration_ms", kMaximumProtocolInteger, 1);
+    auto expiresAt = requireTimestamp(*object, "expires_at");
+    if (!media) return invalidSchemaValue<CanonicalMediaDescriptor>(media.error().message);
+    if (!dialogue) return invalidSchemaValue<CanonicalMediaDescriptor>(dialogue.error().message);
+    if (!hash || !isLowercaseHash(hash.value()))
+        return invalidSchemaValue<CanonicalMediaDescriptor>("canonical media hash mismatch");
+    if (!bytes) return invalidSchemaValue<CanonicalMediaDescriptor>(bytes.error().message);
+    if (!codec) return invalidSchemaValue<CanonicalMediaDescriptor>(codec.error().message);
+    MediaCodec mappedCodec;
+    if (codec.value() == "wav") mappedCodec = MediaCodec::wav;
+    else if (codec.value() == "ogg") mappedCodec = MediaCodec::ogg;
+    else if (codec.value() == "mp3") mappedCodec = MediaCodec::mp3;
+    else return invalidSchemaValue<CanonicalMediaDescriptor>("canonical media codec mismatch");
+    if (!duration) return invalidSchemaValue<CanonicalMediaDescriptor>(duration.error().message);
+    if (!expiresAt) return invalidSchemaValue<CanonicalMediaDescriptor>(expiresAt.error().message);
+    return Result<CanonicalMediaDescriptor>::success({MediaId(std::move(media).value()),
+        MessageId(std::move(dialogue).value()), std::move(hash).value(), bytes.value(), mappedCodec,
+        duration.value(), std::move(expiresAt).value()});
+}
+
+Result<CanonicalResponseMetadata> parseCanonicalMetadata(const json::Value& value)
+{
+    const auto* object = value.object();
+    if (!object || !hasExactly(*object, {},
+            {"animation", "emotion", "mood", "rechat_depth", "speech_enabled", "source"}))
+        return invalidSchemaValue<CanonicalResponseMetadata>("canonical response metadata fields mismatch");
+    CanonicalResponseMetadata metadata;
+    auto parseOptionalString = [&](std::string_view key, std::optional<std::string>& destination) -> Result<void> {
+        if (!json::find(*object, key))
+            return Result<void>::success();
+        auto parsed = requireString(*object, key, 0, 64);
+        if (!parsed)
+            return invalidSchema(parsed.error().message);
+        destination = std::move(parsed).value();
+        return Result<void>::success();
+    };
+    for (auto [key, destination] : std::array<std::pair<std::string_view, std::optional<std::string>*>, 4>{
+             std::pair{"animation", &metadata.animation}, {"emotion", &metadata.emotion},
+             {"mood", &metadata.mood}, {"source", &metadata.source}}) {
+        auto parsed = parseOptionalString(key, *destination);
+        if (!parsed)
+            return invalidSchemaValue<CanonicalResponseMetadata>(parsed.error().message);
+    }
+    if (json::find(*object, "rechat_depth")) {
+        auto depth = requireUnsigned(*object, "rechat_depth", 20);
+        if (!depth) return invalidSchemaValue<CanonicalResponseMetadata>(depth.error().message);
+        metadata.rechatDepth = depth.value();
+    }
+    if (json::find(*object, "speech_enabled")) {
+        auto enabled = requireBoolean(*object, "speech_enabled");
+        if (!enabled) return invalidSchemaValue<CanonicalResponseMetadata>(enabled.error().message);
+        metadata.speechEnabled = enabled.value();
+    }
+    return Result<CanonicalResponseMetadata>::success(std::move(metadata));
+}
+
+Result<CanonicalResponseLine> parseCanonicalLine(const json::Value& value, const RequestId& responseRequest,
+    std::uint64_t expectedIndex)
+{
+    const auto* object = value.object();
+    if (!object || !hasExactly(*object,
+            {"schema", "line_id", "line_index", "speaker", "display_name", "speaker_identity", "action",
+                "text", "subtitle", "tts_text", "request_id", "utterance_id", "listener", "listener_identity",
+                "rechat_target", "rechat_target_identity", "final_response_line", "metadata"},
+            {"media", "tts_cache_key", "command_name", "command_args"}))
+        return invalidSchemaValue<CanonicalResponseLine>("canonical response line fields mismatch");
+    auto schema = requireString(*object, "schema");
+    auto lineId = requireUuid(*object, "line_id");
+    auto lineIndex = requireUnsigned(*object, "line_index", 63);
+    auto speaker = requireString(*object, "speaker", 1, 256);
+    auto displayName = requireString(*object, "display_name", 1, 256);
+    auto action = requireString(*object, "action");
+    auto text = requireString(*object, "text", 0, 4096);
+    auto subtitle = requireString(*object, "subtitle", 0, 4096);
+    auto ttsText = requireString(*object, "tts_text", 0, 4096);
+    auto requestId = requireUuid(*object, "request_id");
+    auto utteranceId = requireUuid(*object, "utterance_id");
+    auto listener = requireString(*object, "listener", 1, 256);
+    auto rechatTarget = requireString(*object, "rechat_target", 1, 256);
+    auto finalLine = requireBoolean(*object, "final_response_line");
+    if (!schema || schema.value() != "almsivi.response.line.v1")
+        return invalidSchemaValue<CanonicalResponseLine>("canonical response line schema mismatch");
+    if (!lineId) return invalidSchemaValue<CanonicalResponseLine>(lineId.error().message);
+    if (!lineIndex || lineIndex.value() != expectedIndex)
+        return invalidSchemaValue<CanonicalResponseLine>("canonical response line index mismatch");
+    if (!speaker) return invalidSchemaValue<CanonicalResponseLine>(speaker.error().message);
+    if (!displayName) return invalidSchemaValue<CanonicalResponseLine>(displayName.error().message);
+    if (!action || (action.value() != "say" && action.value() != "rolecommand"))
+        return invalidSchemaValue<CanonicalResponseLine>("canonical response line action mismatch");
+    if (!text) return invalidSchemaValue<CanonicalResponseLine>(text.error().message);
+    if (!subtitle) return invalidSchemaValue<CanonicalResponseLine>(subtitle.error().message);
+    if (!ttsText) return invalidSchemaValue<CanonicalResponseLine>(ttsText.error().message);
+    if (!requestId || requestId.value() != responseRequest.value())
+        return invalidSchemaValue<CanonicalResponseLine>("canonical response line request mismatch");
+    if (!utteranceId) return invalidSchemaValue<CanonicalResponseLine>(utteranceId.error().message);
+    if (!listener) return invalidSchemaValue<CanonicalResponseLine>(listener.error().message);
+    if (!rechatTarget) return invalidSchemaValue<CanonicalResponseLine>(rechatTarget.error().message);
+    if (!finalLine) return invalidSchemaValue<CanonicalResponseLine>(finalLine.error().message);
+    auto speakerIdentity = parseIdentity(*json::find(*object, "speaker_identity"));
+    auto listenerIdentity = parseIdentity(*json::find(*object, "listener_identity"));
+    auto rechatTargetIdentity = parseIdentity(*json::find(*object, "rechat_target_identity"));
+    auto metadata = parseCanonicalMetadata(*json::find(*object, "metadata"));
+    if (!speakerIdentity) return invalidSchemaValue<CanonicalResponseLine>(speakerIdentity.error().message);
+    if (!listenerIdentity) return invalidSchemaValue<CanonicalResponseLine>(listenerIdentity.error().message);
+    if (!rechatTargetIdentity) return invalidSchemaValue<CanonicalResponseLine>(rechatTargetIdentity.error().message);
+    if (!metadata) return invalidSchemaValue<CanonicalResponseLine>(metadata.error().message);
+
+    CanonicalResponseLine line{MessageId(std::move(lineId).value()), lineIndex.value(), std::move(speaker).value(),
+        std::move(displayName).value(), std::move(speakerIdentity).value(), std::move(action).value(),
+        std::move(text).value(), std::move(subtitle).value(), std::move(ttsText).value(),
+        RequestId(std::move(requestId).value()), MessageId(std::move(utteranceId).value()),
+        std::move(listener).value(), std::move(listenerIdentity).value(), std::move(rechatTarget).value(),
+        std::move(rechatTargetIdentity).value(), finalLine.value(), std::move(metadata).value()};
+
+    if (const auto* mediaValue = json::find(*object, "media")) {
+        auto media = parseCanonicalMedia(*mediaValue);
+        if (!media) return invalidSchemaValue<CanonicalResponseLine>(media.error().message);
+        if (media.value().dialogueMessage != line.line)
+            return invalidSchemaValue<CanonicalResponseLine>("canonical media dialogue line mismatch");
+        line.media = std::move(media).value();
+    }
+    if (json::find(*object, "tts_cache_key")) {
+        auto cacheKey = requireString(*object, "tts_cache_key", 1, 256);
+        if (!cacheKey || !isCacheKey(cacheKey.value()))
+            return invalidSchemaValue<CanonicalResponseLine>("canonical response cache key mismatch");
+        line.ttsCacheKey = std::move(cacheKey).value();
+    }
+    if (json::find(*object, "command_name")) {
+        auto commandName = requireString(*object, "command_name", 1, 64);
+        if (!commandName || !isCommandName(commandName.value()))
+            return invalidSchemaValue<CanonicalResponseLine>("canonical response command name mismatch");
+        line.commandName = std::move(commandName).value();
+    }
+    if (const auto* argumentsValue = json::find(*object, "command_args")) {
+        const auto* arguments = argumentsValue->array();
+        if (!arguments || arguments->size() > 16)
+            return invalidSchemaValue<CanonicalResponseLine>("canonical response command arguments mismatch");
+        for (const auto& argumentValue : *arguments) {
+            const auto* argument = argumentValue.string();
+            if (!argument || argument->size() > 512)
+                return invalidSchemaValue<CanonicalResponseLine>("canonical response command argument mismatch");
+            line.commandArgs.push_back(*argument);
+        }
+    }
+    if (line.action == "say") {
+        if (line.text.empty() || line.subtitle.empty() || line.ttsText.empty()
+            || line.commandName || json::find(*object, "command_args"))
+            return invalidSchemaValue<CanonicalResponseLine>("canonical say line fields mismatch");
+    } else if (!line.commandName || !json::find(*object, "command_args") || line.media || line.finalResponseLine) {
+        return invalidSchemaValue<CanonicalResponseLine>("canonical rolecommand line fields mismatch");
+    }
+    return Result<CanonicalResponseLine>::success(std::move(line));
+}
+
+Result<CanonicalResponse> parseCanonicalResponse(const json::Value& value, const ResponseCorrelation& correlation)
+{
+    const auto* object = value.object();
+    if (!object || !hasExactly(*object,
+            {"schema", "response_id", "installation_id", "profile_id", "playthrough_id", "session_id", "turn_id",
+                "request_id", "generation", "runtime_generation", "created_at", "ok", "lines", "close", "error"}))
+        return invalidSchemaValue<CanonicalResponse>("canonical response fields mismatch");
+    auto schema = requireString(*object, "schema");
+    auto responseId = requireUuid(*object, "response_id");
+    auto installationId = requireUuid(*object, "installation_id");
+    auto profileId = requireUuid(*object, "profile_id");
+    auto playthroughId = requireUuid(*object, "playthrough_id");
+    auto sessionId = requireUuid(*object, "session_id");
+    auto turnId = requireUuid(*object, "turn_id");
+    auto requestId = requireUuid(*object, "request_id");
+    auto generation = requireUnsigned(*object, "generation", kMaximumProtocolInteger, 1);
+    auto runtimeGeneration = requireUnsigned(*object, "runtime_generation", kMaximumProtocolInteger, 1);
+    auto createdAt = requireTimestamp(*object, "created_at");
+    auto ok = requireBoolean(*object, "ok");
+    auto close = requireBoolean(*object, "close");
+    auto error = requireString(*object, "error", 0, 256);
+    if (!schema || schema.value() != "almsivi.response.v1")
+        return invalidSchemaValue<CanonicalResponse>("canonical response schema mismatch");
+    if (!responseId || responseId.value() != correlation.message.value())
+        return invalidSchemaValue<CanonicalResponse>("canonical response message mismatch");
+    if (!installationId) return invalidSchemaValue<CanonicalResponse>(installationId.error().message);
+    if (!profileId) return invalidSchemaValue<CanonicalResponse>(profileId.error().message);
+    if (!playthroughId) return invalidSchemaValue<CanonicalResponse>(playthroughId.error().message);
+    if (!sessionId || sessionId.value() != correlation.session.value())
+        return invalidSchemaValue<CanonicalResponse>("canonical response session mismatch");
+    if (!turnId || turnId.value() != correlation.turn.value())
+        return invalidSchemaValue<CanonicalResponse>("canonical response turn mismatch");
+    if (!requestId || requestId.value() != correlation.request.value())
+        return invalidSchemaValue<CanonicalResponse>("canonical response request mismatch");
+    if (!generation || generation.value() != correlation.generation.value())
+        return invalidSchemaValue<CanonicalResponse>("canonical response generation mismatch");
+    if (!runtimeGeneration) return invalidSchemaValue<CanonicalResponse>(runtimeGeneration.error().message);
+    if (!createdAt) return invalidSchemaValue<CanonicalResponse>(createdAt.error().message);
+    if (!ok) return invalidSchemaValue<CanonicalResponse>(ok.error().message);
+    if (!close) return invalidSchemaValue<CanonicalResponse>(close.error().message);
+    if (!error) return invalidSchemaValue<CanonicalResponse>(error.error().message);
+    if ((ok.value() && !error.value().empty()) || (!ok.value() && error.value().empty()))
+        return invalidSchemaValue<CanonicalResponse>("canonical response outcome mismatch");
+    const auto* linesValue = json::find(*object, "lines");
+    const auto* lines = linesValue ? linesValue->array() : nullptr;
+    if (!lines || lines->size() > 64)
+        return invalidSchemaValue<CanonicalResponse>("canonical response lines mismatch");
+    CanonicalResponse response{MessageId(std::move(responseId).value()), InstallationId(std::move(installationId).value()),
+        ProfileId(std::move(profileId).value()), PlaythroughId(std::move(playthroughId).value()),
+        SessionId(std::move(sessionId).value()), TurnId(std::move(turnId).value()), RequestId(std::move(requestId).value()),
+        Generation(generation.value()), Generation(runtimeGeneration.value()), std::move(createdAt).value(), ok.value(), {},
+        close.value(), std::move(error).value()};
+    std::set<std::string> lineIds;
+    std::set<std::string> utteranceIds;
+    std::set<std::string> mediaIds;
+    bool sawAction = false;
+    std::optional<std::size_t> finalDialogueIndex;
+    for (std::size_t index = 0; index < lines->size(); ++index) {
+        auto line = parseCanonicalLine((*lines)[index], response.request, index);
+        if (!line) return invalidSchemaValue<CanonicalResponse>(line.error().message);
+        if (!lineIds.insert(line.value().line.value()).second || !utteranceIds.insert(line.value().utterance.value()).second)
+            return invalidSchemaValue<CanonicalResponse>("canonical response line identity duplicated");
+        if (line.value().media && !mediaIds.insert(line.value().media->media.value()).second)
+            return invalidSchemaValue<CanonicalResponse>("canonical response media identity duplicated");
+        if (line.value().action == "rolecommand")
+            sawAction = true;
+        else {
+            if (sawAction)
+                return invalidSchemaValue<CanonicalResponse>("canonical dialogue must precede rolecommands");
+            finalDialogueIndex = index;
+        }
+        response.lines.push_back(std::move(line).value());
+    }
+    for (std::size_t index = 0; index < response.lines.size(); ++index) {
+        const bool expectedFinal = finalDialogueIndex && index == *finalDialogueIndex;
+        if (response.lines[index].finalResponseLine != expectedFinal)
+            return invalidSchemaValue<CanonicalResponse>("canonical final response line mismatch");
+    }
+    return Result<CanonicalResponse>::success(std::move(response));
+}
+
 Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& envelopeTurn)
 {
     const auto* object = value.object();
@@ -648,6 +924,11 @@ Result<ProtocolEvent> parseEvent(const json::Value& value, const SessionId& resp
         if (!intent) return invalidSchemaValue<ProtocolEvent>(intent.error().message);
         event.type = ProtocolEventType::action_intent;
         event.payload = ActionIntentEventPayload{std::move(intent).value()};
+    } else if (type.value() == "response.complete") {
+        auto response = parseCanonicalResponse(*payloadValue, correlation.value());
+        if (!response) return invalidSchemaValue<ProtocolEvent>(response.error().message);
+        event.type = ProtocolEventType::response_complete;
+        event.payload = ResponseCompleteEventPayload{std::move(response).value()};
     } else if (type.value() == "turn.complete") {
         if (!hasExactly(*payload, {"status"})) return invalidSchemaValue<ProtocolEvent>("turn complete payload fields mismatch");
         auto status = requireString(*payload, "status");

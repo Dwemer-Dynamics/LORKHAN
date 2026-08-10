@@ -10,3 +10,10 @@ The current working implementation adds CHIM-compatible scoped event, speech, re
 rechat-chain records. Automated server and Lua tests prove ordered persistence, prompt history,
 action-free depth-bounded rechat, and the rule that continuation is submitted only after final spoken
 playback. These working-tree checks are not promoted to committed, deployed, or in-game proof here.
+
+The current FIFO checkpoint adds a strict typed `response.complete` bridge and one Lua-owned response
+lane with dialogue-before-action ordering, response/runtime generation fencing, bounded identity
+deduplication, media/action attachment, terminal delivery receipts, queued-action cancellation, and
+playback-gated rechat. The 46-test Lua runtime suite, standalone MSVC native CTest, protocol/patch
+validators, and the pinned OpenMW 0.51 Release `openmw` plus `openmw-launcher` build pass locally.
+This is automated/build evidence only; it does not claim deployment or in-game playback proof.

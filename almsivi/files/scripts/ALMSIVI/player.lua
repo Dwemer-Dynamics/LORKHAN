@@ -33,6 +33,7 @@ local speechActors={}
 local narratorSpeech
 local ownsUiMode=false
 local controlsSignature
+local responseQueueSnapshot={}
 local MODES={'Standard','Whisper','Close','Shout'}
 local EQUIPMENT_SLOTS={'helmet','cuirass','greaves','left_pauldron','right_pauldron','left_gauntlet',
     'right_gauntlet','boots','shirt','pants','skirt','robe','left_ring','right_ring','amulet','belt',
@@ -467,6 +468,16 @@ render=function()
             'Nearby combat: '..tostring(nearbyCombat),
             'Bridge queue: '..tostring(bridge and bridge.outbound or 'unavailable')..' outbound / '..
                 tostring(bridge and bridge.inbound or 'unavailable')..' inbound',
+            'Response queue: '..tostring(responseQueueSnapshot.pending_dialogue or 0)..' dialogue / '..
+                tostring(responseQueueSnapshot.pending_actions or 0)..' actions; unfinished='..
+                tostring(responseQueueSnapshot.unfinished==true),
+            'Response dispatch: '..tostring(responseQueueSnapshot.dispatched or 0)..' dispatched / '..
+                tostring(responseQueueSnapshot.completed or 0)..' completed / '..
+                tostring(responseQueueSnapshot.cancelled or 0)..' cancelled',
+            'Response drops: '..tostring(responseQueueSnapshot.stale_drops or 0)..' stale / '..
+                tostring(responseQueueSnapshot.deduplicated or 0)..' duplicate',
+            'Active response: '..tostring(responseQueueSnapshot.active_response_id or 'none')..' line='..
+                tostring(responseQueueSnapshot.active_line_id or 'none'),
             'Last bridge error: '..tostring(nativeValue('lastError','none')),
         }
         local selectedDeviceId=math.floor(tonumber(behaviorSettings and behaviorSettings:get('recordingDevice')) or -1)
@@ -1100,6 +1111,11 @@ return {
                 send('ALMSIVI_SPEECH_STATUS',{actor=command.actor,media_id=command.media_id,active=true,status='playing'})
             else narratorSpeech=command reportNarrator('failed',reason or 'playback_failed') end
         end,
+        ALMSIVI_NARRATOR_SUBTITLE=function(command)
+            stopNarrator('subtitle_replaced') narratorSpeech=command
+            local ok,reason=adapter.showSubtitle(command.subtitle)
+            reportNarrator(ok and 'played' or 'failed',ok and 'subtitle_displayed' or (reason or 'subtitle_unavailable'))
+        end,
         ALMSIVI_NARRATOR_STOP=function(event) stopNarrator(event and event.reason or 'client_interrupted') end,
         ALMSIVI_STATUS=function(event) state.ui.status=event.status state.ui.diagnostics=event.reason render() end,
         ALMSIVI_VOICE_STATUS=function(event)
@@ -1182,6 +1198,10 @@ return {
                 if event.active==true then speechActors[key]=true else speechActors[key]=nil end
                 render()
             end
+        end,
+        ALMSIVI_QUEUE=function(event)
+            responseQueueSnapshot=event or {}
+            if state.ui.visible and state.ui.panel=='diagnostics' then render() end
         end,
         ALMSIVI_ACTIVATION_STATUS=function(event)
             state.ui.status=event.status=='nearby' and ('nearby agents pinned: '..tostring(event.added or 0))

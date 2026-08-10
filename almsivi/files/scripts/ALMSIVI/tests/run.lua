@@ -30,6 +30,29 @@ local function event(sequence,kind,generation,payload)
  return {message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,session_id=UUID.session,generation=generation,
   sequence=sequence,created_at='2026-07-19T20:00:0'..tostring(sequence)..'Z',type=kind,payload=payload or {}}
 end
+local function uuid(value) return string.format('00000000-0000-4000-8000-%012x',value) end
+local function dialogueLine(index,lineId,speaker,listener,text,final,speechEnabled)
+ return {schema='almsivi.response.line.v1',line_id=lineId,line_index=index,speaker=speaker.display_name,
+  display_name=speaker.display_name,speaker_identity=speaker,action='say',text=text,subtitle=text,tts_text=text,
+  request_id=UUID.request,utterance_id=uuid(100+index),listener=listener.display_name,listener_identity=listener,
+  rechat_target=speaker.display_name,rechat_target_identity=speaker,final_response_line=final,
+  metadata={rechat_depth=0,speech_enabled=speechEnabled~=false,source='provider'}}
+end
+local function actionLine(index,lineId,speaker,listener,name,args)
+ return {schema='almsivi.response.line.v1',line_id=lineId,line_index=index,speaker=speaker.display_name,
+  display_name=speaker.display_name,speaker_identity=speaker,action='rolecommand',text='',subtitle='',tts_text='',
+  request_id=UUID.request,utterance_id=uuid(100+index),listener=listener.display_name,listener_identity=listener,
+  rechat_target=speaker.display_name,rechat_target_identity=speaker,command_name=name,command_args=args or {},
+  final_response_line=false,metadata={rechat_depth=0,source='provider'}}
+end
+local function responseEvent(sequence,lines,generation,responseId)
+ responseId=responseId or uuid(80+sequence)
+ local response={schema='almsivi.response.v1',response_id=responseId,installation_id=uuid(60),profile_id=uuid(61),
+  playthrough_id=uuid(62),session_id=UUID.session,turn_id=UUID.turn,request_id=UUID.request,
+  generation=generation,runtime_generation=generation,created_at='2026-07-19T20:00:00Z',ok=true,
+  lines=lines,close=false,error=''}
+ local result=event(sequence,'response.complete',generation,response);result.message_id=responseId return result
+end
 
 test('lifecycle invalidates generation and cancels native',function()
  local b=fake.bridge() local s=orchestrator.new(b) local before=s.generation orchestrator.lifecycle(s,'load')
@@ -164,14 +187,15 @@ test('media prepare handoff is opaque generation-bound and fake-adapter tested',
  local s=orchestrator.new(b,capture,function(actor,name,payload) capture(name,payload) return true end)
  s.settings={presentation={ttsVolumeBoost=4}}
  orchestrator.configureSession(s,UUID.session);s.conversation.turn={requestId=UUID.request,turnId=UUID.turn,generation=1,status='accepted',terminal=false}
- truthy(s.events:accept(event(1,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Hello.'})))
- truthy(conversation.apply(s.conversation,event(1,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Hello.'})))
  local descriptor={media_id='00000000-0000-4000-8000-000000000005',dialogue_message_id=UUID.message,sha256=string.rep('a',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
- b.results={event(2,'speech.ready',1,descriptor)};eq(orchestrator.poll(s),1);eq(#b.prepared,1);eq(b.prepared[1].media_id,descriptor.media_id);eq(b.prepared[1].path,nil);eq(b.prepared[1].url,nil)
+ local complete=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Hello.'});complete.message_id=UUID.message
+ b.results={responseEvent(1,{dialogueLine(0,UUID.message,npc,playerId,'Hello.',true,true)},1),complete,
+  event(3,'speech.ready',1,descriptor)}
+ eq(orchestrator.poll(s),3);eq(#b.prepared,1);eq(b.prepared[1].media_id,descriptor.media_id);eq(b.prepared[1].path,nil);eq(b.prepared[1].url,nil)
  b.media[descriptor.media_id]={state='ready'};orchestrator.poll(s)
-  local speak=emitted[#emitted];eq(speak.name,'ALMSIVI_ACTOR_SPEAK');eq(speak.payload.media_id,descriptor.media_id);eq(speak.payload.subtitle,'Hello.');eq(speak.payload.generation,1);eq(speak.payload.dialogue_message_id,UUID.message);eq(speak.payload.session_id,UUID.session);eq(speak.payload.tts_volume_boost,4)
-  truthy(orchestrator.speechStatus(s,{media_id=descriptor.media_id,active=false,status='played'}));eq(next(s.conversation.pendingMedia),nil);eq(s.activeSpeechMediaId,nil)
-  orchestrator.lifecycle(s,'load');eq(next(s.conversation.pendingMedia),nil)
+ local speak=emitted[#emitted];eq(speak.name,'ALMSIVI_ACTOR_SPEAK');eq(speak.payload.media_id,descriptor.media_id);eq(speak.payload.subtitle,'Hello.');eq(speak.payload.generation,1);eq(speak.payload.dialogue_message_id,UUID.message);eq(speak.payload.session_id,UUID.session);eq(speak.payload.tts_volume_boost,4)
+  truthy(orchestrator.speechStatus(s,{media_id=descriptor.media_id,active=false,status='played'}));truthy(s.responseQueue.unfinished==false);eq(s.activeSpeechMediaId,nil)
+  orchestrator.lifecycle(s,'load');truthy(s.responseQueue.unfinished==false)
  end)
 test('rechat waits for terminal playback and submits one correlated continuation',function()
  local b=fake.bridge() local s=orchestrator.new(b,nil,function()return true end)
@@ -183,11 +207,12 @@ test('rechat waits for terminal playback and submits one correlated continuation
   playthrough_id='00000000-0000-4000-8000-000000000062',created_at='2026-07-19T20:00:00Z',platform='windows',
   content_fingerprint='sha256:'..string.rep('a',64),text='Hello.',input_key='player:1',language='en-US',
   speaker=playerId,context={},capabilities={'dialogue.text','speech.say'},recent_action_results={},ui_source='almsivi_text'}))
- local dialogue=event(1,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Greetings.'})
+ local dialogue=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Greetings.'});dialogue.message_id=UUID.message
  local descriptor={media_id='00000000-0000-4000-8000-000000000005',dialogue_message_id=UUID.message,
   sha256=string.rep('a',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
- b.results={dialogue,event(2,'speech.ready',1,descriptor),event(3,'turn.complete',1,{status='complete'})}
- eq(orchestrator.poll(s),3);eq(#b.submitted,1)
+ b.results={responseEvent(1,{dialogueLine(0,UUID.message,npc,playerId,'Greetings.',true,true)},1),dialogue,
+  event(3,'speech.ready',1,descriptor),event(4,'turn.complete',1,{status='complete'})}
+ eq(orchestrator.poll(s),4);eq(#b.submitted,1)
  b.media[descriptor.media_id]={state='ready'};orchestrator.poll(s);eq(#b.submitted,1)
  truthy(orchestrator.speechStatus(s,{media_id=descriptor.media_id,active=false,status='played'}))
  eq(#b.submitted,2);eq(b.submitted[2].payload.ui_source,'almsivi_rechat')
@@ -203,23 +228,69 @@ test('multi-speaker media plays in dialogue order without overlap',function()
  local b=fake.bridge() local sent={}
  local s=orchestrator.new(b,nil,function(_,name,payload)table.insert(sent,{name=name,payload=payload})return true end)
  orchestrator.configureSession(s,UUID.session);s.conversation.turn={requestId=UUID.request,turnId=UUID.turn,generation=1,status='accepted',terminal=false}
- local first=event(1,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='First.'})
+ local first=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='First.'})
  first.message_id='00000000-0000-4000-8000-000000000041'
  local secondSpeaker=enemy
- local second=event(3,'dialogue.complete',1,{speaker=secondSpeaker,addressee=playerId,text='Second.'})
+ local second=event(4,'dialogue.complete',1,{speaker=secondSpeaker,addressee=playerId,text='Second.'})
  second.message_id='00000000-0000-4000-8000-000000000042'
- truthy(conversation.apply(s.conversation,first))
  local one={media_id='00000000-0000-4000-8000-000000000031',dialogue_message_id=first.message_id,sha256=string.rep('a',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
- truthy(conversation.apply(s.conversation,event(2,'speech.ready',1,one)))
- truthy(conversation.apply(s.conversation,second))
  local two={media_id='00000000-0000-4000-8000-000000000032',dialogue_message_id=second.message_id,sha256=string.rep('b',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
- truthy(conversation.apply(s.conversation,event(4,'speech.ready',1,two)))
- orchestrator.poll(s)
- b.media[one.media_id]={state='ready'} b.media[two.media_id]={state='ready'}
+ b.results={responseEvent(1,{dialogueLine(0,first.message_id,npc,playerId,'First.',false,true),
+  dialogueLine(1,second.message_id,secondSpeaker,playerId,'Second.',true,true)},1),first,
+  event(3,'speech.ready',1,one),second,event(5,'speech.ready',1,two)}
+ eq(orchestrator.poll(s),5)
+ b.media[one.media_id]={state='ready'}
  orchestrator.poll(s);eq(#sent,1);eq(sent[1].payload.media_id,one.media_id)
  orchestrator.speechStatus(s,{media_id=one.media_id,active=false,status='played'})
+ b.media[two.media_id]={state='ready'}
  orchestrator.poll(s);eq(#sent,2);eq(sent[2].payload.media_id,two.media_id)
  eq(#s.conversation.transcript,2);eq(s.conversation.transcript[1].text,'First.');eq(s.conversation.transcript[2].text,'Second.')
+end)
+test('canonical FIFO gates rolecommands behind terminal dialogue delivery',function()
+ local b=fake.bridge() local sent={}
+ local s=orchestrator.new(b,nil,function(_,name,payload)table.insert(sent,{name=name,payload=payload})return true end)
+ orchestrator.configureSession(s,UUID.session);s.conversation.turn={requestId=UUID.request,turnId=UUID.turn,generation=1,status='accepted',terminal=false}
+ local lineId=uuid(140);local actionLineId=uuid(141);local actionId=uuid(142)
+ local dialogue=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Follow me.'});dialogue.message_id=lineId
+ local intent={schema='almsivi.action-intent.v1',action_id=actionId,request_id=UUID.request,turn_id=UUID.turn,
+  session_id=UUID.session,generation=1,name='ai.follow',tier=1,actor=npc,target=playerId,
+  parameters={distance=192},expires_at='2026-07-19T21:00:00Z'}
+ local actionEvent=event(3,'action.intent',1,intent);actionEvent.message_id=actionLineId
+ b.results={responseEvent(1,{dialogueLine(0,lineId,npc,playerId,'Follow me.',true,false),
+  actionLine(1,actionLineId,npc,playerId,'ai.follow',{'distance=192'})},1),dialogue,actionEvent,
+  event(4,'turn.complete',1,{status='complete'})}
+ eq(orchestrator.poll(s),4);eq(#sent,1);eq(sent[1].name,'ALMSIVI_ACTOR_SUBTITLE')
+ truthy(orchestrator.speechStatus(s,{media_id=lineId,active=false,status='played'}))
+ eq(#sent,2);eq(sent[2].name,'ALMSIVI_ACTOR_ACTION');eq(sent[2].payload.action_id,actionId)
+ truthy(orchestrator.actionResult(s,{result={action_id=actionId}}));truthy(s.responseQueue.unfinished==false)
+ local snapshot=require('scripts.ALMSIVI.response_queue').snapshot(s.responseQueue)
+ eq(snapshot.dispatched,2);eq(snapshot.completed,2);eq(snapshot.pending_dialogue,0);eq(snapshot.pending_actions,0)
+end)
+test('halt actions cancels queued rolecommands and reports terminal receipts',function()
+ local b=fake.bridge() local sent={}
+ local s=orchestrator.new(b,nil,function(_,name,payload)table.insert(sent,{name=name,payload=payload})return true end)
+ orchestrator.configureSession(s,UUID.session);s.conversation.turn={requestId=UUID.request,turnId=UUID.turn,generation=1,status='accepted',terminal=false}
+ orchestrator.activate(s,npc,{});s.attachments[identity.key(npc)]=npc
+ local dialogueId=uuid(150);local firstLineId=uuid(151);local secondLineId=uuid(152)
+ local firstActionId=uuid(153);local secondActionId=uuid(154)
+ local dialogue=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Wait here.'});dialogue.message_id=dialogueId
+ local first={schema='almsivi.action-intent.v1',action_id=firstActionId,turn_id=UUID.turn,name='ai.follow',tier=1,
+  actor=npc,target=playerId,parameters={distance=192},expires_at='2026-07-19T21:00:00Z'}
+ local second={schema='almsivi.action-intent.v1',action_id=secondActionId,turn_id=UUID.turn,name='ai.stop',tier=1,
+  actor=npc,target=playerId,parameters={},expires_at='2026-07-19T21:00:00Z'}
+ local firstEvent=event(3,'action.intent',1,first);firstEvent.message_id=firstLineId
+ local secondEvent=event(4,'action.intent',1,second);secondEvent.message_id=secondLineId
+ b.results={responseEvent(1,{dialogueLine(0,dialogueId,npc,playerId,'Wait here.',true,false),
+  actionLine(1,firstLineId,npc,playerId,'ai.follow',{'distance=192'}),
+  actionLine(2,secondLineId,npc,playerId,'ai.stop',{})},1),dialogue,firstEvent,secondEvent,
+  event(5,'turn.complete',1,{status='complete'})}
+ eq(orchestrator.poll(s),5);eq(sent[1].name,'ALMSIVI_ACTOR_SUBTITLE')
+ truthy(orchestrator.haltActions(s,'user_halt_actions'));eq(#b.actionResults,2)
+ eq(b.actionResults[1].status,'cancelled');eq(b.actionResults[2].reason_code,'user_halt_actions')
+ truthy(orchestrator.speechStatus(s,{media_id=dialogueId,active=false,status='played'}))
+ eq(#sent,2);eq(sent[2].name,'ALMSIVI_ACTOR_HALT_ACTIONS')
+ local snapshot=require('scripts.ALMSIVI.response_queue').snapshot(s.responseQueue)
+ eq(snapshot.pending_actions,0);truthy(snapshot.unfinished==false)
 end)
 test('narrator media uses the ordered player-local speech lane',function()
  local b=fake.bridge() local emitted={} local actorSends=0
@@ -227,9 +298,10 @@ test('narrator media uses the ordered player-local speech lane',function()
   function()actorSends=actorSends+1 return true end)
  orchestrator.configureSession(s,UUID.session);s.conversation.turn={requestId=UUID.request,turnId=UUID.turn,generation=1,status='accepted',terminal=false}
  local narrator=fake.identity('narrator','almsivi:narrator',0);narrator.display_name='The Narrator'
- truthy(conversation.apply(s.conversation,event(1,'dialogue.complete',1,{speaker=narrator,addressee=playerId,text='The fog gathers.'})))
  local media={media_id='00000000-0000-4000-8000-000000000033',dialogue_message_id=UUID.message,sha256=string.rep('c',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
- truthy(conversation.apply(s.conversation,event(2,'speech.ready',1,media)));orchestrator.poll(s)
+ local dialogue=event(2,'dialogue.complete',1,{speaker=narrator,addressee=playerId,text='The fog gathers.'});dialogue.message_id=UUID.message
+ b.results={responseEvent(1,{dialogueLine(0,UUID.message,narrator,playerId,'The fog gathers.',true,true)},1),
+  dialogue,event(3,'speech.ready',1,media)};eq(orchestrator.poll(s),3)
  b.media[media.media_id]={state='ready'};orchestrator.poll(s)
  eq(actorSends,0);eq(emitted[#emitted].name,'ALMSIVI_NARRATOR_SPEAK');eq(emitted[#emitted].payload.actor.kind,'narrator')
 end)
@@ -246,7 +318,7 @@ test('ordinary halt interrupts owned work and keeps the bridge recoverable',func
  local s=orchestrator.new(b,nil,function(_,name)table.insert(sent,name)return true end)
  orchestrator.activate(s,npc,{}) s.attachments[identity.key(npc)]=npc truthy(conversation.setTarget(s.conversation,npc))
  orchestrator.halt(s);eq(b.halted,false);eq(b.cancelled[1],1);eq(s.conversation.target.record_id,npc.record_id)
- eq(sent[1],'ALMSIVI_ACTOR_STOP');eq(s.hardHalted,false)
+ eq(sent[1],'ALMSIVI_ACTOR_STOP_SPEECH');eq(sent[2],'ALMSIVI_ACTOR_STOP');eq(s.hardHalted,false)
 end)
 test('travel and escort require player-captured bounded destinations and retain owned package identity',function()
  local registry=identity.Registry();registry:activate(npc,{});registry:activate(playerId,{})

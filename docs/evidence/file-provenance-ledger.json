@@ -254,6 +254,7 @@
         "almsivi/files/scripts/ALMSIVI/player.lua",
         "almsivi/files/scripts/ALMSIVI/player_state.lua",
         "almsivi/files/scripts/ALMSIVI/protocol.lua",
+        "almsivi/files/scripts/ALMSIVI/response_queue.lua",
         "almsivi/files/scripts/ALMSIVI/settings.lua",
         "almsivi/files/scripts/ALMSIVI/storage.lua",
         "almsivi/files/scripts/ALMSIVI/targeting.lua",

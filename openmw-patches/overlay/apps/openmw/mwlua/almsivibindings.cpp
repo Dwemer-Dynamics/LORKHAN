@@ -339,6 +339,71 @@ namespace MWLua
             return result;
         }
 
+        sol::table canonicalMediaTable(sol::state_view lua, const almsivi::CanonicalMediaDescriptor& media)
+        {
+            sol::table result(lua, sol::create);
+            result["media_id"] = media.media.value(); result["dialogue_message_id"] = media.dialogueMessage.value();
+            result["sha256"] = media.sha256; result["bytes"] = media.bytes;
+            result["codec"] = media.codec == almsivi::MediaCodec::wav ? "wav"
+                : media.codec == almsivi::MediaCodec::ogg ? "ogg" : "mp3";
+            result["duration_ms"] = media.durationMs; result["expires_at"] = media.expiresAt;
+            return result;
+        }
+
+        sol::table canonicalMetadataTable(sol::state_view lua, const almsivi::CanonicalResponseMetadata& metadata)
+        {
+            sol::table result(lua, sol::create);
+            if (metadata.animation) result["animation"] = *metadata.animation;
+            if (metadata.emotion) result["emotion"] = *metadata.emotion;
+            if (metadata.mood) result["mood"] = *metadata.mood;
+            if (metadata.rechatDepth) result["rechat_depth"] = *metadata.rechatDepth;
+            if (metadata.speechEnabled) result["speech_enabled"] = *metadata.speechEnabled;
+            if (metadata.source) result["source"] = *metadata.source;
+            return result;
+        }
+
+        sol::table canonicalLineTable(sol::state_view lua, const almsivi::CanonicalResponseLine& line)
+        {
+            sol::table result(lua, sol::create);
+            result["schema"] = "almsivi.response.line.v1"; result["line_id"] = line.line.value();
+            result["line_index"] = line.lineIndex; result["speaker"] = line.speaker;
+            result["display_name"] = line.displayName; result["speaker_identity"] = identityTable(lua, line.speakerIdentity);
+            result["action"] = line.action; result["text"] = line.text; result["subtitle"] = line.subtitle;
+            result["tts_text"] = line.ttsText; result["request_id"] = line.request.value();
+            result["utterance_id"] = line.utterance.value(); result["listener"] = line.listener;
+            result["listener_identity"] = identityTable(lua, line.listenerIdentity);
+            result["rechat_target"] = line.rechatTarget;
+            result["rechat_target_identity"] = identityTable(lua, line.rechatTargetIdentity);
+            result["final_response_line"] = line.finalResponseLine;
+            result["metadata"] = canonicalMetadataTable(lua, line.metadata);
+            if (line.media) result["media"] = canonicalMediaTable(lua, *line.media);
+            if (line.ttsCacheKey) result["tts_cache_key"] = *line.ttsCacheKey;
+            if (line.commandName) result["command_name"] = *line.commandName;
+            if (line.action == "rolecommand") {
+                sol::table arguments(lua, sol::create);
+                for (std::size_t index = 0; index < line.commandArgs.size(); ++index)
+                    arguments[index + 1] = line.commandArgs[index];
+                result["command_args"] = arguments;
+            }
+            return result;
+        }
+
+        sol::table canonicalResponseTable(sol::state_view lua, const almsivi::CanonicalResponse& response)
+        {
+            sol::table result(lua, sol::create), lines(lua, sol::create);
+            result["schema"] = "almsivi.response.v1"; result["response_id"] = response.response.value();
+            result["installation_id"] = response.installation.value(); result["profile_id"] = response.profile.value();
+            result["playthrough_id"] = response.playthrough.value(); result["session_id"] = response.session.value();
+            result["turn_id"] = response.turn.value(); result["request_id"] = response.request.value();
+            result["generation"] = response.generation.value();
+            result["runtime_generation"] = response.runtimeGeneration.value(); result["created_at"] = response.createdAt;
+            result["ok"] = response.ok; result["close"] = response.close; result["error"] = response.error;
+            for (std::size_t index = 0; index < response.lines.size(); ++index)
+                lines[index + 1] = canonicalLineTable(lua, response.lines[index]);
+            result["lines"] = lines;
+            return result;
+        }
+
         MWWorld::Ptr mutablePtrOrThrow(const sol::object& object)
         {
             ObjectVariant variant(object);
@@ -636,6 +701,19 @@ namespace MWLua
                 {
                     return failure(lua, error.what());
                 }
+            }
+
+            std::tuple<sol::object, sol::object> showSubtitle(sol::state_view lua, const sol::object& actor,
+                const std::string& subtitle, LuaManager* luaManager)
+            {
+                try
+                {
+                    static_cast<void>(mutablePtrOrThrow(actor));
+                    if (subtitle.empty()) return failure(lua, "subtitle_empty");
+                    if (luaManager && Settings::gui().mSubtitles) luaManager->addUIMessage(subtitle);
+                    return success(lua, "shown");
+                }
+                catch (const std::exception& error) { return failure(lua, error.what()); }
             }
 
             bool isSpeechActive(const sol::object& actor) const
@@ -941,6 +1019,10 @@ namespace MWLua
                             parameters["slot"] = item.secondaryStringParameter;
                         if (item.kind == almsivi::ActionIntentKind::item_use) parameters["record_id"] = item.stringParameter;
                         payload["parameters"] = parameters; payload["expires_at"] = item.expiresAt; break; }
+                    case almsivi::ProtocolEventType::response_complete: {
+                        result["type"] = "response.complete";
+                        const auto& item = std::get<almsivi::ResponseCompleteEventPayload>(event.payload);
+                        payload = canonicalResponseTable(lua, item.response); break; }
                     case almsivi::ProtocolEventType::turn_complete: result["type"] = "turn.complete"; break;
                     case almsivi::ProtocolEventType::turn_cancelled:
                         result["type"] = "turn.cancelled";
@@ -1055,6 +1137,9 @@ namespace MWLua
             api["playSpeech"] = [lua, luaManager](const std::string& id, const sol::object& actor,
                                     sol::optional<std::string> subtitle, sol::optional<float> volumeBoost) {
                 return client().playSpeech(lua, id, actor, subtitle.value_or(""), volumeBoost.value_or(3.f), luaManager);
+            };
+            api["showSubtitle"] = [lua, luaManager](const sol::object& actor, const std::string& subtitle) {
+                return client().showSubtitle(lua, actor, subtitle, luaManager);
             };
             api["isSpeechActive"] = [](const sol::object& actor) { return client().isSpeechActive(actor); };
             api["stopSpeech"] = [](const sol::object& actor) { return client().stopSpeech(actor); };

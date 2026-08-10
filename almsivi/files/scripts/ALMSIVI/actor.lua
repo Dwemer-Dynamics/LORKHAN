@@ -126,6 +126,11 @@ return {
                     active=true,status='playing'})
             else reportDelivery(command,'failed',reason or 'playback_failed') end
         end,
+        ALMSIVI_ACTOR_SUBTITLE=function(command)
+            if not state then return end
+            local ok,reason=adapter.showSubtitle(command.subtitle)
+            reportDelivery(command,ok and 'played' or 'failed',ok and 'subtitle_displayed' or (reason or 'subtitle_unavailable'))
+        end,
         ALMSIVI_ACTOR_STOP=function()
             if state then
                 cancelFace('client_interrupted')

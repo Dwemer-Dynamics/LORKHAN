@@ -4,6 +4,7 @@ local context=require('scripts.ALMSIVI.context')
 local conversation=require('scripts.ALMSIVI.conversation')
 local identity=require('scripts.ALMSIVI.identity')
 local protocol=require('scripts.ALMSIVI.protocol')
+local responseQueue=require('scripts.ALMSIVI.response_queue')
 local storage=require('scripts.ALMSIVI.storage')
 local targeting=require('scripts.ALMSIVI.targeting')
 local util=require('scripts.ALMSIVI.util')
@@ -15,7 +16,8 @@ function M.new(bridge,emit,sendActor,manageActor)
     local state={bridge=bridge,emit=emit or function() end,sendActor=sendActor or function() return nil,'actor_sender_unavailable' end,
         generation=generation,sessionId=nil,registry=identity.Registry(),agents=agentRegistry.new(),
         manageActor=manageActor or function() return nil,'actor_manager_unavailable' end,
-        conversation=conversation.new(generation),events=nil,attachments={},media={},pendingConfirmations={},
+        conversation=conversation.new(generation),responseQueue=responseQueue.new(generation,generation),events=nil,
+        attachments={},media={},pendingConfirmations={},
         activeSpeechMediaId=nil,rechat=nil,rechatSeed=nil,pendingVoice=nil,pendingStt={},openMic=false,openMicRequested=false,
         combatThreats={},combatVerified={},
         dialogueMode='Standard',disabled=false,hardHalted=false,agentsSignature=nil}
@@ -48,13 +50,59 @@ local function signalAllActors(state,eventName,reason)
     end
 end
 
+local function currentRuntimeGeneration(state)
+    local reported=state.bridge and state.bridge.generation and state.bridge.generation()
+    return type(reported)=='number' and reported%1==0 and reported>=1 and reported or state.generation
+end
+
+local function emitQueue(state)
+    state.emit('ALMSIVI_QUEUE',responseQueue.snapshot(state.responseQueue))
+end
+
+local function reportQueuedDialogue(state,item,status,reason)
+    if not state.bridge or not state.bridge.newMessageId or not state.bridge.utcNow
+        or not state.bridge.submitDialogueDeliveryResult then return false end
+    local result=protocol.dialogueDeliveryResult({message_id=state.bridge.newMessageId(),request_id=item.requestId,
+        dialogue_message_id=item.line.line_id,turn_id=item.turnId,session_id=item.sessionId,
+        generation=item.generation,speaker=item.line.speaker_identity,status=status,
+        reason_code=reason,completed_at=state.bridge.utcNow()})
+    if not result then return false end
+    return state.bridge.submitDialogueDeliveryResult(result)~=nil
+end
+
+local function reportQueuedAction(state,item,status,reason)
+    if not item.intent or not state.bridge or not state.bridge.newMessageId or not state.bridge.utcNow
+        or not state.bridge.submitActionResult then return false end
+    local result={schema='almsivi.action-result.v1',message_id=state.bridge.newMessageId(),request_id=item.requestId,
+        action_id=item.intent.action_id,turn_id=item.turnId,session_id=item.sessionId,generation=item.generation,
+        status=status,reason_code=reason,observed={},completed_at=state.bridge.utcNow()}
+    return state.bridge.submitActionResult(result)~=nil
+end
+
+local function cancelResponseLane(state,reason,stopSpeech)
+    if stopSpeech then
+        signalAllActors(state,'ALMSIVI_ACTOR_STOP_SPEECH',reason)
+        state.emit('ALMSIVI_NARRATOR_STOP',{reason=reason})
+    end
+    local released,undelivered=responseQueue.cancel(state.responseQueue,reason)
+    for _,item in ipairs(undelivered) do reportQueuedDialogue(state,item,'interrupted',reason) end
+    if state.bridge and state.bridge.releaseMedia then
+        for _,mediaId in ipairs(released) do state.bridge.releaseMedia(mediaId) end
+    end
+    state.activeSpeechMediaId=nil
+    emitQueue(state)
+end
+
 function M.lifecycle(state,kind)
     if state.bridge and state.bridge.cancelVoiceCapture then state.bridge.cancelVoiceCapture() end
+    cancelResponseLane(state,kind,true)
     detachAll(state,kind)
     state.generation=conversation.invalidate(state.conversation,kind)
     if state.bridge then state.bridge.cancelGeneration(state.generation-1) end
     state.events=state.sessionId and protocol.CursoredEvents(state.sessionId,state.generation) or nil
     state.pendingConfirmations={}
+    responseQueue.setFence(state.responseQueue,state.generation,currentRuntimeGeneration(state),kind)
+    emitQueue(state)
     state.activeSpeechMediaId=nil
     state.rechat=nil state.rechatSeed=nil
     state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
@@ -87,6 +135,7 @@ function M.deactivate(state,actorIdentity,object)
         emitCombatState(state)
         if state.attachments[key] then state.sendActor(actorIdentity,'ALMSIVI_ACTOR_DETACH',{actor=actorIdentity}) state.attachments[key]=nil end
         if state.conversation.target and identity.same(state.conversation.target,actorIdentity) then
+            cancelResponseLane(state,'target_inactive',true)
             conversation.clearTarget(state.conversation)
             state.emit('ALMSIVI_TARGET',{target=nil,audience={}})
         end
@@ -371,7 +420,10 @@ function M.submitText(state,args)
         if not protocol.isUuid(args[key]) then return nil,'invalid_'..key end
     end
     local isRechat=args.ui_source=='almsivi_rechat'
-    if not isRechat then state.rechat=nil end
+    if not isRechat then
+        state.rechat=nil
+        if not responseQueue.idle(state.responseQueue) then cancelResponseLane(state,'superseded_by_player',true) end
+    end
     local requestId=args.request_id
     local turnId=args.turn_id
     local ok,reason=conversation.begin(state.conversation,requestId,turnId,args.input_key or args.text)
@@ -406,13 +458,7 @@ function M.submitText(state,args)
     args.context.audience=audience
     args.context.dialogueMode=mode
     args.context.recentVanillaDialogue=util.arrayCopy(state.recentVanillaDialogue or {},constants.MAX_RECENT_VANILLA_DIALOGUE)
-    local runtimeGeneration=state.generation
-    if state.bridge.generation then
-        local reportedGeneration=state.bridge.generation()
-        if type(reportedGeneration)=='number' and reportedGeneration%1==0 and reportedGeneration>=1 then
-            runtimeGeneration=reportedGeneration
-        end
-    end
+    local runtimeGeneration=currentRuntimeGeneration(state)
     local dto,buildReason=protocol.turn({message_id=args.message_id,request_id=requestId,turn_id=turnId,
         installation_id=args.installation_id,profile_id=args.profile_id,playthrough_id=args.playthrough_id,
         session_id=state.sessionId,generation=state.generation,runtime_generation=runtimeGeneration,
@@ -438,68 +484,85 @@ function M.submitText(state,args)
     return requestId
 end
 
-local function preparePendingMedia(state)
-    local finished={}
-    local function reportFailure(mediaId,item,reason)
-        local messageId=state.bridge.newMessageId and state.bridge.newMessageId()
-        local completedAt=state.bridge.utcNow and state.bridge.utcNow()
-        if messageId and completedAt and state.bridge.submitDialogueDeliveryResult then
-            local result=protocol.dialogueDeliveryResult({message_id=messageId,request_id=item.requestId,
-                dialogue_message_id=item.messageId,turn_id=item.turnId,session_id=item.sessionId,
-                generation=item.generation,speaker=item.speaker,status='failed',reason_code='media_prepare_failed',
-                completed_at=completedAt})
-            if result then state.bridge.submitDialogueDeliveryResult(result) end
-        end
-        if state.bridge.releaseMedia then state.bridge.releaseMedia(mediaId) end
-        finished[#finished+1]=mediaId
-        print('[ALMSIVI] media preparation failed: '..tostring(reason))
-    end
-    for mediaId,item in pairs(state.conversation.pendingMedia) do
-        if item.status=='new' then
-            local requestId,reason=state.bridge.prepareMedia(item.descriptor)
-            if requestId then item.status='preparing' item.prepareRequestId=requestId
-            else
-                item.status='failed' item.reason=reason or 'media_prepare_rejected'
-                reportFailure(mediaId,item,item.reason)
+local emitInbound
+local function pumpResponseQueue(state)
+    for _=1,64 do
+        local item=responseQueue.head(state.responseQueue)
+        if not item or state.responseQueue.active then return end
+        if item.generation~=state.generation or item.runtimeGeneration~=currentRuntimeGeneration(state) then
+            responseQueue.failHead(state.responseQueue,'stale_dispatch_generation') emitQueue(state)
+        elseif item.kind=='dialogue' then
+            if item.status=='waiting_media' then return end
+            if item.status=='new' then
+                local requestId,reason=state.bridge.prepareMedia(item.media)
+                if requestId then responseQueue.beginMediaPreparation(state.responseQueue,item.media.media_id,requestId) emitQueue(state)
+                else
+                    reportQueuedDialogue(state,item,'failed','media_prepare_failed')
+                    if state.bridge.releaseMedia then state.bridge.releaseMedia(item.media.media_id) end
+                    responseQueue.failHead(state.responseQueue,reason or 'media_prepare_rejected') emitQueue(state)
+                end
+            elseif item.status=='preparing' then
+                local status=state.bridge.mediaStatus(item.media.media_id)
+                if not status or status.state=='preparing' then return end
+                if status.state=='ready' then responseQueue.updateMedia(state.responseQueue,item.media.media_id,'ready') emitQueue(state)
+                elseif status.state=='failed' or status.state=='expired' or status.state=='cancelled' then
+                    responseQueue.updateMedia(state.responseQueue,item.media.media_id,status.state,status.reason)
+                    reportQueuedDialogue(state,item,status.state=='expired' and 'expired' or 'failed','media_prepare_failed')
+                    if state.bridge.releaseMedia then state.bridge.releaseMedia(item.media.media_id) end
+                    responseQueue.failHead(state.responseQueue,status.reason or status.state) emitQueue(state)
+                else return end
+            elseif item.status=='ready' or item.status=='subtitle_ready' then
+                local subtitleOnly=item.status=='subtitle_ready'
+                local mediaId=subtitleOnly and item.line.line_id or item.media.media_id
+                local ttsVolumeBoost=math.max(1,math.min(4,math.floor(tonumber(
+                    state.settings and state.settings.presentation and state.settings.presentation.ttsVolumeBoost) or 3)))
+                local command={actor=util.copy(item.line.speaker_identity),media_id=mediaId,subtitle=item.line.subtitle,
+                    request_id=item.requestId,turn_id=item.turnId,session_id=item.sessionId,
+                    dialogue_message_id=item.line.line_id,generation=item.generation,
+                    expires_at=item.media and item.media.expires_at or '',tts_volume_boost=ttsVolumeBoost,
+                    subtitle_only=subtitleOnly}
+                local sent,reason
+                if command.actor.kind=='narrator' and state.settings and state.settings.narrator
+                    and state.settings.narrator.enabled~=true then
+                    reportQueuedDialogue(state,item,'failed','narrator_disabled')
+                    if item.media and state.bridge.releaseMedia then state.bridge.releaseMedia(mediaId) end
+                    responseQueue.failHead(state.responseQueue,'narrator_disabled') emitQueue(state)
+                else
+                    local marked,markReason=responseQueue.markDispatched(state.responseQueue,item)
+                    if not marked then print('[ALMSIVI] response dispatch rejected: '..tostring(markReason)) return end
+                    state.activeSpeechMediaId=mediaId emitQueue(state)
+                    if command.actor.kind=='narrator' then
+                        state.emit(subtitleOnly and 'ALMSIVI_NARRATOR_SUBTITLE' or 'ALMSIVI_NARRATOR_SPEAK',command) sent=true
+                    else
+                        sent,reason=state.sendActor(command.actor,
+                            subtitleOnly and 'ALMSIVI_ACTOR_SUBTITLE' or 'ALMSIVI_ACTOR_SPEAK',command)
+                    end
+                    if not sent then
+                        state.activeSpeechMediaId=nil
+                        reportQueuedDialogue(state,item,'failed',subtitleOnly and 'subtitle_unavailable' or 'actor_speech_unavailable')
+                        if item.media and state.bridge.releaseMedia then state.bridge.releaseMedia(mediaId) end
+                        responseQueue.failHead(state.responseQueue,reason or 'dialogue_dispatch_failed') emitQueue(state)
+                    else return end
+                end
+            else return end
+        else
+            if item.status~='ready' or not item.intent then return end
+            local command=item.intent
+            local marked,markReason=responseQueue.markDispatched(state.responseQueue,item)
+            if not marked then print('[ALMSIVI] action dispatch rejected: '..tostring(markReason)) return end
+            emitQueue(state)
+            if command.tier>=2 then
+                state.pendingConfirmations[command.action_id]=util.copy(command)
+                emitInbound(state,'ALMSIVI_ACTION_CONFIRMATION',{action_id=command.action_id,name=command.name,
+                    actor=util.copy(command.actor),target=util.copy(command.target)})
+                return
             end
-        elseif item.status=='preparing' then
-            local status=state.bridge.mediaStatus(mediaId)
-            if status and status.state=='ready' then
-                item.status='ready'
-            elseif status and (status.state=='failed' or status.state=='expired' or status.state=='cancelled') then
-                item.status=status.state item.reason=status.reason
-                reportFailure(mediaId,item,status.reason or status.state)
-            end
+            local sent,reason=state.sendActor(command.actor,'ALMSIVI_ACTOR_ACTION',command)
+            if not sent then
+                reportQueuedAction(state,item,'failed',reason or 'actor_action_unavailable')
+                responseQueue.failHead(state.responseQueue,reason or 'actor_action_unavailable') emitQueue(state)
+            else return end
         end
-    end
-    for _,mediaId in ipairs(finished) do state.conversation.pendingMedia[mediaId]=nil end
-    if state.activeSpeechMediaId then return end
-    local nextMediaId,nextItem
-    for mediaId,item in pairs(state.conversation.pendingMedia) do
-        if not nextItem or (item.ordinal or math.huge)<(nextItem.ordinal or math.huge) then
-            nextMediaId,nextItem=mediaId,item
-        end
-    end
-    if not nextItem or nextItem.status~='ready' then return end
-    nextItem.status='playing' state.activeSpeechMediaId=nextMediaId
-    local ttsVolumeBoost=math.max(1,math.min(4,math.floor(tonumber(
-        state.settings and state.settings.presentation and state.settings.presentation.ttsVolumeBoost) or 3)))
-    local command={actor=nextItem.speaker,
-        media_id=nextMediaId,subtitle=nextItem.subtitle,request_id=nextItem.requestId,turn_id=nextItem.turnId,
-        session_id=nextItem.sessionId,dialogue_message_id=nextItem.messageId,generation=nextItem.generation,
-        expires_at=nextItem.descriptor.expires_at,tts_volume_boost=ttsVolumeBoost}
-    local sent,reason
-    if nextItem.speaker.kind=='narrator' and state.settings and state.settings.narrator
-        and state.settings.narrator.enabled~=true then
-        state.activeSpeechMediaId=nil nextItem.status='failed'
-        reportFailure(nextMediaId,nextItem,'narrator_disabled')
-        return
-    elseif nextItem.speaker.kind=='narrator' then state.emit('ALMSIVI_NARRATOR_SPEAK',command) sent=true
-    else sent,reason=state.sendActor(nextItem.speaker,'ALMSIVI_ACTOR_SPEAK',command) end
-    if not sent then
-        state.activeSpeechMediaId=nil nextItem.status='failed'
-        reportFailure(nextMediaId,nextItem,reason or 'actor_speech_unavailable')
-        for _,mediaId in ipairs(finished) do state.conversation.pendingMedia[mediaId]=nil end
     end
 end
 
@@ -510,7 +573,7 @@ local function submitPlaybackRechat(state)
     if not chain or chain.cancelled or chain.requestInFlight or settings.rechat~=true
         or state.dialogueMode=='Whisper' or state.dialogueMode=='Close' or not state.rechatSeed
         or not state.conversation.turn or not state.conversation.turn.terminal then return false end
-    if state.activeSpeechMediaId or next(state.conversation.pendingMedia)~=nil then return false end
+    if not responseQueue.idle(state.responseQueue) then return false end
     if not chain.lastSpeaker or chain.lastSpeaker.kind=='player' then
         chain.cancelled=true return false
     end
@@ -536,22 +599,26 @@ end
 -- Advance the single ordered speech lane only after the actor reports a terminal playback state.
 function M.speechStatus(state,event)
     if type(event)~='table' or type(event.media_id)~='string' then return false end
-    local item=state.conversation.pendingMedia[event.media_id]
     if event.active==true then
-        if item then item.status='playing' end
         state.activeSpeechMediaId=event.media_id
-        return item~=nil
+        return state.responseQueue.active~=nil
     end
-    if item then state.conversation.pendingMedia[event.media_id]=nil end
+    local item=state.responseQueue.active
+    if not item or item.kind~='dialogue' then return false end
+    local releaseId=item.media and item.media.media_id or nil
+    local completed,advance=responseQueue.completeDialogue(state.responseQueue,event.media_id,event.status)
+    if not completed then return false end
     if state.activeSpeechMediaId==event.media_id then state.activeSpeechMediaId=nil end
-    if state.bridge and state.bridge.releaseMedia then state.bridge.releaseMedia(event.media_id) end
-    if item and event.status=='played' then submitPlaybackRechat(state) end
-    return item~=nil
+    if releaseId and state.bridge and state.bridge.releaseMedia then state.bridge.releaseMedia(releaseId) end
+    emitQueue(state)
+    pumpResponseQueue(state)
+    if advance then submitPlaybackRechat(state) end
+    return true
 end
 
 -- A malformed player-local UI event must not stop the authoritative response lane from reaching
 -- its terminal event or preparing later speech media.
-local function emitInbound(state,name,payload)
+emitInbound=function(state,name,payload)
     local ok,reason=pcall(state.emit,name,payload)
     if not ok then print('[ALMSIVI] player event delivery failed: '..tostring(name)..' '..tostring(reason)) end
     return ok
@@ -598,26 +665,33 @@ function M.poll(state)
                 applied=false
             end
             if applied then
-                accepted=accepted+1
-                if event.type=='dialogue.complete' and state.rechat then
-                    state.rechat.lastSpeaker=util.copy(event.payload.speaker)
-                    state.rechat.lastAddressee=util.copy(event.payload.addressee)
-                elseif (event.type=='turn.failed' or event.type=='turn.cancelled') and state.rechat then
-                    state.rechat.cancelled=true
+                local laneOk,laneReason=true,nil
+                if event.type=='response.complete' then
+                    laneOk,laneReason=responseQueue.enqueue(state.responseQueue,event.payload,state.generation,
+                        currentRuntimeGeneration(state))
+                elseif event.type=='speech.ready' then
+                    laneOk,laneReason=responseQueue.attachMedia(state.responseQueue,event)
+                elseif event.type=='action.intent' then
+                    laneOk,laneReason=responseQueue.attachAction(state.responseQueue,event)
                 end
-                if event.type=='action.intent' then
-                    if event.payload.tier>=2 then
-                        state.pendingConfirmations[event.payload.action_id]=util.copy(event.payload)
-                        emitInbound(state,'ALMSIVI_ACTION_CONFIRMATION',{action_id=event.payload.action_id,name=event.payload.name,
-                            actor=util.copy(event.payload.actor),target=util.copy(event.payload.target)})
-                    else state.sendActor(event.payload.actor,'ALMSIVI_ACTOR_ACTION',event.payload) end
+                if not laneOk then applied=false applyReason=laneReason
+                else
+                    if event.type=='response.complete' or event.type=='speech.ready' or event.type=='action.intent' then emitQueue(state) end
+                    accepted=accepted+1
+                    if event.type=='dialogue.complete' and state.rechat then
+                        state.rechat.lastSpeaker=util.copy(event.payload.speaker)
+                        state.rechat.lastAddressee=util.copy(event.payload.addressee)
+                    elseif (event.type=='turn.failed' or event.type=='turn.cancelled') and state.rechat then
+                        state.rechat.cancelled=true
+                    end
+                    emitInbound(state,'ALMSIVI_EVENT',event)
+                    if event.type=='turn.complete' or event.type=='turn.failed' or event.type=='turn.cancelled' then
+                        if state.rechat then state.rechat.requestInFlight=false end
+                        print('[ALMSIVI] response turn terminal: '..tostring(event.type)..' '..tostring(event.turn_id))
+                    end
                 end
-                emitInbound(state,'ALMSIVI_EVENT',event)
-                if event.type=='turn.complete' or event.type=='turn.failed' or event.type=='turn.cancelled' then
-                    if state.rechat then state.rechat.requestInFlight=false end
-                    print('[ALMSIVI] response turn terminal: '..tostring(event.type)..' '..tostring(event.turn_id))
-                end
-            else
+            end
+            if not applied then
                 print('[ALMSIVI] response event dropped: '..tostring(event.type)..' '..tostring(applyReason))
                 emitInbound(state,'ALMSIVI_DROP',{reason=applyReason})
             end
@@ -627,7 +701,7 @@ function M.poll(state)
             emitInbound(state,'ALMSIVI_RESYNC',{reason=reason,cursor=state.events:cursor()})
         end
     end
-    preparePendingMedia(state)
+    pumpResponseQueue(state)
     return accepted
 end
 
@@ -637,23 +711,42 @@ function M.confirmAction(state,actionId,approved)
     if not command then return nil,'confirmation_not_found' end
     state.pendingConfirmations[actionId]=nil
     local eventName=approved and 'ALMSIVI_ACTOR_ACTION' or 'ALMSIVI_ACTOR_REJECT'
-    return state.sendActor(command.actor,eventName,command)
+    local sent,reason=state.sendActor(command.actor,eventName,command)
+    if not sent then
+        local item=responseQueue.head(state.responseQueue)
+        if item and item.kind=='action' then reportQueuedAction(state,item,'failed',reason or 'action_confirmation_delivery_failed') end
+        responseQueue.failHead(state.responseQueue,reason or 'action_confirmation_delivery_failed') emitQueue(state) pumpResponseQueue(state)
+    end
+    return sent,reason
+end
+
+function M.actionResult(state,event)
+    local result=event and event.result
+    if type(result)~='table' or type(result.action_id)~='string' then return nil,'invalid_action_result' end
+    state.pendingConfirmations[result.action_id]=nil
+    local completed,advance=responseQueue.completeAction(state.responseQueue,result.action_id)
+    if not completed then return nil,advance end
+    emitQueue(state) pumpResponseQueue(state)
+    if advance then submitPlaybackRechat(state) end
+    return true
 end
 
 function M.interrupt(state,reason)
     reason=reason or 'halt_ai_actions'
     if state.bridge and state.bridge.cancelVoiceCapture then state.bridge.cancelVoiceCapture() end
+    cancelResponseLane(state,reason,true)
     signalAllActors(state,'ALMSIVI_ACTOR_STOP',reason)
-    state.emit('ALMSIVI_NARRATOR_STOP',{reason=reason})
     local previousGeneration=state.generation
     state.generation=conversation.interrupt(state.conversation,reason)
     if state.bridge and state.bridge.cancelGeneration then state.bridge.cancelGeneration(previousGeneration) end
+    responseQueue.setFence(state.responseQueue,state.generation,currentRuntimeGeneration(state),reason)
     state.events=nil
     state.activeSpeechMediaId=nil
     state.rechat=nil state.rechatSeed=nil
     state.pendingConfirmations={}
     state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
     state.hardHalted=false
+    emitQueue(state)
     state.emit('ALMSIVI_HALT',{generation=state.generation,reason=reason,recoverable=true})
     return true
 end
@@ -661,16 +754,17 @@ end
 function M.stopDialogue(state,reason)
     reason=reason or 'stop_dialogue'
     if state.bridge and state.bridge.cancelVoiceCapture then state.bridge.cancelVoiceCapture() end
-    signalAllActors(state,'ALMSIVI_ACTOR_STOP_SPEECH',reason)
-    state.emit('ALMSIVI_NARRATOR_STOP',{reason=reason})
+    cancelResponseLane(state,reason,true)
     local previousGeneration=state.generation
     state.generation=conversation.interrupt(state.conversation,reason)
     if state.bridge and state.bridge.cancelGeneration then state.bridge.cancelGeneration(previousGeneration) end
+    responseQueue.setFence(state.responseQueue,state.generation,currentRuntimeGeneration(state),reason)
     state.events=nil
     state.activeSpeechMediaId=nil
     state.rechat=nil state.rechatSeed=nil
     state.pendingConfirmations={}
     state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
+    emitQueue(state)
     state.emit('ALMSIVI_DIALOGUE_STOPPED',{generation=state.generation,reason=reason})
     return true
 end
@@ -678,19 +772,29 @@ end
 function M.haltActions(state,reason)
     reason=reason or 'halt_ai_actions'
     signalAllActors(state,'ALMSIVI_ACTOR_HALT_ACTIONS',reason)
+    local active=state.responseQueue.active
+    local cancelActive=active and active.kind=='action' and active.intent
+        and state.pendingConfirmations[active.intent.action_id]~=nil
+    local cancelled=responseQueue.cancelActions(state.responseQueue,reason,cancelActive)
+    for _,item in ipairs(cancelled) do reportQueuedAction(state,item,'cancelled',reason) end
     state.pendingConfirmations={}
+    emitQueue(state)
+    pumpResponseQueue(state)
     state.emit('ALMSIVI_ACTIONS_HALTED',{generation=state.generation,reason=reason})
     return true
 end
 
 function M.hardHalt(state)
+    cancelResponseLane(state,'hard_halt',true)
     detachAll(state,'hard_halt')
     state.bridge.halt() conversation.halt(state.conversation)
     state.generation=state.conversation.generation state.hardHalted=true state.pendingConfirmations={}
+    responseQueue.setFence(state.responseQueue,state.generation,currentRuntimeGeneration(state),'hard_halt')
     state.activeSpeechMediaId=nil
     state.rechat=nil state.rechatSeed=nil
     state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
     state.emit('ALMSIVI_NARRATOR_STOP',{reason='hard_halt'})
+    emitQueue(state)
     state.emit('ALMSIVI_HALT',{generation=state.generation,reason='hard_halt',recoverable=false})
 end
 
@@ -705,6 +809,8 @@ function M.load(state,raw)
         state.preferences=loaded.preferences state.conversationUi=loaded.conversationUi
         state.generation=math.max(state.generation,loaded.generationSeed or state.generation)
         state.conversation.generation=state.generation
+        responseQueue.setFence(state.responseQueue,state.generation,currentRuntimeGeneration(state),'load_generation')
+        emitQueue(state)
         state.events=state.sessionId and protocol.CursoredEvents(state.sessionId,state.generation) or nil
     end
     if meta.disable then state.disabled=true state.futureSave=meta.preserve and raw or nil state.emit('ALMSIVI_STATUS',{status='disabled',reason=meta.reason}) end

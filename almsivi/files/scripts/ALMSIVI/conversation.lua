@@ -6,7 +6,7 @@ local M = {}
 
 function M.new(generation)
     return {generation=generation or 0, target=nil, audience={}, turn=nil, seenInputs={}, transcript={},
-        pendingMedia={},dialogues={},mediaOrdinal=0,hardHalted=false}
+        hardHalted=false}
 end
 
 function M.setTarget(state, actor)
@@ -52,20 +52,8 @@ function M.apply(state, event)
     elseif event.type == 'dialogue.complete' then
         turn.final=event.payload.text or '' turn.dialogueMessageId=event.message_id
         turn.speaker=util.copy(event.payload.speaker) turn.addressee=util.copy(event.payload.addressee)
-        state.mediaOrdinal=state.mediaOrdinal+1 turn.mediaOrdinal=state.mediaOrdinal
-        state.dialogues[event.message_id]={speaker=util.copy(turn.speaker),subtitle=turn.final,ordinal=turn.mediaOrdinal}
         table.insert(state.transcript,{speaker=util.copy(turn.speaker),text=turn.final})
         turn.delta='' turn.status='responded'
-    elseif event.type == 'speech.ready' then
-        local dialogueId=event.payload.dialogue_message_id
-        local dialogue=dialogueId and state.dialogues[dialogueId] or nil
-        if not dialogue then return false,'speech_without_dialogue' end
-        if state.pendingMedia[event.payload.media_id] then return false,'duplicate_media' end
-        state.pendingMedia[event.payload.media_id]={status='new',descriptor=util.copy(event.payload),
-            messageId=dialogueId,speaker=util.copy(dialogue.speaker),subtitle=dialogue.subtitle,
-            requestId=event.request_id,turnId=event.turn_id,sessionId=event.session_id,
-            generation=event.generation,ordinal=dialogue.ordinal,terminal=false}
-        state.dialogues[dialogueId]=nil
     elseif event.type == 'turn.complete' then
         if turn.terminal then return false, 'duplicate_terminal' end
         turn.terminal=true turn.status='complete'
@@ -79,7 +67,7 @@ end
 function M.invalidate(state, reason)
     state.generation=state.generation+1
     if state.turn and not state.turn.terminal then state.turn.terminal=true state.turn.status='cancelled' state.turn.reason=reason end
-    state.turn=nil state.pendingMedia={} state.dialogues={}
+    state.turn=nil
     return state.generation
 end
 

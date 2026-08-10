@@ -297,9 +297,11 @@ return {
         ALMSIVI_ACTION_RESULT=function(event)
             local result=event and event.result
             if not result then return end
+            local queued,queueReason=orchestrator.actionResult(state,event)
             local submitted,reason=bridge.submitActionResult and bridge.submitActionResult(result)
             emit('ALMSIVI_ACTION_STATUS',{name=event.action_name,status=result.status,reason=result.reason_code,
-                submitted=submitted~=nil and submitted~=false,submit_reason=reason})
+                submitted=submitted~=nil and submitted~=false,submit_reason=reason,
+                queue_completed=queued==true,queue_reason=queueReason})
         end,
         ALMSIVI_SPEECH_STATUS=function(event)
             orchestrator.speechStatus(state,event)
