@@ -18,6 +18,9 @@
       "minLength": 1,
       "type": "string"
     },
+    "client_settings": {
+      "$ref": "https://almsivi.invalid/schemas/v1/client-settings.schema.json"
+    },
     "event_cursor": {
       "$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/sequence"
     },
@@ -42,6 +45,7 @@
     "generation",
     "capabilities",
     "config_revision",
+    "client_settings",
     "event_cursor"
   ],
   "type": "object"

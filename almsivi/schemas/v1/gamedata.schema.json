@@ -1,0 +1,144 @@
+{
+  "$id": "https://almsivi.invalid/schemas/v1/gamedata.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "actor_profile": {
+      "additionalProperties": false,
+      "properties": {
+        "actor": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+        "class": {"maxLength": 128, "type": "string"},
+        "disposition": {"maximum": 100, "minimum": 0, "type": "integer"},
+        "factions": {"items": {"maxLength": 256, "minLength": 1, "type": "string"}, "maxItems": 32, "type": "array", "uniqueItems": true},
+        "gender": {"enum": ["female", "male", "none", "unknown"], "type": "string"},
+        "level": {"maximum": 255, "minimum": 1, "type": "integer"},
+        "race": {"maxLength": 128, "minLength": 1, "type": "string"}
+      },
+      "required": ["actor", "race", "class", "gender", "level", "disposition", "factions"],
+      "type": "object"
+    },
+    "captured_dialogue": {
+      "additionalProperties": false,
+      "properties": {
+        "listener": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+        "speaker": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+        "text": {"maxLength": 4096, "minLength": 1, "type": "string"},
+        "topic": {"maxLength": 256, "type": "string"}
+      },
+      "required": ["speaker", "listener", "text", "topic"],
+      "type": "object"
+    },
+    "inventory": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "condition": {"maximum": 1, "minimum": 0, "type": "number"},
+              "content_file": {"maxLength": 256, "minLength": 1, "type": "string"},
+              "count": {"maximum": 2147483647, "minimum": 1, "type": "integer"},
+              "equipped": {"type": "boolean"},
+              "name": {"maxLength": 256, "minLength": 1, "type": "string"},
+              "record_id": {"maxLength": 256, "minLength": 1, "type": "string"},
+              "value": {"maximum": 2147483647, "minimum": 0, "type": "integer"}
+            },
+            "required": ["record_id", "content_file", "name", "count", "value", "equipped", "condition"],
+            "type": "object"
+          },
+          "maxItems": 512,
+          "type": "array"
+        },
+        "owner": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"}
+      },
+      "required": ["owner", "items"],
+      "type": "object"
+    },
+    "journal": {
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "journal_id": {"maxLength": 256, "minLength": 1, "type": "string"},
+              "stage": {"maximum": 2147483647, "minimum": 0, "type": "integer"},
+              "status": {"enum": ["active", "completed", "failed", "mentioned"], "type": "string"},
+              "text": {"maxLength": 4096, "minLength": 1, "type": "string"},
+              "title": {"maxLength": 512, "minLength": 1, "type": "string"}
+            },
+            "required": ["journal_id", "title", "status", "stage", "text"],
+            "type": "object"
+          },
+          "maxItems": 128,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": ["entries"],
+      "type": "object"
+    },
+    "nearby_actors": {
+      "additionalProperties": false,
+      "properties": {
+        "actors": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "dead": {"type": "boolean"},
+              "distance": {"maximum": 100000, "minimum": 0, "type": "number"},
+              "hostile": {"type": "boolean"},
+              "identity": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+              "scene_eligible": {"type": "boolean"}
+            },
+            "required": ["identity", "distance", "hostile", "dead", "scene_eligible"],
+            "type": "object"
+          },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": ["actors"],
+      "type": "object"
+    },
+    "prompt_bridge": {
+      "additionalProperties": false,
+      "properties": {
+        "source_event_ids": {"items": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "maxItems": 256, "type": "array", "uniqueItems": true},
+        "summary": {"maxLength": 16384, "type": "string"}
+      },
+      "required": ["source_event_ids", "summary"],
+      "type": "object"
+    },
+    "world_context": {
+      "additionalProperties": false,
+      "properties": {
+        "cell": {"oneOf": [
+          {"additionalProperties": false, "properties": {"kind": {"const": "interior", "type": "string"}, "name": {"maxLength": 256, "minLength": 1, "type": "string"}}, "required": ["kind", "name"], "type": "object"},
+          {"additionalProperties": false, "properties": {"grid_x": {"type": "integer"}, "grid_y": {"type": "integer"}, "kind": {"const": "exterior", "type": "string"}}, "required": ["kind", "grid_x", "grid_y"], "type": "object"}
+        ]},
+        "game_time": {"maxLength": 64, "minLength": 1, "type": "string"},
+        "player": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+        "weather": {"maxLength": 128, "type": "string"}
+      },
+      "required": ["player", "cell", "game_time", "weather"],
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "game": {"const": "tes3", "type": "string"},
+    "generation": {"maximum": 9007199254740991, "minimum": 1, "type": "integer"},
+    "installation_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "observed_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+    "payload": {"oneOf": [{"$ref": "https://almsivi.invalid/schemas/v1/gamedata.schema.json#/$defs/actor_profile"}, {"$ref": "https://almsivi.invalid/schemas/v1/gamedata.schema.json#/$defs/captured_dialogue"}, {"$ref": "https://almsivi.invalid/schemas/v1/gamedata.schema.json#/$defs/inventory"}, {"$ref": "https://almsivi.invalid/schemas/v1/gamedata.schema.json#/$defs/journal"}, {"$ref": "https://almsivi.invalid/schemas/v1/gamedata.schema.json#/$defs/nearby_actors"}, {"$ref": "https://almsivi.invalid/schemas/v1/gamedata.schema.json#/$defs/prompt_bridge"}, {"$ref": "https://almsivi.invalid/schemas/v1/gamedata.schema.json#/$defs/world_context"}]},
+    "playthrough_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "request_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "runtime_generation": {"maximum": 9007199254740991, "minimum": 1, "type": "integer"},
+    "schema": {"const": "almsivi.gamedata.v1", "type": "string"},
+    "session_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "type": {"enum": ["actor_profile", "captured_dialogue", "dialogue_prompt_bridge", "inventory", "journal", "nearby_actors", "world_context"], "type": "string"}
+  },
+  "required": ["schema", "installation_id", "playthrough_id", "session_id", "request_id", "generation", "runtime_generation", "observed_at", "game", "type", "payload"],
+  "type": "object"
+}

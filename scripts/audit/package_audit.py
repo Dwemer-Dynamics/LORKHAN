@@ -64,6 +64,8 @@ def provenance(args: argparse.Namespace) -> None:
     policy = read_json(repository / args.policy)
     ledger = repository / policy["provenance_ledger"] if args.ledger is None else Path(args.ledger)
     required = tracked_implementation_paths(repository)
+    patch_spec = read_json(repository / "openmw-patches/patch-spec.json")
+    required.update(change["path"] for change in patch_spec["changes"])
     required.update(args.paths)
     validate_provenance(read_json(ledger), required, reject_unexpected=True)
     print("provenance passed")

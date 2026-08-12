@@ -6,10 +6,11 @@
     "bytes": {"maximum": 33554432, "minimum": 1, "type": "integer"},
     "codec": {"enum": ["mp3", "ogg", "wav"], "type": "string"},
     "duration_ms": {"minimum": 1, "type": "integer"},
+    "dialogue_message_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
     "expires_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
     "media_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
     "sha256": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/sha256"}
   },
-  "required": ["media_id", "sha256", "bytes", "codec", "duration_ms", "expires_at"],
+  "required": ["media_id", "dialogue_message_id", "sha256", "bytes", "codec", "duration_ms", "expires_at"],
   "type": "object"
 }

@@ -1,8 +1,21 @@
 diff --git a/apps/openmw/CMakeLists.txt b/apps/openmw/CMakeLists.txt
-index 17c4e96b16903e518958c63923e4a7cc9a7d816f..bc27b9d09f5d810f2ffb6172008959b30fde6fd1 100644
+index 17c4e96b16903e518958c63923e4a7cc9a7d816f..2aa48a96e83f7b5d27b7bd30baafeb7184bac273 100644
 --- a/apps/openmw/CMakeLists.txt
 +++ b/apps/openmw/CMakeLists.txt
-@@ -60,7 +60,7 @@
+@@ -14,6 +14,12 @@
+     options.hpp
+     profile.hpp
+ )
++
++if(NOT ALMSIVI_SOURCE_ROOT)
++    message(FATAL_ERROR "ALMSIVI_SOURCE_ROOT must point to the ALMSIVI source checkout")
++endif()
++set(ALMSIVI_WITH_BOOST_BEAST ON CACHE BOOL "" FORCE)
++add_subdirectory(${ALMSIVI_SOURCE_ROOT}/components/almsivi ${CMAKE_BINARY_DIR}/almsivi)
+ 
+ source_group(apps/openmw FILES main.cpp androidmain.cpp ${OPENMW_SOURCES} ${OPENMW_HEADERS} ${OPENMW_RESOURCES})
+ 
+@@ -60,7 +66,7 @@
  
  add_openmw_dir (mwlua
      luamanagerimp object objectlists userdataserializer luaevents engineevents objectvariant loadscripts contentbindings
@@ -11,3 +24,11 @@ index 17c4e96b16903e518958c63923e4a7cc9a7d816f..bc27b9d09f5d810f2ffb6172008959b3
      mwscriptbindings camerabindings vfsbindings uibindings soundbindings inputbindings nearbybindings dialoguebindings
      postprocessingbindings stats recordstore debugbindings corebindings worldbindings worker landbindings magicbindings factionbindings
      classbindings itemdata inputprocessor animationbindings birthsignbindings racebindings markupbindings weatherbindings regionbindings
+@@ -189,6 +195,7 @@
+     osg-ffmpeg-videoplayer
+     oics
+     components
++    almsivi_core
+ )
+ 
+ if (MSVC AND PRECOMPILE_HEADERS_WITH_MSVC)

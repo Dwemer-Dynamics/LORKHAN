@@ -33,4 +33,3 @@ index dc20205cbe15f17230b87cea60a6c4276972f0a6..f769388873042259cbbdb30a3f022984
 +            { "openmw.almsivi", initAlmsiviPackage(context) },
          };
      }
- 

@@ -40,7 +40,7 @@ active actor joins an ALMSIVI audience or must execute an action, and later stop
 ### PLAYER
 
 - registers configurable OpenMW input actions for overlay, talk, add/remove audience, push-to-talk,
-  interrupt, halt and optional auto-greeting toggle;
+  interrupt and halt;
 - resolves crosshair/camera ray target through supported input/camera/nearby APIs and asks GLOBAL to
   validate it;
 - renders HUD status, target/audience chips, transcript, text input, subtitles, microphone state,
@@ -78,8 +78,8 @@ into a delivery result, never speech from a substitute.
 - Primary: center camera/crosshair ray filtered to actor types and maximum distance.
 - Controller: same semantic OpenMW action, not hardcoded device scancodes.
 - Secondary: small nearby active-actor picker sorted by distance with identity disambiguation.
-- Automatic greeting: opt-in, per-profile cooldown, movement/combat/menu checks, one pending greeting,
-  relationship/context rules and a global rate cap.
+- Automatic greetings, boredom, combat barks, Background Life, ITT, and timer-driven model triggers
+  are excluded and have no input action or runtime scheduler.
 - Vanilla `Activate` and dialogue continue unchanged. ALMSIVI does not suppress or replace them.
 
 ## Context budgets

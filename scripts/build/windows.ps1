@@ -15,6 +15,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 foreach ($item in @{'State'=$State;'Source'=$Source;'Build'=$Build;'Install'=$Install;'Output'=$Output}.GetEnumerator()) {
   if ([string]::IsNullOrWhiteSpace($item.Value)) { throw "$($item.Key) is required" }
 }
@@ -36,7 +37,8 @@ if ($Compiler -eq 'clang') { $generatorArgs += @('-T','ClangCL'); $mapFlags = "-
 $manifest = Join-Path $Output "build-$State-$Compiler-$Config.txt"
 @("state=$State","config=$Config","compiler=$Compiler","source=$Source","build=$Build","install=$Install","pin=$ExpectedPin","epoch=$Epoch",'status_begin',$status,'status_end',(& cmake --version | Select-Object -First 1)) | Set-Content -Encoding utf8 $manifest
 $log = Join-Path $Output "build-$State-$Compiler-$Config.log"
-$configure = @('-S',$Source,'-B',$Build) + $generatorArgs + @("-DCMAKE_INSTALL_PREFIX=$Install","-DCMAKE_C_FLAGS=$mapFlags","-DCMAKE_CXX_FLAGS=$mapFlags") + $CMakeArgument
+$productArgs = if ($State -eq 'patched') { @("-DALMSIVI_SOURCE_ROOT=$RepoRoot") } else { @() }
+$configure = @('-S',$Source,'-B',$Build) + $generatorArgs + @("-DCMAKE_INSTALL_PREFIX=$Install","-DCMAKE_C_FLAGS=$mapFlags","-DCMAKE_CXX_FLAGS=$mapFlags") + $productArgs + $CMakeArgument
 & cmake @configure 2>&1 | Tee-Object -FilePath $log
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $buildArgs = @('--build',$Build,'--config',$Config); if ($Target) { $buildArgs += @('--target',$Target) }

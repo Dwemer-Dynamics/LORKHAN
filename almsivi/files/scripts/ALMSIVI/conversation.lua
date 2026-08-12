@@ -5,7 +5,8 @@ local util = require('scripts.ALMSIVI.util')
 local M = {}
 
 function M.new(generation)
-    return {generation=generation or 0, target=nil, audience={}, turn=nil, seenInputs={}, transcript={}, pendingMedia={}, hardHalted=false}
+    return {generation=generation or 0, target=nil, audience={}, turn=nil, seenInputs={}, transcript={},
+        hardHalted=false}
 end
 
 function M.setTarget(state, actor)
@@ -51,18 +52,11 @@ function M.apply(state, event)
     elseif event.type == 'dialogue.complete' then
         turn.final=event.payload.text or '' turn.dialogueMessageId=event.message_id
         turn.speaker=util.copy(event.payload.speaker) turn.addressee=util.copy(event.payload.addressee)
+        table.insert(state.transcript,{speaker=util.copy(turn.speaker),text=turn.final})
         turn.delta='' turn.status='responded'
-    elseif event.type == 'speech.ready' then
-        if not turn.dialogueMessageId or not turn.speaker then return false,'speech_without_dialogue' end
-        if state.pendingMedia[event.payload.media_id] then return false,'duplicate_media' end
-        state.pendingMedia[event.payload.media_id]={status='new',descriptor=util.copy(event.payload),
-            messageId=turn.dialogueMessageId,speaker=util.copy(turn.speaker),subtitle=turn.final,
-            requestId=event.request_id,turnId=event.turn_id,sessionId=event.session_id,
-            generation=event.generation,terminal=false}
     elseif event.type == 'turn.complete' then
         if turn.terminal then return false, 'duplicate_terminal' end
         turn.terminal=true turn.status='complete'
-        if turn.final then table.insert(state.transcript,{speaker=util.copy(turn.speaker),text=turn.final}) end
     elseif event.type == 'turn.failed' or event.type == 'turn.cancelled' then
         if turn.terminal then return false, 'duplicate_terminal' end
         turn.terminal=true turn.status=event.type == 'turn.failed' and 'failed' or 'cancelled' turn.reason='remote_terminal'
@@ -73,8 +67,18 @@ end
 function M.invalidate(state, reason)
     state.generation=state.generation+1
     if state.turn and not state.turn.terminal then state.turn.terminal=true state.turn.status='cancelled' state.turn.reason=reason end
-    state.turn=nil state.pendingMedia={}
+    state.turn=nil
     return state.generation
+end
+
+function M.clearTarget(state)
+    state.target=nil state.audience={}
+end
+
+function M.interrupt(state, reason)
+    local generation=M.invalidate(state,reason or 'client_interrupted')
+    state.hardHalted=false
+    return generation
 end
 
 function M.halt(state)

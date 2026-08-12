@@ -1,0 +1,22 @@
+{
+  "description": "Idempotent in-game model slot selection",
+  "instance": {
+    "schema": "almsivi.controls.select.v1",
+    "message_id": "10000000-0000-4000-8000-000000000404",
+    "request_id": "10000000-0000-4000-8000-000000000405",
+    "session_id": "10000000-0000-4000-8000-000000000403",
+    "generation": 7,
+    "created_at": "2026-08-01T12:00:00Z",
+    "kind": "model_slot",
+    "selection_id": "10000000-0000-4000-8000-000000000406",
+    "target": {
+      "kind": "npc",
+      "record_id": "fargoth",
+      "refnum": {"index": 42, "content_file": 0},
+      "content_file": "Morrowind.esm",
+      "cell": {"kind": "interior", "name": "Seyda Neen, Census and Excise Office"},
+      "display_name": "Fargoth"
+    }
+  },
+  "schema": "https://almsivi.invalid/schemas/v1/controls-select.schema.json"
+}

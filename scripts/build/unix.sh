@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 
 usage() {
   cat <<'EOF'
@@ -97,6 +98,7 @@ run_logged() {
   "$CC" --version | sed -n '1p'
 } > "$MANIFEST"
 
+if [ "$STATE" = patched ]; then set -- -DALMSIVI_SOURCE_ROOT="$ROOT" "$@"; fi
 run_logged cmake -S "$SOURCE" -B "$BUILD" -G "$GENERATOR" -DCMAKE_BUILD_TYPE="$CONFIG" -DCMAKE_INSTALL_PREFIX="$INSTALL" -DCMAKE_C_FLAGS="$CFLAGS" -DCMAKE_CXX_FLAGS="$CXXFLAGS" "$@"
 if [ -n "$TARGET" ]; then run_logged cmake --build "$BUILD" --config "$CONFIG" --target "$TARGET"; else run_logged cmake --build "$BUILD" --config "$CONFIG"; fi
 if [ -n "$TEST_TARGET" ]; then

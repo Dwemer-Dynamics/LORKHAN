@@ -6,6 +6,7 @@
 #include "almsivi/protocol_response.hpp"
 #include "almsivi/queues.hpp"
 #include "almsivi/validation.hpp"
+#include "almsivi/voice_capture.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -258,7 +259,7 @@ void testAcceptedProtocolResponses()
     const almsivi::Headers jsonHeaders{{"Content-Type", "application/json; charset=utf-8"}};
 
     auto session = almsivi::parseSessionAcceptedResponse(
-        R"({"schema":"almsivi.session.accepted.v1","message_id":"01900000-0000-7000-8000-000000000006","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"capabilities":["dialogue.text","speech.say"],"config_revision":"revision-9","event_cursor":3})",
+        R"({"schema":"almsivi.session.accepted.v1","message_id":"01900000-0000-7000-8000-000000000006","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"capabilities":["dialogue.text","speech.say"],"config_revision":"revision-9","client_settings":{"schema":"almsivi.client-settings.v1","behavior":{"auto_greeting":false,"rechat":false,"rechat_delay_seconds":45,"rechat_max_depth":2,"rechat_probability_percent":50,"rechat_mode":"random","rechat_strict_targeting":false,"open_rechat":true,"rechat_allow_actions":false,"end_conversation_cooldown_seconds":60,"boredom":false,"boredom_delay_seconds":180,"combat_barks":false,"combat_bark_period_seconds":20},"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"random_events":false,"quest_events":false,"book_events":false},"presentation":{"show_status_hud":true,"transcript_rows":8,"tts_volume_boost":3},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"event_cursor":3})",
         jsonHeaders);
     CHECK(session && session.value().message == almsivi::MessageId(kMessage)
         && session.value().session == almsivi::SessionId(kSession)
@@ -266,10 +267,10 @@ void testAcceptedProtocolResponses()
         && session.value().capabilities.size() == 2
         && session.value().configRevision == "revision-9" && session.value().eventCursor == 3);
     CHECK(!almsivi::parseSessionAcceptedResponse(
-        R"({"schema":"almsivi.session.accepted.v1","message_id":"01900000-0000-7000-8000-000000000006","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"capabilities":["dialogue.text","dialogue.text"],"config_revision":"revision-9","event_cursor":3})",
+        R"({"schema":"almsivi.session.accepted.v1","message_id":"01900000-0000-7000-8000-000000000006","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"capabilities":["dialogue.text","dialogue.text"],"config_revision":"revision-9","client_settings":{"schema":"almsivi.client-settings.v1","behavior":{"auto_greeting":false,"rechat":false,"rechat_delay_seconds":45,"rechat_max_depth":2,"rechat_probability_percent":50,"rechat_mode":"random","rechat_strict_targeting":false,"open_rechat":true,"rechat_allow_actions":false,"end_conversation_cooldown_seconds":60,"boredom":false,"boredom_delay_seconds":180,"combat_barks":false,"combat_bark_period_seconds":20},"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"random_events":false,"quest_events":false,"book_events":false},"presentation":{"show_status_hud":true,"transcript_rows":8,"tts_volume_boost":3},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"event_cursor":3})",
         jsonHeaders));
     CHECK(!almsivi::parseSessionAcceptedResponse(
-        R"({"schema":"almsivi.session.accepted.v1","message_id":"01900000-0000-7000-8000-000000000006","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"capabilities":[],"config_revision":"revision-9","event_cursor":3,"extra":true})",
+        R"({"schema":"almsivi.session.accepted.v1","message_id":"01900000-0000-7000-8000-000000000006","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"capabilities":[],"config_revision":"revision-9","client_settings":{"schema":"almsivi.client-settings.v1","behavior":{"auto_greeting":false,"rechat":false,"rechat_delay_seconds":45,"rechat_max_depth":2,"rechat_probability_percent":50,"rechat_mode":"random","rechat_strict_targeting":false,"open_rechat":true,"rechat_allow_actions":false,"end_conversation_cooldown_seconds":60,"boredom":false,"boredom_delay_seconds":180,"combat_barks":false,"combat_bark_period_seconds":20},"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"random_events":false,"quest_events":false,"book_events":false},"presentation":{"show_status_hud":true,"transcript_rows":8,"tts_volume_boost":3},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"event_cursor":3,"extra":true})",
         jsonHeaders));
 
     auto turn = almsivi::parseTurnAcceptedResponse(
@@ -313,6 +314,28 @@ void testAcceptedProtocolResponses()
     CHECK(!almsivi::parseSessionEndedResponse(
         R"({"schema":"almsivi.session.ended.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":-1,"ended":true})",
         jsonHeaders));
+
+    auto controls = almsivi::parseControlsResponse(
+        R"({"schema":"almsivi.controls.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"target":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"selected_model_slot_id":"01900000-0000-7000-8000-000000000011","selected_profile_id":null,"narrator_profile_id":"01900000-0000-7000-8000-000000000013","effective_settings":{"schema":"almsivi.effective-settings.v1","change_token":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","profile_id":null,"profile_revision":null,"core_profile_id":"01900000-0000-7000-8000-000000000014","core_profile_revision":1,"settings":{"behavior":{"auto_greeting":false,"rechat":false,"rechat_delay_seconds":45,"rechat_max_depth":2,"rechat_probability_percent":50,"rechat_mode":"random","rechat_strict_targeting":false,"open_rechat":true,"rechat_allow_actions":false,"end_conversation_cooldown_seconds":60,"boredom":false,"boredom_delay_seconds":180,"combat_barks":false,"combat_bark_period_seconds":20},"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"random_events":false,"quest_events":false,"book_events":false},"presentation":{"show_status_hud":true,"transcript_rows":8,"tts_volume_boost":3},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"routing":{},"source_map":{}},"model_slots":[{"configuration_id":"01900000-0000-7000-8000-000000000011","name":"Dialogue","revision":2,"driver":"configured","model":"gpt-5-mini"}],"profiles":[{"profile_id":"01900000-0000-7000-8000-000000000012","name":"Fargoth","revision":3}]})",
+        jsonHeaders);
+    CHECK(controls && controls.value().request == almsivi::RequestId(kInstallation)
+        && controls.value().session == almsivi::SessionId(kSession)
+        && controls.value().generation == almsivi::Generation(7)
+        && controls.value().target.recordId == "fargoth"
+        && controls.value().selectedModelSlotId
+        && *controls.value().selectedModelSlotId == "01900000-0000-7000-8000-000000000011"
+        && !controls.value().selectedProfileId
+        && controls.value().narratorProfileId
+        && *controls.value().narratorProfileId == "01900000-0000-7000-8000-000000000013"
+        && controls.value().effectiveSettings.changeToken == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        && controls.value().effectiveSettings.coreProfileRevision == 1
+        && controls.value().effectiveSettings.safety.actionsEnabled
+        && controls.value().modelSlots.size() == 1 && controls.value().profiles.size() == 1
+        && controls.value().modelSlots[0].model == "gpt-5-mini"
+        && controls.value().profiles[0].revision == 3);
+    CHECK(!almsivi::parseControlsResponse(
+        R"({"schema":"almsivi.controls.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"target":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"selected_model_slot_id":"01900000-0000-7000-8000-000000000099","selected_profile_id":null,"narrator_profile_id":null,"effective_settings":{"schema":"almsivi.effective-settings.v1","change_token":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","profile_id":null,"profile_revision":null,"core_profile_id":"01900000-0000-7000-8000-000000000014","core_profile_revision":1,"settings":{"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"random_events":false,"quest_events":false,"book_events":false},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"routing":{},"source_map":{}},"model_slots":[],"profiles":[]})",
+        jsonHeaders));
 }
 
 void testProtocolEventResponses()
@@ -327,16 +350,25 @@ void testProtocolEventResponses()
           {"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-18T20:00:01Z","type":"turn.accepted","payload":{"status":"accepted"}},
           {"message_id":"01900000-0000-7000-8000-000000000009","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":2,"created_at":"2026-07-18T20:00:02.123Z","type":"dialogue.complete","payload":{"speaker":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"addressee":{"kind":"player","record_id":"player","refnum":{"index":1,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"interior","name":"Seyda Neen, Census Office"},"display_name":"Player"},"text":"You have found my ring."}},
           {"message_id":"01900000-0000-7000-8000-00000000000a","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":3,"created_at":"2026-07-18T20:00:03Z","type":"action.intent","payload":{"schema":"almsivi.action-intent.v1","action_id":"01900000-0000-7000-8000-000000000007","turn_id":"01900000-0000-7000-8000-000000000005","name":"ai.follow","tier":1,"actor":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"target":{"kind":"player","record_id":"player","refnum":{"index":1,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"interior","name":"Seyda Neen, Census Office"},"display_name":"Player"},"parameters":{"distance":192},"expires_at":"2026-07-18T20:00:10Z"}},
-          {"message_id":"01900000-0000-7000-8000-00000000000b","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":4,"created_at":"2026-07-18T20:00:04Z","type":"speech.ready","payload":{"media_id":"01900000-0000-7000-8000-00000000000c","sha256":"e12e115acf4552b2568b55e93cbd39394c4ef81c82447faed7738adf06e9ba61","bytes":4,"codec":"ogg","duration_ms":100,"expires_at":"2026-07-18T21:00:00Z"}},
+          {"message_id":"01900000-0000-7000-8000-00000000000b","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":4,"created_at":"2026-07-18T20:00:04Z","type":"speech.ready","payload":{"media_id":"01900000-0000-7000-8000-00000000000c","dialogue_message_id":"01900000-0000-7000-8000-000000000009","sha256":"e12e115acf4552b2568b55e93cbd39394c4ef81c82447faed7738adf06e9ba61","bytes":4,"codec":"ogg","duration_ms":100,"expires_at":"2026-07-18T21:00:00Z"}},
           {"message_id":"01900000-0000-7000-8000-00000000000d","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":5,"created_at":"2026-07-18T20:00:05Z","type":"turn.failed","payload":{"code":"provider_timeout","retriable":true,"retry_after_ms":250}},
           {"message_id":"01900000-0000-7000-8000-00000000000e","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":6,"created_at":"2026-07-18T20:00:06Z","type":"turn.cancelled","payload":{"reason":"interrupted"}},
           {"message_id":"01900000-0000-7000-8000-00000000000f","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":7,"created_at":"2026-07-18T20:00:07Z","type":"turn.complete","payload":{"status":"complete"}}
+        ],
+        "autonomy":[
+          {"schema":"almsivi.autonomy-directive.v1","schedule_id":"01900000-0000-7000-8000-000000000010","kind":"rechat","issued_at":"2026-07-18T20:00:08Z"}
         ]
     })json";
     auto parsed = almsivi::parseEventsResponse(events, jsonHeaders);
     CHECK(parsed && parsed.value().session == almsivi::SessionId(kSession)
         && parsed.value().generation == almsivi::Generation(7)
-        && parsed.value().nextAfter == 7 && parsed.value().events.size() == 7);
+        && parsed.value().nextAfter == 7 && parsed.value().events.size() == 7
+        && parsed.value().autonomy.size() == 1);
+    if (parsed && parsed.value().autonomy.size() == 1) {
+        CHECK(parsed.value().autonomy[0].scheduleId == "01900000-0000-7000-8000-000000000010"
+            && parsed.value().autonomy[0].kind == "rechat"
+            && parsed.value().autonomy[0].issuedAt == "2026-07-18T20:00:08Z");
+    }
     if (parsed && parsed.value().events.size() == 7) {
         CHECK(parsed.value().events[0].type == almsivi::ProtocolEventType::turn_accepted
             && std::get_if<almsivi::TurnAcceptedEventPayload>(&parsed.value().events[0].payload));
@@ -350,6 +382,7 @@ void testProtocolEventResponses()
             && intent->intent.actor.recordId == "fargoth" && intent->intent.target.recordId == "player");
         const auto* speech = std::get_if<almsivi::SpeechReadyEventPayload>(&parsed.value().events[3].payload);
         CHECK(speech && speech->codec == almsivi::MediaCodec::ogg && speech->bytes == 4
+            && speech->dialogueMessage.value() == "01900000-0000-7000-8000-000000000009"
             && speech->durationMs == 100 && speech->sha256.size() == 64);
         const auto* failed = std::get_if<almsivi::TurnFailedEventPayload>(&parsed.value().events[4].payload);
         CHECK(failed && failed->code == almsivi::ErrorCode::timeout && failed->retriable
@@ -360,8 +393,25 @@ void testProtocolEventResponses()
             && std::get_if<almsivi::TurnCompleteEventPayload>(&parsed.value().events[6].payload));
     }
 
+    auto canonical = almsivi::parseEventsResponse(
+        R"json({"schema":"almsivi.events.v1","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"next_after":1,"events":[{"message_id":"01900000-0000-7000-8000-000000000020","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-08-09T18:00:02Z","type":"response.complete","payload":{"schema":"almsivi.response.v1","response_id":"01900000-0000-7000-8000-000000000020","installation_id":"01900000-0000-7000-8000-000000000021","profile_id":"01900000-0000-7000-8000-000000000022","playthrough_id":"01900000-0000-7000-8000-000000000023","session_id":"01900000-0000-7000-8000-000000000004","turn_id":"01900000-0000-7000-8000-000000000005","request_id":"01900000-0000-7000-8000-000000000001","generation":7,"runtime_generation":3,"created_at":"2026-08-09T18:00:02Z","ok":true,"lines":[{"schema":"almsivi.response.line.v1","line_id":"01900000-0000-7000-8000-000000000024","line_index":0,"speaker":"Fargoth","display_name":"Fargoth","speaker_identity":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"action":"say","text":"You found my ring!","subtitle":"You found my ring!","tts_text":"You found my ring!","request_id":"01900000-0000-7000-8000-000000000001","utterance_id":"01900000-0000-7000-8000-000000000025","listener":"Player","listener_identity":{"kind":"player","record_id":"player","refnum":{"index":1,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"interior","name":"Office"},"display_name":"Player"},"rechat_target":"Fargoth","rechat_target_identity":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"final_response_line":true,"metadata":{"emotion":"relieved","rechat_depth":0,"speech_enabled":true,"source":"llm"}},{"schema":"almsivi.response.line.v1","line_id":"01900000-0000-7000-8000-000000000026","line_index":1,"speaker":"Fargoth","display_name":"Fargoth","speaker_identity":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"action":"rolecommand","text":"","subtitle":"","tts_text":"","request_id":"01900000-0000-7000-8000-000000000001","utterance_id":"01900000-0000-7000-8000-000000000027","listener":"Player","listener_identity":{"kind":"player","record_id":"player","refnum":{"index":1,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"interior","name":"Office"},"display_name":"Player"},"rechat_target":"Fargoth","rechat_target_identity":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"final_response_line":false,"metadata":{"rechat_depth":0,"source":"llm"},"command_name":"ai.follow","command_args":["player","192"]}],"close":false,"error":""}}],"autonomy":[]})json",
+        jsonHeaders);
+    CHECK(canonical && canonical.value().events.size() == 1);
+    if (canonical && canonical.value().events.size() == 1) {
+        const auto* response = std::get_if<almsivi::ResponseCompleteEventPayload>(&canonical.value().events[0].payload);
+        CHECK(response && response->response.runtimeGeneration == almsivi::Generation(3)
+            && response->response.lines.size() == 2 && response->response.lines[0].finalResponseLine
+            && response->response.lines[0].metadata.speechEnabled == true
+            && response->response.lines[1].commandName == "ai.follow"
+            && response->response.lines[1].commandArgs.size() == 2);
+    }
+
     const std::string prefix = R"({"schema":"almsivi.events.v1","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"next_after":1,"events":[)";
-    const std::string suffix = "]}";
+    const std::string suffix = "],\"autonomy\":[]}";
+    auto delta = almsivi::parseEventsResponse(prefix
+        + R"({"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-18T20:00:01Z","type":"dialogue.delta","payload":{"text":"Welcome to "}})"
+        + suffix, jsonHeaders);
+    CHECK(delta && std::get_if<almsivi::DialogueDeltaEventPayload>(&delta.value().events[0].payload));
     CHECK(!almsivi::parseEventsResponse(prefix
         + R"({"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":8,"sequence":1,"created_at":"2026-07-18T20:00:01Z","type":"turn.accepted","payload":{"status":"accepted"}})"
         + suffix, jsonHeaders));
@@ -381,12 +431,12 @@ void testProtocolEventResponses()
         + R"({"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-18T20:00:01Z","type":"speech.ready","payload":{"media_id":"01900000-0000-7000-8000-00000000000c","sha256":"E12E115ACF4552B2568B55E93CBD39394C4EF81C82447FAED7738ADF06E9BA61","bytes":4,"codec":"ogg","duration_ms":100,"expires_at":"2026-07-18T21:00:00Z"}})"
         + suffix, jsonHeaders));
     auto cursorAhead = almsivi::parseEventsResponse(
-        R"({"schema":"almsivi.events.v1","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"next_after":9,"events":[{"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-18T20:00:01Z","type":"turn.accepted","payload":{"status":"accepted"}}]})",
+        R"({"schema":"almsivi.events.v1","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"next_after":9,"events":[{"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-18T20:00:01Z","type":"turn.accepted","payload":{"status":"accepted"}}],"autonomy":[]})",
         jsonHeaders);
     CHECK(cursorAhead && cursorAhead.value().nextAfter == 9);
 
     auto extended = almsivi::parseEventsResponse(
-        R"({"schema":"almsivi.events.v1","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"next_after":3,"events":[{"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-19T20:00:01Z","type":"stt.transcript","payload":{"text":"Hello there.","language":"en-US"}},{"message_id":"01900000-0000-7000-8000-000000000009","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":2,"created_at":"2026-07-19T20:00:02Z","type":"stt.failed","payload":{"code":"provider_timeout","retriable":true,"retry_after_ms":1000}},{"message_id":"01900000-0000-7000-8000-00000000000a","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":3,"created_at":"2026-07-19T20:00:03Z","type":"action.intent","payload":{"schema":"almsivi.action-intent.v1","action_id":"01900000-0000-7000-8000-000000000007","turn_id":"01900000-0000-7000-8000-000000000005","name":"inspect.report","tier":0,"actor":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"target":{"kind":"player","record_id":"player","refnum":{"index":1,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"interior","name":"Office"},"display_name":"Player"},"parameters":{},"expires_at":"2026-07-19T20:00:30Z"}}]})",
+        R"({"schema":"almsivi.events.v1","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"next_after":3,"events":[{"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-19T20:00:01Z","type":"stt.transcript","payload":{"text":"Hello there.","language":"en-US"}},{"message_id":"01900000-0000-7000-8000-000000000009","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":2,"created_at":"2026-07-19T20:00:02Z","type":"stt.failed","payload":{"code":"provider_timeout","retriable":true,"retry_after_ms":1000}},{"message_id":"01900000-0000-7000-8000-00000000000a","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":3,"created_at":"2026-07-19T20:00:03Z","type":"action.intent","payload":{"schema":"almsivi.action-intent.v1","action_id":"01900000-0000-7000-8000-000000000007","turn_id":"01900000-0000-7000-8000-000000000005","name":"inspect.report","tier":0,"actor":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"target":{"kind":"player","record_id":"player","refnum":{"index":1,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"interior","name":"Office"},"display_name":"Player"},"parameters":{},"expires_at":"2026-07-19T20:00:30Z"}}],"autonomy":[]})",
         jsonHeaders);
     CHECK(extended && extended.value().events.size() == 3);
     if (extended && extended.value().events.size() == 3) {
@@ -397,6 +447,33 @@ void testProtocolEventResponses()
         CHECK(sttFailure && sttFailure->code == "provider_timeout" && sttFailure->retryAfterMs == 1000);
         CHECK(inspect && inspect->intent.kind == almsivi::ActionIntentKind::inspect_report
             && inspect->intent.followDistance == 0);
+    }
+    auto equipment = almsivi::parseEventsResponse(
+        R"({"schema":"almsivi.events.v1","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"next_after":1,"events":[{"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-19T20:00:03Z","type":"action.intent","payload":{"schema":"almsivi.action-intent.v1","action_id":"01900000-0000-7000-8000-000000000007","turn_id":"01900000-0000-7000-8000-000000000005","name":"item.equip","tier":2,"actor":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"target":{"kind":"player","record_id":"player","refnum":{"index":1,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"interior","name":"Office"},"display_name":"Player"},"parameters":{"record_id":"iron dagger","slot":"carried_right"},"expires_at":"2026-07-19T20:00:30Z"}}],"autonomy":[]})",
+        jsonHeaders);
+    CHECK(equipment && equipment.value().events.size() == 1);
+    if (equipment && equipment.value().events.size() == 1) {
+        const auto* equip = std::get_if<almsivi::ActionIntentEventPayload>(&equipment.value().events[0].payload);
+        CHECK(equip && equip->intent.kind == almsivi::ActionIntentKind::item_equip
+            && equip->intent.stringParameter == "iron dagger"
+            && equip->intent.secondaryStringParameter == "carried_right");
+    }
+    auto parityActions = almsivi::parseEventsResponse(
+        R"({"schema":"almsivi.events.v1","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"next_after":3,"events":[
+        {"message_id":"01900000-0000-7000-8000-000000000021","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-19T20:00:03Z","type":"action.intent","payload":{"schema":"almsivi.action-intent.v1","action_id":"01900000-0000-7000-8000-000000000031","turn_id":"01900000-0000-7000-8000-000000000005","name":"inventory.inspect","tier":0,"actor":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"target":{"kind":"player","record_id":"player","refnum":{"index":1,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Player"},"parameters":{},"expires_at":"2026-07-19T20:00:30Z"}},
+        {"message_id":"01900000-0000-7000-8000-000000000022","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":2,"created_at":"2026-07-19T20:00:04Z","type":"action.intent","payload":{"schema":"almsivi.action-intent.v1","action_id":"01900000-0000-7000-8000-000000000032","turn_id":"01900000-0000-7000-8000-000000000005","name":"ai.approach","tier":1,"actor":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"target":{"kind":"player","record_id":"player","refnum":{"index":1,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Player"},"parameters":{},"expires_at":"2026-07-19T20:00:30Z"}},
+        {"message_id":"01900000-0000-7000-8000-000000000023","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":3,"created_at":"2026-07-19T20:00:05Z","type":"action.intent","payload":{"schema":"almsivi.action-intent.v1","action_id":"01900000-0000-7000-8000-000000000033","turn_id":"01900000-0000-7000-8000-000000000005","name":"ai.wait","tier":1,"actor":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"target":{"kind":"player","record_id":"player","refnum":{"index":1,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Player"},"parameters":{"duration_seconds":3600},"expires_at":"2026-07-19T20:00:30Z"}}
+        ],"autonomy":[]})",
+        jsonHeaders);
+    CHECK(parityActions && parityActions.value().events.size() == 3);
+    if (parityActions && parityActions.value().events.size() == 3) {
+        const auto* inventory = std::get_if<almsivi::ActionIntentEventPayload>(&parityActions.value().events[0].payload);
+        const auto* approach = std::get_if<almsivi::ActionIntentEventPayload>(&parityActions.value().events[1].payload);
+        const auto* wait = std::get_if<almsivi::ActionIntentEventPayload>(&parityActions.value().events[2].payload);
+        CHECK(inventory && inventory->intent.kind == almsivi::ActionIntentKind::inventory_inspect);
+        CHECK(approach && approach->intent.kind == almsivi::ActionIntentKind::ai_approach);
+        CHECK(wait && wait->intent.kind == almsivi::ActionIntentKind::ai_wait
+            && wait->intent.wanderDurationSeconds == 3600);
     }
 }
 
@@ -417,6 +494,9 @@ void testLifecycleAndCancellation()
     almsivi::GenerationState generations;
     CHECK(generations.current() == almsivi::Generation(0));
     CHECK(generations.invalidate() == almsivi::Generation(1));
+    almsivi::GenerationState seeded(almsivi::Generation(42));
+    CHECK(seeded.current() == almsivi::Generation(42));
+    CHECK(seeded.invalidate() == almsivi::Generation(43));
     almsivi::CancellationRegistry registry;
     auto token = registry.registerRequest(almsivi::RequestId("a"), almsivi::Generation(1));
     CHECK(token && !token.value().stop_requested());
@@ -508,7 +588,10 @@ void testBridgeDialogueDeliveryValidation()
                 almsivi::MessageId(kAction), almsivi::TurnId(kTurn), protocolIdentity(),
                 almsivi::DialogueDeliveryStatus::played, "playback_completed", "2026-07-19T20:00:02.123Z"}};
     };
-    CHECK(bridge.enqueue(makeDelivery(uuidFor(80))));
+    auto separatelyCorrelated = makeDelivery(uuidFor(80));
+    std::get<almsivi::DialogueDeliveryResultRequest>(separatelyCorrelated.payload).correlation.request
+        = almsivi::RequestId(uuidFor(79));
+    CHECK(bridge.enqueue(std::move(separatelyCorrelated)));
     auto mismatchedKind = makeDelivery(uuidFor(81));
     mismatchedKind.kind = almsivi::RequestKind::turn;
     CHECK(!bridge.enqueue(std::move(mismatchedKind)));
@@ -517,7 +600,7 @@ void testBridgeDialogueDeliveryValidation()
     CHECK(!bridge.enqueue(std::move(badSpeaker)));
     auto badCorrelation = makeDelivery(uuidFor(83));
     std::get<almsivi::DialogueDeliveryResultRequest>(badCorrelation.payload).correlation.request
-        = almsivi::RequestId(uuidFor(84));
+        = almsivi::RequestId("request");
     CHECK(!bridge.enqueue(std::move(badCorrelation)));
     auto badReason = makeDelivery(uuidFor(85));
     std::get<almsivi::DialogueDeliveryResultRequest>(badReason.payload).reasonCode = "Bad-Reason";
@@ -592,6 +675,31 @@ void testBridge()
     CHECK(!bridge.enqueue(request(uuidFor(20), bridge.generation())));
 }
 
+void testVoiceCapturePrimitives()
+{
+    const std::string abc = "abc";
+    CHECK(almsivi::sha256Hex(std::as_bytes(std::span(abc.data(), abc.size())))
+        == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    const std::array pcm{std::byte{0x00}, std::byte{0x00}, std::byte{0xff}, std::byte{0x7f}};
+    const auto wav = almsivi::makePcm16MonoWav(pcm);
+    CHECK(wav.size() == 48);
+    CHECK(std::to_integer<char>(wav[0]) == 'R' && std::to_integer<char>(wav[8]) == 'W');
+    CHECK(std::to_integer<unsigned>(wav[40]) == 4U && wav[44] == pcm[0] && wav[47] == pcm[3]);
+    CHECK(almsivi::makePcm16MonoWav(std::span<const std::byte>{}).empty());
+    const std::array<std::byte, 8> silence{};
+    const std::array<std::byte, 8> voice{std::byte{0x00},std::byte{0x10},std::byte{0x00},std::byte{0x10},
+        std::byte{0x00},std::byte{0x10},std::byte{0x00},std::byte{0x10}};
+    CHECK(!almsivi::pcm16HasVoice(silence));
+    CHECK(almsivi::pcm16HasVoice(voice));
+#ifndef _WIN32
+    auto& capture = almsivi::VoiceCaptureService::instance();
+    CHECK(!capture.supported());
+    CHECK(capture.state() == almsivi::VoiceCaptureState::unsupported);
+    CHECK(capture.currentDeviceName() == "Unavailable");
+    CHECK(!capture.start());
+#endif
+}
+
 void testConcurrency()
 {
     auto state = std::make_shared<TransportState>();
@@ -621,7 +729,7 @@ int main()
     testUtf8(); testUrls(); testHeaders(); testJson(); testProtocolResponses(); testAcceptedProtocolResponses();
     testProtocolEventResponses(); testQueue(); testLifecycleAndCancellation();
     testEvents(); testActions(); testPairingToken(); testMedia(); testBridgeDialogueDeliveryValidation();
-    testBridge(); testConcurrency();
+    testBridge(); testConcurrency(); testVoiceCapturePrimitives();
     if (failures != 0) {
         std::cerr << failures << " test(s) failed\n";
         return EXIT_FAILURE;

@@ -49,7 +49,7 @@ is a deterministic gate, not an open design question.
 | D07 | Transport is asynchronous HTTP/1.1 over an IP loopback literal using Boost.Asio/Beast and `Boost::system`; redirects, DNS and non-loopback endpoints are rejected. |
 | D08 | Authentication is a 256-bit server-generated pairing token stored only in native configuration and server secret configuration, never returned to Lua or logs. |
 | D09 | Server base is the final tested Synthserver, migrated by explicit semantic mapping to TES3/OpenMW. |
-| D10 | Windows x64 is the first release acceptance platform. Linux x64 and macOS arm64 build/test continuously; Android is deferred. |
+| D10 | Windows x64 Release is the supported product build and CI platform. Linux x64, macOS arm64, and Android are deferred and have no continuous build requirement. |
 | D11 | Vanilla dialogue remains intact. ALMSIVI uses a dedicated configurable action and passively captures `DialogueResponse` context. |
 | D12 | GLOBAL Lua orchestrates; PLAYER Lua owns input/UI; dynamically attached CUSTOM actor scripts own self-only AI/animation/speech. |
 | D13 | Generated speech is downloaded and hash-verified natively into an ALMSIVI cache, mounted/registered through a controlled engine media service, and invoked through opaque media IDs. Lua never supplies host paths. |
@@ -100,7 +100,8 @@ flowchart LR
 
 - Verify SYNTH/Synthserver completion, clean main branches, test results, licenses, and final SHAs.
 - Create the source/behavior/provenance map before importing code.
-- Create a pinned OpenMW upstream worktree and build an unmodified control on all CI platforms.
+- Create a pinned OpenMW upstream worktree and build an unmodified Windows x64 Release control;
+  keep Ubuntu CI limited to portable foundation/contract checks.
 - Establish patch-series tooling, schemas, identical fixtures, fake server, and evidence ledger.
 
 Gate: source pins and licenses are recorded; upstream control builds; schemas validate in both
@@ -130,7 +131,8 @@ response -> subtitle/speech and interruption across menu/save/cell transitions.
 
 - Add bounded context collectors and explicit unavailable fields rather than fabricated values.
 - Implement server events, profiles, relationships, memories, world knowledge, narrator, diary,
-  rechat, boredom, greetings, summaries, playthrough export/restore, and prompt traceability.
+  playback-gated rechat, summaries, playthrough export/restore, and prompt traceability. Exclude
+  boredom, greetings, combat barks, ITT, Background Life, and timer-driven model triggers.
 - Ensure load order and mod-added records retain stable provenance.
 
 Gate: fixtures cover vanilla and modded identities; context budgets and frame cost pass; server UI
@@ -144,7 +146,8 @@ shows the persisted source event and its derived memory/profile state.
 - Emit exactly one terminal result (`succeeded`, `failed`, `rejected`, `timed_out`, `cancelled`) and
   allow result-aware follow-up without infinite loops.
 
-Gate: allowlist and negative tests pass; each enabled action has an exact in-game acceptance row.
+Gate: allowlist and negative tests pass; each enabled action has automated client/server coverage and
+an exact post-goal in-game acceptance row for later user verification.
 
 ### Phase 5: operations, compatibility, and release hardening
 

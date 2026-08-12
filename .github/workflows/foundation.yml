@@ -1,4 +1,4 @@
-name: foundation
+name: foundation-contracts
 
 on:
   push:
@@ -17,8 +17,8 @@ env:
   SOURCE_DATE_EPOCH: '1784442566'
 
 jobs:
-  python-evidence:
-    name: Python foundation and evidence
+  foundation:
+    name: Ubuntu foundation, contracts, and audits
     runs-on: ubuntu-24.04
     steps:
       - name: Check out exact revision
@@ -31,22 +31,31 @@ jobs:
         with:
           python-version: '3.12'
           cache: ''
-      - name: Validate evidence documents
-        run: python3 scripts/evidence/validate.py
-      - name: Run foundation unit tests
+      - name: Install Lua runtime
+        run: sudo apt-get update && sudo apt-get install --yes lua5.4
+      - name: Run Python foundation and packaging tests
         run: python3 -m unittest discover -s tests -v
-      - name: Validate CI scripts statically
-        run: scripts/test/validate-ci.sh
       - name: Run loopback fake-server contract tests
         run: python3 -m unittest discover -s almsivi/tests -v
       - name: Run Lua structural checks
         run: python3 almsivi/tests/run.py
-      - name: Run Lua runtime tests when available
+      - name: Run required Lua runtime tests
         env:
           ALMSIVI_LUA_TEST_ROOT: ${{ github.workspace }}/almsivi/files/scripts/ALMSIVI/tests
+          ALMSIVI_REQUIRE_LUA_TESTS: '1'
         run: scripts/test/lua-unix.sh
+      - name: Audit tracked source tree
+        run: scripts/audit/package.sh source-tree
+      - name: Validate authoritative evidence and manifests
+        run: python3 scripts/evidence/validate.py
+      - name: Validate protocol manifests and fixtures
+        run: python3 scripts/protocol/validate.py
+      - name: Validate OpenMW patch manifest
+        run: python3 scripts/patches/openmw.py validate
+      - name: Validate portable CI and command entrypoints
+        run: scripts/test/validate-ci.sh
       - name: Record scope honestly
         if: always()
         run: |
-          printf '%s\n' 'This job proves only the commands actually executed above.' >> "$GITHUB_STEP_SUMMARY"
-          printf '%s\n' 'A skipped Lua runtime is not Lua runtime proof; standalone native builds run in the separate native workflow.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'This job proves the portable Python/Lua contracts, packaging inputs, evidence, and OpenMW patch manifest.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'It does not claim a Linux product/native build, package publication, or in-game behavior.' >> "$GITHUB_STEP_SUMMARY"

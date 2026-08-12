@@ -514,6 +514,42 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
             };
             break;
         }
+        case RequestKind::controls_query: {
+            const auto* controls = std::get_if<ControlsQueryRequest>(&request.payload);
+            if (!controls) break;
+            auto target = requireJsonObject(controls->serializedTarget, "controls target");
+            if (!target) return Result<WireRequest>::failure(target.error());
+            wire.method = http::verb::post;
+            wire.target = route("/controls/query");
+            wire.expectedStatus = 200;
+            wire.body = "{\"schema\":\"almsivi.controls.query.v1\",\"message_id\":" + escapeJson(controls->message.value())
+                + ",\"request_id\":" + escapeJson(controls->correlation.request.value())
+                + ",\"session_id\":" + escapeJson(controls->correlation.session.value())
+                + ",\"generation\":" + std::to_string(controls->correlation.generation.value())
+                + ",\"target\":" + controls->serializedTarget + "}";
+            break;
+        }
+        case RequestKind::controls_select: {
+            const auto* controls = std::get_if<ControlsSelectRequest>(&request.payload);
+            if (!controls) break;
+            auto target = requireJsonObject(controls->serializedTarget, "controls target");
+            if (!target) return Result<WireRequest>::failure(target.error());
+            wire.method = http::verb::post;
+            wire.target = route("/controls/select");
+            wire.expectedStatus = 200;
+            wire.idempotencyKey = controls->message.value();
+            wire.body = "{\"schema\":\"almsivi.controls.select.v1\",\"message_id\":" + escapeJson(controls->message.value())
+                + ",\"request_id\":" + escapeJson(controls->correlation.request.value())
+                + ",\"session_id\":" + escapeJson(controls->correlation.session.value())
+                + ",\"generation\":" + std::to_string(controls->correlation.generation.value())
+                + ",\"created_at\":" + escapeJson(controls->createdAt)
+                + ",\"kind\":" + escapeJson(controls->kind == SessionControlKind::model_slot ? "model_slot"
+                    : controls->kind == SessionControlKind::actor_profile ? "actor_profile"
+                    : controls->kind == SessionControlKind::profile_generate ? "profile_generate" : "narrator_profile_generate")
+                + ",\"selection_id\":" + (controls->selectionId ? escapeJson(*controls->selectionId) : "null")
+                + ",\"target\":" + controls->serializedTarget + "}";
+            break;
+        }
         case RequestKind::media: {
             const auto* media = std::get_if<MediaPrepareRequest>(&request.payload);
             if (!media)
@@ -680,6 +716,28 @@ Result<InboundResult> validateResponse(const OutboundRequest& request, const Wir
                 || correlation.generation != sent.ids.generation)
                 return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
                     "STT response correlation mismatch"));
+            break;
+        }
+        case RequestKind::controls_query: {
+            const auto& sent = std::get<ControlsQueryRequest>(request.payload);
+            auto parsed = parseControlsResponse(response.body(), headers);
+            if (!parsed) return Result<InboundResult>::failure(parsed.error());
+            if (parsed.value().message != sent.message || parsed.value().request != sent.correlation.request
+                || parsed.value().session != sent.correlation.session || parsed.value().generation != sent.correlation.generation)
+                return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
+                    "controls-query response correlation mismatch"));
+            kind = ResponseKind::controls;
+            break;
+        }
+        case RequestKind::controls_select: {
+            const auto& sent = std::get<ControlsSelectRequest>(request.payload);
+            auto parsed = parseControlsResponse(response.body(), headers);
+            if (!parsed) return Result<InboundResult>::failure(parsed.error());
+            if (parsed.value().message != sent.message || parsed.value().request != sent.correlation.request
+                || parsed.value().session != sent.correlation.session || parsed.value().generation != sent.correlation.generation)
+                return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
+                    "controls-select response correlation mismatch"));
+            kind = ResponseKind::controls;
             break;
         }
         case RequestKind::media:
@@ -874,6 +932,7 @@ Result<InboundResult> BeastTransport::execute(const OutboundRequest& request, st
     message.set(http::field::accept,
         wire.mediaDescriptor ? mediaContentType(wire.mediaDescriptor->codec) : std::string(kJsonContentType));
     message.set(http::field::connection, "close");
+    message.set("X-ALMSIVI-Request-Id", request.id.value());
     if (wire.idempotencyKey)
         message.set("Idempotency-Key", *wire.idempotencyKey);
     if (wire.method == http::verb::post)
@@ -942,10 +1001,10 @@ Result<InboundResult> BeastTransport::execute(const OutboundRequest& request, st
         auto validHeaders = validateHeaders(headers);
         if (!validHeaders)
             return Result<InboundResult>::failure(validHeaders.error());
-        auto contentType = parseContentType(std::string(parser.get()[http::field::content_type]), true);
+        auto responseContentType = parseContentType(std::string(parser.get()[http::field::content_type]), true);
         const BodyType expected = wire.mediaDescriptor->codec == MediaCodec::wav ? BodyType::media_wav
             : wire.mediaDescriptor->codec == MediaCodec::ogg ? BodyType::media_ogg : BodyType::media_mpeg;
-        if (!contentType || contentType.value() != expected)
+        if (!responseContentType || responseContentType.value() != expected)
             return Result<InboundResult>::failure(makeError(ErrorCode::invalid_content_type,
                 "media Content-Type does not match descriptor codec"));
     }

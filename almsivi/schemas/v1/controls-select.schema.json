@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://almsivi.invalid/schemas/v1/controls-select.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "almsivi.controls.select.v1", "type": "string"},
+    "message_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "request_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "session_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "generation": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/generation"},
+    "created_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+    "kind": {"enum": ["actor_profile", "model_slot", "profile_generate", "narrator_profile_generate"], "type": "string"},
+    "selection_id": {
+      "oneOf": [
+        {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+        {"type": "null"}
+      ]
+    },
+    "target": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/identity"}
+  },
+  "required": ["schema", "message_id", "request_id", "session_id", "generation", "created_at", "kind", "selection_id", "target"],
+  "type": "object"
+}

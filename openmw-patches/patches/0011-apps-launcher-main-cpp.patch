@@ -1,0 +1,19 @@
+diff --git a/apps/launcher/main.cpp b/apps/launcher/main.cpp
+index ff8515428928ff850caf60b8abc52127b50cae8c..d3d967b4dc09c9ff7b1284606cd4653f01e2bee4 100644
+--- a/apps/launcher/main.cpp
++++ b/apps/launcher/main.cpp
+@@ -1,3 +1,4 @@
++#include <filesystem>
+ #include <iostream>
+ 
+ #include <QDir>
+@@ -28,6 +29,9 @@
+     boost::program_options::options_description description;
+     Files::ConfigurationManager configurationManager;
+     configurationManager.addCommonOptions(description);
++    Files::parseArgs(argc, argv, variables, description);
++    boost::program_options::notify(variables);
++    configurationManager.processPaths(variables, std::filesystem::current_path());
+     configurationManager.readConfiguration(variables, description, true);
+ 
+     Debug::setupLogging(configurationManager.getLogPath(), "Launcher");

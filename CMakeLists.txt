@@ -27,4 +27,8 @@ if(ALMSIVI_LUA_EXECUTABLE)
 endif()
 add_custom_target(check
   COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${CMAKE_BINARY_DIR}" --output-on-failure
-  USES_TERMINAL)
+  USES_TERMINAL
+  DEPENDS almsivi_native_tests)
+if(TARGET almsivi_beast_transport_tests)
+  add_dependencies(check almsivi_beast_transport_tests)
+endif()

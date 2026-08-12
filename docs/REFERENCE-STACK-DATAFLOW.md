@@ -174,7 +174,8 @@ Skyrim/Fallout content package or Bethesda asset into ALMSIVI.
 | FNV/Skyrim IDs/offsets/ABI | None | Exclude. Use RecordId/RefNum/content/cell identity. |
 | Event/prompt/provider pipeline | ALMSIVIserver | Import final Synthserver architecture, translate semantics. |
 | Profiles/memory/relationship/knowledge | ALMSIVIserver | Preserve and migrate. |
-| Narrator/diary/rechat/bored/greetings | Both | Server scheduling/intelligence; current-game safety in Lua. |
+| Narrator/diary/playback-gated rechat | Both | Preserve manual narrative behavior and action-free continuation with current-game safety in Lua. |
+| Boredom/greetings/combat barks/Background Life/ITT | None | Exclude; no scheduler, capability, worker, or model trigger. |
 | Model actions | Server policy + Lua execution | Preserve typed intent/result; new allowlist. |
 | Management UI/workers/backups | ALMSIVIserver | Preserve and rebrand/translate. |
 | ESP/ESM content | Deferred addon | Exclude from core; original records only after gate. |

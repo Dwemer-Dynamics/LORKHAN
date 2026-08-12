@@ -6,9 +6,9 @@ JSON Schemas and fixtures live in both repos and CI compares their SHA-256 manif
 ## Transport
 
 - Base: `http://127.0.0.1:8089/ALMSIVIserver/api/v1` by default.
-- Authentication uses `hmac-sha256-v1` request MACs. Fixed native headers carry installation ID, canonical UTC timestamp, unique random nonce, body SHA-256 and signature over algorithm/method/canonical target/content type/body digest/installation/timestamp/nonce. The 256-bit pairing MAC key is never transmitted routinely. Server persistence binds it to one installation, accepts active or bounded-overlap keys, rejects revoked keys, enforces clock skew and database nonce uniqueness, and covers JSON, STT, event, session and media routes. Plaintext loopback still does not provide payload confidentiality against privileged local software; TLS is not claimed without server support.
+- Authentication uses `hmac-sha256-v1` request MACs. Fixed native headers carry installation ID, canonical UTC timestamp, unique random nonce, body SHA-256 and signature over algorithm/method/canonical target/content type/body digest/installation/timestamp/nonce. The 256-bit pairing MAC key is never transmitted routinely. Server persistence binds it to one installation, accepts active or bounded-overlap keys, rejects revoked keys, enforces clock skew and database nonce uniqueness, and covers JSON, event, session and media routes. Plaintext loopback still does not provide payload confidentiality against privileged local software; TLS is not claimed without server support.
 - Requests and ordinary responses: `application/json; charset=utf-8`.
-- STT upload: bounded WAV body only (`codec: wav`) plus metadata headers/schema.
+- STT uses bounded native WAV capture, authenticated binary upload, durable transcription, and fenced transcript events.
 - Response progress: `GET /events?session_id=...&after=<sequence>&wait_ms<=15000`, returning bounded
   ordered JSON events. Long polling avoids exposing streaming parser complexity to Lua.
 - Media: authenticated fixed route by opaque media ID; descriptor supplies hash/size/codec. No
@@ -48,6 +48,23 @@ Unknown top-level fields and unknown enum values are rejected in v1. IDs are UUI
 UTC RFC 3339, integers have schema bounds, strings are valid UTF-8 and payloads have endpoint caps.
 The server accepts only current sessions/generations for turns and results.
 
+## Canonical input, event, response, and game-data split
+
+`almsivi.input.v1` is the normalized player-text/STT input envelope. `almsivi.event.v1` is the
+typed source-event envelope. `almsivi.response.v1` contains only `ok`, an ordered bounded `lines`
+array, `close`, an error string, and the required installation/profile/playthrough/session/turn/request
+plus response/runtime generation correlation. Every `almsivi.response.line.v1` is either `say` or
+`rolecommand`, carries stable speaker/listener/rechat identities and request/utterance IDs, and has
+bounded text, TTS/media/cache, command, and metadata fields. The server normalizes provider output
+once into this format; persistence, events, TTS, actions, delivery, diagnostics, and rechat consume it.
+
+`almsivi.gamedata.v1` accepts only typed TES3 actor, inventory, nearby-actor, world, Journal,
+captured-dialogue, and prompt-bridge payloads. It does not accept AI quest, boredom, greeting,
+combat-bark, ITT, or Background Life variants. The required `almsivi.events.v1.autonomy` field is
+retained for v1 wire compatibility but must always be an empty array. Rechat is a normal correlated
+turn and never an autonomy directive. All canonical envelopes require both response generation and
+runtime generation values greater than zero.
+
 ## TES3/OpenMW identity
 
 ```json
@@ -74,7 +91,9 @@ version/API plus the ordered content list and file identity metadata, never prop
 | `POST /sessions` | `almsivi.session.init.v1` | accepted session/capabilities/config revision |
 | `DELETE /sessions/{id}` | no body; UUID `Idempotency-Key` | `almsivi.session.ended.v1` |
 | `POST /turns` | `almsivi.turn.v1` | accepted request + first event cursor |
-| `POST /stt` | metadata + audio | transcript event or typed failure |
+| `POST /controls/query` | `almsivi.controls.query.v1` | safe server-owned model slots, NPC profiles, narrator ID, and target-effective settings snapshot |
+| `POST /controls/select` | `almsivi.controls.select.v1` | idempotent session model/profile selection or revision-safe NPC/narrator generation |
+| `POST /stt` | `almsivi.stt.request.v1` metadata headers plus a binary WAV body | `almsivi.stt.accepted.v1`; durable work later emits `stt.transcript` or `stt.failed`. |
 | `GET /events` | session/cursor/wait | `almsivi.events.v1` |
 | `POST /action-results` | `almsivi.action-result.v1` | persisted acknowledgement |
 | `POST /interruptions` | `almsivi.interrupt.v1` | cancellation acknowledgement |
@@ -82,14 +101,61 @@ version/API plus the ordered content list and file identity metadata, never prop
 
 ## Turn payload
 
-A turn includes input `{kind: text|stt, text, language}`, resolved speaker/target/audience identities,
+A shipped turn includes typed text input, resolved speaker/target/audience identities,
 bounded context snapshot/delta, recent terminal action results, and UI source. It never includes the
 pairing token, provider key, host file path, save bytes, proprietary assets, engine pointers, or raw
 unbounded logs.
 
-Server response events have a strictly increasing per-session `sequence`. The current v1 slice contracts exactly `turn.accepted`, `dialogue.complete`, `speech.ready`, `action.intent`, `turn.complete`, `turn.failed`, and `turn.cancelled`. Every envelope includes `message_id`, `request_id`, `turn_id`, `session_id`, `generation`, `sequence`, `created_at`, type and strict payload. The events response is capped at 100 items.
+A playback-driven rechat turn sets `ui_source` to `almsivi_rechat` and carries the Herika-compatible
+typed hint vocabulary: `speaker`, `listener_hint`, `rechat_target_hint`, `origin_line`,
+`rechat_depth`, and `chain_id` (plus the originating turn correlation). The server owns mode,
+probability pre-roll, round budget, and responder selection, then resolves that NPC's profile, LLM,
+TTS, and voice. The client owns ordered playback and cancellation. It submits only after the complete
+speech lane is terminal and its final delivery result is `played`, with at most one rechat request in
+flight. Rechat provider actions are always discarded, and a chain closes at its server-owned budget
+or cancels on new player input, failure, combat, lifecycle changes, stop, or stale state.
 
-`dialogue.complete` is the final utterance. Duplicate events by `(session_id, sequence, message_id)` are ignored. Cursor gaps force bounded replay, never guessed ordering. Streaming deltas/status, configuration/notice and resync variants remain a future v1 amendment rather than accepted open variants.
+An in-game action menu may add `action_request` with a catalog action name, exact tier, bounded
+parameters, and an optional explicit target. The server derives the actor from the resolved turn target.
+It normally derives the action target from the player speaker; only `ai.face`, `combat.start`, and
+`combat.stop` may override that target, and only with a different identity present in the bounded nearby-actor context.
+The server then applies the negotiated capability and profile action policy without invoking the
+language-model provider. Accepted requests still emit the ordinary `turn.accepted`, `action.intent`,
+and `turn.complete` sequence.
+
+`ai.travel` and `ai.escort` carry only a player-ray-captured `destination_x`, `destination_y`,
+`destination_z`, and canonical `destination_cell`. Both client and server bound those fields, and the
+actor rechecks the current cell before starting an OpenMW package.
+
+The API-129 action set additionally provides bounded read-only `inventory.inspect`, same-cell
+`ai.approach`, and duration-bounded `ai.wait`. Their names, tiers, parameters, negotiated capabilities,
+native parser variants, Lua handlers, server catalog rows, and protocol fixtures are synchronized. The exhaustive
+frozen-catalog disposition is recorded in `docs/evidence/openmw-action-parity-audit.md`.
+
+In-game controls never accept provider endpoints, API keys, or executable configuration. Model choices
+are revisioned server-owned slots: a `configured` slot may override only the model while retaining the
+server process endpoint and credential environment; a `mock` slot remains deterministic. Roleplay
+NPC profiles bind to one stable actor identity within the active installation/playthrough; player and narrator
+profiles are excluded from that binding list. The installation narrator ID permits only the server-validated,
+revision-safe narrator-generation operation. The chosen
+profile affects that actor's profile and prompt sources, while memory, relationship, knowledge, and
+narrative retrieval remain scoped to the session profile/playthrough. Every accepted turn freezes the
+assembled prompt and selected provider revision before worker execution.
+
+Every controls response includes `almsivi.effective-settings.v1` for the active target. It carries the
+resolved memory, narrator, safety, and routing values; Global/Core Profile/NPC source metadata; bound profile
+revisions; and a deterministic change token. Local hotkeys, HUD visibility, panel layout, and TTS volume boost
+remain OpenMW preferences and are never replaced when the target changes. The effective settings
+snapshot includes the layered rechat enable/depth values; timer scheduling, boredom, greetings,
+combat barks, ITT, and Background Life remain excluded. STT uses one installation-global connector and does not enter the Global/Core Profile/NPC resolver.
+
+Server response events have a strictly increasing per-session `sequence`. The current v1 slice contracts `turn.accepted`, `dialogue.delta`, `dialogue.complete`, `speech.ready`, `stt.transcript`, `stt.failed`, `action.intent`, `turn.complete`, `turn.failed`, and `turn.cancelled`. Bounded `dialogue.delta` text is display-only progress; the validated `dialogue.complete` remains the durable utterance and memory source. TTS runs as a separate durable job after the dialogue is committed, and every `speech.ready` descriptor carries its `dialogue_message_id` so delayed group speech remains correctly ordered. Every envelope includes `message_id`, `request_id`, `turn_id`, `session_id`, `generation`, `sequence`, `created_at`, type and strict payload. The events response is capped at 100 items and its required `autonomy` array is always empty.
+
+`dialogue.complete` is the final utterance. The client reports one terminal delivery result for each
+utterance, and the server mirrors it into durable speech state (`spoken`, failure, cancellation, or
+expiry). Duplicate events by `(session_id, sequence, message_id)` are ignored. Cursor gaps force
+bounded replay, never guessed ordering. Configuration/notice and resync variants remain future
+amendments rather than accepted open variants.
 
 ## Action intent and result
 
@@ -141,7 +207,7 @@ server logs with correlation IDs. Retriability and `retry_after_ms` are explicit
 
 ## Limits and compatibility
 
-Default server caps mirror or tighten native caps: 2 MiB JSON, 16 MiB STT, 32 MiB media, 128 KiB
+Default server caps mirror or tighten native caps: 2 MiB JSON, 32 MiB media, 128 KiB
 context, 12 audience actors, 4 actions/turn, 1 result-aware continuation/action, 15 s event wait,
 60 s turn and 120 s provider hard deadline. Negotiation may lower caps only.
 

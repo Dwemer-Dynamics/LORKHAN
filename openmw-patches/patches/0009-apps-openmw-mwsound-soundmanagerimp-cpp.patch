@@ -1,0 +1,82 @@
+diff --git a/apps/openmw/mwsound/soundmanagerimp.cpp b/apps/openmw/mwsound/soundmanagerimp.cpp
+index 8471dbe0beb73ba1894a5d73c117c0ab2927a68b..e7dba6eb3307295fc460182268f7b9107558311c 100644
+--- a/apps/openmw/mwsound/soundmanagerimp.cpp
++++ b/apps/openmw/mwsound/soundmanagerimp.cpp
+@@ -189,6 +189,22 @@
+         return nullptr;
+     }
+ 
++    DecoderPtr SoundManager::loadAlmsiviMedia(Files::IStreamPtr media, std::string_view name)
++    {
++        try
++        {
++            auto decoder = std::make_shared<FFmpegDecoder>(mVFS);
++            decoder->open(std::move(media), name);
++            return decoder;
++        }
++        catch (const std::exception& e)
++        {
++            Log(Debug::Error) << "Failed to load verified ALMSIVI audio: " << e.what();
++        }
++
++        return nullptr;
++    }
++
+     SoundPtr SoundManager::getSoundRef()
+     {
+         return mSounds.get();
+@@ -199,7 +215,8 @@
+         return mStreams.get();
+     }
+ 
+-    StreamPtr SoundManager::playVoice(DecoderPtr decoder, const osg::Vec3f& pos, bool playlocal)
++    StreamPtr SoundManager::playVoice(
++        DecoderPtr decoder, const osg::Vec3f& pos, bool playlocal, float volumeMultiplier)
+     {
+         MWBase::World* world = MWBase::Environment::get().getWorld();
+         static const float fAudioMinDistanceMult
+@@ -220,6 +237,7 @@
+         {
+             sound->init([&] {
+                 SoundParams params;
++                params.mVolume = volumeMultiplier;
+                 params.mBaseVolume = basevol;
+                 params.mFlags = PlayMode::NoEnv | Type::Voice | Play_2D;
+                 return params;
+@@ -231,6 +249,7 @@
+             sound->init([&] {
+                 SoundParams params;
+                 params.mPos = pos;
++                params.mVolume = volumeMultiplier;
+                 params.mBaseVolume = basevol;
+                 params.mMinDistance = minDistance;
+                 params.mMaxDistance = maxDistance;
+@@ -331,6 +350,28 @@
+             return;
+ 
+         mSaySoundsQueue.emplace(ptr.mRef, SaySound{ ptr.mCell, std::move(sound) });
++    }
++
++    bool SoundManager::sayAlmsiviMedia(
++        const MWWorld::ConstPtr& ptr, Files::IStreamPtr media, std::string_view name, float volumeBoost)
++    {
++        if (!mOutput->isInitialized())
++            return false;
++
++        DecoderPtr decoder = loadAlmsiviMedia(std::move(media), name);
++        if (!decoder)
++            return false;
++
++        MWBase::World* world = MWBase::Environment::get().getWorld();
++        const osg::Vec3f pos = world->getActorHeadTransform(ptr).getTrans();
++
++        stopSay(ptr);
++        StreamPtr sound = playVoice(std::move(decoder), pos, (ptr == MWMechanics::getPlayer()), volumeBoost);
++        if (!sound)
++            return false;
++
++        mSaySoundsQueue.emplace(ptr.mRef, SaySound{ ptr.mCell, std::move(sound) });
++        return true;
+     }
+ 
+     float SoundManager::getSaySoundLoudness(const MWWorld::ConstPtr& ptr) const

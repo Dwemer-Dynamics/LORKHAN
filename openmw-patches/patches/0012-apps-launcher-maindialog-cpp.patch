@@ -1,0 +1,24 @@
+diff --git a/apps/launcher/maindialog.cpp b/apps/launcher/maindialog.cpp
+index 38ce59f9b2279fef1a76026f7c32738037750a65..3d24e58ae4a8d3684771146cb2f0dfa323dbdcb0 100644
+--- a/apps/launcher/maindialog.cpp
++++ b/apps/launcher/maindialog.cpp
+@@ -592,9 +592,18 @@
+         return;
+     }
+ 
++    // Forward the launcher's active profile paths so OpenMW loads the same content selection.
++    QStringList arguments;
++    const auto& configPaths = mCfgMgr.getActiveConfigPaths();
++    if (configPaths.size() > 1)
++    {
++        arguments << QStringLiteral("--replace=config");
++        for (std::size_t i = 1; i < configPaths.size(); ++i)
++            arguments << QStringLiteral("--config=") + Files::pathToQString(configPaths[i]);
++    }
++
+     // Launch the game detached
+-
+-    if (mGameInvoker->startProcess(QLatin1String("openmw"), true))
++    if (mGameInvoker->startProcess(QLatin1String("openmw"), arguments, true))
+         return qApp->quit();
+ }

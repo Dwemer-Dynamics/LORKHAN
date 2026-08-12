@@ -191,6 +191,52 @@ class FoundationTests(unittest.TestCase):
         bad = {"schema_version": 1, "rows": [{"id":"x", "claim":"x", "state":"DONE", "evidence":[], "extra":1}]}
         with self.assertRaises(SchemaError):
             validate(bad, schema)
+        patterned = {"type":"object", "additionalProperties":False,
+                     "patternProperties":{"^settings\\.":{"enum":["global", "core_profile", "npc"]}}}
+        validate({"settings.memory.enabled":"core_profile"}, patterned)
+        with self.assertRaises(SchemaError):
+            validate({"unexpected":"global"}, patterned)
+
+    def test_stt_is_shipped_but_timer_autonomy_has_no_entry_points(self):
+        script_root = ROOT / "almsivi/files/scripts/ALMSIVI"
+        settings = (script_root / "settings.lua").read_text(encoding="utf-8")
+        player = (script_root / "player.lua").read_text(encoding="utf-8")
+        global_script = (script_root / "global.lua").read_text(encoding="utf-8")
+        native_bindings = (ROOT / "apps/openmw/mwlua/almsivibindings.cpp").read_text(encoding="utf-8")
+        patch_bindings = (ROOT / "openmw-patches/overlay/apps/openmw/mwlua/almsivibindings.cpp").read_text(encoding="utf-8")
+        for token in ("key='autoGreeting'", "key='rechat'", "key='boredom'", "key='combatBarks'"):
+            self.assertNotIn(token, settings)
+        for token in ("ALMSIVI_LOCAL_AUTONOMY_REQUEST", "updateLocalAutonomy", "updateCombatBarks"):
+            self.assertNotIn(token, player)
+        for token in ("orchestrator.pollAutonomy", "ALMSIVI_LOCAL_AUTONOMY_REQUEST"):
+            self.assertNotIn(token, global_script)
+        for token in ("ALMSIVI_OpenMic", "ALMSIVI_OpenMicMute", "ALMSIVI_PushToTalk"):
+            self.assertIn(token, settings)
+        self.assertIn("argument={type='action',key='ALMSIVI_PushToTalk'}", settings)
+        self.assertIn("input.registerActionHandler('ALMSIVI_PushToTalk'", player)
+        self.assertIn("onKeyRelease=function(event)", player)
+        self.assertIn("handlePushToTalk(true,'configured_key')", player)
+        self.assertIn("handlePushToTalk(false,'configured_key')", player)
+        self.assertIn("not controlsAllowed() and not ownsUiMode", player)
+        self.assertIn("speech.listen", player)
+        self.assertIn("orchestrator.pollVoice", global_script)
+        self.assertIn("orchestrator.pollOpenMic", global_script)
+        self.assertIn("speech.listen", native_bindings)
+        self.assertIn("speech.listen", patch_bindings)
+        for binding in (native_bindings, patch_bindings):
+            self.assertGreaterEqual(binding.count('"speech.listen"'), 2)
+            self.assertIn(
+                '"dialogue.text", "speech.say", "speech.listen", "controls.session"',
+                binding,
+            )
+            self.assertIn('api["currentVoiceCaptureDeviceName"]', binding)
+            self.assertIn('api["voiceCaptureDevices"]', binding)
+            self.assertNotIn('api["selectVoiceCaptureDevice"]', binding)
+        self.assertIn('api["serverBaseUrl"]', native_bindings)
+        self.assertIn('api["serverBaseUrl"]', patch_bindings)
+        self.assertIn('result["created_at"] = event.createdAt', native_bindings)
+        self.assertIn('result["created_at"] = event.createdAt', patch_bindings)
+        self.assertNotIn("http://127.0.0.1:8089/ALMSIVIserver/manage", player)
 
     def test_offline_cache_miss(self):
         result = self.command(sys.executable, str(BOOTSTRAP), "bootstrap", "--cache-dir", str(self.temp / "none"),

@@ -1,0 +1,31 @@
+diff --git a/apps/openmw/mwsound/ffmpegdecoder.cpp b/apps/openmw/mwsound/ffmpegdecoder.cpp
+index d780db8f075495303212c8e60b9448f9c691e341..52412ebd4aa12fdb053351ff9a16a2eed42d5cef 100644
+--- a/apps/openmw/mwsound/ffmpegdecoder.cpp
++++ b/apps/openmw/mwsound/ffmpegdecoder.cpp
+@@ -229,8 +229,15 @@
+ 
+     void FFmpegDecoder::open(VFS::Path::NormalizedView fname)
+     {
++        open(mResourceMgr->get(fname), fname.value());
++    }
++
++    void FFmpegDecoder::open(Files::IStreamPtr dataStream, std::string_view name)
++    {
+         close();
+-        mDataStream = mResourceMgr->get(fname);
++        if (!dataStream)
++            throw std::runtime_error("Audio stream is unavailable");
++        mDataStream = std::move(dataStream);
+ 
+         AVIOContextPtr ioCtx(avio_alloc_context(nullptr, 0, 0, this, readPacket, writePacket, seek));
+         if (ioCtx == nullptr)
+@@ -243,7 +250,8 @@
+         formatCtx->pb = ioCtx.get();
+ 
+         // avformat_open_input frees user supplied AVFormatContext on failure
+-        if (avformat_open_input(&formatCtx, fname.value().data(), nullptr, nullptr) != 0)
++        const std::string sourceName(name);
++        if (avformat_open_input(&formatCtx, sourceName.c_str(), nullptr, nullptr) != 0)
+             throw std::runtime_error("Failed to open input");
+ 
+         AVFormatContextPtr formatCtxPtr(std::exchange(formatCtx, nullptr));

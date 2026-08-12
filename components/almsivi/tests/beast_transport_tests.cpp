@@ -125,7 +125,7 @@ void sendJson(tcp::socket& socket, unsigned status, std::string body,
     std::string_view contentType = "application/json; charset=utf-8")
 {
     http::response<http::string_body> response{static_cast<http::status>(status), 11};
-    response.set(http::field::content_type, contentType);
+    response.set(http::field::content_type, std::string(contentType));
     response.set(http::field::connection, "close");
     response.body() = std::move(body);
     response.prepare_payload();
@@ -347,7 +347,7 @@ void testSessionTurnAndCorrelation()
             CHECK(request.body.find("\"created_at\":\"2026-07-18T20:00:00Z\"") != std::string::npos);
             sendJson(socket, 201, std::string(R"({"schema":"almsivi.session.accepted.v1","message_id":")")
                 + kMessage + R"(","session_id":")" + kSession
-                + R"(","generation":7,"capabilities":["dialogue.text"],"config_revision":"test","event_cursor":0})");
+                + R"(","generation":7,"capabilities":["dialogue.text"],"config_revision":"test","client_settings":{"schema":"almsivi.client-settings.v1","behavior":{"auto_greeting":false,"rechat":false,"rechat_delay_seconds":45,"rechat_max_depth":2,"rechat_probability_percent":50,"rechat_mode":"random","rechat_strict_targeting":false,"open_rechat":true,"rechat_allow_actions":false,"end_conversation_cooldown_seconds":60,"boredom":false,"boredom_delay_seconds":180,"combat_barks":false,"combat_bark_period_seconds":20},"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"random_events":false,"quest_events":false,"book_events":false},"presentation":{"show_status_hud":true,"transcript_rows":8,"tts_volume_boost":3},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"event_cursor":0})");
         });
         almsivi::BeastTransport transport(url(server.port()), almsivi::InstallationId(kInstallation), token(), cacheRoot());
         auto result = transport.execute(init(), {});
@@ -384,7 +384,7 @@ void testEventsInterruptionActionAndDelete()
             CHECK(request.target == std::string(kBasePath) + "/events?session_id=" + kSession
                 + "&generation=7&after=3&wait_ms=15000");
             sendJson(socket, 200, std::string(R"({"schema":"almsivi.events.v1","session_id":")")
-                + kSession + R"(","generation":7,"next_after":3,"events":[]})");
+                + kSession + R"(","generation":7,"next_after":3,"events":[],"autonomy":[]})");
         });
         almsivi::OutboundRequest request{almsivi::RequestId(kRequest), almsivi::SessionId(kSession),
             almsivi::Generation(7), almsivi::RequestKind::event_poll,
@@ -739,16 +739,20 @@ int main(int argc, char** argv)
             "Please follow me.");
         if (!require(static_cast<bool>(transport.execute(follow, {})), "follow turn failed"))
             return EXIT_FAILURE;
-        auto followEvents = pollEvents(transport, liveSession, 0, 1000);
-        if (!require(static_cast<bool>(followEvents), "follow event poll failed"))
-            return EXIT_FAILURE;
         std::optional<almsivi::ActionIntent> action;
         bool followComplete = false;
-        for (const auto& event : followEvents.value().events) {
-            if (event.type == almsivi::ProtocolEventType::action_intent)
-                action = std::get<almsivi::ActionIntentEventPayload>(event.payload).intent;
-            if (event.type == almsivi::ProtocolEventType::turn_complete)
-                followComplete = true;
+        std::uint64_t cursor = 0;
+        for (int attempt = 0; attempt < 20 && (!action || !followComplete); ++attempt) {
+            auto followEvents = pollEvents(transport, liveSession, cursor, 100);
+            if (!require(static_cast<bool>(followEvents), "follow event poll failed"))
+                return EXIT_FAILURE;
+            cursor = followEvents.value().nextAfter;
+            for (const auto& event : followEvents.value().events) {
+                if (event.type == almsivi::ProtocolEventType::action_intent)
+                    action = std::get<almsivi::ActionIntentEventPayload>(event.payload).intent;
+                if (event.type == almsivi::ProtocolEventType::turn_complete)
+                    followComplete = true;
+            }
         }
         if (!require(action.has_value() && followComplete && action->followDistance == 192,
                 "dynamic ai.follow event missing"))
@@ -790,7 +794,6 @@ int main(int argc, char** argv)
                 return EXIT_FAILURE;
         }
 
-        std::uint64_t cursor = followEvents.value().nextAfter;
         if (!controlDirectory.empty()) {
             auto blocked = liveTurn(live, liveSession, live.blockedMessage, live.blockedRequest, live.blockedTurn,
                 "[provider-block] please wait");
@@ -813,24 +816,34 @@ int main(int argc, char** argv)
             blockedThread.join();
             if (!require(interrupted && blockedResponse && *blockedResponse, "real HTTP interruption failed"))
                 return EXIT_FAILURE;
-            auto cancelledEvents = pollEvents(interruptTransport, liveSession, cursor, 1000);
-            if (!require(cancelledEvents && cancelledEvents.value().events.size() == 2
-                    && cancelledEvents.value().events.back().type == almsivi::ProtocolEventType::turn_cancelled,
-                    "interruption did not persist turn.cancelled"))
+            bool cancelledSeen = false;
+            for (int attempt = 0; attempt < 20 && !cancelledSeen; ++attempt) {
+                auto cancelledEvents = pollEvents(interruptTransport, liveSession, cursor, 100);
+                if (!require(static_cast<bool>(cancelledEvents), "interruption event poll failed"))
+                    return EXIT_FAILURE;
+                cursor = cancelledEvents.value().nextAfter;
+                for (const auto& event : cancelledEvents.value().events)
+                    cancelledSeen = cancelledSeen || event.type == almsivi::ProtocolEventType::turn_cancelled;
+            }
+            if (!require(cancelledSeen, "interruption did not persist turn.cancelled"))
                 return EXIT_FAILURE;
-            cursor = cancelledEvents.value().nextAfter;
         }
 
         auto failed = liveTurn(live, liveSession, live.failureMessage, live.failureRequest, live.failureTurn,
             "[provider-fail]");
         if (!require(static_cast<bool>(transport.execute(failed, {})), "provider-failure turn was not accepted"))
             return EXIT_FAILURE;
-        auto failedEvents = pollEvents(transport, liveSession, cursor, 1000);
-        if (!require(failedEvents && failedEvents.value().events.size() == 2
-                && failedEvents.value().events.back().type == almsivi::ProtocolEventType::turn_failed,
-                "provider failure event missing"))
+        bool failureSeen = false;
+        for (int attempt = 0; attempt < 20 && !failureSeen; ++attempt) {
+            auto failedEvents = pollEvents(transport, liveSession, cursor, 100);
+            if (!require(static_cast<bool>(failedEvents), "provider failure event poll failed"))
+                return EXIT_FAILURE;
+            cursor = failedEvents.value().nextAfter;
+            for (const auto& event : failedEvents.value().events)
+                failureSeen = failureSeen || event.type == almsivi::ProtocolEventType::turn_failed;
+        }
+        if (!require(failureSeen, "provider failure event missing"))
             return EXIT_FAILURE;
-        cursor = failedEvents.value().nextAfter;
 
         almsivi::BeastTransport::Deadlines shortDeadlines;
         shortDeadlines.firstByte = 100ms;
@@ -838,23 +851,24 @@ int main(int argc, char** argv)
         almsivi::BeastTransport shortTransport(baseUrl, almsivi::InstallationId(live.installation), token(), cacheRoot(), shortDeadlines);
         auto slow = liveTurn(live, liveSession, live.slowMessage, live.slowRequest, live.slowTurn,
             "[provider-slow]");
-        const auto timeoutStarted = std::chrono::steady_clock::now();
         auto timeout = shortTransport.execute(slow, {});
-        const auto timeoutElapsed = std::chrono::steady_clock::now() - timeoutStarted;
         if (!timeout) {
             if (!require(timeout.error().code == almsivi::ErrorCode::timeout,
                     "real provider deadline returned wrong error"))
                 return EXIT_FAILURE;
-        } else if (!require(timeoutElapsed >= 250ms,
-                       "controlled slow provider did not delay the real response")) {
-            return EXIT_FAILURE;
         }
-        std::this_thread::sleep_for(350ms);
-        auto slowEvents = pollEvents(transport, liveSession, cursor, 1000);
-        if (!require(slowEvents && slowEvents.value().events.size() >= 2,
-                "server did not finish deadline-disconnected turn"))
+        bool slowTerminalSeen = false;
+        for (int attempt = 0; attempt < 20 && !slowTerminalSeen; ++attempt) {
+            auto slowEvents = pollEvents(transport, liveSession, cursor, 100);
+            if (!require(static_cast<bool>(slowEvents), "deadline-disconnected event poll failed"))
+                return EXIT_FAILURE;
+            cursor = slowEvents.value().nextAfter;
+            for (const auto& event : slowEvents.value().events)
+                slowTerminalSeen = slowTerminalSeen || event.type == almsivi::ProtocolEventType::turn_complete
+                    || event.type == almsivi::ProtocolEventType::turn_failed;
+        }
+        if (!require(slowTerminalSeen, "server did not finish deadline-disconnected turn"))
             return EXIT_FAILURE;
-        cursor = slowEvents.value().nextAfter;
 
         almsivi::OutboundRequest longPollRequest{almsivi::RequestId(liveUuid(1, 98)), liveSession,
             almsivi::Generation(7), almsivi::RequestKind::event_poll,

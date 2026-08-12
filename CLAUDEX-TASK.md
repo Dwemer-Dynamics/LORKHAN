@@ -4,8 +4,13 @@
 
 Implement ALMSIVI as a side-by-side OpenMW 0.51.0 distribution plus Lua mod that preserves every
 applicable CHIM/Dialectic/SYNTH behavior, communicates with sibling `RANGROO/ALMSIVIserver`, and
-produces deterministic Windows x64 packages with automated cross-platform builds. Do not weaken
+produces deterministic Windows x64 packages with focused supported-platform CI. Do not weaken
 OpenMW's Lua sandbox and do not require a proprietary content addon for the first complete product.
+
+Current user override: Windows x64 Release is the supported native CI/product lane. Ubuntu CI runs
+portable Python/Lua/contracts/audits only. Linux-native, sanitizer, macOS, and definition-only CI
+lanes are removed. Manual gameplay does not block the automated build/deployment goal and remains
+explicitly unverified until the user runs the supplied checklist.
 
 ## Start gate and baselines
 
@@ -64,8 +69,8 @@ files. Do not spend agents repeating the same repository scan.
    Import the final Synthserver into the sibling repo through a reviewable commit preserving its
    history/provenance; do not blindly fork current planning content.
 2. **Reproducible OpenMW foundation.** Add an upstream remote/pin script and deterministic patch
-   manifest. Establish MSVC 2022/Ninja Windows x64 plus Linux x64 and macOS arm64 build/test lanes.
-   Produce an unmodified upstream control build before the first patch.
+   manifest. Establish the supported MSVC 2022 Windows x64 Release lane plus portable Ubuntu
+   foundation/contract checks. Produce an unmodified upstream control build before the first patch.
 3. **Typed native bridge.** Implement `openmw.almsivi` only in GLOBAL, PLAYER, and CUSTOM local
    contexts. Add config/status/capabilities, bounded async request/cancel/poll, and verified media
    staging/playback operations. Use Boost.Asio/Beast with `Boost::system`; accept only HTTP to an IP
@@ -85,8 +90,9 @@ files. Do not spend agents repeating the same repository scan.
 7. **Context and intelligence.** Add bounded snapshots for player, cell/region, game time, weather,
    nearby actors/objects, target, stats, factions/disposition/reputation, inventory/equipment,
    active effects/spells, journal/quests, loaded content/load order, and captured vanilla dialogue.
-   Implement server memory, relationships, profiles, narrator, diary, world knowledge, rechat,
-   boredom, automatic greetings, and playthrough restore behavior.
+   Implement server memory, relationships, profiles, narrator, diary, world knowledge, playback-gated
+   rechat, and playthrough restore behavior. Exclude boredom, automatic greetings, combat barks,
+   ITT, Background Life, and every timer-driven model trigger.
 8. **Typed actions.** Prove a read-only action end to end, including correlated terminal result.
    Then add allowlisted follow/escort/travel/wander/pursue/combat package controls, stop, face/look,
    equip/use/consume, give/take exact inventory deltas, and safe UI interactions supported by API
@@ -103,8 +109,8 @@ files. Do not spend agents repeating the same repository scan.
 
 ## Proof required without Morrowind data
 
-- Clean Windows x64 Release and Debug ALMSIVI builds, and Linux x64/macOS arm64 build/test results,
-  from the exact OpenMW pin.
+- Clean Windows x64 Release ALMSIVI build from the exact OpenMW pin plus portable Ubuntu
+  Python/Lua/contract/audit results. Linux-native and macOS builds are deferred.
 - An unmodified upstream control build plus patch-manifest audit proving the integration is narrow.
 - C++ tests for URL/IP enforcement, authentication, schema/size/hash validation, bounded queues,
   cancellation, generations, timeout, backpressure, media lifecycle, redaction, and shutdown.
@@ -129,7 +135,8 @@ files. Do not spend agents repeating the same repository scan.
 ## Boundaries
 
 - Work only in ALMSIVI, sibling ALMSIVIserver, and isolated temporary worktrees.
-- Do not push, publish, release, deploy, change GitHub settings, or modify reference repos.
+- Pushes to the two existing draft PR branches and the final local deployment are authorized by the
+  active goal. Do not merge, release, publish, change GitHub settings, or modify reference repos.
 - Do not put source, secrets, saves, game data, provider payloads, or personal data outside the
   user's approved personal Azure project.
 - Preserve all pre-existing user work. Never clean or reset an ambiguous worktree.

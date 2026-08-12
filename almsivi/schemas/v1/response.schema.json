@@ -1,0 +1,24 @@
+{
+  "$id": "https://almsivi.invalid/schemas/v1/response.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "close": {"type": "boolean"},
+    "created_at": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+    "error": {"maxLength": 256, "type": "string"},
+    "generation": {"maximum": 9007199254740991, "minimum": 1, "type": "integer"},
+    "installation_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "lines": {"items": {"$ref": "https://almsivi.invalid/schemas/v1/response-line.schema.json"}, "maxItems": 64, "type": "array", "uniqueItems": true},
+    "ok": {"type": "boolean"},
+    "playthrough_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "profile_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "request_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "response_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "runtime_generation": {"maximum": 9007199254740991, "minimum": 1, "type": "integer"},
+    "schema": {"const": "almsivi.response.v1", "type": "string"},
+    "session_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "turn_id": {"$ref": "https://almsivi.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+  },
+  "required": ["schema", "response_id", "installation_id", "profile_id", "playthrough_id", "session_id", "turn_id", "request_id", "generation", "runtime_generation", "created_at", "ok", "lines", "close", "error"],
+  "type": "object"
+}

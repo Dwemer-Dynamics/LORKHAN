@@ -1,6 +1,8 @@
 #include "almsivi/protocol_response.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <initializer_list>
 #include <limits>
 #include <set>
@@ -99,6 +101,17 @@ Result<std::uint64_t> requireUnsigned(const json::Object& object, std::string_vi
     return Result<std::uint64_t>::success(parsed);
 }
 
+Result<double> requireNumber(const json::Object& object,std::string_view key,double minimum,double maximum)
+{
+    const auto* value=json::find(object,key);double parsed{};
+    if(!value)return invalidSchemaValue<double>(std::string(key)+" must be a bounded number");
+    if(value->number())parsed=*value->number();else if(value->integer())parsed=static_cast<double>(*value->integer());
+    else return invalidSchemaValue<double>(std::string(key)+" must be a bounded number");
+    if(!std::isfinite(parsed)||parsed<minimum||parsed>maximum)
+        return invalidSchemaValue<double>(std::string(key)+" is outside the allowed range");
+    return Result<double>::success(parsed);
+}
+
 Result<bool> requireBoolean(const json::Object& object, std::string_view key)
 {
     const auto* value = json::find(object, key);
@@ -194,6 +207,282 @@ Result<ProtocolIdentity> parseIdentity(const json::Value& value)
         std::move(display).value()});
 }
 
+bool isLowercaseHash(std::string_view value)
+{
+    if (value.size() != 64)
+        return false;
+    return std::all_of(value.begin(), value.end(), [](const char character) {
+        return (character >= '0' && character <= '9') || (character >= 'a' && character <= 'f');
+    });
+}
+
+bool isCommandName(std::string_view value)
+{
+    if (value.empty() || value.size() > 64 || value.front() < 'a' || value.front() > 'z')
+        return false;
+    return std::all_of(value.begin() + 1, value.end(), [](const char character) {
+        return (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9')
+            || character == '_' || character == '.';
+    });
+}
+
+bool isCacheKey(std::string_view value)
+{
+    if (value.empty() || value.size() > 256)
+        return false;
+    return std::all_of(value.begin(), value.end(), [](const char character) {
+        return (character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z')
+            || (character >= '0' && character <= '9') || character == '.' || character == '_'
+            || character == ':' || character == '-';
+    });
+}
+
+Result<CanonicalMediaDescriptor> parseCanonicalMedia(const json::Value& value)
+{
+    const auto* object = value.object();
+    if (!object || !hasExactly(*object,
+            {"media_id", "dialogue_message_id", "sha256", "bytes", "codec", "duration_ms", "expires_at"}))
+        return invalidSchemaValue<CanonicalMediaDescriptor>("canonical media fields mismatch");
+    auto media = requireUuid(*object, "media_id");
+    auto dialogue = requireUuid(*object, "dialogue_message_id");
+    auto hash = requireString(*object, "sha256");
+    auto bytes = requireUnsigned(*object, "bytes", kMaxMediaBytes, 1);
+    auto codec = requireString(*object, "codec");
+    auto duration = requireUnsigned(*object, "duration_ms", kMaximumProtocolInteger, 1);
+    auto expiresAt = requireTimestamp(*object, "expires_at");
+    if (!media) return invalidSchemaValue<CanonicalMediaDescriptor>(media.error().message);
+    if (!dialogue) return invalidSchemaValue<CanonicalMediaDescriptor>(dialogue.error().message);
+    if (!hash || !isLowercaseHash(hash.value()))
+        return invalidSchemaValue<CanonicalMediaDescriptor>("canonical media hash mismatch");
+    if (!bytes) return invalidSchemaValue<CanonicalMediaDescriptor>(bytes.error().message);
+    if (!codec) return invalidSchemaValue<CanonicalMediaDescriptor>(codec.error().message);
+    MediaCodec mappedCodec;
+    if (codec.value() == "wav") mappedCodec = MediaCodec::wav;
+    else if (codec.value() == "ogg") mappedCodec = MediaCodec::ogg;
+    else if (codec.value() == "mp3") mappedCodec = MediaCodec::mp3;
+    else return invalidSchemaValue<CanonicalMediaDescriptor>("canonical media codec mismatch");
+    if (!duration) return invalidSchemaValue<CanonicalMediaDescriptor>(duration.error().message);
+    if (!expiresAt) return invalidSchemaValue<CanonicalMediaDescriptor>(expiresAt.error().message);
+    return Result<CanonicalMediaDescriptor>::success({MediaId(std::move(media).value()),
+        MessageId(std::move(dialogue).value()), std::move(hash).value(), bytes.value(), mappedCodec,
+        duration.value(), std::move(expiresAt).value()});
+}
+
+Result<CanonicalResponseMetadata> parseCanonicalMetadata(const json::Value& value)
+{
+    const auto* object = value.object();
+    if (!object || !hasExactly(*object, {},
+            {"animation", "emotion", "mood", "rechat_depth", "speech_enabled", "source"}))
+        return invalidSchemaValue<CanonicalResponseMetadata>("canonical response metadata fields mismatch");
+    CanonicalResponseMetadata metadata;
+    auto parseOptionalString = [&](std::string_view key, std::optional<std::string>& destination) -> Result<void> {
+        if (!json::find(*object, key))
+            return Result<void>::success();
+        auto parsed = requireString(*object, key, 0, 64);
+        if (!parsed)
+            return invalidSchema(parsed.error().message);
+        destination = std::move(parsed).value();
+        return Result<void>::success();
+    };
+    for (auto [key, destination] : std::array<std::pair<std::string_view, std::optional<std::string>*>, 4>{
+             std::pair{"animation", &metadata.animation}, {"emotion", &metadata.emotion},
+             {"mood", &metadata.mood}, {"source", &metadata.source}}) {
+        auto parsed = parseOptionalString(key, *destination);
+        if (!parsed)
+            return invalidSchemaValue<CanonicalResponseMetadata>(parsed.error().message);
+    }
+    if (json::find(*object, "rechat_depth")) {
+        auto depth = requireUnsigned(*object, "rechat_depth", 20);
+        if (!depth) return invalidSchemaValue<CanonicalResponseMetadata>(depth.error().message);
+        metadata.rechatDepth = depth.value();
+    }
+    if (json::find(*object, "speech_enabled")) {
+        auto enabled = requireBoolean(*object, "speech_enabled");
+        if (!enabled) return invalidSchemaValue<CanonicalResponseMetadata>(enabled.error().message);
+        metadata.speechEnabled = enabled.value();
+    }
+    return Result<CanonicalResponseMetadata>::success(std::move(metadata));
+}
+
+Result<CanonicalResponseLine> parseCanonicalLine(const json::Value& value, const RequestId& responseRequest,
+    std::uint64_t expectedIndex)
+{
+    const auto* object = value.object();
+    if (!object || !hasExactly(*object,
+            {"schema", "line_id", "line_index", "speaker", "display_name", "speaker_identity", "action",
+                "text", "subtitle", "tts_text", "request_id", "utterance_id", "listener", "listener_identity",
+                "rechat_target", "rechat_target_identity", "final_response_line", "metadata"},
+            {"media", "tts_cache_key", "command_name", "command_args"}))
+        return invalidSchemaValue<CanonicalResponseLine>("canonical response line fields mismatch");
+    auto schema = requireString(*object, "schema");
+    auto lineId = requireUuid(*object, "line_id");
+    auto lineIndex = requireUnsigned(*object, "line_index", 63);
+    auto speaker = requireString(*object, "speaker", 1, 256);
+    auto displayName = requireString(*object, "display_name", 1, 256);
+    auto action = requireString(*object, "action");
+    auto text = requireString(*object, "text", 0, 4096);
+    auto subtitle = requireString(*object, "subtitle", 0, 4096);
+    auto ttsText = requireString(*object, "tts_text", 0, 4096);
+    auto requestId = requireUuid(*object, "request_id");
+    auto utteranceId = requireUuid(*object, "utterance_id");
+    auto listener = requireString(*object, "listener", 1, 256);
+    auto rechatTarget = requireString(*object, "rechat_target", 1, 256);
+    auto finalLine = requireBoolean(*object, "final_response_line");
+    if (!schema || schema.value() != "almsivi.response.line.v1")
+        return invalidSchemaValue<CanonicalResponseLine>("canonical response line schema mismatch");
+    if (!lineId) return invalidSchemaValue<CanonicalResponseLine>(lineId.error().message);
+    if (!lineIndex || lineIndex.value() != expectedIndex)
+        return invalidSchemaValue<CanonicalResponseLine>("canonical response line index mismatch");
+    if (!speaker) return invalidSchemaValue<CanonicalResponseLine>(speaker.error().message);
+    if (!displayName) return invalidSchemaValue<CanonicalResponseLine>(displayName.error().message);
+    if (!action || (action.value() != "say" && action.value() != "rolecommand"))
+        return invalidSchemaValue<CanonicalResponseLine>("canonical response line action mismatch");
+    if (!text) return invalidSchemaValue<CanonicalResponseLine>(text.error().message);
+    if (!subtitle) return invalidSchemaValue<CanonicalResponseLine>(subtitle.error().message);
+    if (!ttsText) return invalidSchemaValue<CanonicalResponseLine>(ttsText.error().message);
+    if (!requestId || requestId.value() != responseRequest.value())
+        return invalidSchemaValue<CanonicalResponseLine>("canonical response line request mismatch");
+    if (!utteranceId) return invalidSchemaValue<CanonicalResponseLine>(utteranceId.error().message);
+    if (!listener) return invalidSchemaValue<CanonicalResponseLine>(listener.error().message);
+    if (!rechatTarget) return invalidSchemaValue<CanonicalResponseLine>(rechatTarget.error().message);
+    if (!finalLine) return invalidSchemaValue<CanonicalResponseLine>(finalLine.error().message);
+    auto speakerIdentity = parseIdentity(*json::find(*object, "speaker_identity"));
+    auto listenerIdentity = parseIdentity(*json::find(*object, "listener_identity"));
+    auto rechatTargetIdentity = parseIdentity(*json::find(*object, "rechat_target_identity"));
+    auto metadata = parseCanonicalMetadata(*json::find(*object, "metadata"));
+    if (!speakerIdentity) return invalidSchemaValue<CanonicalResponseLine>(speakerIdentity.error().message);
+    if (!listenerIdentity) return invalidSchemaValue<CanonicalResponseLine>(listenerIdentity.error().message);
+    if (!rechatTargetIdentity) return invalidSchemaValue<CanonicalResponseLine>(rechatTargetIdentity.error().message);
+    if (!metadata) return invalidSchemaValue<CanonicalResponseLine>(metadata.error().message);
+
+    CanonicalResponseLine line{MessageId(std::move(lineId).value()), lineIndex.value(), std::move(speaker).value(),
+        std::move(displayName).value(), std::move(speakerIdentity).value(), std::move(action).value(),
+        std::move(text).value(), std::move(subtitle).value(), std::move(ttsText).value(),
+        RequestId(std::move(requestId).value()), MessageId(std::move(utteranceId).value()),
+        std::move(listener).value(), std::move(listenerIdentity).value(), std::move(rechatTarget).value(),
+        std::move(rechatTargetIdentity).value(), finalLine.value(), std::move(metadata).value()};
+
+    if (const auto* mediaValue = json::find(*object, "media")) {
+        auto media = parseCanonicalMedia(*mediaValue);
+        if (!media) return invalidSchemaValue<CanonicalResponseLine>(media.error().message);
+        if (media.value().dialogueMessage != line.line)
+            return invalidSchemaValue<CanonicalResponseLine>("canonical media dialogue line mismatch");
+        line.media = std::move(media).value();
+    }
+    if (json::find(*object, "tts_cache_key")) {
+        auto cacheKey = requireString(*object, "tts_cache_key", 1, 256);
+        if (!cacheKey || !isCacheKey(cacheKey.value()))
+            return invalidSchemaValue<CanonicalResponseLine>("canonical response cache key mismatch");
+        line.ttsCacheKey = std::move(cacheKey).value();
+    }
+    if (json::find(*object, "command_name")) {
+        auto commandName = requireString(*object, "command_name", 1, 64);
+        if (!commandName || !isCommandName(commandName.value()))
+            return invalidSchemaValue<CanonicalResponseLine>("canonical response command name mismatch");
+        line.commandName = std::move(commandName).value();
+    }
+    if (const auto* argumentsValue = json::find(*object, "command_args")) {
+        const auto* arguments = argumentsValue->array();
+        if (!arguments || arguments->size() > 16)
+            return invalidSchemaValue<CanonicalResponseLine>("canonical response command arguments mismatch");
+        for (const auto& argumentValue : *arguments) {
+            const auto* argument = argumentValue.string();
+            if (!argument || argument->size() > 512)
+                return invalidSchemaValue<CanonicalResponseLine>("canonical response command argument mismatch");
+            line.commandArgs.push_back(*argument);
+        }
+    }
+    if (line.action == "say") {
+        if (line.text.empty() || line.subtitle.empty() || line.ttsText.empty()
+            || line.commandName || json::find(*object, "command_args"))
+            return invalidSchemaValue<CanonicalResponseLine>("canonical say line fields mismatch");
+    } else if (!line.commandName || !json::find(*object, "command_args") || line.media || line.finalResponseLine) {
+        return invalidSchemaValue<CanonicalResponseLine>("canonical rolecommand line fields mismatch");
+    }
+    return Result<CanonicalResponseLine>::success(std::move(line));
+}
+
+Result<CanonicalResponse> parseCanonicalResponse(const json::Value& value, const ResponseCorrelation& correlation)
+{
+    const auto* object = value.object();
+    if (!object || !hasExactly(*object,
+            {"schema", "response_id", "installation_id", "profile_id", "playthrough_id", "session_id", "turn_id",
+                "request_id", "generation", "runtime_generation", "created_at", "ok", "lines", "close", "error"}))
+        return invalidSchemaValue<CanonicalResponse>("canonical response fields mismatch");
+    auto schema = requireString(*object, "schema");
+    auto responseId = requireUuid(*object, "response_id");
+    auto installationId = requireUuid(*object, "installation_id");
+    auto profileId = requireUuid(*object, "profile_id");
+    auto playthroughId = requireUuid(*object, "playthrough_id");
+    auto sessionId = requireUuid(*object, "session_id");
+    auto turnId = requireUuid(*object, "turn_id");
+    auto requestId = requireUuid(*object, "request_id");
+    auto generation = requireUnsigned(*object, "generation", kMaximumProtocolInteger, 1);
+    auto runtimeGeneration = requireUnsigned(*object, "runtime_generation", kMaximumProtocolInteger, 1);
+    auto createdAt = requireTimestamp(*object, "created_at");
+    auto ok = requireBoolean(*object, "ok");
+    auto close = requireBoolean(*object, "close");
+    auto error = requireString(*object, "error", 0, 256);
+    if (!schema || schema.value() != "almsivi.response.v1")
+        return invalidSchemaValue<CanonicalResponse>("canonical response schema mismatch");
+    if (!responseId || responseId.value() != correlation.message.value())
+        return invalidSchemaValue<CanonicalResponse>("canonical response message mismatch");
+    if (!installationId) return invalidSchemaValue<CanonicalResponse>(installationId.error().message);
+    if (!profileId) return invalidSchemaValue<CanonicalResponse>(profileId.error().message);
+    if (!playthroughId) return invalidSchemaValue<CanonicalResponse>(playthroughId.error().message);
+    if (!sessionId || sessionId.value() != correlation.session.value())
+        return invalidSchemaValue<CanonicalResponse>("canonical response session mismatch");
+    if (!turnId || turnId.value() != correlation.turn.value())
+        return invalidSchemaValue<CanonicalResponse>("canonical response turn mismatch");
+    if (!requestId || requestId.value() != correlation.request.value())
+        return invalidSchemaValue<CanonicalResponse>("canonical response request mismatch");
+    if (!generation || generation.value() != correlation.generation.value())
+        return invalidSchemaValue<CanonicalResponse>("canonical response generation mismatch");
+    if (!runtimeGeneration) return invalidSchemaValue<CanonicalResponse>(runtimeGeneration.error().message);
+    if (!createdAt) return invalidSchemaValue<CanonicalResponse>(createdAt.error().message);
+    if (!ok) return invalidSchemaValue<CanonicalResponse>(ok.error().message);
+    if (!close) return invalidSchemaValue<CanonicalResponse>(close.error().message);
+    if (!error) return invalidSchemaValue<CanonicalResponse>(error.error().message);
+    if ((ok.value() && !error.value().empty()) || (!ok.value() && error.value().empty()))
+        return invalidSchemaValue<CanonicalResponse>("canonical response outcome mismatch");
+    const auto* linesValue = json::find(*object, "lines");
+    const auto* lines = linesValue ? linesValue->array() : nullptr;
+    if (!lines || lines->size() > 64)
+        return invalidSchemaValue<CanonicalResponse>("canonical response lines mismatch");
+    CanonicalResponse response{MessageId(std::move(responseId).value()), InstallationId(std::move(installationId).value()),
+        ProfileId(std::move(profileId).value()), PlaythroughId(std::move(playthroughId).value()),
+        SessionId(std::move(sessionId).value()), TurnId(std::move(turnId).value()), RequestId(std::move(requestId).value()),
+        Generation(generation.value()), Generation(runtimeGeneration.value()), std::move(createdAt).value(), ok.value(), {},
+        close.value(), std::move(error).value()};
+    std::set<std::string> lineIds;
+    std::set<std::string> utteranceIds;
+    std::set<std::string> mediaIds;
+    bool sawAction = false;
+    std::optional<std::size_t> finalDialogueIndex;
+    for (std::size_t index = 0; index < lines->size(); ++index) {
+        auto line = parseCanonicalLine((*lines)[index], response.request, index);
+        if (!line) return invalidSchemaValue<CanonicalResponse>(line.error().message);
+        if (!lineIds.insert(line.value().line.value()).second || !utteranceIds.insert(line.value().utterance.value()).second)
+            return invalidSchemaValue<CanonicalResponse>("canonical response line identity duplicated");
+        if (line.value().media && !mediaIds.insert(line.value().media->media.value()).second)
+            return invalidSchemaValue<CanonicalResponse>("canonical response media identity duplicated");
+        if (line.value().action == "rolecommand")
+            sawAction = true;
+        else {
+            if (sawAction)
+                return invalidSchemaValue<CanonicalResponse>("canonical dialogue must precede rolecommands");
+            finalDialogueIndex = index;
+        }
+        response.lines.push_back(std::move(line).value());
+    }
+    for (std::size_t index = 0; index < response.lines.size(); ++index) {
+        const bool expectedFinal = finalDialogueIndex && index == *finalDialogueIndex;
+        if (response.lines[index].finalResponseLine != expectedFinal)
+            return invalidSchemaValue<CanonicalResponse>("canonical final response line mismatch");
+    }
+    return Result<CanonicalResponse>::success(std::move(response));
+}
+
 Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& envelopeTurn)
 {
     const auto* object = value.object();
@@ -204,7 +493,7 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     auto action = requireUuid(*object, "action_id");
     auto turn = requireUuid(*object, "turn_id");
     auto name = requireString(*object, "name");
-    auto tier = requireUnsigned(*object, "tier", 1, 0);
+    auto tier = requireUnsigned(*object, "tier", 2, 0);
     auto expiresAt = requireTimestamp(*object, "expires_at");
     if (!schema || schema.value() != "almsivi.action-intent.v1")
         return invalidSchemaValue<ActionIntent>("action intent schema mismatch");
@@ -212,11 +501,21 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     if (!turn) return invalidSchemaValue<ActionIntent>(turn.error().message);
     if (turn.value() != envelopeTurn.value())
         return invalidSchemaValue<ActionIntent>("action intent turn does not match event envelope");
-    if (!name || (name.value() != "ai.follow" && name.value() != "inspect.report"))
+    if (!name || (name.value() != "ai.follow" && name.value() != "ai.stop"
+        && name.value() != "ai.approach" && name.value() != "ai.wait"
+        && name.value() != "ai.travel" && name.value() != "ai.escort" && name.value() != "ai.face"
+        && name.value() != "ai.wander" && name.value() != "combat.start"
+        && name.value() != "combat.stop" && name.value() != "animation.play"
+        && name.value() != "item.equip" && name.value() != "item.unequip"
+        && name.value() != "item.use" && name.value() != "inspect.report" && name.value() != "inventory.inspect"))
         return invalidSchemaValue<ActionIntent>("unknown action intent name");
     if (!tier) return invalidSchemaValue<ActionIntent>(tier.error().message);
-    if ((name.value() == "ai.follow" && tier.value() != 1)
-        || (name.value() == "inspect.report" && tier.value() != 0))
+    if (((name.value() == "inspect.report" || name.value() == "inventory.inspect") && tier.value() != 0)
+        || ((name.value() == "combat.start" || name.value() == "item.equip"
+            || name.value() == "item.unequip" || name.value() == "item.use") && tier.value() != 2)
+        || (name.value() != "inspect.report" && name.value() != "inventory.inspect" && name.value() != "combat.start"
+            && name.value() != "item.equip" && name.value() != "item.unequip"
+            && name.value() != "item.use" && tier.value() != 1))
         return invalidSchemaValue<ActionIntent>("action intent tier mismatch");
     if (!expiresAt) return invalidSchemaValue<ActionIntent>(expiresAt.error().message);
 
@@ -233,6 +532,12 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
         return invalidSchemaValue<ActionIntent>("action intent parameters mismatch");
     ActionIntentKind intentKind = ActionIntentKind::inspect_report;
     std::uint32_t followDistance = 0;
+    std::uint32_t wanderDistance = 0;
+    std::uint32_t wanderDurationSeconds = 0;
+    std::string stringParameter;
+    std::string secondaryStringParameter;
+    double destinationX=0,destinationY=0,destinationZ=0;
+    std::string destinationCell;
     if (name.value() == "ai.follow") {
         if (!hasExactly(*parameters, {"distance"}))
             return invalidSchemaValue<ActionIntent>("action intent parameters mismatch");
@@ -243,13 +548,275 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
             return invalidSchemaValue<ActionIntent>(validatedDistance.error().message);
         intentKind = ActionIntentKind::ai_follow;
         followDistance = validatedDistance.value().distance;
+    } else if (name.value() == "ai.wander") {
+        if (!hasExactly(*parameters, {"distance", "duration_seconds"}))
+            return invalidSchemaValue<ActionIntent>("action intent parameters mismatch");
+        auto distance = requireUnsigned(*parameters, "distance", 2048, 0);
+        auto duration = requireUnsigned(*parameters, "duration_seconds", 86400, 3600);
+        if (!distance) return invalidSchemaValue<ActionIntent>(distance.error().message);
+        if (!duration || duration.value() % 3600 != 0)
+            return invalidSchemaValue<ActionIntent>("wander duration must be whole game hours");
+        intentKind = ActionIntentKind::ai_wander;
+        wanderDistance = static_cast<std::uint32_t>(distance.value());
+        wanderDurationSeconds = static_cast<std::uint32_t>(duration.value());
+    } else if (name.value() == "ai.wait") {
+        if (!hasExactly(*parameters, {"duration_seconds"}))
+            return invalidSchemaValue<ActionIntent>("ai.wait parameters mismatch");
+        auto duration = requireUnsigned(*parameters, "duration_seconds", 86400, 3600);
+        if (!duration || duration.value() % 3600 != 0)
+            return invalidSchemaValue<ActionIntent>("wait duration must be whole game hours");
+        intentKind = ActionIntentKind::ai_wait;
+        wanderDurationSeconds = static_cast<std::uint32_t>(duration.value());
+    } else if (name.value() == "ai.travel" || name.value() == "ai.escort") {
+        if(!hasExactly(*parameters,{"destination_x","destination_y","destination_z","destination_cell"}))
+            return invalidSchemaValue<ActionIntent>(name.value()+" parameters mismatch");
+        auto x=requireNumber(*parameters,"destination_x",-100000000,100000000);
+        auto y=requireNumber(*parameters,"destination_y",-100000000,100000000);
+        auto z=requireNumber(*parameters,"destination_z",-100000000,100000000);
+        auto cell=requireString(*parameters,"destination_cell",1,300);
+        if(!x)return invalidSchemaValue<ActionIntent>(x.error().message);
+        if(!y)return invalidSchemaValue<ActionIntent>(y.error().message);
+        if(!z)return invalidSchemaValue<ActionIntent>(z.error().message);
+        if(!cell||(!cell.value().starts_with("interior:")&&!cell.value().starts_with("exterior:")))
+            return invalidSchemaValue<ActionIntent>("destination cell key mismatch");
+        destinationX=x.value();destinationY=y.value();destinationZ=z.value();destinationCell=std::move(cell).value();
+        intentKind=name.value()=="ai.travel"?ActionIntentKind::ai_travel:ActionIntentKind::ai_escort;
+    } else if (name.value() == "ai.face") {
+        if(!hasExactly(*parameters,{}))return invalidSchemaValue<ActionIntent>("ai.face parameters must be empty");
+        intentKind=ActionIntentKind::ai_face;
+    } else if (name.value() == "ai.approach") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("ai.approach parameters must be empty");
+        intentKind = ActionIntentKind::ai_approach;
+    } else if (name.value() == "ai.stop") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("ai.stop parameters must be empty");
+        intentKind = ActionIntentKind::ai_stop;
+    } else if (name.value() == "combat.start") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("combat.start parameters must be empty");
+        intentKind = ActionIntentKind::combat_start;
+    } else if (name.value() == "combat.stop") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("combat.stop parameters must be empty");
+        intentKind = ActionIntentKind::combat_stop;
+    } else if (name.value() == "animation.play") {
+        if (!hasExactly(*parameters, {"group"})) return invalidSchemaValue<ActionIntent>("animation.play parameters mismatch");
+        auto group = requireString(*parameters, "group");
+        if (!group || (group.value() != "idle2" && group.value() != "idle3" && group.value() != "idle4"
+            && group.value() != "idle5" && group.value() != "idle6" && group.value() != "idle7"
+            && group.value() != "idle8" && group.value() != "idle9"))
+            return invalidSchemaValue<ActionIntent>("invalid animation group");
+        intentKind = ActionIntentKind::animation_play;
+        stringParameter = std::move(group).value();
+    } else if (name.value() == "item.equip" || name.value() == "item.unequip") {
+        const bool equip = name.value() == "item.equip";
+        if (!hasExactly(*parameters, equip ? std::initializer_list<std::string_view>{"record_id", "slot"}
+                                            : std::initializer_list<std::string_view>{"slot"}))
+            return invalidSchemaValue<ActionIntent>(name.value() + " parameters mismatch");
+        auto slot = requireString(*parameters, "slot");
+        static constexpr std::array<std::string_view, 19> slots{"helmet","cuirass","greaves","left_pauldron",
+            "right_pauldron","left_gauntlet","right_gauntlet","boots","shirt","pants","skirt","robe",
+            "left_ring","right_ring","amulet","belt","carried_right","carried_left","ammunition"};
+        if (!slot || std::find(slots.begin(), slots.end(), slot.value()) == slots.end())
+            return invalidSchemaValue<ActionIntent>("invalid equipment slot");
+        if (equip) {
+            auto recordId = requireString(*parameters, "record_id");
+            if (!recordId || recordId.value().empty() || recordId.value().size() > 128
+                || recordId.value().find_first_of("/\\\r\n\t") != std::string::npos)
+                return invalidSchemaValue<ActionIntent>("invalid item record id");
+            stringParameter = std::move(recordId).value();
+            intentKind = ActionIntentKind::item_equip;
+        } else intentKind = ActionIntentKind::item_unequip;
+        secondaryStringParameter = std::move(slot).value();
+    } else if (name.value() == "item.use") {
+        if (!hasExactly(*parameters, {"record_id"})) return invalidSchemaValue<ActionIntent>("item.use parameters mismatch");
+        auto recordId = requireString(*parameters, "record_id");
+        if (!recordId || recordId.value().empty() || recordId.value().size() > 128
+            || recordId.value().find_first_of("/\\\r\n\t") != std::string::npos)
+            return invalidSchemaValue<ActionIntent>("invalid item record id");
+        intentKind = ActionIntentKind::item_use;
+        stringParameter = std::move(recordId).value();
     } else if (!hasExactly(*parameters, {})) {
-        return invalidSchemaValue<ActionIntent>("inspect.report parameters must be empty");
+        return invalidSchemaValue<ActionIntent>(name.value() + " parameters must be empty");
+    } else if (name.value() == "inventory.inspect") {
+        intentKind = ActionIntentKind::inventory_inspect;
     }
 
     return Result<ActionIntent>::success({ActionId(std::move(action).value()),
         TurnId(std::move(turn).value()), std::move(actor).value(), std::move(target).value(),
-        intentKind, followDistance, std::move(expiresAt).value()});
+        intentKind, followDistance, wanderDistance, wanderDurationSeconds, std::move(stringParameter),
+        std::move(secondaryStringParameter),destinationX,destinationY,destinationZ,std::move(destinationCell),
+        std::move(expiresAt).value()});
+}
+
+Result<ClientSettings> parseClientSettings(const json::Value& value)
+{
+    const auto* root=value.object();
+    if(!root||!hasExactly(*root,{"schema","behavior","memory","narrator","presentation","safety"}))
+        return invalidSchemaValue<ClientSettings>("client settings fields mismatch");
+    auto schema=requireString(*root,"schema",1,64);
+    if(!schema||schema.value()!="almsivi.client-settings.v1")return invalidSchemaValue<ClientSettings>("client settings schema mismatch");
+    const auto objectFor=[&](std::string_view key)->const json::Object*{const auto* item=json::find(*root,key);return item?item->object():nullptr;};
+    const auto* behavior=objectFor("behavior");const auto* memory=objectFor("memory");const auto* narrator=objectFor("narrator");
+    const auto* presentation=objectFor("presentation");const auto* safety=objectFor("safety");
+    if(!behavior||!hasExactly(*behavior,{"auto_greeting","rechat","rechat_delay_seconds","rechat_max_depth","rechat_probability_percent","rechat_mode","rechat_strict_targeting","open_rechat","rechat_allow_actions","end_conversation_cooldown_seconds","boredom","boredom_delay_seconds","combat_barks","combat_bark_period_seconds"})
+        ||!memory||!hasExactly(*memory,{"recent_turn_limit","knowledge_limit"})
+        ||!narrator||!hasExactly(*narrator,{"enabled","name","context_visibility","inline_mode","welcome_events","random_events","quest_events","book_events"})
+        ||!presentation||!hasExactly(*presentation,{"show_status_hud","transcript_rows","tts_volume_boost"})
+        ||!safety||!hasExactly(*safety,{"actions_enabled","allow_hostile","allow_creatures"}))
+        return invalidSchemaValue<ClientSettings>("client settings section mismatch");
+    auto autoGreeting=requireBoolean(*behavior,"auto_greeting");auto rechat=requireBoolean(*behavior,"rechat");
+    auto rechatDelay=requireUnsigned(*behavior,"rechat_delay_seconds",3600,30);auto rechatDepth=requireUnsigned(*behavior,"rechat_max_depth",20,1);
+    auto rechatProbability=requireUnsigned(*behavior,"rechat_probability_percent",100);auto rechatMode=requireString(*behavior,"rechat_mode",1,16);
+    auto strictRechat=requireBoolean(*behavior,"rechat_strict_targeting");auto openRechat=requireBoolean(*behavior,"open_rechat");
+    auto rechatActions=requireBoolean(*behavior,"rechat_allow_actions");auto conversationCooldown=requireUnsigned(*behavior,"end_conversation_cooldown_seconds",300);
+    auto boredom=requireBoolean(*behavior,"boredom");auto boredomDelay=requireUnsigned(*behavior,"boredom_delay_seconds",86400,30);
+    auto combatBarks=requireBoolean(*behavior,"combat_barks");auto combatPeriod=requireUnsigned(*behavior,"combat_bark_period_seconds",300,5);
+    auto recentTurns=requireUnsigned(*memory,"recent_turn_limit",100,1);auto knowledgeLimit=requireUnsigned(*memory,"knowledge_limit",20);
+    auto narratorEnabled=requireBoolean(*narrator,"enabled");auto narratorName=requireString(*narrator,"name",1,128);
+    auto contextVisibility=requireBoolean(*narrator,"context_visibility");auto inlineMode=requireString(*narrator,"inline_mode",1,16);
+    auto welcomeEvents=requireBoolean(*narrator,"welcome_events");auto randomEvents=requireBoolean(*narrator,"random_events");
+    auto questEvents=requireBoolean(*narrator,"quest_events");auto bookEvents=requireBoolean(*narrator,"book_events");
+    auto showStatus=requireBoolean(*presentation,"show_status_hud");auto transcriptRows=requireUnsigned(*presentation,"transcript_rows",20,2);
+    auto volumeBoost=requireUnsigned(*presentation,"tts_volume_boost",4,1);auto actionsEnabled=requireBoolean(*safety,"actions_enabled");
+    auto allowHostile=requireBoolean(*safety,"allow_hostile");auto allowCreatures=requireBoolean(*safety,"allow_creatures");
+    if(!autoGreeting||!rechat||!rechatDelay||!rechatDepth||!rechatProbability||!rechatMode||!strictRechat||!openRechat
+        ||!rechatActions||!conversationCooldown||!boredom||!boredomDelay||!combatBarks||!combatPeriod
+        ||!recentTurns||!knowledgeLimit||!narratorEnabled||!narratorName||!contextVisibility||!inlineMode
+        ||!welcomeEvents||!randomEvents||!questEvents||!bookEvents||!showStatus||!transcriptRows||!volumeBoost
+        ||!actionsEnabled||!allowHostile||!allowCreatures)return invalidSchemaValue<ClientSettings>("client settings value mismatch");
+    if(inlineMode.value()!="Disabled"&&inlineMode.value()!="Narrator"&&inlineMode.value()!="NPC"&&inlineMode.value()!="Text Only")
+        return invalidSchemaValue<ClientSettings>("inline narration mode is invalid");
+    if(rechatMode.value()!="tight"&&rechatMode.value()!="conversational"&&rechatMode.value()!="group"&&rechatMode.value()!="random")
+        return invalidSchemaValue<ClientSettings>("rechat mode is invalid");
+    return Result<ClientSettings>::success({
+        {autoGreeting.value(),rechat.value(),rechatDelay.value(),rechatDepth.value(),rechatProbability.value(),std::move(rechatMode).value(),
+            strictRechat.value(),openRechat.value(),rechatActions.value(),conversationCooldown.value(),boredom.value(),boredomDelay.value(),combatBarks.value(),combatPeriod.value()},
+        {recentTurns.value(),knowledgeLimit.value()},
+        {narratorEnabled.value(),std::move(narratorName).value(),contextVisibility.value(),std::move(inlineMode).value(),welcomeEvents.value(),randomEvents.value(),questEvents.value(),bookEvents.value()},
+        {showStatus.value(),transcriptRows.value(),volumeBoost.value()},
+        {actionsEnabled.value(),allowHostile.value(),allowCreatures.value()}});
+}
+
+// Parse the target-scoped, secret-free settings snapshot returned by the controls endpoint.
+Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::Value& value)
+{
+    using Snapshot=ControlsResponse::EffectiveSettings;
+    const auto* root=value.object();
+    if(!root||!hasExactly(*root,{"schema","change_token","profile_id","profile_revision","core_profile_id",
+            "core_profile_revision","settings","routing","source_map"}))
+        return invalidSchemaValue<Snapshot>("effective settings fields mismatch");
+    auto schema=requireString(*root,"schema",1,64);auto token=requireString(*root,"change_token",64,64);
+    if(!schema||schema.value()!="almsivi.effective-settings.v1"||!token
+        ||!std::all_of(token.value().begin(),token.value().end(),[](unsigned char c){return(c>='0'&&c<='9')||(c>='a'&&c<='f');}))
+        return invalidSchemaValue<Snapshot>("effective settings schema or change token mismatch");
+    const auto nullableUuid=[&](std::string_view key)->Result<std::optional<std::string>>{
+        const auto* item=json::find(*root,key);if(!item)return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" is missing");
+        if(item->isNull())return Result<std::optional<std::string>>::success(std::nullopt);
+        if(!item->string()||!isCanonicalUuid(*item->string()))
+            return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" must be null or a canonical UUID");
+        return Result<std::optional<std::string>>::success(*item->string());};
+    const auto nullableRevision=[&](std::string_view key)->Result<std::optional<std::uint64_t>>{
+        const auto* item=json::find(*root,key);if(!item)return invalidSchemaValue<std::optional<std::uint64_t>>(std::string(key)+" is missing");
+        if(item->isNull())return Result<std::optional<std::uint64_t>>::success(std::nullopt);
+        auto parsed=requireUnsigned(*root,key,kMaximumProtocolInteger,1);if(!parsed)return invalidSchemaValue<std::optional<std::uint64_t>>(parsed.error().message);
+        return Result<std::optional<std::uint64_t>>::success(parsed.value());};
+    auto profileId=nullableUuid("profile_id");auto profileRevision=nullableRevision("profile_revision");
+    auto coreId=nullableUuid("core_profile_id");auto coreRevision=nullableRevision("core_profile_revision");
+    if(!profileId||!profileRevision||!coreId||!coreRevision)return invalidSchemaValue<Snapshot>("effective settings identity mismatch");
+    if(profileId.value().has_value()!=profileRevision.value().has_value()
+        ||coreId.value().has_value()!=coreRevision.value().has_value())
+        return invalidSchemaValue<Snapshot>("effective settings identity revision mismatch");
+
+    const auto* settingsValue=json::find(*root,"settings");const auto* settings=settingsValue?settingsValue->object():nullptr;
+    const auto* routingValue=json::find(*root,"routing");const auto* routing=routingValue?routingValue->object():nullptr;
+    const auto* sourcesValue=json::find(*root,"source_map");const auto* sources=sourcesValue?sourcesValue->object():nullptr;
+    if(!settings||!hasExactly(*settings,{"behavior","memory","narrator","presentation","safety"})||!routing||!sources||sources->size()>64)
+        return invalidSchemaValue<Snapshot>("effective settings section mismatch");
+    const auto objectFor=[&](std::string_view key)->const json::Object*{const auto* item=json::find(*settings,key);return item?item->object():nullptr;};
+    const auto* behavior=objectFor("behavior");const auto* memory=objectFor("memory");const auto* narrator=objectFor("narrator");
+    const auto* presentation=objectFor("presentation");const auto* safety=objectFor("safety");
+    if(!behavior||!hasExactly(*behavior,{"auto_greeting","rechat","rechat_delay_seconds","rechat_max_depth","rechat_probability_percent","rechat_mode","rechat_strict_targeting","open_rechat","rechat_allow_actions","end_conversation_cooldown_seconds","boredom","boredom_delay_seconds","combat_barks","combat_bark_period_seconds"})
+        ||!memory||!hasExactly(*memory,{"recent_turn_limit","knowledge_limit"})
+        ||!narrator||!hasExactly(*narrator,{"enabled","name","context_visibility","inline_mode","welcome_events","random_events","quest_events","book_events"})
+        ||!presentation||!hasExactly(*presentation,{"show_status_hud","transcript_rows","tts_volume_boost"})
+        ||!safety||!hasExactly(*safety,{"actions_enabled","allow_hostile","allow_creatures"}))
+        return invalidSchemaValue<Snapshot>("effective settings value sections mismatch");
+    auto autoGreeting=requireBoolean(*behavior,"auto_greeting");auto rechat=requireBoolean(*behavior,"rechat");
+    auto rechatDelay=requireUnsigned(*behavior,"rechat_delay_seconds",3600,30);auto rechatDepth=requireUnsigned(*behavior,"rechat_max_depth",20,1);
+    auto rechatProbability=requireUnsigned(*behavior,"rechat_probability_percent",100);auto rechatMode=requireString(*behavior,"rechat_mode",1,16);
+    auto strictRechat=requireBoolean(*behavior,"rechat_strict_targeting");auto openRechat=requireBoolean(*behavior,"open_rechat");
+    auto rechatActions=requireBoolean(*behavior,"rechat_allow_actions");auto conversationCooldown=requireUnsigned(*behavior,"end_conversation_cooldown_seconds",300);
+    auto boredom=requireBoolean(*behavior,"boredom");auto boredomDelay=requireUnsigned(*behavior,"boredom_delay_seconds",86400,30);
+    auto combatBarks=requireBoolean(*behavior,"combat_barks");auto combatPeriod=requireUnsigned(*behavior,"combat_bark_period_seconds",300,5);
+    auto recentTurns=requireUnsigned(*memory,"recent_turn_limit",100,1);auto knowledgeLimit=requireUnsigned(*memory,"knowledge_limit",20);
+    auto narratorEnabled=requireBoolean(*narrator,"enabled");auto narratorName=requireString(*narrator,"name",1,128);
+    auto contextVisibility=requireBoolean(*narrator,"context_visibility");auto inlineMode=requireString(*narrator,"inline_mode",1,16);
+    auto welcomeEvents=requireBoolean(*narrator,"welcome_events");auto randomEvents=requireBoolean(*narrator,"random_events");
+    auto questEvents=requireBoolean(*narrator,"quest_events");auto bookEvents=requireBoolean(*narrator,"book_events");
+    auto showStatus=requireBoolean(*presentation,"show_status_hud");auto transcriptRows=requireUnsigned(*presentation,"transcript_rows",20,2);
+    auto volumeBoost=requireUnsigned(*presentation,"tts_volume_boost",4,1);
+    auto actionsEnabled=requireBoolean(*safety,"actions_enabled");auto allowHostile=requireBoolean(*safety,"allow_hostile");
+    auto allowCreatures=requireBoolean(*safety,"allow_creatures");
+    if(!autoGreeting||!rechat||!rechatDelay||!rechatDepth||!rechatProbability||!rechatMode||!strictRechat||!openRechat
+        ||!rechatActions||!conversationCooldown||!boredom||!boredomDelay||!combatBarks||!combatPeriod
+        ||!recentTurns||!knowledgeLimit||!narratorEnabled||!narratorName||!contextVisibility||!inlineMode
+        ||!welcomeEvents||!randomEvents||!questEvents||!bookEvents||!showStatus||!transcriptRows||!volumeBoost
+        ||!actionsEnabled||!allowHostile||!allowCreatures)
+        return invalidSchemaValue<Snapshot>("effective settings value mismatch");
+    if(inlineMode.value()!="Disabled"&&inlineMode.value()!="Narrator"&&inlineMode.value()!="NPC"&&inlineMode.value()!="Text Only")
+        return invalidSchemaValue<Snapshot>("effective inline narration mode is invalid");
+    if(rechatMode.value()!="tight"&&rechatMode.value()!="conversational"&&rechatMode.value()!="group"&&rechatMode.value()!="random")
+        return invalidSchemaValue<Snapshot>("effective rechat mode is invalid");
+
+    Snapshot parsed;parsed.schema=std::move(schema).value();parsed.changeToken=std::move(token).value();
+    parsed.profileId=std::move(profileId).value();parsed.profileRevision=std::move(profileRevision).value();
+    parsed.coreProfileId=std::move(coreId).value();parsed.coreProfileRevision=std::move(coreRevision).value();
+    parsed.behavior={autoGreeting.value(),rechat.value(),rechatDelay.value(),rechatDepth.value(),rechatProbability.value(),
+        std::move(rechatMode).value(),strictRechat.value(),openRechat.value(),rechatActions.value(),conversationCooldown.value(),
+        boredom.value(),boredomDelay.value(),combatBarks.value(),combatPeriod.value()};
+    parsed.memory={recentTurns.value(),knowledgeLimit.value()};
+    parsed.narrator={narratorEnabled.value(),std::move(narratorName).value(),contextVisibility.value(),std::move(inlineMode).value(),
+        welcomeEvents.value(),randomEvents.value(),questEvents.value(),bookEvents.value()};
+    parsed.presentation={showStatus.value(),transcriptRows.value(),volumeBoost.value()};
+    parsed.safety={actionsEnabled.value(),allowHostile.value(),allowCreatures.value()};
+    static constexpr std::array<std::string_view,7> routingIds={"prompt_configuration_id","llm_configuration_id",
+        "llm_fast_configuration_id","llm_powerful_configuration_id","llm_experimental_configuration_id",
+        "llm_fallback_configuration_id","tts_configuration_id"};
+    static constexpr std::array<std::string_view,2> routingFlags={"llm_randomizer_enabled","llm_fallback_enabled"};
+    for(const auto&[key,item]:*routing){
+        const bool uuidField=std::find(routingIds.begin(),routingIds.end(),key)!=routingIds.end();
+        const bool flagField=std::find(routingFlags.begin(),routingFlags.end(),key)!=routingFlags.end();
+        if(uuidField){if(!item.string()||(!item.string()->empty()&&!isCanonicalUuid(*item.string())))
+                return invalidSchemaValue<Snapshot>("effective routing UUID mismatch");
+            parsed.routing.emplace_back(key,*item.string());}
+        else if(flagField){if(!item.boolean())return invalidSchemaValue<Snapshot>("effective routing flag mismatch");
+            parsed.routing.emplace_back(key,*item.boolean());}
+        else return invalidSchemaValue<Snapshot>("unknown effective routing field");
+    }
+    static constexpr std::array<std::string_view,14> behaviorFields={"auto_greeting","rechat","rechat_delay_seconds","rechat_max_depth",
+        "rechat_probability_percent","rechat_mode","rechat_strict_targeting","open_rechat","rechat_allow_actions",
+        "end_conversation_cooldown_seconds","boredom","boredom_delay_seconds","combat_barks","combat_bark_period_seconds"};
+    static constexpr std::array<std::string_view,2> memoryFields={"recent_turn_limit","knowledge_limit"};
+    static constexpr std::array<std::string_view,8> narratorFields={"enabled","name","context_visibility","inline_mode",
+        "welcome_events","random_events","quest_events","book_events"};
+    static constexpr std::array<std::string_view,3> safetyFields={"actions_enabled","allow_hostile","allow_creatures"};
+    static constexpr std::array<std::string_view,3> presentationFields={"show_status_hud","transcript_rows","tts_volume_boost"};
+    const auto validSettingPath=[&](std::string_view path,std::string_view prefix,const auto& fields){
+        if(!path.starts_with(prefix))return false;
+        const auto suffix=path.substr(prefix.size());
+        return std::find(fields.begin(),fields.end(),suffix)!=fields.end();};
+    for(const auto&[key,item]:*sources){
+        const bool validPath=validSettingPath(key,"settings.behavior.",behaviorFields)
+            ||validSettingPath(key,"settings.memory.",memoryFields)
+            ||validSettingPath(key,"settings.narrator.",narratorFields)||validSettingPath(key,"settings.safety.",safetyFields)
+            ||validSettingPath(key,"settings.presentation.",presentationFields)
+            ||(std::string_view(key).starts_with("routing.")
+                &&(std::find(routingIds.begin(),routingIds.end(),std::string_view(key).substr(8))!=routingIds.end()
+                    ||std::find(routingFlags.begin(),routingFlags.end(),std::string_view(key).substr(8))!=routingFlags.end()));
+        if(!validPath||!item.string()||(*item.string()!="default"&&*item.string()!="global"
+                &&*item.string()!="core_profile"&&*item.string()!="npc"))
+            return invalidSchemaValue<Snapshot>("effective settings source map mismatch");
+        parsed.sourceMap.emplace_back(key,*item.string());
+    }
+    return Result<Snapshot>::success(std::move(parsed));
 }
 
 Result<ActionTerminalStatus> parseTerminalStatus(const json::Object& object)
@@ -297,6 +864,12 @@ std::optional<ErrorCode> protocolCode(std::string_view code)
         Mapping{"provider_timeout", ErrorCode::timeout},
         Mapping{"provider_unavailable", ErrorCode::provider_unavailable},
         Mapping{"rate_limited", ErrorCode::rate_limited},
+        Mapping{"rechat_chain_conflict", ErrorCode::duplicate_conflict},
+        Mapping{"rechat_complete", ErrorCode::cancelled},
+        Mapping{"rechat_cooldown", ErrorCode::cancelled},
+        Mapping{"rechat_no_responder", ErrorCode::cancelled},
+        Mapping{"rechat_unavailable", ErrorCode::cancelled},
+        Mapping{"invalid_rechat_context", ErrorCode::invalid_schema},
         Mapping{"request_mismatch", ErrorCode::duplicate_conflict},
         Mapping{"service_unavailable", ErrorCode::provider_unavailable},
         Mapping{"stale_generation", ErrorCode::stale_generation},
@@ -343,6 +916,13 @@ Result<ProtocolEvent> parseEvent(const json::Value& value, const SessionId& resp
         if (!status || status.value() != "accepted") return invalidSchemaValue<ProtocolEvent>("turn accepted status mismatch");
         event.type = ProtocolEventType::turn_accepted;
         event.payload = TurnAcceptedEventPayload{};
+    } else if (type.value() == "dialogue.delta") {
+        if (!hasExactly(*payload, {"text"}))
+            return invalidSchemaValue<ProtocolEvent>("dialogue delta payload fields mismatch");
+        auto text = requireString(*payload, "text", 1, 4096);
+        if (!text) return invalidSchemaValue<ProtocolEvent>(text.error().message);
+        event.type = ProtocolEventType::dialogue_delta;
+        event.payload = DialogueDeltaEventPayload{std::move(text).value()};
     } else if (type.value() == "dialogue.complete") {
         if (!hasExactly(*payload, {"speaker", "addressee", "text"})) return invalidSchemaValue<ProtocolEvent>("dialogue payload fields mismatch");
         auto speaker = parseIdentity(*json::find(*payload, "speaker"));
@@ -359,6 +939,11 @@ Result<ProtocolEvent> parseEvent(const json::Value& value, const SessionId& resp
         if (!intent) return invalidSchemaValue<ProtocolEvent>(intent.error().message);
         event.type = ProtocolEventType::action_intent;
         event.payload = ActionIntentEventPayload{std::move(intent).value()};
+    } else if (type.value() == "response.complete") {
+        auto response = parseCanonicalResponse(*payloadValue, correlation.value());
+        if (!response) return invalidSchemaValue<ProtocolEvent>(response.error().message);
+        event.type = ProtocolEventType::response_complete;
+        event.payload = ResponseCompleteEventPayload{std::move(response).value()};
     } else if (type.value() == "turn.complete") {
         if (!hasExactly(*payload, {"status"})) return invalidSchemaValue<ProtocolEvent>("turn complete payload fields mismatch");
         auto status = requireString(*payload, "status");
@@ -416,15 +1001,17 @@ Result<ProtocolEvent> parseEvent(const json::Value& value, const SessionId& resp
         event.type = ProtocolEventType::stt_failed;
         event.payload = std::move(failure);
     } else if (type.value() == "speech.ready") {
-        if (!hasExactly(*payload, {"media_id", "sha256", "bytes", "codec", "duration_ms", "expires_at"}))
+        if (!hasExactly(*payload, {"media_id", "dialogue_message_id", "sha256", "bytes", "codec", "duration_ms", "expires_at"}))
             return invalidSchemaValue<ProtocolEvent>("speech payload fields mismatch");
         auto media = requireUuid(*payload, "media_id");
+        auto dialogueMessage = requireUuid(*payload, "dialogue_message_id");
         auto hash = requireString(*payload, "sha256");
         auto bytes = requireUnsigned(*payload, "bytes", kMaxMediaBytes, 1);
         auto codec = requireString(*payload, "codec");
         auto duration = requireUnsigned(*payload, "duration_ms", kMaximumProtocolInteger, 1);
         auto expiresAt = requireTimestamp(*payload, "expires_at");
         if (!media) return invalidSchemaValue<ProtocolEvent>(media.error().message);
+        if (!dialogueMessage) return invalidSchemaValue<ProtocolEvent>(dialogueMessage.error().message);
         if (!hash || hash.value().size() != 64) return invalidSchemaValue<ProtocolEvent>("speech hash must use 64 lowercase hexadecimal digits");
         for (const char character : hash.value()) {
             if (!((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f')))
@@ -440,7 +1027,7 @@ Result<ProtocolEvent> parseEvent(const json::Value& value, const SessionId& resp
         if (!duration) return invalidSchemaValue<ProtocolEvent>(duration.error().message);
         if (!expiresAt) return invalidSchemaValue<ProtocolEvent>(expiresAt.error().message);
         event.type = ProtocolEventType::speech_ready;
-        event.payload = SpeechReadyEventPayload{MediaId(std::move(media).value()), std::move(hash).value(),
+        event.payload = SpeechReadyEventPayload{MediaId(std::move(media).value()), MessageId(std::move(dialogueMessage).value()), std::move(hash).value(),
             bytes.value(), mappedCodec, duration.value(), std::move(expiresAt).value()};
     } else {
         return invalidSchemaValue<ProtocolEvent>("unknown event type");
@@ -505,13 +1092,15 @@ Result<SessionAcceptedResponse> parseSessionAcceptedResponse(
 {
     auto object = parseObject(body, headers, "almsivi.session.accepted.v1", limits);
     if (!object) return Result<SessionAcceptedResponse>::failure(object.error());
-    if (!hasExactly(object.value(), {"schema", "message_id", "session_id", "generation", "capabilities", "config_revision", "event_cursor"}))
+    if (!hasExactly(object.value(), {"schema", "message_id", "session_id", "generation", "capabilities", "config_revision", "client_settings", "event_cursor"}))
         return invalidSchemaValue<SessionAcceptedResponse>("session accepted fields mismatch");
     auto message = requireUuid(object.value(), "message_id");
     auto session = requireUuid(object.value(), "session_id");
     auto generation = requireUnsigned(object.value(), "generation");
     auto revision = requireString(object.value(), "config_revision", 1, 128);
     auto cursor = requireUnsigned(object.value(), "event_cursor");
+    const auto* settingsValue=json::find(object.value(),"client_settings");
+    auto settings=settingsValue?parseClientSettings(*settingsValue):invalidSchemaValue<ClientSettings>("client settings are required");
     const auto* capabilitiesValue = json::find(object.value(), "capabilities");
     const auto* capabilities = capabilitiesValue ? capabilitiesValue->array() : nullptr;
     if (!message) return invalidSchemaValue<SessionAcceptedResponse>(message.error().message);
@@ -519,6 +1108,7 @@ Result<SessionAcceptedResponse> parseSessionAcceptedResponse(
     if (!generation) return invalidSchemaValue<SessionAcceptedResponse>(generation.error().message);
     if (!revision) return invalidSchemaValue<SessionAcceptedResponse>(revision.error().message);
     if (!cursor) return invalidSchemaValue<SessionAcceptedResponse>(cursor.error().message);
+    if (!settings) return invalidSchemaValue<SessionAcceptedResponse>(settings.error().message);
     if (!capabilities || capabilities->size() > kMaximumCapabilities)
         return invalidSchemaValue<SessionAcceptedResponse>("capabilities must be a bounded array");
     std::vector<std::string> parsedCapabilities;
@@ -532,7 +1122,7 @@ Result<SessionAcceptedResponse> parseSessionAcceptedResponse(
     }
     return Result<SessionAcceptedResponse>::success({MessageId(std::move(message).value()),
         SessionId(std::move(session).value()), Generation(generation.value()), std::move(parsedCapabilities),
-        std::move(revision).value(), cursor.value()});
+        std::move(revision).value(),std::move(settings).value(),cursor.value()});
 }
 
 Result<TurnAcceptedResponse> parseTurnAcceptedResponse(
@@ -554,19 +1144,23 @@ Result<EventsResponse> parseEventsResponse(
 {
     auto object = parseObject(body, headers, "almsivi.events.v1", limits);
     if (!object) return Result<EventsResponse>::failure(object.error());
-    if (!hasExactly(object.value(), {"schema", "session_id", "generation", "next_after", "events"}))
+    if (!hasExactly(object.value(), {"schema", "session_id", "generation", "next_after", "events", "autonomy"}))
         return invalidSchemaValue<EventsResponse>("events response fields mismatch");
     auto session = requireUuid(object.value(), "session_id");
     auto generation = requireUnsigned(object.value(), "generation");
     auto nextAfter = requireUnsigned(object.value(), "next_after");
     const auto* eventsValue = json::find(object.value(), "events");
     const auto* events = eventsValue ? eventsValue->array() : nullptr;
+    const auto* autonomyValue = json::find(object.value(), "autonomy");
+    const auto* autonomy = autonomyValue ? autonomyValue->array() : nullptr;
     if (!session) return invalidSchemaValue<EventsResponse>(session.error().message);
     if (!generation) return invalidSchemaValue<EventsResponse>(generation.error().message);
     if (!nextAfter) return invalidSchemaValue<EventsResponse>(nextAfter.error().message);
     if (!events || events->size() > kMaximumEvents)
         return invalidSchemaValue<EventsResponse>("events must be an array of at most 100 items");
-    EventsResponse parsed{SessionId(std::move(session).value()), Generation(generation.value()), nextAfter.value(), {}};
+    if (!autonomy || autonomy->size() > 3)
+        return invalidSchemaValue<EventsResponse>("autonomy must be an array of at most 3 items");
+    EventsResponse parsed{SessionId(std::move(session).value()), Generation(generation.value()), nextAfter.value(), {}, {}};
     parsed.events.reserve(events->size());
     std::uint64_t previous = 0;
     for (const auto& value : *events) {
@@ -576,6 +1170,23 @@ Result<EventsResponse> parseEventsResponse(
             return invalidSchemaValue<EventsResponse>("events must have strictly increasing sequence values");
         previous = event.value().sequence;
         parsed.events.push_back(std::move(event).value());
+    }
+    parsed.autonomy.reserve(autonomy->size());
+    for (const auto& value : *autonomy) {
+        const auto* directive = value.object();
+        if (!directive || !hasExactly(*directive, {"schema", "schedule_id", "kind", "issued_at"}))
+            return invalidSchemaValue<EventsResponse>("autonomy directive fields mismatch");
+        auto schema = requireString(*directive, "schema");
+        auto schedule = requireUuid(*directive, "schedule_id");
+        auto kind = requireString(*directive, "kind");
+        auto issuedAt = requireTimestamp(*directive, "issued_at");
+        if (!schema || schema.value() != "almsivi.autonomy-directive.v1")
+            return invalidSchemaValue<EventsResponse>("autonomy directive schema mismatch");
+        if (!schedule) return invalidSchemaValue<EventsResponse>(schedule.error().message);
+        if (!kind || (kind.value() != "rechat" && kind.value() != "boredom" && kind.value() != "greeting"))
+            return invalidSchemaValue<EventsResponse>("autonomy directive kind mismatch");
+        if (!issuedAt) return invalidSchemaValue<EventsResponse>(issuedAt.error().message);
+        parsed.autonomy.push_back({std::move(schedule).value(), std::move(kind).value(), std::move(issuedAt).value()});
     }
     return Result<EventsResponse>::success(std::move(parsed));
 }
@@ -669,6 +1280,81 @@ Result<SessionEndedResponse> parseSessionEndedResponse(
     if (!ended) return invalidSchemaValue<SessionEndedResponse>(ended.error().message);
     return Result<SessionEndedResponse>::success({RequestId(std::move(request).value()),
         SessionId(std::move(session).value()), Generation(generation.value()), ended.value()});
+}
+
+Result<ControlsResponse> parseControlsResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits)
+{
+    auto object=parseObject(body,headers,"almsivi.controls.v1",limits);
+    if(!object)return Result<ControlsResponse>::failure(object.error());
+    if(!hasExactly(object.value(),{"schema","message_id","request_id","session_id","generation","target",
+            "selected_model_slot_id","selected_profile_id","narrator_profile_id","effective_settings","model_slots","profiles"}))
+        return invalidSchemaValue<ControlsResponse>("controls response fields mismatch");
+    auto message=requireUuid(object.value(),"message_id");auto request=requireUuid(object.value(),"request_id");
+    auto session=requireUuid(object.value(),"session_id");auto generation=requireUnsigned(object.value(),"generation");
+    if(!message)return invalidSchemaValue<ControlsResponse>(message.error().message);
+    if(!request)return invalidSchemaValue<ControlsResponse>(request.error().message);
+    if(!session)return invalidSchemaValue<ControlsResponse>(session.error().message);
+    if(!generation)return invalidSchemaValue<ControlsResponse>(generation.error().message);
+    const auto* targetValue=json::find(object.value(),"target");auto target=parseIdentity(*targetValue);
+    if(!target)return invalidSchemaValue<ControlsResponse>(target.error().message);
+    const auto nullableUuid=[&object](std::string_view key)->Result<std::optional<std::string>>{
+        const auto* value=json::find(object.value(),key);
+        if(!value)return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" is missing");
+        if(value->isNull())return Result<std::optional<std::string>>::success(std::nullopt);
+        if(!value->string()||!isCanonicalUuid(*value->string()))
+            return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" must be null or a canonical UUID");
+        return Result<std::optional<std::string>>::success(*value->string());
+    };
+    auto selectedModel=nullableUuid("selected_model_slot_id");auto selectedProfile=nullableUuid("selected_profile_id");
+    auto narratorProfile=nullableUuid("narrator_profile_id");
+    if(!selectedModel)return invalidSchemaValue<ControlsResponse>(selectedModel.error().message);
+    if(!selectedProfile)return invalidSchemaValue<ControlsResponse>(selectedProfile.error().message);
+    if(!narratorProfile)return invalidSchemaValue<ControlsResponse>(narratorProfile.error().message);
+    const auto* effectiveValue=json::find(object.value(),"effective_settings");auto effective=parseEffectiveSettings(*effectiveValue);
+    if(!effective)return invalidSchemaValue<ControlsResponse>(effective.error().message);
+    const auto* slotsValue=json::find(object.value(),"model_slots");const auto* slots=slotsValue?slotsValue->array():nullptr;
+    const auto* profilesValue=json::find(object.value(),"profiles");const auto* profiles=profilesValue?profilesValue->array():nullptr;
+    if(!slots||slots->size()>32)return invalidSchemaValue<ControlsResponse>("model slots must be an array of at most 32 items");
+    if(!profiles||profiles->size()>100)return invalidSchemaValue<ControlsResponse>("profiles must be an array of at most 100 items");
+    ControlsResponse parsed{MessageId(std::move(message).value()),RequestId(std::move(request).value()),
+        SessionId(std::move(session).value()),Generation(generation.value()),std::move(target).value(),
+        std::move(selectedModel).value(),std::move(selectedProfile).value(),std::move(narratorProfile).value(),
+        std::move(effective).value(),{}, {}};
+    std::set<std::string> unique;
+    for(const auto& value:*slots){const auto* row=value.object();
+        if(!row||!hasExactly(*row,{"configuration_id","name","revision","driver","model"}))
+            return invalidSchemaValue<ControlsResponse>("model slot fields mismatch");
+        auto id=requireUuid(*row,"configuration_id");auto name=requireString(*row,"name",1,128);
+        auto revision=requireUnsigned(*row,"revision",kMaximumProtocolInteger,1);auto driver=requireString(*row,"driver");
+        auto model=requireString(*row,"model",1,256);
+        if(!id)return invalidSchemaValue<ControlsResponse>(id.error().message);
+        if(!name)return invalidSchemaValue<ControlsResponse>(name.error().message);
+        if(!revision)return invalidSchemaValue<ControlsResponse>(revision.error().message);
+        if(!driver||(driver.value()!="configured"&&driver.value()!="mock"))
+            return invalidSchemaValue<ControlsResponse>("model slot driver mismatch");
+        if(!model)return invalidSchemaValue<ControlsResponse>(model.error().message);
+        if(!unique.insert(id.value()).second)return invalidSchemaValue<ControlsResponse>("duplicate model slot");
+        parsed.modelSlots.push_back({std::move(id).value(),std::move(name).value(),revision.value(),
+            std::move(driver).value(),std::move(model).value()});}
+    unique.clear();
+    for(const auto& value:*profiles){const auto* row=value.object();
+        if(!row||!hasExactly(*row,{"profile_id","name","revision"}))
+            return invalidSchemaValue<ControlsResponse>("profile fields mismatch");
+        auto id=requireUuid(*row,"profile_id");auto name=requireString(*row,"name",1,256);
+        auto revision=requireUnsigned(*row,"revision",kMaximumProtocolInteger,1);
+        if(!id)return invalidSchemaValue<ControlsResponse>(id.error().message);
+        if(!name)return invalidSchemaValue<ControlsResponse>(name.error().message);
+        if(!revision)return invalidSchemaValue<ControlsResponse>(revision.error().message);
+        if(!unique.insert(id.value()).second)return invalidSchemaValue<ControlsResponse>("duplicate profile");
+        parsed.profiles.push_back({std::move(id).value(),std::move(name).value(),revision.value()});}
+    if(parsed.selectedModelSlotId&&!std::any_of(parsed.modelSlots.begin(),parsed.modelSlots.end(),
+        [&parsed](const ControlsResponse::ModelSlot& slot){return slot.configurationId==*parsed.selectedModelSlotId;}))
+        return invalidSchemaValue<ControlsResponse>("selected model slot is absent from the list");
+    if(parsed.selectedProfileId&&!std::any_of(parsed.profiles.begin(),parsed.profiles.end(),
+        [&parsed](const ControlsResponse::Profile& profile){return profile.profileId==*parsed.selectedProfileId;}))
+        return invalidSchemaValue<ControlsResponse>("selected profile is absent from the list");
+    return Result<ControlsResponse>::success(std::move(parsed));
 }
 
 Result<void> validateHealthHttpResponse(

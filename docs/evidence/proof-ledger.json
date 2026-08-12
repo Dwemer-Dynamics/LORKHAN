@@ -30,11 +30,12 @@
     },
     {
       "id": "patch-machinery",
-      "claim": "Exact-pin patch-manifest validation and patch machinery tests passed against the validation commit",
+      "claim": "Exact-pin patch-manifest generation, validation, and audit pass against client commit b60908ed18044271fa615a233e120b15d288f464",
       "state": "AUTOMATED",
       "evidence": [
         "docs/evidence/runs/3717eff-local/patch-manifest.json",
-        "docs/evidence/runs/3717eff-local/python-tests.json"
+        "docs/evidence/runs/3717eff-local/python-tests.json",
+        "docs/evidence/local-acceptance-2026-08-03.md"
       ]
     },
     {
@@ -58,11 +59,12 @@
     },
     {
       "id": "native-json-response-parsers",
-      "claim": "Strict bounded JSON syntax parsing and contracted health/error response mapping pass",
-      "state": "PLANNED",
+      "claim": "Strict bounded JSON syntax parsing and contracted health/error response mapping pass in the current native CTest lane",
+      "state": "AUTOMATED",
       "evidence": [
         "components/almsivi/tests/native_tests.cpp",
-        "components/almsivi/fuzz/json_fuzz.cpp"
+        "components/almsivi/fuzz/json_fuzz.cpp",
+        "docs/evidence/local-acceptance-2026-08-03.md"
       ]
     },
     {
@@ -76,32 +78,34 @@
     },
     {
       "id": "lua-structural",
-      "claim": "The dedicated Lua structural runner completed 38 checks with zero failures against the validation commit; this excludes Lua runtime and OpenMW behavior",
+      "claim": "The dedicated Lua structural runner passes against client commit b60908ed18044271fa615a233e120b15d288f464; this excludes OpenMW game behavior",
       "state": "AUTOMATED",
       "evidence": [
         "docs/evidence/runs/3717eff-local/lua-structural.json",
         "docs/evidence/runs/3717eff-local/lua-structural.txt",
-        "almsivi/tests/run.py"
+        "almsivi/tests/run.py",
+        "docs/evidence/local-acceptance-2026-08-03.md"
       ]
     },
     {
       "id": "lua-runtime",
-      "claim": "The Lua suite passes under an available Lua interpreter against the fake OpenMW harness",
-      "state": "DEFERRED",
+      "claim": "The 47-test Lua suite passes under Lua 5.1 against the fake OpenMW harness at client commit b60908ed18044271fa615a233e120b15d288f464",
+      "state": "AUTOMATED",
       "evidence": [
         "almsivi/files/scripts/ALMSIVI/tests/run.lua",
         "scripts/test/lua-unix.sh",
-        "scripts/test/lua-windows.ps1"
-      ],
-      "resume_when": "A supported Lua runtime is available and a durable runtime result is recorded"
+        "scripts/test/lua-windows.ps1",
+        "docs/evidence/local-acceptance-2026-08-03.md"
+      ]
     },
     {
       "id": "python-suite",
-      "claim": "The no-game Python suite passed 45 tests against the validation commit",
+      "claim": "The no-game Python suite passes 47 tests in WSL against client commit b60908ed18044271fa615a233e120b15d288f464",
       "state": "AUTOMATED",
       "evidence": [
         "docs/evidence/runs/3717eff-local/python-tests.json",
-        "docs/evidence/runs/3717eff-local/python-tests.txt"
+        "docs/evidence/runs/3717eff-local/python-tests.txt",
+        "docs/evidence/local-acceptance-2026-08-03.md"
       ]
     },
     {
@@ -134,15 +138,14 @@
     },
     {
       "id": "engine-integration",
-      "claim": "Exact-pin OpenMW package-registration patch foundation is deterministic and statically limits openmw.almsivi to GLOBAL, PLAYER, and CUSTOM; integrated engine build remains blocked locally",
-      "state": "DEFERRED",
+      "claim": "Exact-pin ALMSIVI OpenMW 0.51.0 Windows x64 Release product build and local deployment pass; no unmodified control build or formal release package is claimed",
+      "state": "WINDOWS BUILD PROVEN",
       "evidence": [
         "openmw-patches/patch-manifest.json",
         "openmw-patches/patch-spec.json",
         "openmw-patches/series",
-        "docs/evidence/start-gate-blocker.md"
-      ],
-      "resume_when": "Install the pinned OpenMW macOS dependencies (first configure blocker: ICU libraries; collada_dom also absent), then run matching control/patched builds and relevant OpenMW tests"
+        "docs/evidence/local-acceptance-2026-08-03.md"
+      ]
     },
     {
       "id": "beast-live",
@@ -164,11 +167,13 @@
       "resume_when": "Both completed implementations are on clean main at exact final tested SHAs with passing required evidence and audited licenses/provenance, and cross-repository work is authorized"
     },
     {
-      "id": "windows-build-game-mod",
-      "claim": "Windows x64 exact-pin control/product builds and legal-game/mod acceptance profiles pass",
+      "id": "windows-game-mod-acceptance",
+      "claim": "The exact locally deployed Windows product passes the legal Morrowind in-game and named compatibility-mod acceptance profiles",
       "state": "DEFERRED",
-      "evidence": [],
-      "resume_when": "Run and durably record qualifying Windows builds and legal-data acceptance evidence"
+      "evidence": [
+        "docs/evidence/local-acceptance-2026-08-03.md"
+      ],
+      "resume_when": "Launch the deployed game and durably record the keyboard, controller, UI-scale, scene-safety, conversation, TTS, action, cancellation, save/load, and compatibility matrix"
     },
     {
       "id": "real-release-sign-publish",

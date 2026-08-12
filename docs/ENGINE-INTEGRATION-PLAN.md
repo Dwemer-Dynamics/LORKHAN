@@ -105,8 +105,8 @@ probe and fixed preference order, not an architectural question.
 - Worker uses no `sol`, `MWWorld::Ptr`, VFS object, UI object or OpenMW service.
 - Main thread maps validated results back into Lua events/tables and resolves actor identity again.
 - Shutdown cancels all I/O, closes sockets, waits for worker, clears token memory and cache pins.
-- A debug assertion/thread checker guards engine-facing code; thread-sanitizer-capable tests exercise
-  pure bridge components on supported runners.
+- A debug assertion/thread checker guards engine-facing code; focused queue/cancellation race tests
+  exercise pure bridge components without requiring a hosted sanitizer matrix.
 
 ## Native validation matrix
 

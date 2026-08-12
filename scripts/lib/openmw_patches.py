@@ -171,6 +171,8 @@ def _unified_patch(path: str, before: bytes, after: bytes, mode: str, base_oid: 
         lines.append(f"index {base_oid}..{result_oid} {mode}\n")
         tofile = f"b/{path}"
     lines.extend(difflib.unified_diff(old, new, fromfile=f"a/{path}", tofile=tofile, n=3))
+    while lines and lines[-1] == " \n":
+        lines.pop()
     return "".join(lines).encode("utf-8")
 
 

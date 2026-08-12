@@ -17,7 +17,7 @@ function M.validate(identity)
     for _, key in ipairs(required) do
         if identity[key] == nil then return nil, 'identity_missing_' .. key end
     end
-    if identity.kind ~= 'npc' and identity.kind ~= 'creature' and identity.kind ~= 'player' then
+    if identity.kind ~= 'npc' and identity.kind ~= 'creature' and identity.kind ~= 'player' and identity.kind ~= 'narrator' then
         return nil, 'identity_kind_forbidden'
     end
     if type(identity.record_id) ~= 'string' or identity.record_id == '' then return nil, 'identity_record_invalid' end
