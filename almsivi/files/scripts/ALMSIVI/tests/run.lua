@@ -75,6 +75,41 @@ test('speaker-less streaming delta uses the selected target',function()
  player.event(s,event(1,'dialogue.delta',3,{text='Welcome.'}))
  eq(s.ui.subtitle.speaker.record_id,'fargoth');eq(s.ui.subtitle.text,'Welcome.')
 end)
+
+test('target settings preserve local presentation and enforce both safety gates',function()
+ local function localSettings()
+  return {autoActivate={addHostile=true,addCreatures=true},behavior={actionsEnabled=true},
+   presentation={showStatusHud=false,transcriptRows=12,ttsVolumeBoost=4}}
+ end
+ local settings=localSettings();local presentation=settings.presentation
+ local target={safety={actions_enabled=true,allow_hostile=true,allow_creatures=true},
+  behavior={rechat=true,rechat_max_depth=1,rechat_probability_percent=0,rechat_mode='group',
+   rechat_strict_targeting=false,open_rechat=false,end_conversation_cooldown_seconds=0,
+   auto_greeting=true,boredom=true,combat_barks=true,rechat_allow_actions=true},
+  presentation={show_status_hud=true,transcript_rows=2,tts_volume_boost=1},
+  memory={recent_turn_limit=0,knowledge_limit=0},narrator={enabled=false}}
+ player.applyTargetSettings(settings,target)
+ eq(settings.presentation,presentation);eq(presentation.showStatusHud,false)
+ eq(presentation.transcriptRows,12);eq(presentation.ttsVolumeBoost,4)
+ eq(settings.autoActivate.addHostile,true);eq(settings.autoActivate.addCreatures,true)
+ eq(settings.behavior.actionsEnabled,true);eq(settings.behavior.rechat,true)
+ eq(settings.behavior.rechatMaxDepth,1);eq(settings.behavior.rechatProbabilityPercent,0)
+ eq(settings.behavior.rechatMode,'group');eq(settings.behavior.openRechat,false)
+ eq(settings.behavior.rechatStrictTargeting,false);eq(settings.behavior.endConversationCooldownSeconds,0)
+ eq(settings.behavior.auto_greeting,nil);eq(settings.behavior.boredom,nil)
+ eq(settings.behavior.combat_barks,nil);eq(settings.behavior.rechat_allow_actions,nil)
+ eq(settings.memory.recent_turn_limit,0);eq(settings.narrator.enabled,false)
+ settings=localSettings();settings.behavior.actionsEnabled=false
+ settings.autoActivate.addHostile=false;settings.autoActivate.addCreatures=false
+ player.applyTargetSettings(settings,target)
+ eq(settings.behavior.actionsEnabled,false);eq(settings.autoActivate.addHostile,false)
+ eq(settings.autoActivate.addCreatures,false)
+ for _,safety in ipairs({{}, {actions_enabled=false,allow_hostile=false,allow_creatures=false}}) do
+  settings=localSettings();player.applyTargetSettings(settings,{safety=safety})
+  eq(settings.behavior.actionsEnabled,false);eq(settings.autoActivate.addHostile,false)
+  eq(settings.autoActivate.addCreatures,false);eq(settings.behavior.rechat,false)
+ end
+end)
 test('conversation history retains correlation metadata and terminal request state',function()
  local s=player.new();s.ui.policy.transcriptRows=2
  player.queued(s,playerId,'Hello.',event(1,'turn.accepted',3,{status='accepted'}))

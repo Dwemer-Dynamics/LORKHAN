@@ -938,11 +938,6 @@ applySettings=function(session,controls)
     local effective=controls and state.ui.target and identity.same(controls.target,state.ui.target)
         and controls.effective_settings or nil
     local targetSettings=effective and effective.settings or {}
-    local serverSafety=targetSettings.safety or {}
-    local function restricted(localValue,serverValue,localDefault)
-        if localValue==nil then localValue=localDefault end
-        return localValue==true and serverValue==true
-    end
     local legacyHearing=autoSettings and autoSettings:get('hearingDistance')
     local interiorHearing=autoSettings and autoSettings:get('interiorHearingDistance') or legacyHearing or 500
     local exteriorHearing=autoSettings and autoSettings:get('exteriorHearingDistance') or legacyHearing or 1000
@@ -958,22 +953,15 @@ applySettings=function(session,controls)
             hearingDistance=exterior and exteriorHearing or interiorHearing,
             interiorHearingDistance=interiorHearing,
             exteriorHearingDistance=exteriorHearing,
-            addHostile=restricted(autoSettings and autoSettings:get('addHostile'),serverSafety.allowHostile,false),
-            addCreatures=restricted(autoSettings and autoSettings:get('addCreatures'),serverSafety.allowCreatures,false)},
-        behavior={actionsEnabled=restricted(actionsEnabled,serverSafety.actionsEnabled,true),
-            cancelDialogueOnCombat=behaviorSettings and behaviorSettings:get('cancelDialogueOnCombat'),
-            rechat=targetSettings.behavior and targetSettings.behavior.rechat==true,
-            rechatMaxDepth=targetSettings.behavior and targetSettings.behavior.rechat_max_depth or 2,
-            rechatProbabilityPercent=targetSettings.behavior and targetSettings.behavior.rechat_probability_percent or 50,
-            rechatMode=targetSettings.behavior and targetSettings.behavior.rechat_mode or 'random',
-            rechatStrictTargeting=targetSettings.behavior and targetSettings.behavior.rechat_strict_targeting==true,
-            openRechat=not targetSettings.behavior or targetSettings.behavior.open_rechat~=false,
-            endConversationCooldownSeconds=targetSettings.behavior and targetSettings.behavior.end_conversation_cooldown_seconds or 60},
+            addHostile=autoSettings and autoSettings:get('addHostile'),
+            addCreatures=autoSettings and autoSettings:get('addCreatures')},
+        behavior={actionsEnabled=actionsEnabled,
+            cancelDialogueOnCombat=behaviorSettings and behaviorSettings:get('cancelDialogueOnCombat')},
         presentation={showStatusHud=presentationSettings and presentationSettings:get('showStatusHud')==true,
             transcriptRows=tonumber(presentationSettings and presentationSettings:get('transcriptRows')) or 12,
             ttsVolumeBoost=tonumber(ttsVolumeBoost) or 3},
-        narrator=targetSettings.narrator or {},memory=targetSettings.memory or {},
     }
+    player.applyTargetSettings(current,targetSettings)
     local auto=current.autoActivate or {}
     local behavior=current.behavior or {}
     local presentation=current.presentation or {}

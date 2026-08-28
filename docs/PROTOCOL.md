@@ -138,16 +138,22 @@ server process endpoint and credential environment; a `mock` slot remains determ
 NPC profiles bind to one stable actor identity within the active installation/playthrough; player and narrator
 profiles are excluded from that binding list. The installation narrator ID permits only the server-validated,
 revision-safe narrator-generation operation. The chosen
-profile affects that actor's profile and prompt sources, while memory, relationship, knowledge, and
-narrative retrieval remain scoped to the session profile/playthrough. Every accepted turn freezes the
-assembled prompt and selected provider revision before worker execution.
+profile owns that actor's relationship and manual-memory context within the installation/playthrough.
+Source-derived memories additionally require witnessed-source eligibility. Unbound targets do not
+inherit another actor's relationships or manual memories from the session profile. Every accepted turn
+freezes the assembled prompt and selected provider revision before worker execution.
 
 Every controls response includes `almsivi.effective-settings.v1` for the active target. It carries the
-resolved memory, narrator, safety, and routing values; Global/Core Profile/NPC source metadata; bound profile
+resolved rechat, memory, narrator, safety, and client-visible routing values; Global/Core Profile/NPC source metadata; bound profile
 revisions; and a deterministic change token. Local hotkeys, HUD visibility, panel layout, and TTS volume boost
 remain OpenMW preferences and are never replaced when the target changes. The effective settings
-snapshot includes the layered rechat enable/depth values; timer scheduling, boredom, greetings,
-combat barks, ITT, and Background Life remain excluded. STT uses one installation-global connector and does not enter the Global/Core Profile/NPC resolver.
+snapshot includes all seven playback-gated rechat controls. The strict v1 wire shape retains compiled
+presentation and disabled legacy behavior defaults for older parsers; the Lua bridge does not expose
+those compatibility fields. Local and server safety permissions must both allow an operation.
+Timer scheduling, boredom, greetings, combat barks, ITT, and Background Life remain excluded.
+Server-only Oghma tags and Oghma/profile-generation routes stay on the server. The source map omits
+excluded/internal paths and compatibility-only defaults; model-slot drivers remain `mock` or
+`configured`. STT uses one installation-global connector and does not enter the Global/Core Profile/NPC resolver.
 
 Server response events have a strictly increasing per-session `sequence`. The current v1 slice contracts `turn.accepted`, `dialogue.delta`, `dialogue.complete`, `speech.ready`, `stt.transcript`, `stt.failed`, `action.intent`, `turn.complete`, `turn.failed`, and `turn.cancelled`. Bounded `dialogue.delta` text is display-only progress; the validated `dialogue.complete` remains the durable utterance and memory source. TTS runs as a separate durable job after the dialogue is committed, and every `speech.ready` descriptor carries its `dialogue_message_id` so delayed group speech remains correctly ordered. Every envelope includes `message_id`, `request_id`, `turn_id`, `session_id`, `generation`, `sequence`, `created_at`, type and strict payload. The events response is capped at 100 items and its required `autonomy` array is always empty.
 

@@ -239,6 +239,18 @@ void testProtocolResponses()
         R"({"schema":"almsivi.error.v1","code":"unknown_action","message":"unknown action","correlation_id":"01900000-0000-7000-8000-000000000001","retriable":false})",
         jsonHeaders);
     CHECK(expandedCode && expandedCode.value().code == almsivi::ErrorCode::invalid_action);
+    for (const auto& [code, expected] : std::array{
+             std::pair{"action_parameters_invalid", almsivi::ErrorCode::invalid_action},
+             std::pair{"action_target_invalid", almsivi::ErrorCode::invalid_action},
+             std::pair{"action_tier_mismatch", almsivi::ErrorCode::invalid_action},
+             std::pair{"invalid_audio", almsivi::ErrorCode::media_rejected},
+             std::pair{"rechat_cooldown", almsivi::ErrorCode::cancelled},
+             std::pair{"invalid_rechat_context", almsivi::ErrorCode::invalid_schema}}) {
+        const auto response = almsivi::parseProtocolErrorResponse(
+            std::string(R"({"schema":"almsivi.error.v1","code":")") + code
+                + R"(","message":"Request rejected","correlation_id":"01900000-0000-7000-8000-000000000001","retriable":false})", jsonHeaders);
+        CHECK(response && response.value().code == expected);
+    }
     CHECK(!almsivi::parseProtocolErrorResponse(
         R"({"schema":"almsivi.error.v1","code":"internal_error","message":"","correlation_id":"01900000-0000-7000-8000-000000000001","retriable":false})",
         jsonHeaders));
@@ -316,7 +328,7 @@ void testAcceptedProtocolResponses()
         jsonHeaders));
 
     auto controls = almsivi::parseControlsResponse(
-        R"({"schema":"almsivi.controls.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"target":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"selected_model_slot_id":"01900000-0000-7000-8000-000000000011","selected_profile_id":null,"narrator_profile_id":"01900000-0000-7000-8000-000000000013","effective_settings":{"schema":"almsivi.effective-settings.v1","change_token":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","profile_id":null,"profile_revision":null,"core_profile_id":"01900000-0000-7000-8000-000000000014","core_profile_revision":1,"settings":{"behavior":{"auto_greeting":false,"rechat":false,"rechat_delay_seconds":45,"rechat_max_depth":2,"rechat_probability_percent":50,"rechat_mode":"random","rechat_strict_targeting":false,"open_rechat":true,"rechat_allow_actions":false,"end_conversation_cooldown_seconds":60,"boredom":false,"boredom_delay_seconds":180,"combat_barks":false,"combat_bark_period_seconds":20},"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"random_events":false,"quest_events":false,"book_events":false},"presentation":{"show_status_hud":true,"transcript_rows":8,"tts_volume_boost":3},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"routing":{},"source_map":{}},"model_slots":[{"configuration_id":"01900000-0000-7000-8000-000000000011","name":"Dialogue","revision":2,"driver":"configured","model":"gpt-5-mini"}],"profiles":[{"profile_id":"01900000-0000-7000-8000-000000000012","name":"Fargoth","revision":3}]})",
+        R"({"schema":"almsivi.controls.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"target":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"selected_model_slot_id":"01900000-0000-7000-8000-000000000011","selected_profile_id":null,"narrator_profile_id":"01900000-0000-7000-8000-000000000013","effective_settings":{"schema":"almsivi.effective-settings.v1","change_token":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","profile_id":null,"profile_revision":null,"core_profile_id":"01900000-0000-7000-8000-000000000014","core_profile_revision":1,"settings":{"behavior":{"auto_greeting":false,"rechat":true,"rechat_delay_seconds":45,"rechat_max_depth":1,"rechat_probability_percent":0,"rechat_mode":"random","rechat_strict_targeting":false,"open_rechat":false,"rechat_allow_actions":false,"end_conversation_cooldown_seconds":0,"boredom":false,"boredom_delay_seconds":180,"combat_barks":false,"combat_bark_period_seconds":20},"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"random_events":false,"quest_events":false,"book_events":false},"presentation":{"show_status_hud":true,"transcript_rows":8,"tts_volume_boost":3},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"routing":{},"source_map":{}},"model_slots":[{"configuration_id":"01900000-0000-7000-8000-000000000011","name":"Dialogue","revision":2,"driver":"configured","model":"gpt-5-mini"}],"profiles":[{"profile_id":"01900000-0000-7000-8000-000000000012","name":"Fargoth","revision":3}]})",
         jsonHeaders);
     CHECK(controls && controls.value().request == almsivi::RequestId(kInstallation)
         && controls.value().session == almsivi::SessionId(kSession)
@@ -330,6 +342,11 @@ void testAcceptedProtocolResponses()
         && controls.value().effectiveSettings.changeToken == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         && controls.value().effectiveSettings.coreProfileRevision == 1
         && controls.value().effectiveSettings.safety.actionsEnabled
+        && controls.value().effectiveSettings.behavior.rechat
+        && controls.value().effectiveSettings.behavior.rechatMaxDepth == 1
+        && controls.value().effectiveSettings.behavior.rechatProbabilityPercent == 0
+        && !controls.value().effectiveSettings.behavior.openRechat
+        && controls.value().effectiveSettings.behavior.endConversationCooldownSeconds == 0
         && controls.value().modelSlots.size() == 1 && controls.value().profiles.size() == 1
         && controls.value().modelSlots[0].model == "gpt-5-mini"
         && controls.value().profiles[0].revision == 3);
