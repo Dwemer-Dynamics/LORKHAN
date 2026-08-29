@@ -119,6 +119,8 @@ proves all except sleeping. Missing or late proof fails closed, busy/unconscious
 excluded, and sleeping remains a forward-compatible server rule for a directly addressed actor only.
 Rechat provider actions are always discarded, and a chain closes at its server-owned budget or cancels
 on new player input, failure, combat, lifecycle changes, stop, or stale state.
+Close mode may continue only within its explicit recorded group, and every reply retains that group for
+the next round. Whisper remains single-turn and never starts playback-driven rechat.
 
 An in-game action menu may add `action_request` with a catalog action name, exact tier, bounded
 parameters, and an optional explicit target. The server derives the actor from the resolved turn target.

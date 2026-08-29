@@ -232,7 +232,7 @@ test('media prepare handoff is opaque generation-bound and fake-adapter tested',
   truthy(orchestrator.speechStatus(s,{media_id=descriptor.media_id,active=false,status='played'}));truthy(s.responseQueue.unfinished==false);eq(s.activeSpeechMediaId,nil)
   orchestrator.lifecycle(s,'load');truthy(s.responseQueue.unfinished==false)
  end)
-test('rechat waits for terminal playback and submits one correlated continuation',function()
+test('Close rechat preserves its group through one correlated continuation',function()
  local busy=fake.identity('npc','busy_actor',4)
  local b=fake.bridge() local s
  s=orchestrator.new(b,nil,function(actorIdentity,name,payload)
@@ -244,6 +244,7 @@ test('rechat waits for terminal playback and submits one correlated continuation
   return true
  end)
  s.settings={behavior={rechat=true,rechatMaxDepth=2},presentation={ttsVolumeBoost=3}}
+ s.dialogueMode='Close'
  orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
  orchestrator.activate(s,enemy,{});orchestrator.activate(s,busy,{})
  truthy(conversation.setTarget(s.conversation,npc))
@@ -268,8 +269,10 @@ test('rechat waits for terminal playback and submits one correlated continuation
  truthy(identity.same(b.submitted[2].payload.context.rechat.speaker,npc))
  truthy(identity.same(b.submitted[2].payload.context.rechat.listener_hint,playerId))
  truthy(identity.same(b.submitted[2].payload.context.rechat.rechat_target_hint,npc))
- eq(#b.submitted[2].payload.audience,2);truthy(identity.same(b.submitted[2].payload.audience[1],enemy))
- truthy(identity.same(b.submitted[2].payload.audience[2],busy))
+ eq(b.submitted[2].payload.context.dialogueMode,'Close');eq(#b.submitted[2].payload.audience,3)
+ truthy(identity.same(b.submitted[2].payload.audience[1],npc))
+ truthy(identity.same(b.submitted[2].payload.audience[2],enemy))
+ truthy(identity.same(b.submitted[2].payload.audience[3],busy))
  local participantStates=b.submitted[2].payload.context.rechat.participant_states
  eq(#participantStates,3);eq(participantStates[1].state,'active')
  eq(participantStates[2].state,'active');eq(participantStates[3].state,'busy')

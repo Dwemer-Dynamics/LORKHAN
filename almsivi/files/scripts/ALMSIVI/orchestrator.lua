@@ -593,7 +593,7 @@ local function submitPlaybackRechat(state,probe)
     local chain=state.rechat
     local settings=state.settings and state.settings.behavior or {}
     if not chain or chain.cancelled or chain.requestInFlight or settings.rechat~=true
-        or state.dialogueMode=='Whisper' or state.dialogueMode=='Close' or not state.rechatSeed
+        or state.dialogueMode=='Whisper' or not state.rechatSeed
         or not state.conversation.turn or not state.conversation.turn.terminal then return false end
     if not responseQueue.idle(state.responseQueue) then return false end
     if not chain.lastSpeaker or chain.lastSpeaker.kind=='player' then
@@ -608,7 +608,7 @@ local function submitPlaybackRechat(state,probe)
     for _,actor in ipairs(probe.participants) do
         local key=identity.key(actor)
         local actorState=key and probe.states[key] or nil
-        if key and key~=speakerKey then rechatAudience[#rechatAudience+1]=util.copy(actor) end
+        if key then rechatAudience[#rechatAudience+1]=util.copy(actor) end
         if actorState then
             participantStates[#participantStates+1]={identity=util.copy(actor),state=actorState}
             local directlyAddressed=identity.same(actor,chain.lastAddressee) or identity.same(actor,chain.targetHint)
@@ -643,7 +643,7 @@ local function startPlaybackRechatProbe(state)
     local chain=state.rechat
     local settings=state.settings and state.settings.behavior or {}
     if not chain or chain.cancelled or chain.requestInFlight or state.rechatEligibility
-        or settings.rechat~=true or state.dialogueMode=='Whisper' or state.dialogueMode=='Close'
+        or settings.rechat~=true or state.dialogueMode=='Whisper'
         or not state.rechatSeed or not state.conversation.turn or not state.conversation.turn.terminal
         or not responseQueue.idle(state.responseQueue) then return false end
     if not chain.lastSpeaker or chain.lastSpeaker.kind=='player' then chain.cancelled=true return false end
