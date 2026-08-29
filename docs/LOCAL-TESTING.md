@@ -62,7 +62,10 @@ stock OpenMW executable.
    target, session, generation and active-turn state. Automatic greetings, boredom, combat barks and
    timer-driven autonomy are excluded; any inherited controls for them remain disabled.
    The `Dialogue mode` hotkey opens routing choices: Standard adds normal spatial hearing, Close uses only
-   the explicit group, Whisper uses the primary target only, and Shout doubles spatial hearing.
+   the explicit group, Whisper uses the primary target only, and Shout doubles spatial hearing. Typed chat
+   also accepts `|` for one Whisper turn, `||` for one Close turn, and `!!` for one Shout turn without
+   changing the selected mode. `Mood and delivery...` applies an optional saved mood cue to typed and
+   spoken turns; None and an empty custom cue keep ordinary chat unchanged.
 9. The `LLM model` hotkey lists only revisioned choices created on ALMSIVIserver; `Server default`
    clears the per-session override. Dynamic Profiles > Targeted NPC assigns a server profile to the
    currently confirmed actor for this playthrough; `Playthrough default` clears that actor binding.
@@ -76,6 +79,8 @@ stock OpenMW executable.
 - opt-in open microphone visibly reports listening/muted state, resumes after unmute, and honors the
   configured VAD sensitivity and silence-end delay;
 - Standard, Close, Whisper and Shout produce the expected target/group/spatial audience;
+- typed `|`, `||`, and `!!` prefixes are removed from the displayed message, affect only that turn, and
+  leave the selected mode unchanged; the optional player mood reaches the NPC prompt but not the displayed text;
 - playback-gated rechat continues only within its configured depth and never starts from an idle timer;
 - automatic greetings, boredom and combat barks do not trigger;
 - the generated short WAV plays through the actor voice path and subtitles remain visible;

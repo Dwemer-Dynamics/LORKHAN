@@ -1,5 +1,5 @@
 {
-  "description": "Common turn envelope with minimal known client-owned payload",
+  "description": "Common turn envelope with an optional typed player mood",
   "instance": {
     "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "created_at": "2026-07-18T20:00:00Z",
@@ -9,7 +9,7 @@
     "payload": {
       "audience": [{"cell": {"grid_x": -2, "grid_y": -9, "kind": "exterior"}, "content_file": "Morrowind.esm", "display_name": "Fargoth", "kind": "npc", "record_id": "fargoth", "refnum": {"content_file": 0, "index": 112}}],
       "context": {"truncated": false},
-      "input": {"kind": "text", "language": "en-US", "text": "Hello."},
+      "input": {"kind": "text", "language": "en-US", "mood": {"kind": "playful"}, "text": "Hello."},
       "recent_action_results": [],
       "speaker": {"cell": {"name": "Balmora, Guild of Mages", "kind": "interior"}, "content_file": "Morrowind.esm", "display_name": "Player", "kind": "player", "record_id": "player", "refnum": {"content_file": 0, "index": 0}},
       "target": {"cell": {"grid_x": -2, "grid_y": -9, "kind": "exterior"}, "content_file": "Morrowind.esm", "display_name": "Fargoth", "kind": "npc", "record_id": "fargoth", "refnum": {"content_file": 0, "index": 112}},

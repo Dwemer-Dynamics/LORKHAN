@@ -22,6 +22,7 @@ repeatable no-game check. It never means the behavior has been exercised in Morr
 | Stop controls | Stop dialogue, halt actions, recoverable full stop | Separate semantic triggers and Master Menu commands | AUTOMATED; in-game proof required |
 | Master/actions/history/diagnostics | CHIM Prisma master, actions, history and logs views | OpenMW-native panels, safe status data, recent session transcript | AUTOMATED; layout/in-game proof required |
 | Mode selection | CHIM mode controls; Dialectic mode selector | Explicit Standard, Whisper, Close and Shout selector plus semantic cycle binding | AUTOMATED audience/prompt routing; in-game proof required |
+| Player mood and one-turn delivery | CHIM player mood selector and typed delivery shortcuts | Saved None/built-in/custom mood for typed or spoken turns; typed `|`, `||`, and `!!` apply Whisper, Close, or Shout to one turn without changing the selected mode | AUTOMATED Lua/protocol/prompt routing; layout/in-game proof required |
 | Rebindable inputs | MCM/INI hotkeys | OpenMW Options > Scripts > ALMSIVI semantic bindings | AUTOMATED; controller proof required |
 
 Conflict-free defaults remain F6 for typed talk, F7 for recoverable stop, and F8 for Actor Actions.
@@ -33,6 +34,7 @@ Other semantic actions are deliberately unbound until the player assigns them in
 | --- | --- | --- |
 | Text/voice chat, halt, manual activation, actions and master menu | OpenMW-native semantic bindings and panels | TEXT CHAT AND TARGETING IN-GAME PROVEN; remaining controls require in-game proof |
 | Explicit mode selector | Standard, Whisper, Close and Shout now alter both prompt context and bounded audience routing | IMPLEMENTED; in-game proof required |
+| Player mood and one-turn delivery | Optional bounded mood cues reach prompt/history while authored text stays unchanged; `|`, `||`, and `!!` are stripped before one-turn Whisper/Close/Shout routing | IMPLEMENTED; layout/in-game proof required |
 | Open-mic mute, sensitivity and end delay | Separate mute binding plus bounded 100-5000 RMS and 500-5000 ms native VAD settings | IMPLEMENTED; microphone proof required |
 | Status/history/log views | Compact HUD, session history and safe diagnostics; no raw secret/log browser | IMPLEMENTED; layout proof required |
 | LLM model slots | Authenticated typed query/select routes expose revisioned server-owned slots; configured slots override only the model and never expose credentials/endpoints; management supports secret-free export/import/clone and blocks deletion while in use | IMPLEMENTED; in-game proof required |

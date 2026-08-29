@@ -4,6 +4,7 @@ local context=require('scripts.ALMSIVI.context')
 local conversation=require('scripts.ALMSIVI.conversation')
 local identity=require('scripts.ALMSIVI.identity')
 local protocol=require('scripts.ALMSIVI.protocol')
+local playerInput=require('scripts.ALMSIVI.player_input')
 local responseQueue=require('scripts.ALMSIVI.response_queue')
 local storage=require('scripts.ALMSIVI.storage')
 local targeting=require('scripts.ALMSIVI.targeting')
@@ -328,7 +329,7 @@ function M.startVoice(state,args)
         target_key=identity.key(state.conversation.target),session_id=state.sessionId,generation=state.generation,
         context=util.copy(args.context or {}),language=args.language or 'en-US',
         capabilities=util.arrayCopy(args.capabilities or {}),recent_action_results=util.arrayCopy(args.recent_action_results or {}),
-        ui_source=args.ui_source or 'almsivi_voice',continuous=args.continuous==true}
+        ui_source=args.ui_source or 'almsivi_voice',dialogueMode=args.dialogueMode,mood=util.copy(args.mood),continuous=args.continuous==true}
     state.emit('ALMSIVI_VOICE_STATUS',{status=args.automatic and 'listening' or 'recording',continuous=args.continuous==true})
     return true
 end
@@ -443,8 +444,15 @@ function M.submitText(state,args)
     local turnId=args.turn_id
     local ok,reason=conversation.begin(state.conversation,requestId,turnId,args.input_key or args.text)
     if not ok then return nil,reason end
-    local mode=({Standard=true,Whisper=true,Close=true,Shout=true})[state.dialogueMode]
-        and state.dialogueMode or 'Standard'
+    local parsed,parseReason=playerInput.parse(args.text)
+    if not parsed then state.conversation.turn=nil return nil,parseReason end
+    args.text=parsed.text
+    local requestedMode=args.dialogueMode
+    local mode=({Standard=true,Whisper=true,Close=true,Shout=true})[requestedMode] and requestedMode
+        or (({Standard=true,Whisper=true,Close=true,Shout=true})[state.dialogueMode] and state.dialogueMode or 'Standard')
+    if parsed.mode then mode=parsed.mode end
+    local mood,moodReason=playerInput.validateMood(args.mood)
+    if moodReason then state.conversation.turn=nil return nil,moodReason end
     local audience={}
     local audienceKeys={}
     local selectedAudience=state.conversation.audience
@@ -485,7 +493,7 @@ function M.submitText(state,args)
         installation_id=args.installation_id,profile_id=args.profile_id,playthrough_id=args.playthrough_id,
         session_id=state.sessionId,generation=state.generation,runtime_generation=runtimeGeneration,
         created_at=args.created_at,platform=args.platform,
-        content_fingerprint=args.content_fingerprint,text=args.text,language=args.language,
+        content_fingerprint=args.content_fingerprint,text=args.text,language=args.language,input_kind=args.input_kind,mood=mood,
         speaker=args.speaker,target=state.conversation.target,audience=audience,context=context.snapshot(args.context),
         capabilities=args.capabilities,recent_action_results=args.recent_action_results,ui_source=args.ui_source,
         action_request=args.action_request})
@@ -493,6 +501,8 @@ function M.submitText(state,args)
     local submitted,nativeReason=state.bridge.submitTurn(dto)
     if not submitted then state.conversation.turn=nil return nil,nativeReason end
     if not isRechat then
+        args.dialogueMode=mode
+        args.mood=nil
         state.rechatSeed=util.copy(args)
         state.rechat={chainId=state.bridge.newMessageId and state.bridge.newMessageId() or args.request_id,
             originTurnId=args.turn_id,originLine=args.text,depth=0,lastSpeaker=nil,lastAddressee=nil,
@@ -593,7 +603,7 @@ local function submitPlaybackRechat(state,probe)
     local chain=state.rechat
     local settings=state.settings and state.settings.behavior or {}
     if not chain or chain.cancelled or chain.requestInFlight or settings.rechat~=true
-        or state.dialogueMode=='Whisper' or not state.rechatSeed
+        or (state.rechatSeed and state.rechatSeed.dialogueMode=='Whisper') or not state.rechatSeed
         or not state.conversation.turn or not state.conversation.turn.terminal then return false end
     if not responseQueue.idle(state.responseQueue) then return false end
     if not chain.lastSpeaker or chain.lastSpeaker.kind=='player' then
@@ -643,7 +653,7 @@ local function startPlaybackRechatProbe(state)
     local chain=state.rechat
     local settings=state.settings and state.settings.behavior or {}
     if not chain or chain.cancelled or chain.requestInFlight or state.rechatEligibility
-        or settings.rechat~=true or state.dialogueMode=='Whisper'
+        or settings.rechat~=true or (state.rechatSeed and state.rechatSeed.dialogueMode=='Whisper')
         or not state.rechatSeed or not state.conversation.turn or not state.conversation.turn.terminal
         or not responseQueue.idle(state.responseQueue) then return false end
     if not chain.lastSpeaker or chain.lastSpeaker.kind=='player' then chain.cancelled=true return false end
@@ -739,6 +749,7 @@ function M.poll(state)
                     local metadata=state.bridge.nextTurnMetadata and state.bridge.nextTurnMetadata() or {}
                     for key,value in pairs(metadata) do pending[key]=value end
                     pending.text=event.payload.text;pending.input_key='voice:'..event.message_id;pending.language=event.payload.language
+                    pending.input_kind='stt'
                     local submitted,submitReason=M.submitText(state,pending)
                     if not submitted and pending.continuous then state.openMic=false end
                     state.emit('ALMSIVI_VOICE_STATUS',{status=submitted and 'queued' or 'failed',reason=submitReason,

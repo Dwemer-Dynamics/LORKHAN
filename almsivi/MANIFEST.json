@@ -242,9 +242,9 @@
       "sha256": "f3e309b0aeaac56cbcadb6932561606a2835556224e3401a6628e8b2d214995f"
     },
     {
-      "bytes": 1971,
+      "bytes": 1995,
       "path": "almsivi/fixtures/v1/valid/turn.json",
-      "sha256": "a4b0a4da83088cad290dd174189319b1f0ae751f94d17c2ed2ad101547595af5"
+      "sha256": "ef8cb6d638cc93f34f6979918bfe2e13c34a54ef6fe152d859281872dc439a95"
     },
     {
       "bytes": 18363,
@@ -382,9 +382,9 @@
       "sha256": "8f439efa93daa915781366d1874de0939db080f4ac619e1132dafaf610b13712"
     },
     {
-      "bytes": 5800,
+      "bytes": 7279,
       "path": "almsivi/schemas/v1/turn.schema.json",
-      "sha256": "75217d78cbccf582b01918701845d759f83b42be685c1c7468b8d2fe55dbd2b4"
+      "sha256": "af808cec7c12884b1e98802c2d0fddc89c336e1aa5246736ac26fcef979b4957"
     }
   ],
   "format": "almsivi.protocol-manifest.v1",

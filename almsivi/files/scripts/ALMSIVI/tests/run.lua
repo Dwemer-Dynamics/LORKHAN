@@ -12,6 +12,7 @@ local function truthy(v) assert(v) end
 
 local identity=require('scripts.ALMSIVI.identity')
 local protocol=require('scripts.ALMSIVI.protocol')
+local playerInput=require('scripts.ALMSIVI.player_input')
 local conversation=require('scripts.ALMSIVI.conversation')
 local storage=require('scripts.ALMSIVI.storage')
 local context=require('scripts.ALMSIVI.context')
@@ -64,6 +65,19 @@ test('wire validators reject uppercase UUID and zero-byte media',function()
  local speech=event(1,'speech.ready',3,{media_id=UUID.message,dialogue_message_id=UUID.message,sha256=string.rep('a',64),bytes=0,codec='wav',duration_ms=1,expires_at='2026-07-19T00:00:00Z'})
  local ok,reason=protocol.validatePolledEvent(speech);eq(ok,nil);eq(reason,'invalid_speech_bytes')
  speech.payload.bytes=4;speech.payload.duration_ms=0;ok,reason=protocol.validatePolledEvent(speech);eq(ok,nil);eq(reason,'invalid_speech_duration')
+end)
+test('player input policy parses only safe one-turn prefixes and validates moods',function()
+ local parsed=playerInput.parse('|| stay close');eq(parsed.text,'stay close');eq(parsed.mode,'Close');eq(parsed.prefix,'||')
+ parsed=playerInput.parse('| whisper');eq(parsed.text,'whisper');eq(parsed.mode,'Whisper')
+ parsed=playerInput.parse('!! everyone');eq(parsed.text,'everyone');eq(parsed.mode,'Shout')
+ parsed=playerInput.parse('Normal text');eq(parsed.text,'Normal text');eq(parsed.mode,nil)
+ local invalid,reason=playerInput.parse('|  ');eq(invalid,nil);eq(reason,'empty_input')
+ parsed=playerInput.parse('** narrator');eq(parsed.text,'** narrator');eq(parsed.mode,nil)
+ local mood; mood,reason=playerInput.validateMood({kind='angry'});eq(mood.kind,'angry');eq(reason,nil)
+ mood=playerInput.validateMood({kind='custom',custom='  with quiet resolve  '});eq(mood.custom,'with quiet resolve')
+ mood,reason=playerInput.validateMood({kind='custom',custom='two\nlines'});eq(mood,nil);eq(reason,'invalid_mood')
+ mood,reason=playerInput.validateMood({kind='custom',custom=string.rep('x',81)});eq(mood,nil);eq(reason,'invalid_mood')
+ mood,reason=playerInput.validateMood({kind='happy',custom='extra'});eq(mood,nil);eq(reason,'invalid_mood')
 end)
 test('event ordering dedup and cursor recovery',function()
  local c=protocol.CursoredEvents(UUID.session,3) truthy(c:accept(event(1,'turn.accepted',3)))
@@ -464,9 +478,10 @@ test('typed player action request remains inside the strict turn envelope',funct
   installation_id='00000000-0000-4000-8000-000000000010',profile_id='00000000-0000-4000-8000-000000000011',
   playthrough_id='00000000-0000-4000-8000-000000000012',session_id=UUID.session,generation=1,runtime_generation=3,
   created_at='2026-08-01T00:00:00Z',platform='windows',content_fingerprint='sha256:'..string.rep('a',64),
-  text='Attack the mudcrab',language='en-US',speaker=playerId,target=npc,audience={npc},context={},capabilities={'action.combat.start'},
+  text='Attack the mudcrab',language='en-US',mood={kind='angry'},speaker=playerId,target=npc,audience={npc},context={},capabilities={'action.combat.start'},
   ui_source='almsivi_action_menu',action_request={name='combat.start',tier=2,parameters={},target=enemy}})
  truthy(dto,reason);eq(dto.payload.action_request.name,'combat.start');eq(dto.payload.action_request.target.record_id,'mudcrab')
+ eq(dto.payload.input.mood.kind,'angry')
  eq(dto.runtime_generation,3)
  dto,reason=protocol.turn({message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,
   installation_id='00000000-0000-4000-8000-000000000010',profile_id='00000000-0000-4000-8000-000000000011',
@@ -555,6 +570,41 @@ test('dialogue modes apply explicit bounded audience policies',function()
  local whisper=submit('Whisper',true,300);eq(#whisper.audience,1);eq(whisper.context.dialogueMode,'Whisper')
  local shout=submit('Shout',false,700);eq(#shout.audience,2);eq(shout.context.dialogueMode,'Shout')
 end)
+test('one-turn mode override strips its prefix and preserves the selected mode and rechat group',function()
+ local b=fake.bridge() local s=orchestrator.new(b,nil,nil,function()return true end)
+ local other=fake.identity('npc','one-shot-actor',92)
+ s.settings={autoActivate={hearingDistance=500},behavior={rechat=true}}
+ s.dialogueMode='Standard';orchestrator.configureSession(s,UUID.session)
+ for _,actorId in ipairs({npc,other}) do orchestrator.activate(s,actorId,{}) end
+ local function candidate(actorId,distance)
+  return {identity=actorId,distance=distance,maxDistance=1200,dead=false,hostile=false,available=true}
+ end
+ truthy(orchestrator.selectTarget(s,candidate(npc,100)))
+ truthy(orchestrator.manageCandidate(s,candidate(other,300),'auto'))
+ truthy(orchestrator.addAudience(s,candidate(other,300)))
+ local request=b.nextTurnMetadata();request.text='|| keep this between us';request.input_key='one-shot-close'
+ request.language='en-US';request.speaker=playerId;request.context={};request.capabilities={'dialogue.text'}
+ request.recent_action_results={};request.ui_source='almsivi_text';request.mood={kind='suspicious'}
+ truthy(orchestrator.submitText(s,request))
+ local payload=b.submitted[1].payload
+ eq(payload.input.text,'keep this between us');eq(payload.input.mood.kind,'suspicious')
+ eq(payload.context.dialogueMode,'Close');eq(#payload.audience,2);eq(s.dialogueMode,'Standard')
+ eq(s.rechatSeed.dialogueMode,'Close');eq(s.rechatSeed.mood,nil)
+end)
+test('spoken mood and selected mode survive transcription as typed protocol data',function()
+ local b=fake.bridge() local s=orchestrator.new(b,nil,nil,function()return true end)
+ orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+ truthy(orchestrator.selectTarget(s,{identity=npc,distance=100,maxDistance=1200,dead=false,available=true}))
+ truthy(orchestrator.startVoice(s,{speaker=playerId,context={},language='en-US',capabilities={'dialogue.text'},
+  recent_action_results={},dialogueMode='Close',mood={kind='playful'}}))
+ truthy(orchestrator.stopVoice(s));truthy(orchestrator.pollVoice(s))
+ local transcript=event(1,'stt.transcript',1,{text='Tell me more.',language='en-US'})
+ transcript.request_id='00000000-0000-4000-8000-000000000041'
+ b.results={transcript};eq(orchestrator.poll(s),1)
+ local payload=b.submitted[1].payload
+ eq(payload.input.kind,'stt');eq(payload.input.text,'Tell me more.');eq(payload.input.mood.kind,'playful')
+ eq(payload.context.dialogueMode,'Close')
+end)
 test('auto-managed actors attacking the player are removed unless explicitly allowed',function()
  local b=fake.bridge() local detached=0 local combatEvents={}
  local s=orchestrator.new(b,function(name,payload)
@@ -596,12 +646,80 @@ test('text edit Enter becomes a single-line submit request',function()
  value,submit=player.consumeTextEdit('First\r\nSecond');eq(value,'First Second');eq(submit,true)
  value,submit=player.consumeTextEdit(nil);eq(value,'');eq(submit,false)
 end)
+test('player mood and typed prefixes stay separate from the saved dialogue mode',function()
+ local uiState=require('scripts.ALMSIVI.ui.state')
+ local s=uiState.new()
+ eq(s.mood,'None');eq(s.mode,'Standard');eq(uiState.moodSelection(s),nil);eq(uiState.effectiveMode(s),'Standard')
+ eq(#uiState.MOODS,12);eq(uiState.MOODS[1],'None');eq(uiState.MOODS[#uiState.MOODS],'Custom')
+ eq(#uiState.SHORTCUTS,3);eq(uiState.SHORTCUTS[1].prefix,'||')
+ -- longest match wins and a prefix never rewrites the saved mode
+ eq(uiState.refreshTurnPreview(s),false)
+ s.input='|| stay close';truthy(uiState.refreshTurnPreview(s))
+ eq(s.turnMode,'Close');eq(s.turnPrefix,'||');eq(s.mode,'Standard');eq(uiState.effectiveMode(s),'Close')
+ eq(uiState.refreshTurnPreview(s),false)
+ s.input='| just you';uiState.refreshTurnPreview(s);eq(s.turnMode,'Whisper');eq(s.turnPrefix,'|')
+ s.input='!! everyone';uiState.refreshTurnPreview(s);eq(s.turnMode,'Shout');eq(s.mode,'Standard')
+ s.input='?? nobody';uiState.refreshTurnPreview(s);eq(s.turnMode,nil);eq(uiState.effectiveMode(s),'Standard')
+ s.input='!! everyone';uiState.refreshTurnPreview(s)
+ uiState.clearTransient(s);eq(s.turnMode,nil);eq(s.turnPrefix,nil);eq(s.mode,'Standard')
+ -- moods are shared by typed and spoken input and default to ordinary chat
+ eq(uiState.setMood(s,'Narrator'),false);eq(s.mood,'None')
+ truthy(uiState.setMood(s,'Angry'));eq(uiState.moodSelection(s).kind,'angry');eq(uiState.moodLabel(s),'Angry')
+ truthy(uiState.setMood(s,'Custom'));eq(s.moodDirection,'');eq(uiState.moodSelection(s),nil)
+ eq(uiState.moodLabel(s),'Custom (no direction set)')
+ uiState.setMoodDirection(s,'  hushed and clipped\nsecond line')
+ eq(s.moodDirection,'  hushed and clipped second line')
+ eq(uiState.moodSelection(s).kind,'custom');eq(uiState.moodSelection(s).custom,'hushed and clipped second line')
+ eq(#uiState.setMoodDirection(s,string.rep('x',200)),uiState.MOOD_DIRECTION_LIMIT)
+ -- a capped direction stays valid UTF-8 instead of splitting a character in half
+ local accent=string.char(0xC3,0xA9)
+ eq(#uiState.setMoodDirection(s,string.rep('x',78)..accent),80)
+ eq(#uiState.setMoodDirection(s,string.rep('x',79)..accent),81) -- 80 characters, kept whole
+ eq(uiState.setMoodDirection(s,string.rep('x',79)..accent..'z'),string.rep('x',79)..accent)
+ eq(#uiState.moodSummary(s),34) -- a long direction is shortened so it cannot crowd the chat status line
+ -- the preview vocabulary and mood kinds stay identical to the parser that owns submitted turns
+ local playerInput=require('scripts.ALMSIVI.player_input')
+ eq(uiState.SHORTCUTS,playerInput.SHORTCUTS);eq(uiState.MOOD_DIRECTION_LIMIT,playerInput.CUSTOM_LIMIT)
+ local kinds={} for _,kind in ipairs(playerInput.MOODS) do kinds[kind]=true end
+ for _,mood in ipairs(uiState.MOODS) do
+  uiState.setMood(s,mood)
+  if mood=='Custom' then uiState.setMoodDirection(s,'clipped') end
+  local selection=uiState.moodSelection(s)
+  if mood=='None' then eq(selection,nil) else truthy(kinds[selection.kind]) end
+  for _,shortcut in ipairs(playerInput.SHORTCUTS) do
+   local parsed=playerInput.parse(shortcut.prefix..' hello')
+   eq(uiState.shortcutPreview(shortcut.prefix..' hello'),parsed.mode)
+  end
+ end
+ truthy(uiState.setMood(s,'None'));eq(s.moodDirection,'');eq(uiState.moodSelection(s),nil)
+end)
 test('focused UI builders keep chat selectors tools and notifications independent',function()
  local ui={TYPE={Text='text',Image='image',TextEdit='edit',Container='container'},content=function(value)return value end}
  local util={vector2=function(x,y)return{x=x,y=y}end,color={rgb=function(r,g,b)return{r=r,g=g,b=b}end}}
- local chat=require('scripts.ALMSIVI.ui.chatbox').build({ui=ui,util=util,target='Fargoth',text='',
+ local chatbox=require('scripts.ALMSIVI.ui.chatbox')
+ local uiState=require('scripts.ALMSIVI.ui.state')
+ local chat=chatbox.build({ui=ui,util=util,target='Fargoth',text='',shortcuts=uiState.SHORTCUTS,
   onTextChanged=function()end,onKeyPress=function()end,onSend=function()end,onClose=function()end})
  eq(chat[1].props.text,'Chat with Fargoth');eq(chat[#chat-1].props.text,'Send');eq(chat[#chat].props.text,'Close')
+ eq(chat[2].props.text,'Mood: None  |  Mode: Standard')
+ eq(chat[4].props.text,'One-turn prefixes: || Close, !! Shout, | Whisper.')
+ eq(chat[#chat-2].props.text,'Mood and delivery...')
+ local prefixed=chatbox.build({ui=ui,util=util,target='Fargoth',text='|| stay close',
+  mood='Custom: hushed',mode='Standard',turnMode='Close',turnPrefix='||',shortcuts=uiState.SHORTCUTS,
+  onTextChanged=function()end,onKeyPress=function()end,onSend=function()end,onClose=function()end})
+ eq(prefixed[2].props.text,'Mood: Custom: hushed  |  Mode: Close (this turn)')
+ eq(prefixed[4].props.text,'Prefix "||" sends this turn as Close. Saved mode stays Standard.')
+ eq(#prefixed,#chat) -- constant row structure keeps the live preview from rebuilding the text box
+ local moodPanel=chatbox.buildMoodPanel({ui=ui,util=util,customVisible=true,customText='',customLimit=80,
+  moods={{label='None',active=true,onSelect=function()end},{label='Custom',onSelect=function()end}},
+  onCustomChanged=function()end,onCustomKeyPress=function()end,onBack=function()end,onClose=function()end})
+ eq(moodPanel[1].props.text,'Player Mood');eq(moodPanel[3].props.text,'None  [active]')
+ eq(moodPanel[4].props.text,'Custom');eq(moodPanel[5].props.text,'Custom delivery direction')
+ eq(moodPanel[#moodPanel-1].props.text,'Back to conversation');eq(moodPanel[#moodPanel].props.text,'Close')
+ local help=chatbox.buildShortcutHelp({ui=ui,util=util,shortcuts=uiState.SHORTCUTS})
+ eq(help[1].props.text,'Typed one-turn shortcuts')
+ eq(help[2].props.text,'|| before your message sends that one turn as Close.')
+ eq(help[#help].props.text,'A prefix changes only the turn you submit. The mode selected above stays saved.')
  local choices=require('scripts.ALMSIVI.ui.selector').build({ui=ui,util=util,title='Dialogue Mode',
   options={{label='Standard',active=true,onSelect=function()end}},onClose=function()end})
  eq(choices[1].props.text,'Dialogue Mode');eq(choices[2].props.text,'Standard  [active]')

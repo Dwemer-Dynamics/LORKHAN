@@ -1,5 +1,6 @@
 local constants = require('scripts.ALMSIVI.constants')
 local identity = require('scripts.ALMSIVI.identity')
+local playerInput = require('scripts.ALMSIVI.player_input')
 local util = require('scripts.ALMSIVI.util')
 
 local M = {}
@@ -125,7 +126,13 @@ function M.turn(args)
     if not isLanguageTag(args.language) then return nil,'invalid_language' end
     if not identity.validate(args.target) or not identity.validate(args.speaker) then return nil, 'invalid_identity' end
     if #args.audience > constants.MAX_AUDIENCE then return nil, 'audience_too_large' end
-    local payload={input={kind='text', text=args.text, language=args.language}, speaker=util.copy(args.speaker),
+    local inputKind=args.input_kind or 'text'
+    if inputKind~='text' and inputKind~='stt' then return nil,'invalid_input_kind' end
+    local mood,moodReason=playerInput.validateMood(args.mood)
+    if moodReason then return nil,moodReason end
+    local input={kind=inputKind, text=args.text, language=args.language}
+    if mood~=nil then input.mood=mood end
+    local payload={input=input, speaker=util.copy(args.speaker),
         target=util.copy(args.target), audience=util.arrayCopy(args.audience), context=util.copy(args.context),
         recent_action_results=util.arrayCopy(args.recent_action_results or {}), ui_source=args.ui_source}
     if args.action_request~=nil then
