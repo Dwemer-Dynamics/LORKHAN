@@ -8,10 +8,10 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-ALMSIVI = ROOT / "almsivi"
-MANIFEST = ALMSIVI / "MANIFEST.json"
-SUMS = ALMSIVI / "SHA256SUMS"
-INCLUDED_ROOTS = (ALMSIVI / "schemas" / "v1", ALMSIVI / "fixtures" / "v1")
+LORKHAN = ROOT / "lorkhan"
+MANIFEST = LORKHAN / "MANIFEST.json"
+SUMS = LORKHAN / "SHA256SUMS"
+INCLUDED_ROOTS = (LORKHAN / "schemas" / "v1", LORKHAN / "fixtures" / "v1")
 
 
 def canonical_json(value: object) -> bytes:
@@ -36,7 +36,7 @@ def build() -> tuple[bytes, bytes]:
         sum_lines.append(f"{digest}  {relative}\n")
     manifest = {
         "cross_repository_byte_parity": "locally-proven",
-        "format": "almsivi.protocol-manifest.v1",
+        "format": "lorkhan.protocol-manifest.v1",
         "hash": "sha256",
         "files": records,
     }

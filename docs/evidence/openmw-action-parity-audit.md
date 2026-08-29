@@ -8,18 +8,18 @@ Lua API revision 129 at `f4bec41444214a7903bebd178389ca22ca13f646`.
 
 ## Implemented equivalents
 
-| Frozen action semantics | ALMSIVI action | OpenMW behavior |
+| Frozen action semantics | LORKHAN action | OpenMW behavior |
 | --- | --- | --- |
 | Inspect, InspectSurroundings | `inspect.report` | Tier 0 bounded identity, enabled-state, and position observation. |
 | CheckInventory | `inventory.inspect` | Tier 0 bounded read-only inventory snapshot of the acting NPC. |
 | Follow, FollowPlayer | `ai.follow` | Tier 1 owned Follow package with exact distance 192. |
-| StopFollowing, StopWalk | `ai.stop` | Tier 1 cancellation limited to the actor's ALMSIVI-owned AI package. |
+| StopFollowing, StopWalk | `ai.stop` | Tier 1 cancellation limited to the actor's LORKHAN-owned AI package. |
 | ComeCloser | `ai.approach` | Tier 1 same-cell Travel package to the addressed actor's observed current position. |
 | WaitHere, Relax | `ai.wait` | Tier 1 distance-zero non-repeating Wander package for one to 24 whole game hours. |
 | MoveTo, TravelTo | `ai.travel` | Tier 1 Travel to bounded coordinates and a canonical cell captured by the player. |
 | LeadTheWayTo | `ai.escort` | Tier 1 Escort to a player-captured same-cell destination. |
 | Attack | `combat.start` | Tier 2 confirmed Combat package against a resolved target. |
-| Stop combat | `combat.stop` | Tier 1 cancellation limited to ALMSIVI-owned combat. |
+| Stop combat | `combat.stop` | Tier 1 cancellation limited to LORKHAN-owned combat. |
 | Consume, Drink | `item.use` | Tier 2 use of an existing actor inventory record. |
 | EquipItem, UnequipItem | `item.equip`, `item.unequip` | Tier 2 actor-local equipment mutation over an allowlisted slot. |
 | Generic safe gesture | `animation.play` | Tier 1 allowlisted idle2 through idle9 only. |
@@ -34,7 +34,7 @@ parameter-bounded, lifecycle-cancellable, and terminal-receipt gated.
 | Frozen actions | Reason |
 | --- | --- |
 | GiveItemTo, TakeHeldItem, PickupItem, GiveGoldTo, TakeGoldFromPlayer, GiveCapsTo, TakeCapsFromPlayer, SpawnGold, SpawnCaps | Local actor inventory exposes local objects for inspection/equipment. `moveInto`, `remove`, and split/transfer authority are global-object APIs; a local actor script cannot perform an exact owned transfer safely. |
-| AddBounty, ArrestPlayer, ForgiveCrime, PayBounty | The OpenMW Crimes interface is global-script authority. ALMSIVI actor/player execution is local and cannot safely claim or restore this state. |
+| AddBounty, ArrestPlayer, ForgiveCrime, PayBounty | The OpenMW Crimes interface is global-script authority. LORKHAN actor/player execution is local and cannot safely claim or restore this state. |
 | OpenInventory, OpenInventory2, Barter, Training, RentRoom | These require service/menu activation and stateful UI side effects; API 129 has no bounded typed local action with a terminal result equivalent. |
 | SpawnItem, SpawnNPC, CreateNewNPC, TeleportNPC, TeleportActor, KillTarget, DirectorCommand | These are arbitrary global creation, relocation, deletion, lethal, or command authority outside the bounded local action trust model. |
 | MakeFollower | Persistent party/faction enrollment is not equivalent to a temporary owned Follow package. |
@@ -44,7 +44,7 @@ parameter-bounded, lifecycle-cancellable, and terminal-receipt gated.
 | Brawl, Surrender, SheatheWeapon | Nonlethal combat, surrender, and weapon-sheathing state are not equivalent to the available combat/equipment operations. |
 | TakeASeat, GoToSleep, StartRitualCeremony, EndRitualCeremony, Toast | No reliable bounded API-129 package or animation semantic reports completion without risking unrelated actor state. |
 | IncreaseWalkSpeed, DecreaseWalkSpeed | These would mutate actor stats/settings without an owned package or dependable restoration boundary. |
-| UseSoulGaze | ITT is explicitly excluded from ALMSIVI. |
+| UseSoulGaze | ITT is explicitly excluded from LORKHAN. |
 
 The authority conclusions are grounded in the pinned OpenMW sources: actor-local equipment is exposed in
 `apps/openmw/mwlua/types/actor.cpp`; global-only object transfer methods are registered in

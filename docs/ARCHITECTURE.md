@@ -1,9 +1,9 @@
-# ALMSIVI architecture
+# LORKHAN architecture
 
 ## Deployment boundary
 
-Windows runs a side-by-side ALMSIVI OpenMW package and the Lua mod against user-supplied Morrowind
-GOTY data. WSL2 runs Apache/PHP/PostgreSQL at `http://127.0.0.1:8089/ALMSIVIserver`. The management
+Windows runs a side-by-side LORKHAN OpenMW package and the Lua mod against user-supplied Morrowind
+GOTY data. WSL2 runs Apache/PHP/PostgreSQL at `http://127.0.0.1:8089/LORKHANserver`. The management
 UI is browser-only; the game uses versioned `/api/v1` endpoints. Provider calls originate only from
 the server. Neither Lua nor the runtime receives provider credentials.
 
@@ -11,7 +11,7 @@ the server. Neither Lua nor the runtime receives provider credentials.
 
 | Component | Owns | Must not own |
 | --- | --- | --- |
-| OpenMW upstream | Game loop, objects, world, saves, rendering, audio, Lua runtime | Provider/server policy or ALMSIVI profiles. |
+| OpenMW upstream | Game loop, objects, world, saves, rendering, audio, Lua runtime | Provider/server policy or LORKHAN profiles. |
 | Native bridge | Typed transport, auth, limits, cancellation, native status, media cache/service | Prompt logic, arbitrary HTTP, model actions, gameplay policy. |
 | GLOBAL Lua | Session/generation, snapshots, target/audience registry, turn/action orchestration | Input widgets, actor self-mutation, secrets. |
 | PLAYER Lua | Input actions, overlay/HUD, subtitle view model, player-local state | Network implementation, arbitrary actor mutation. |
@@ -25,7 +25,7 @@ sequenceDiagram
   participant Main as OpenMW main/Lua thread
   participant Out as Bounded outbound queue
   participant Net as Native transport worker
-  participant Srv as ALMSIVIserver
+  participant Srv as LORKHANserver
   participant In as Bounded inbound queue
   Main->>Out: immutable typed request
   Out->>Net: dequeue
@@ -75,14 +75,14 @@ Display names are never authoritative. A stale or ambiguous identity fails close
 ## Configuration
 
 Tracked defaults contain no secrets. User configuration lives under the OpenMW user configuration
-directory in `almsivi.toml`; native code reads it and exposes only safe derived status. Precedence:
+directory in `lorkhan.toml`; native code reads it and exposes only safe derived status. Precedence:
 
 1. compiled safe defaults;
-2. tracked ALMSIVI defaults;
-3. user `almsivi.toml`;
+2. tracked LORKHAN defaults;
+3. user `lorkhan.toml`;
 4. command-line diagnostic overrides limited to non-secret test settings.
 
-The endpoint defaults to `http://127.0.0.1:8089/ALMSIVIserver/api/v1`. Only `127.0.0.0/8` and `::1`
+The endpoint defaults to `http://127.0.0.1:8089/LORKHANserver/api/v1`. Only `127.0.0.0/8` and `::1`
 IP literals are valid. The server setup generates the pairing token and writes an importable config
 snippet with restrictive permissions. Logs print a token fingerprint only.
 

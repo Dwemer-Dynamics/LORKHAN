@@ -36,13 +36,13 @@ jobs:
       - name: Run Python foundation and packaging tests
         run: python3 -m unittest discover -s tests -v
       - name: Run loopback fake-server contract tests
-        run: python3 -m unittest discover -s almsivi/tests -v
+        run: python3 -m unittest discover -s lorkhan/tests -v
       - name: Run Lua structural checks
-        run: python3 almsivi/tests/run.py
+        run: python3 lorkhan/tests/run.py
       - name: Run required Lua runtime tests
         env:
-          ALMSIVI_LUA_TEST_ROOT: ${{ github.workspace }}/almsivi/files/scripts/ALMSIVI/tests
-          ALMSIVI_REQUIRE_LUA_TESTS: '1'
+          LORKHAN_LUA_TEST_ROOT: ${{ github.workspace }}/lorkhan/files/scripts/LORKHAN/tests
+          LORKHAN_REQUIRE_LUA_TESTS: '1'
         run: scripts/test/lua-unix.sh
       - name: Audit tracked source tree
         run: scripts/audit/package.sh source-tree

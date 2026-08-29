@@ -1,11 +1,11 @@
-# ALMSIVI Lua mod architecture
+# LORKHAN Lua mod architecture
 
 ## Package layout
 
 ```text
 files/
-  ALMSIVI.omwscripts
-  scripts/ALMSIVI/
+  LORKHAN.omwscripts
+  scripts/LORKHAN/
     global.lua
     player.lua
     actor.lua
@@ -22,7 +22,7 @@ files/
 
 The manifest starts `global.lua` as GLOBAL, `player.lua` as PLAYER, and marks `actor.lua` CUSTOM.
 It does not auto-attach a large script to every NPC/creature. GLOBAL attaches actor.lua only when an
-active actor joins an ALMSIVI audience or must execute an action, and later stops it when safe.
+active actor joins an LORKHAN audience or must execute an action, and later stops it when safe.
 
 ## Script ownership
 
@@ -53,11 +53,11 @@ active actor joins an ALMSIVI audience or must execute an action, and later stop
 - owns speech/stop, facing/look/animation, AI package operations and self-only inventory/equipment
   operations exposed by OpenMW APIs/events;
 - reports exactly one terminal result to GLOBAL;
-- remembers the pre-ALMSIVI AI state needed for bounded restoration but never serializes pointers.
+- remembers the pre-LORKHAN AI state needed for bounded restoration but never serializes pointers.
 
 ## Conversation flow
 
-1. Player invokes the dedicated ALMSIVI action while aiming at an active NPC/creature, or selects
+1. Player invokes the dedicated LORKHAN action while aiming at an active NPC/creature, or selects
    from a bounded nearby list. Essential hostile/dead/unavailable policy is explicit.
 2. PLAYER sends a local/global event with an engine object; GLOBAL resolves stable identity and adds
    it to the audience. Display name alone is not accepted.
@@ -80,7 +80,7 @@ into a delivery result, never speech from a substitute.
 - Secondary: small nearby active-actor picker sorted by distance with identity disambiguation.
 - Automatic greetings, boredom, combat barks, Background Life, ITT, and timer-driven model triggers
   are excluded and have no input action or runtime scheduler.
-- Vanilla `Activate` and dialogue continue unchanged. ALMSIVI does not suppress or replace them.
+- Vanilla `Activate` and dialogue continue unchanged. LORKHAN does not suppress or replace them.
 
 ## Context budgets
 
@@ -111,7 +111,7 @@ objects, report active AI package, and answer current-cell/journal/content quest
 ### Tier 1: user-enabled reversible actor behavior
 
 Follow, escort, travel to bounded position, wander, pursue, start/stop combat when policy permits,
-stop/remove only ALMSIVI-owned AI packages, face/look, play allowlisted animation, speak/stop speech,
+stop/remove only LORKHAN-owned AI packages, face/look, play allowlisted animation, speak/stop speech,
 equip/use/consume an item already owned by that actor.
 
 ### Tier 2: user-enabled mutations with confirmation policy
@@ -133,7 +133,7 @@ is capped at one automatic turn per action and four actions per originating turn
 Lua `onSave` returns `{schemaVersion, profileId, playthroughId, generationSeed, preferences,
 conversationUi, actorStateHints}` with serializable primitives only. Loading validates version,
 migrates supported old schemas, increments generation, clears in-flight work and re-resolves actors.
-Unknown future schemas disable ALMSIVI for that save with a clear message; they are never overwritten.
+Unknown future schemas disable LORKHAN for that save with a clear message; they are never overwritten.
 
 Server state is authoritative for event history, profiles, relationships and memory. Save/playthrough
 binding changes require explicit user confirmation in the management UI to prevent cross-character

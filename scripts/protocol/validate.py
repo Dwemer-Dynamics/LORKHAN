@@ -3,7 +3,7 @@
 
 This is deliberately a structural Draft 2020-12 checker, not a complete JSON Schema engine.
 It checks repository conventions, resolves local references, validates the keyword subset used by
-ALMSIVI, and exercises fixture expectations. If the third-party ``jsonschema`` package is already
+LORKHAN, and exercises fixture expectations. If the third-party ``jsonschema`` package is already
 installed, it additionally performs official meta-schema and instance validation without fetching.
 """
 from __future__ import annotations
@@ -19,10 +19,10 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-SCHEMAS = ROOT / "almsivi/schemas/v1"
-FIXTURES = ROOT / "almsivi/fixtures/v1"
+SCHEMAS = ROOT / "lorkhan/schemas/v1"
+FIXTURES = ROOT / "lorkhan/fixtures/v1"
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
-SCHEMA_URI = re.compile(r"^https://almsivi\.invalid/schemas/v1/[a-z0-9.-]+\.schema\.json$")
+SCHEMA_URI = re.compile(r"^https://lorkhan\.invalid/schemas/v1/[a-z0-9.-]+\.schema\.json$")
 
 class ValidationError(ValueError):
     pass

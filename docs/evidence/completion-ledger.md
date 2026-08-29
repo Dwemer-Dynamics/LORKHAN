@@ -4,7 +4,7 @@ The authoritative current-checkpoint rows are in `proof-ledger.json` and use the
 
 The committed run bundle at `docs/evidence/runs/3717eff-local/index.json` remains the durable standalone-foundation baseline bound to clean commit `3717effebb8d42ad7601d6ca02c19ac3533efcf8`. The newer local acceptance record at `docs/evidence/local-acceptance-2026-08-03.md` is bound to clean client commit `b60908ed18044271fa615a233e120b15d288f464` and the recorded server commits. It records 47 Python tests, 47 Lua 5.1 runtime tests, 6/6 CTests, exact-pin patch validation/audit, a Windows x64 Release OpenMW 0.51.0 product build, source/deployment hash parity, local WSL health, and desktop plus true 390px mobile browser acceptance. It does not claim the unavailable standalone-Clang lane, an unmodified OpenMW control build, a formal release package, clean uninstall, in-game behavior, or compatibility.
 
-CI platform rows remain definitions rather than proof until their workflows execute. The exact-pin ALMSIVI product now has a successful local Windows x64 Release build and deployment, while the unmodified control build and release packaging remain unproven. Final predecessor import/migration, in-game and compatibility evidence, and release/signing/publication remain deferred. `start-gate-blocker.md` records predecessor gate metadata and test-evidence observations, but no predecessor source was imported or semantically copied. Workflows, local tests, browser checks, and mocks are never promoted to in-game proof.
+CI platform rows remain definitions rather than proof until their workflows execute. The exact-pin LORKHAN product now has a successful local Windows x64 Release build and deployment, while the unmodified control build and release packaging remain unproven. Final predecessor import/migration, in-game and compatibility evidence, and release/signing/publication remain deferred. `start-gate-blocker.md` records predecessor gate metadata and test-evidence observations, but no predecessor source was imported or semantically copied. Workflows, local tests, browser checks, and mocks are never promoted to in-game proof.
 
 The current working implementation adds CHIM-compatible scoped event, speech, response, prompt, and
 rechat-chain records. Automated server and Lua tests prove ordered persistence, prompt history,
@@ -24,7 +24,7 @@ inactive actor leaves the managed registry. The native seam classifies dead, kno
 combat/pursuit, and attacking/casting actors; API 129 does not expose reliable sleep state. Engine
 compilation and in-game state-transition proof are required before this checkpoint is promoted.
 
-The action-catalog parity checkpoint maps the frozen CHIM/Dialectic catalogs to 16 strict ALMSIVI actions.
+The action-catalog parity checkpoint maps the frozen CHIM/Dialectic catalogs to 16 strict LORKHAN actions.
 It adds bounded read-only inventory inspection, same-cell approach, and bounded wait; exposes the previously
 implemented travel, escort, and face actions to provider normalization; and records every unsupported action
 with its API-129 authority reason in `openmw-action-parity-audit.md`. The 47-test Lua suite, 77-file protocol
@@ -35,10 +35,10 @@ The final 2026-08-09 automated/deployment acceptance used client implementation 
 `414a8435b297c5aedd16ee1e1d9afa895f2b5dfc`, and pinned OpenMW
 `f4bec41444214a7903bebd178389ca22ca13f646`. Both draft PR heads and CI were green at those exact
 implementation commits. The full OpenMW x64 Release product and launcher were built and deployed to
-`C:\Modlists\ALMSIVI`; the built/deployed SHA-256 values match (`openmw.exe`
+`C:\Modlists\LORKHAN`; the built/deployed SHA-256 values match (`openmw.exe`
 `1E3CB477477429B9686DFDC2B5FEF4F64F73B9DA648D7A7DFED01B1E1FC17289`, launcher
 `3CE0096D9C6E283C2319FA69A2BE8DE72A5BADA50F608B381789EAB34C385431`). All 26 deployed tracked
-data files matched source and 57 cached WAV files survived deployment. ALMSIVIserver upgraded the
+data files matched source and 57 cached WAV files survived deployment. LORKHANserver upgraded the
 preserved local lineage through migration 046 after a validated private backup, passed its 171-relation/
 1,565-column schema hash, restarted Apache and the durable worker, returned typed health, and matched the
 pushed server tree with zero rsync differences. Browser checks covered the principal Config, Roleplay,

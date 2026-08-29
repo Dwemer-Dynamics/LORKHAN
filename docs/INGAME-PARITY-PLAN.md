@@ -1,4 +1,4 @@
-# ALMSIVI in-game CHIM and Dialectic parity plan
+# LORKHAN in-game CHIM and Dialectic parity plan
 
 This plan translates user-visible behavior from the locked reference pins into OpenMW-native
 outcomes. It does not copy extender, Papyrus, GECK, UI asset, or game-specific implementation code.
@@ -14,7 +14,7 @@ repeatable no-game check. It never means the behavior has been exercised in Morr
 
 ## Current in-game control parity
 
-| User outcome | Reference behavior | ALMSIVI implementation | Current proof |
+| User outcome | Reference behavior | LORKHAN implementation | Current proof |
 | --- | --- | --- | --- |
 | Typed conversation | CHIM Text Chat; Dialectic Talk to NPC | Semantic OpenMW trigger, camera target resolution, TextEdit, Enter send, successful-submit close and Escape close | IN-GAME PROVEN for Fargoth on 2026-08-02; enriched-context regression still requires in-game proof |
 | Voice conversation | CHIM Voice Chat; Dialectic Toggle Voice | Semantic hold action, bounded native capture/STT, visible recording state | AUTOMATED transport; microphone/in-game proof required |
@@ -23,14 +23,14 @@ repeatable no-game check. It never means the behavior has been exercised in Morr
 | Master/actions/history/diagnostics | CHIM Prisma master, actions, history and logs views | OpenMW-native panels, safe status data, recent session transcript | AUTOMATED; layout/in-game proof required |
 | Mode selection | CHIM mode controls; Dialectic mode selector | Explicit Standard, Whisper, Close and Shout selector plus semantic cycle binding | AUTOMATED audience/prompt routing; in-game proof required |
 | Player mood and one-turn delivery | CHIM player mood selector and typed delivery shortcuts | Saved None/built-in/custom mood for typed or spoken turns; typed `|`, `||`, and `!!` apply Whisper, Close, or Shout to one turn without changing the selected mode | AUTOMATED Lua/protocol/prompt routing; layout/in-game proof required |
-| Rebindable inputs | MCM/INI hotkeys | OpenMW Options > Scripts > ALMSIVI semantic bindings | AUTOMATED; controller proof required |
+| Rebindable inputs | MCM/INI hotkeys | OpenMW Options > Scripts > LORKHAN semantic bindings | AUTOMATED; controller proof required |
 
 Conflict-free defaults remain F6 for typed talk, F7 for recoverable stop, and F8 for Actor Actions.
 Other semantic actions are deliberately unbound until the player assigns them in OpenMW settings.
 
 ### Pinned reference outcome audit
 
-| Reference outcome | ALMSIVI decision | State |
+| Reference outcome | LORKHAN decision | State |
 | --- | --- | --- |
 | Text/voice chat, halt, manual activation, actions and master menu | OpenMW-native semantic bindings and panels | TEXT CHAT AND TARGETING IN-GAME PROVEN; remaining controls require in-game proof |
 | Explicit mode selector | Standard, Whisper, Close and Shout now alter both prompt context and bounded audience routing | IMPLEMENTED; in-game proof required |
@@ -50,17 +50,17 @@ Other semantic actions are deliberately unbound until the player assigns them in
 | Quests and read books | The client sends the bounded Morrowind journal on every turn; vanilla world activation and inventory use observe opened books without replacing their normal behavior, deduplicate them locally, and attach a bounded recent-books list to subsequent turns | IMPLEMENTED; book observation requires in-game proof |
 | Combat barks | Timer-driven hostile remarks are outside the bounded player-driven conversation scope | EXCLUDED; any inherited control remains visible and disabled |
 | CHIM Browser, Soulgaze, AI Quest Manager and rumor tools | Skyrim/Prisma or server-product features, not core Morrowind conversation-control parity | OUT OF CURRENT IN-GAME CORE |
-| Dialectic `OpenMenu` and `QuickCommand` bindings | Pinned declarations have no GameLoop consumer, so ALMSIVI does not copy dead controls | INTENTIONALLY OMITTED |
+| Dialectic `OpenMenu` and `QuickCommand` bindings | Pinned declarations have no GameLoop consumer, so LORKHAN does not copy dead controls | INTENTIONALLY OMITTED |
 
 ### 2026-08-02 upstream parity refresh
 
 - HerikaServer's new NPC return/teleport workflow remains a no-port. It issues Skyrim
-  FormID/location commands, while ALMSIVI intentionally excludes teleport/spawn/delete from the
+  FormID/location commands, while LORKHAN intentionally excludes teleport/spawn/delete from the
   initial OpenMW action authority as destructive operations.
 - HerikaServer's other new NPC-manager changes belong to Background Life, which remains excluded.
 - CHIM's matching popup change only presents the same Skyrim return/teleport workflow and therefore
   has no independent OpenMW user outcome to port.
-- DialecticServer's new "copy profile setting to all" control targets free profile metadata. ALMSIVI
+- DialecticServer's new "copy profile setting to all" control targets free profile metadata. LORKHAN
   preserves Global -> Core Profile -> NPC inheritance for bounded playback-gated rechat only. Greeting,
   boredom, combat-bark and timer-driven autonomy controls remain disabled and are not copied into
   runtime scheduling state.
@@ -69,7 +69,7 @@ Other semantic actions are deliberately unbound until the player assigns them in
 
 | Requirement | Current implementation | Current proof |
 | --- | --- | --- |
-| Preserve vanilla Activate/dialogue | ALMSIVI uses separate semantic actions; vanilla NPC/creature activation only supplies a passive target hint and is never consumed | AUTOMATED |
+| Preserve vanilla Activate/dialogue | LORKHAN uses separate semantic actions; vanilla NPC/creature activation only supplies a passive target hint and is never consumed | AUTOMATED |
 | Aim and confirm a target | Live physics-only aimed-actor preview, input-time rendering-ray fallback, stable identity validation, visible committed target name and distance | IN-GAME PROVEN for Fargoth on 2026-08-02 |
 | Nearby target fallback | Agent Manager lists the closest bounded active actors for target/group selection | AUTOMATED; layout/in-game proof required |
 | Manual AI activation | Aim toggles one pinned actor; no aimed actor pins up to 12 nearby actors without unpinning existing agents | AUTOMATED |
@@ -96,7 +96,7 @@ Other semantic actions are deliberately unbound until the player assigns them in
 Currently implemented end to end:
 
 - inspect/report;
-- follow, same-cell aimed travel/escort, wait, bounded wander and stop ALMSIVI-owned movement;
+- follow, same-cell aimed travel/escort, wait, bounded wander and stop LORKHAN-owned movement;
 - asynchronous face-player/face-aimed-actor control with observed heading completion;
 - start/stop combat with explicit secondary-target confirmation;
 - allowlisted idle animation;
@@ -138,7 +138,7 @@ inert throughout that checklist.
 ## Acceptance sequence
 
 1. Keep Lua, native, protocol, PHP, PostgreSQL integration and client/server parity checks green.
-2. Deploy the exact worktree into `C:\Modlists\ALMSIVI` and `/var/www/html/ALMSIVIserver`; verify
+2. Deploy the exact worktree into `C:\Modlists\LORKHAN` and `/var/www/html/LORKHANserver`; verify
    representative hashes, Apache, worker and health.
 3. Run the post-goal minimal GOTY checklist: target Fargoth and one additional race/sex voice; send
    UTF-8 typed input; use push-to-talk and bounded open mic; add a two-NPC group; verify normal Morrowind

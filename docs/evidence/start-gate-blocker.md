@@ -4,7 +4,7 @@ Recorded: 2026-07-19
 
 ## Required gate
 
-`CLAUDEX-TASK.md` requires both `RANGROO/SYNTH` and `RANGROO/Synthserver` to complete their documented non-game stop conditions before source import. The import source must be each final tested `main` SHA. Planning documents and original ALMSIVI work may continue, but predecessor source must not be imported while this gate is open.
+`CLAUDEX-TASK.md` requires both `RANGROO/SYNTH` and `RANGROO/Synthserver` to complete their documented non-game stop conditions before source import. The import source must be each final tested `main` SHA. Planning documents and original LORKHAN work may continue, but predecessor source must not be imported while this gate is open.
 
 ## Observed repositories
 
@@ -37,7 +37,7 @@ Blocking dependency: finish each predecessor's non-game stop condition, fix the 
 3. Passing evidence tied to those exact SHAs for all predecessor non-game rows, including Windows client builds and WSL/PostgreSQL/cross-repository contract lanes.
 4. Audited source licenses/provenance at those exact SHAs.
 
-Until all four exist, ALMSIVIserver may receive independently authored scaffolding, but importing or semantically copying Synthserver source is prohibited by the start gate.
+Until all four exist, LORKHANserver may receive independently authored scaffolding, but importing or semantically copying Synthserver source is prohibited by the start gate.
 
 ## Plaintext loopback confidentiality limitation
 

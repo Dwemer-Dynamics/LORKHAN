@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://almsivi.invalid/schemas/source-pin.schema.json",
+  "$id": "https://lorkhan.invalid/schemas/source-pin.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": ["$schema", "artifact", "repository", "tag", "version", "commit", "lua_api_revision", "license"],

@@ -3,30 +3,30 @@ set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cxx="${CXX:-clang++}"
-build_dir="${ALMSIVI_NATIVE_BUILD_DIR:-$root/build/native-direct}"
+build_dir="${LORKHAN_NATIVE_BUILD_DIR:-$root/build/native-direct}"
 mkdir -p "$build_dir"
 
 sources=(
-  "$root/components/almsivi/src/actions.cpp"
-  "$root/components/almsivi/src/bridge_service.cpp"
-  "$root/components/almsivi/src/events.cpp"
-  "$root/components/almsivi/src/json.cpp"
-  "$root/components/almsivi/src/lifecycle.cpp"
-  "$root/components/almsivi/src/media.cpp"
-  "$root/components/almsivi/src/protocol_response.cpp"
-  "$root/components/almsivi/src/validation.cpp"
-  "$root/components/almsivi/src/voice_capture.cpp"
-  "$root/components/almsivi/tests/native_tests.cpp"
+  "$root/components/lorkhan/src/actions.cpp"
+  "$root/components/lorkhan/src/bridge_service.cpp"
+  "$root/components/lorkhan/src/events.cpp"
+  "$root/components/lorkhan/src/json.cpp"
+  "$root/components/lorkhan/src/lifecycle.cpp"
+  "$root/components/lorkhan/src/media.cpp"
+  "$root/components/lorkhan/src/protocol_response.cpp"
+  "$root/components/lorkhan/src/validation.cpp"
+  "$root/components/lorkhan/src/voice_capture.cpp"
+  "$root/components/lorkhan/tests/native_tests.cpp"
 )
-common=(-std=c++20 -pthread -Wall -Wextra -Wpedantic -Werror -I"$root/components/almsivi/include")
+common=(-std=c++20 -pthread -Wall -Wextra -Wpedantic -Werror -I"$root/components/lorkhan/include")
 
-"$cxx" "${common[@]}" -O2 "${sources[@]}" -o "$build_dir/almsivi-native-tests"
-"$build_dir/almsivi-native-tests"
+"$cxx" "${common[@]}" -O2 "${sources[@]}" -o "$build_dir/lorkhan-native-tests"
+"$build_dir/lorkhan-native-tests"
 
-if [[ "${ALMSIVI_SANITIZE:-1}" == "1" ]]; then
+if [[ "${LORKHAN_SANITIZE:-1}" == "1" ]]; then
   if "$cxx" "${common[@]}" -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined \
-      "${sources[@]}" -o "$build_dir/almsivi-native-tests-sanitize" >/dev/null 2>&1; then
-    python3 - "$build_dir/almsivi-native-tests-sanitize" <<'PY'
+      "${sources[@]}" -o "$build_dir/lorkhan-native-tests-sanitize" >/dev/null 2>&1; then
+    python3 - "$build_dir/lorkhan-native-tests-sanitize" <<'PY'
 import os
 import subprocess
 import sys

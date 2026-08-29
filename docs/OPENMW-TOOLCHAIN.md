@@ -14,9 +14,9 @@ cache. The bootstrap script fetches the exact commit, verifies it and refuses a 
 
 ## Repository strategy
 
-ALMSIVI remains the product repository. During implementation it gains the OpenMW source as one of:
+LORKHAN remains the product repository. During implementation it gains the OpenMW source as one of:
 
-1. preferred: a full fork history with `upstream` remote and ALMSIVI commits on a named branch;
+1. preferred: a full fork history with `upstream` remote and LORKHAN commits on a named branch;
 2. acceptable: reproducible upstream-fetch script plus numbered patches and new-file overlay.
 
 Choose the full fork if GitHub size and CI are practical because GPL source correspondence and blame
@@ -32,7 +32,7 @@ not a debate, in the source ledger. In both modes, `patch-manifest.json` describ
 - Visual Studio 2022 C++ workload, current supported CMake and Ninja.
 - Use the pinned OpenMW 0.51 CI dependency preparation/vcpkg manifest approach, not ad-hoc DLLs.
 - Add Boost `system` to the exact dependency lock.
-- Build upstream control and ALMSIVI with identical compiler/dependency settings.
+- Build upstream control and LORKHAN with identical compiler/dependency settings.
 - Configuration: Windows x64 Release for CI and the final package. Debug/RelWithDebInfo remain optional local diagnostics.
 
 ### Linux x64
@@ -43,7 +43,7 @@ schema/fixture, packaging-input, evidence, and patch-manifest checks that do not
 ### macOS arm64
 
 macOS build, test, signing, notarization, packaging, and CI are deferred. No macOS runner or matrix
-lane is required for the Windows/OpenMW ALMSIVI release goal.
+lane is required for the Windows/OpenMW LORKHAN release goal.
 
 Android is excluded from these targets because background networking, cache permissions, touch UI,
 packaging and proprietary data acquisition require a separate product/acceptance plan.
@@ -52,11 +52,11 @@ packaging and proprietary data acquisition require a separate product/acceptance
 
 ```text
 engine/                     # full upstream tree or fetch/patch workspace
-almsivi/files/              # .omwscripts and Lua modules
-almsivi/schemas/            # canonical JSON Schemas
-almsivi/fixtures/           # valid/invalid protocol fixtures
-almsivi/tests/              # product integration harnesses
-cmake/                      # ALMSIVI build glue only
+lorkhan/files/              # .omwscripts and Lua modules
+lorkhan/schemas/            # canonical JSON Schemas
+lorkhan/fixtures/           # valid/invalid protocol fixtures
+lorkhan/tests/              # product integration harnesses
+cmake/                      # LORKHAN build glue only
 scripts/bootstrap/          # exact source/dependency acquisition
 scripts/test/               # one-command focused suites
 scripts/package/            # deterministic artifacts/audits
@@ -82,7 +82,7 @@ pwsh ./scripts/audit/package.ps1 ./dist/<artifact>.zip
 ./scripts/build/unix.sh --control
 ./scripts/build/unix.sh
 ./scripts/test/unix.sh
-./scripts/audit/protocol-parity.sh ../ALMSIVIserver
+./scripts/audit/protocol-parity.sh ../LORKHANserver
 ```
 
 Scripts must be non-interactive, stop on failure, print tool/source pins, accept an isolated build
@@ -94,7 +94,7 @@ directory, avoid user game/profile directories by default, and write a machine-r
 2. Pure C++ bridge tests with fake clocks/socket server and hostile fixtures.
 3. Lua pure-module tests using a strict OpenMW API fake.
 4. In-engine Lua test content using freely authored fixtures only.
-5. Cross-repository fake ALMSIVIserver E2E.
+5. Cross-repository fake LORKHANserver E2E.
 6. Package/provenance/license/secret/proprietary-signature/reproducibility audits.
 7. Windows in-game acceptance using user-supplied data outside the repo/CI.
 
@@ -104,12 +104,12 @@ platform supports them.
 
 ## Package set
 
-- `ALMSIVI-OpenMW-<version>-windows-x64.zip`: branded runtime, required libraries, Lua mod,
+- `LORKHAN-OpenMW-<version>-windows-x64.zip`: branded runtime, required libraries, Lua mod,
   safe defaults, setup/upgrade/uninstall docs, notices/SBOM.
-- `ALMSIVI-Lua-<version>.zip`: Lua files for the matching ALMSIVI runtime only; must refuse stock
+- `LORKHAN-Lua-<version>.zip`: Lua files for the matching LORKHAN runtime only; must refuse stock
   runtime without bridge capability.
-- `ALMSIVI-symbols-<version>-windows-x64.zip`: debug symbols and symbol manifest.
-- `ALMSIVI-source-<version>.tar.zst`: exact corresponding source, upstream history/patches,
+- `LORKHAN-symbols-<version>-windows-x64.zip`: debug symbols and symbol manifest.
+- `LORKHAN-source-<version>.tar.zst`: exact corresponding source, upstream history/patches,
   dependency/build scripts, schemas, notices and reproducibility instructions.
 - `SHA256SUMS` and signed provenance when release credentials are later authorized.
 
@@ -119,16 +119,16 @@ identical, document the exact nondeterministic fields and compare normalized art
 
 ## Windows install and acceptance
 
-Install into a new directory such as `C:\Games\ALMSIVI-OpenMW-0.1.0`; never into stock OpenMW. Create
+Install into a new directory such as `C:\Games\LORKHAN-OpenMW-0.1.0`; never into stock OpenMW. Create
 a separate OpenMW configuration profile and copied test saves. Point `data=` at the user's legal game
-data and ALMSIVI mod path; add `content=ALMSIVI.omwscripts` last unless a compatibility profile says
+data and LORKHAN mod path; add `content=LORKHAN.omwscripts` last unless a compatibility profile says
 otherwise. Import the server-generated pairing snippet into the user config directory.
 
-Capture for every run: ALMSIVI/OpenMW/source SHA, package SHA-256, OS/GPU/driver, Morrowind data
+Capture for every run: LORKHAN/OpenMW/source SHA, package SHA-256, OS/GPU/driver, Morrowind data
 language/version, ordered content list/fingerprint, server SHA/schema revision, provider mode,
 settings, copied save hash, start/end logs, result matrix and screenshots/video where visual.
 
-Acceptance covers clean/new/load/save/menu/cell transitions; vanilla and ALMSIVI dialogue; text/STT/
+Acceptance covers clean/new/load/save/menu/cell transitions; vanilla and LORKHAN dialogue; text/STT/
 TTS; groups; interruption/halt; each context domain/action; provider/server/media failure; 2-hour
 soak; clean uninstall; and saved-game copy reopening in stock OpenMW when format compatibility allows.
 

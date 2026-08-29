@@ -64,7 +64,7 @@
       "resume_when": "Completed implementation is on clean main, the exact final tested main SHA has passing non-game evidence, license/provenance is audited, and import/migration work is authorized"
     },
     {
-      "id": "almsiviserver",
+      "id": "lorkhanserver",
       "role": "sibling protocol and integration target",
       "license": null,
       "state": "DEFERRED",

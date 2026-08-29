@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
 
-from almsivi_foundation import FoundationError, canonical_json, clean_git_environment, read_json, run, sha256_file
+from lorkhan_foundation import FoundationError, canonical_json, clean_git_environment, read_json, run, sha256_file
 
 OID_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -397,7 +397,7 @@ def audit(base_repo: Path, root: Path, spec: Mapping[str, Any], manifest: Mappin
           known_provenance: Mapping[str, set[str]], known_tests: set[str], git: str) -> None:
     require_pinned_head(base_repo, pin["commit"], git, clean=True)
     validate_manifest(root, manifest, pin, known_provenance, known_tests)
-    with tempfile.TemporaryDirectory(prefix="almsivi-patch-audit-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="lorkhan-patch-audit-") as temporary:
         candidate = Path(temporary) / "openmw"
         run([git, "clone", "--quiet", "--no-hardlinks", str(base_repo), str(candidate)], env=clean_git_environment())
         run([git, "checkout", "--quiet", "--detach", pin["commit"]], cwd=candidate, env=clean_git_environment())

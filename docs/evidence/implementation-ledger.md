@@ -1,4 +1,4 @@
-# ALMSIVI row-level implementation ledger
+# LORKHAN row-level implementation ledger
 
 Updated: 2026-08-09. `AUTOMATED` means current repeatable no-game checks pass; it does not claim
 manual OpenMW behavior. `WINDOWS BUILD PROVEN` requires the pinned x64 Release product build and
@@ -14,7 +14,7 @@ that is outside the automated goal. `EXCLUDED` is a closed product or authority 
 | Foundation and flow | Cancellation/halt/recovery | AUTOMATED | Native cancellation, session/target/runtime fencing, recoverable Halt, hard Halt, media cleanup, stale-drop, and queued-action terminal receipts pass native and Lua checks. |
 | Foundation and flow | Streaming response experience | AUTOMATED | One bounded FIFO response lane consumes canonical `response.complete`, orders dialogue before actions, attaches media, emits one terminal delivery, and gates rechat on final playback. |
 | Foundation and flow | TTS media download/cache | AUTOMATED | Bearer-authenticated opaque media retrieval validates status, MIME, length, WAV framing, SHA-256, ownership, expiry, cache replacement, and cleanup; deployed cache contents were preserved. |
-| Foundation and flow | Native actor speech/lips | EXTERNAL-DEFERRED | OpenMW-native actor speech and ALMSIVI TTS gain are wired, but voice identity, loudness, interruption, and lips in the final build require the post-goal gameplay checklist. |
+| Foundation and flow | Native actor speech/lips | EXTERNAL-DEFERRED | OpenMW-native actor speech and LORKHAN TTS gain are wired, but voice identity, loudness, interruption, and lips in the final build require the post-goal gameplay checklist. |
 | Foundation and flow | Installation diagnostics | AUTOMATED | Redacted bridge status, diagnostics, session history, server health, worker, request, queue, provider, log, backup, and schema views are implemented and HTTP-tested. |
 | Input, dialogue, and presentation | Targeted conversation | AUTOMATED | Semantic typed-talk action, aimed actor resolution, committed target identity, target/session replacement, and compact input flow pass structural and Lua runtime tests. |
 | Input, dialogue, and presentation | Group conversation | AUTOMATED | Bounded explicit audience selection, speaker/addressee identities, deterministic multi-utterance persistence, one speech lane, and stale group fencing pass Lua and PostgreSQL integration. |
@@ -37,7 +37,7 @@ that is outside the automated goal. `EXCLUDED` is a closed product or authority 
 | Game and character context | Nearby items/doors/containers | AUTOMATED | Bounded nearby items and points of interest include record identity, ownership, lock level, key, and trap metadata without a world scan. |
 | Game and character context | Loaded mods/load order | AUTOMATED | Bounded content-file list, fingerprint, truncation, and exact content identity are part of session/game-data contracts. |
 | Game and character context | Physical VR state | EXCLUDED | OpenMW Morrowind is a flat-screen target; no HMD or hand contract is shipped. |
-| Game and character context | Fallout/Skyrim-specific systems | EXCLUDED | Pip-Boy, VATS, Power Armor, shouts, Dragonborn, Papyrus aliases, Skyrim FormIDs, and xNVSE outcomes are not ALMSIVI capabilities. |
+| Game and character context | Fallout/Skyrim-specific systems | EXCLUDED | Pip-Boy, VATS, Power Armor, shouts, Dragonborn, Papyrus aliases, Skyrim FormIDs, and xNVSE outcomes are not LORKHAN capabilities. |
 | Intelligence and server product | Character profiles/prompts | AUTOMATED | Global -> Core Profile -> NPC inheritance, immutable revisions, typed profile/prompt editors, generation jobs, model slots, per-speaker TTS, voice fallbacks, locking, portraits, import/export, and prompt traces pass server and browser tests. |
 | Intelligence and server product | Short/middle/long memory | AUTOMATED | Played-only recent memory plus deterministic four-to-one middle/long consolidation, provenance, retrieval, rebuild, edit, delete, retention, and playthrough isolation pass PostgreSQL tests. |
 | Intelligence and server product | Relationships | AUTOMATED | Actor/player relationship state, manual/derived modes, immutable audit, prompt integration, and scoped CRUD pass repository and browser workflows. |
@@ -50,11 +50,11 @@ that is outside the automated goal. `EXCLUDED` is a closed product or authority 
 | Intelligence and server product | Request/event logs | AUTOMATED | Canonical eventlog, speech, responselog, prompt traces, provider attempts, response queue, action receipts, and rechat correlation read from one typed authority. |
 | Intelligence and server product | Workers/backups/health | AUTOMATED | Durable leases, retry/dead-letter, restart recovery, cleanup/retention, redacted diagnostics, dump/restore, local WSL worker restart, and health checks pass. |
 | Actions | Inspect/report | AUTOMATED | `inspect.report` and `inventory.inspect` are Tier 0, bounded, capability-gated, identity-fenced, and terminal-receipt tested. |
-| Actions | Follow/escort/travel/wander/pursue | AUTOMATED | `ai.follow`, `ai.stop`, `ai.approach`, `ai.wait`, `ai.travel`, `ai.escort`, and `ai.wander` use bounded ALMSIVI-owned actor-local packages; unsafe persistent/global pursuit alternatives are not substituted. |
+| Actions | Follow/escort/travel/wander/pursue | AUTOMATED | `ai.follow`, `ai.stop`, `ai.approach`, `ai.wait`, `ai.travel`, `ai.escort`, and `ai.wander` use bounded LORKHAN-owned actor-local packages; unsafe persistent/global pursuit alternatives are not substituted. |
 | Actions | Start/stop combat | AUTOMATED | Tier-2 confirmed `combat.start` and owned-only `combat.stop` use strict actor/target/session/generation fencing and one terminal receipt. |
 | Actions | Face/look/animation/speech | AUTOMATED | Bounded asynchronous `ai.face` plus allowlisted `animation.play` are lifecycle-cancellable; unavailable head/eye and arbitrary animation authority is not inferred. |
 | Actions | Equip/use/consume | AUTOMATED | Tier-2 `item.equip`, `item.unequip`, and `item.use` operate only on an existing acting-NPC inventory record and allowlisted equipment slots. |
-| Actions | Give/take item or gold | EXCLUDED | API 129 exposes exact transfer mutation only to global objects, not the actor-local authority used by ALMSIVI; no unsafe two-owner mutation protocol is shipped. |
+| Actions | Give/take item or gold | EXCLUDED | API 129 exposes exact transfer mutation only to global objects, not the actor-local authority used by LORKHAN; no unsafe two-owner mutation protocol is shipped. |
 | Actions | Lock/unlock | EXCLUDED | No bounded actor-local ownership and observed completion boundary exists for arbitrary locks. |
 | Actions | Trade/menu opening | EXCLUDED | API 129 has no bounded typed actor-local service/menu action with a dependable terminal result. |
 | Actions | Teleport/spawn/delete/record creation | EXCLUDED | Arbitrary global creation, relocation, deletion, and lethal authority violates the action trust boundary. |

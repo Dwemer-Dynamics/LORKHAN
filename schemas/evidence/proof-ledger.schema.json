@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://almsivi.invalid/schemas/proof-ledger.schema.json",
+  "$id": "https://lorkhan.invalid/schemas/proof-ledger.schema.json",
   "type": "object", "additionalProperties": false, "required": ["schema_version", "rows"],
   "properties": {"schema_version": {"const": 1}, "rows": {"type": "array", "minItems": 1, "items": {
     "type": "object", "additionalProperties": false, "required": ["id", "claim", "state", "evidence"],

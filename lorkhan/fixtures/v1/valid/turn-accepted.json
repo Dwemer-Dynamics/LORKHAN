@@ -1,0 +1,5 @@
+{
+  "description": "Turn acceptance with full correlation",
+  "instance": {"event_cursor": 1, "generation": 7, "message_id": "00000000-0000-4000-8000-000000000009", "request_id": "00000000-0000-4000-8000-000000000010", "schema": "lorkhan.turn.accepted.v1", "session_id": "00000000-0000-4000-8000-000000000007", "turn_id": "00000000-0000-4000-8000-000000000008"},
+  "schema": "https://lorkhan.invalid/schemas/v1/turn-accepted.schema.json"
+}

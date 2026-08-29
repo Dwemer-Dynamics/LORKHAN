@@ -1,0 +1,627 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/events.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "autonomy": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "issued_at": {
+            "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+          },
+          "kind": {
+            "enum": [
+              "rechat",
+              "boredom",
+              "greeting"
+            ],
+            "type": "string"
+          },
+          "schedule_id": {
+            "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+          },
+          "schema": {
+            "const": "lorkhan.autonomy-directive.v1",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema",
+          "schedule_id",
+          "kind",
+          "issued_at"
+        ],
+        "type": "object"
+      },
+      "$comment": "Retained as an always-empty v1 compatibility field. Rechat is emitted as a normal correlated turn.",
+      "maxItems": 0,
+      "type": "array"
+    },
+    "events": {
+      "items": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "created_at": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+              },
+              "generation": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+              },
+              "message_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "status": {
+                    "const": "accepted",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status"
+                ],
+                "type": "object"
+              },
+              "request_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "sequence": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/sequence"
+              },
+              "session_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "turn_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "type": {
+                "const": "turn.accepted",
+                "type": "string"
+              }
+            },
+            "required": [
+              "message_id",
+              "request_id",
+              "turn_id",
+              "session_id",
+              "generation",
+              "sequence",
+              "created_at",
+              "type",
+              "payload"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "created_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+              "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
+              "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+              "payload": {"$ref": "https://lorkhan.invalid/schemas/v1/response.schema.json"},
+              "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+              "sequence": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/sequence"},
+              "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+              "turn_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+              "type": {"const": "response.complete", "type": "string"}
+            },
+            "required": ["message_id", "request_id", "turn_id", "session_id", "generation", "sequence", "created_at", "type", "payload"],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "created_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+              "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
+              "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+              "payload": {
+                "additionalProperties": false,
+                "properties": {"text": {"maxLength": 4096, "minLength": 1, "type": "string"}},
+                "required": ["text"],
+                "type": "object"
+              },
+              "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+              "sequence": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/sequence"},
+              "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+              "turn_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+              "type": {"const": "dialogue.delta", "type": "string"}
+            },
+            "required": ["message_id", "request_id", "turn_id", "session_id", "generation", "sequence", "created_at", "type", "payload"],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "created_at": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+              },
+              "generation": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+              },
+              "message_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "addressee": {
+                    "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+                  },
+                  "speaker": {
+                    "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+                  },
+                  "text": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "speaker",
+                  "addressee",
+                  "text"
+                ],
+                "type": "object"
+              },
+              "request_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "sequence": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/sequence"
+              },
+              "session_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "turn_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "type": {
+                "const": "dialogue.complete",
+                "type": "string"
+              }
+            },
+            "required": [
+              "message_id",
+              "request_id",
+              "turn_id",
+              "session_id",
+              "generation",
+              "sequence",
+              "created_at",
+              "type",
+              "payload"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "created_at": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+              },
+              "generation": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+              },
+              "message_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "payload": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/action-intent.schema.json"
+              },
+              "request_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "sequence": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/sequence"
+              },
+              "session_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "turn_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "type": {
+                "const": "action.intent",
+                "type": "string"
+              }
+            },
+            "required": [
+              "message_id",
+              "request_id",
+              "turn_id",
+              "session_id",
+              "generation",
+              "sequence",
+              "created_at",
+              "type",
+              "payload"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "created_at": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+              },
+              "generation": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+              },
+              "message_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "status": {
+                    "const": "complete",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status"
+                ],
+                "type": "object"
+              },
+              "request_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "sequence": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/sequence"
+              },
+              "session_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "turn_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "type": {
+                "const": "turn.complete",
+                "type": "string"
+              }
+            },
+            "required": [
+              "message_id",
+              "request_id",
+              "turn_id",
+              "session_id",
+              "generation",
+              "sequence",
+              "created_at",
+              "type",
+              "payload"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "created_at": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+              },
+              "generation": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+              },
+              "message_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              "request_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "sequence": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/sequence"
+              },
+              "session_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "turn_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "type": {
+                "const": "turn.cancelled",
+                "type": "string"
+              }
+            },
+            "required": [
+              "message_id",
+              "request_id",
+              "turn_id",
+              "session_id",
+              "generation",
+              "sequence",
+              "created_at",
+              "type",
+              "payload"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "created_at": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+              },
+              "generation": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+              },
+              "message_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "provider_timeout",
+                      "provider_unavailable"
+                    ],
+                    "type": "string"
+                  },
+                  "retriable": {
+                    "type": "boolean"
+                  },
+                  "retry_after_ms": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "code",
+                  "retriable"
+                ],
+                "type": "object"
+              },
+              "request_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "sequence": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/sequence"
+              },
+              "session_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "turn_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "type": {
+                "const": "turn.failed",
+                "type": "string"
+              }
+            },
+            "required": [
+              "message_id",
+              "request_id",
+              "turn_id",
+              "session_id",
+              "generation",
+              "sequence",
+              "created_at",
+              "type",
+              "payload"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "created_at": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+              },
+              "generation": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+              },
+              "message_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "payload": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/media-descriptor.schema.json"
+              },
+              "request_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "sequence": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/sequence"
+              },
+              "session_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "turn_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "type": {
+                "const": "speech.ready",
+                "type": "string"
+              }
+            },
+            "required": [
+              "message_id",
+              "request_id",
+              "turn_id",
+              "session_id",
+              "generation",
+              "sequence",
+              "created_at",
+              "type",
+              "payload"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "created_at": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+              },
+              "generation": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+              },
+              "message_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "language": {
+                    "maxLength": 35,
+                    "minLength": 2,
+                    "pattern": "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8})*$",
+                    "type": "string"
+                  },
+                  "text": {
+                    "maxLength": 16384,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "language"
+                ],
+                "type": "object"
+              },
+              "request_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "sequence": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/sequence"
+              },
+              "session_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "turn_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "type": {
+                "const": "stt.transcript",
+                "type": "string"
+              }
+            },
+            "required": [
+              "message_id",
+              "request_id",
+              "turn_id",
+              "session_id",
+              "generation",
+              "sequence",
+              "created_at",
+              "type",
+              "payload"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "created_at": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+              },
+              "generation": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+              },
+              "message_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "invalid_audio",
+                      "provider_invalid_output",
+                      "provider_timeout",
+                      "provider_unavailable"
+                    ],
+                    "type": "string"
+                  },
+                  "retriable": {
+                    "type": "boolean"
+                  },
+                  "retry_after_ms": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "code",
+                  "retriable"
+                ],
+                "type": "object"
+              },
+              "request_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "sequence": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/sequence"
+              },
+              "session_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "turn_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "type": {
+                "const": "stt.failed",
+                "type": "string"
+              }
+            },
+            "required": [
+              "message_id",
+              "request_id",
+              "turn_id",
+              "session_id",
+              "generation",
+              "sequence",
+              "created_at",
+              "type",
+              "payload"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "maxItems": 100,
+      "type": "array"
+    },
+    "generation": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+    },
+    "next_after": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/sequence"
+    },
+    "schema": {
+      "const": "lorkhan.events.v1",
+      "type": "string"
+    },
+    "session_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    }
+  },
+  "required": [
+    "schema",
+    "session_id",
+    "generation",
+    "next_after",
+    "events",
+    "autonomy"
+  ],
+  "type": "object"
+}

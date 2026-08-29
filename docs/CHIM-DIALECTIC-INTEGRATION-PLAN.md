@@ -1,8 +1,8 @@
-# ALMSIVI CHIM/Dialectic integration plan
+# LORKHAN CHIM/Dialectic integration plan
 
 Status: finalized long-running implementation plan, audited and user-confirmed 2026-08-09.
 
-This is the execution contract for bringing ALMSIVI and ALMSIVIserver to the applicable CHIM/HerikaServer and Dialectic/DialecticServer product shape. It replaces feature-by-feature invention with direct, documented reuse of the established systems.
+This is the execution contract for bringing LORKHAN and LORKHANserver to the applicable CHIM/HerikaServer and Dialectic/DialecticServer product shape. It replaces feature-by-feature invention with direct, documented reuse of the established systems.
 
 ## 1. Fixed scope
 
@@ -29,7 +29,7 @@ Rechat is not autonomy in this plan. It is a bounded continuation of a player-st
 
 ## 1.1 Confirmed execution decisions
 
-- Consolidate all existing parity, UI, rechat, prompt, eventlog, STT, and planning commits into the two existing draft PRs. Fast-forward ALMSIVI's `codex/full-dialectic-parity` PR branch from `codex/stt-parity`, and ALMSIVIserver's `codex/herika-ui-core-port` PR branch from `codex/stt-parity`, then continue implementation in isolated worktrees from those consolidated heads.
+- Consolidate all existing parity, UI, rechat, prompt, eventlog, STT, and planning commits into the two existing draft PRs. Fast-forward LORKHAN's `codex/full-dialectic-parity` PR branch from `codex/stt-parity`, and LORKHANserver's `codex/herika-ui-core-port` PR branch from `codex/stt-parity`, then continue implementation in isolated worktrees from those consolidated heads.
 - Keep both PRs draft and targeted at `main`. Consolidation does not authorize merging either PR into `main`.
 - Freeze the six audited reference commits below for this implementation. Perform one explicit upstream parity refresh after the frozen plan is complete; do not chase moving upstream branches during the work.
 - Keep typed PostgreSQL source tables authoritative while copying the applicable HerikaServer/DialecticServer public table names, column order, types, defaults, indexes, views, and UI formatting as exact compatibility projections/adapters.
@@ -40,19 +40,19 @@ Rechat is not autonomy in this plan. It is a bounded continuation of a player-st
 
 ## 2. Authority and reuse rules
 
-| Concern | Source of truth | ALMSIVI rule |
+| Concern | Source of truth | LORKHAN rule |
 |---|---|---|
 | Browser presentation | HerikaServer | Preserve page structure, navbar, hubs, assets, CSS, controls, density, and responsive behavior. Change only branding, Morrowind terminology, status badges, and typed wiring. |
 | User-visible conversation behavior | CHIM | Match targeting, response lifecycle, TTS/subtitles, interruption, history, diagnostics, and playback-gated continuation outcomes. |
-| JSON envelope and response-line format | Dialectic/DialecticServer | Use namespaced `almsivi.*.v1` equivalents of Dialectic input, event, response, response-line, media, action, command, and game-data envelopes. Keep ALMSIVI correlation and security fields. |
+| JSON envelope and response-line format | Dialectic/DialecticServer | Use namespaced `lorkhan.*.v1` equivalents of Dialectic input, event, response, response-line, media, action, command, and game-data envelopes. Keep LORKHAN correlation and security fields. |
 | Client response queue | Dialectic | Reuse the single FIFO response-router model, dialogue-before-action ordering, unfinished state, generation fencing, lifecycle cancellation, and queue diagnostics. Adapt it to Lua/OpenMW; do not add a parallel queue. |
-| Database compatibility | HerikaServer/DialecticServer | Preserve the useful `eventlog`, `speech`, `responselog`, `prompts`, memory, relationship, profile, connector, and audit shapes. Back them with ALMSIVI typed PostgreSQL source records and compatibility projections; do not dual-write independent truths. |
-| Runtime identity and authority | ALMSIVI | Keep installation, playthrough, session, generation, request, turn, utterance, content-file/record, and runtime-reference fencing. Keep the narrow typed native bridge and pinned OpenMW API. |
+| Database compatibility | HerikaServer/DialecticServer | Preserve the useful `eventlog`, `speech`, `responselog`, `prompts`, memory, relationship, profile, connector, and audit shapes. Back them with LORKHAN typed PostgreSQL source records and compatibility projections; do not dual-write independent truths. |
+| Runtime identity and authority | LORKHAN | Keep installation, playthrough, session, generation, request, turn, utterance, content-file/record, and runtime-reference fencing. Keep the narrow typed native bridge and pinned OpenMW API. |
 
 Audited references:
 
-- ALMSIVI checkpoint: `eee848c00bb48536c67de97ab953760e7c67da76`
-- ALMSIVIserver checkpoint: `554befb6d167d2d6deb436662de858503853a584`
+- LORKHAN checkpoint: `eee848c00bb48536c67de97ab953760e7c67da76`
+- LORKHANserver checkpoint: `554befb6d167d2d6deb436662de858503853a584`
 - CHIM `origin/unstable`: `005df4c1fda5ff195dc14a674fe71b11542be4df`
 - HerikaServer `origin/unstable`: `c973f5c8fde2d01cb8211be3d5f96d1783663da4`
 - Dialectic `origin/unstable`: `5cd2817a6733acbe25ca21bdfb716ed64617f5f8`
@@ -81,7 +81,7 @@ These foundations are not the same as full parity. Several paths overlap, some c
 Every player text or STT transcript must use this one path:
 
 1. OpenMW resolves the current target, audience, playthrough, session, and generation.
-2. The client emits `almsivi.input.v1` semantics through the typed turn or STT route.
+2. The client emits `lorkhan.input.v1` semantics through the typed turn or STT route.
 3. The server authenticates, validates, rate-limits, and idempotently persists the immutable source input.
 4. A durable job resolves effective Global -> Core Profile -> NPC settings.
 5. Prompt assembly records ordered CHIM-style XML sections and their typed source trace.
@@ -97,17 +97,17 @@ No browser action, alternate endpoint, STT worker, rechat worker, or compatibili
 
 ## 5. Dialectic-format JSON mapping
 
-The existing ALMSIVI schemas remain strict and namespaced, but their payload format should converge on Dialectic's proven split:
+The existing LORKHAN schemas remain strict and namespaced, but their payload format should converge on Dialectic's proven split:
 
-| Dialectic contract | ALMSIVI contract | Required parity |
+| Dialectic contract | LORKHAN contract | Required parity |
 |---|---|---|
-| `dialectic.input.v1` | `almsivi.input.v1`/`almsivi.turn.v1` | player, text, game, target, audience snapshot, mode, and request identity; retain installation/playthrough/session/generation/runtime/content fingerprint. |
-| `dialectic.event.v1` | `almsivi.event.v1` inside `almsivi.events.v1` | typed event name, game, payload, audience snapshot, and request identity. |
-| `dialectic.response.v1` | `almsivi.response.v1` | `ok`, ordered `lines`, and `close`; do not infer a response from loosely related events. |
-| `dialectic.response.line.v1` | `almsivi.response.line.v1` | speaker, display name, action, text, subtitle, TTS cache/media identity, request, utterance, listener, rechat target, command fields, and bounded metadata. |
-| `dialectic.action.v1`/`command.v1` | existing ALMSIVI action intent/result contracts | preserve ALMSIVI tier, capability, confirmation, expiry, and terminal-result fencing. |
-| `dialectic.media.v1` | existing ALMSIVI STT/media descriptors | preserve authenticated opaque media, hash, MIME, ownership, expiry, and recording metadata. |
-| `dialectic.gamedata.v1` | `almsivi.gamedata.v1` | Morrowind actor profile, inventory, nearby actors/items, world, Journal, dialogue delivery, action results, captured vanilla dialogue, and prompt bridge. Omit AI quests and boredom events. |
+| `dialectic.input.v1` | `lorkhan.input.v1`/`lorkhan.turn.v1` | player, text, game, target, audience snapshot, mode, and request identity; retain installation/playthrough/session/generation/runtime/content fingerprint. |
+| `dialectic.event.v1` | `lorkhan.event.v1` inside `lorkhan.events.v1` | typed event name, game, payload, audience snapshot, and request identity. |
+| `dialectic.response.v1` | `lorkhan.response.v1` | `ok`, ordered `lines`, and `close`; do not infer a response from loosely related events. |
+| `dialectic.response.line.v1` | `lorkhan.response.line.v1` | speaker, display name, action, text, subtitle, TTS cache/media identity, request, utterance, listener, rechat target, command fields, and bounded metadata. |
+| `dialectic.action.v1`/`command.v1` | existing LORKHAN action intent/result contracts | preserve LORKHAN tier, capability, confirmation, expiry, and terminal-result fencing. |
+| `dialectic.media.v1` | existing LORKHAN STT/media descriptors | preserve authenticated opaque media, hash, MIME, ownership, expiry, and recording metadata. |
+| `dialectic.gamedata.v1` | `lorkhan.gamedata.v1` | Morrowind actor profile, inventory, nearby actors/items, world, Journal, dialogue delivery, action results, captured vanilla dialogue, and prompt bridge. Omit AI quests and boredom events. |
 
 Implementation rules:
 
@@ -157,7 +157,7 @@ Adapt `conversation.lua` and `orchestrator.lua` to this model. Remove overlappin
 
 ## 7. Database cutover
 
-Use the ALMSIVIserver plan for the full table map. The client-visible rules are:
+Use the LORKHANserver plan for the full table map. The client-visible rules are:
 
 - typed source tables remain the write authority;
 - CHIM/Herika names are projections or transactional adapters over those source rows;
@@ -218,17 +218,17 @@ Each section must have a recorded typed source, ordering index, inclusion reason
 ### P0 - Make the branch releasable
 
 1. Fast-forward all current work into the existing client and server draft PR branches and continue from isolated worktrees.
-2. Replace the three overlapping ALMSIVI workflows with a minimal supported-product CI surface:
+2. Replace the three overlapping LORKHAN workflows with a minimal supported-product CI surface:
    - one Ubuntu foundation job for Python/Lua checks, schema/fixture parity, packaging inputs, evidence, and OpenMW patch-manifest validation;
    - one Windows 2022 x64 Release native job for the standalone bridge/core build and CTest;
    - no macOS, Linux native compiler matrix, sanitizer matrix, duplicate packaging workflow, or definition-only jobs.
 3. Fix the Ubuntu PowerShell/path validator or replace it with one portable entrypoint rather than preserving redundant workflow plumbing.
-4. Add one ALMSIVIserver Ubuntu workflow covering PHP lint, protocol parity, the existing test suite, disposable PostgreSQL migrations/integration, durable workers, and management HTTP flows.
+4. Add one LORKHANserver Ubuntu workflow covering PHP lint, protocol parity, the existing test suite, disposable PostgreSQL migrations/integration, durable workers, and management HTTP flows.
 5. Refresh stale evidence ledgers so implemented behavior is not still marked `PLANNED` and no row claims unperformed in-game proof.
 
 ### P1 - Canonical schema and data model
 
-1. Produce a column-by-column Herika/Dialectic -> ALMSIVI table map.
+1. Produce a column-by-column Herika/Dialectic -> LORKHAN table map.
 2. Mark every current table as source, projection, compatibility-only, or excluded.
 3. Add Dialectic-format response, response-line, event, and game-data contracts.
 4. Backfill correlation fields and canonical JSON payloads.
@@ -257,7 +257,7 @@ Each section must have a recorded typed source, ordering index, inclusion reason
 2. Inventory every action exposed by the frozen CHIM, HerikaServer, Dialectic, and DialecticServer references and map it to OpenMW Lua API 129.
 3. Retain and harden the current inspect, follow, stop, travel, escort, face, wander, combat start/stop, animation, equip, unequip, and use actions.
 4. Add every additional safe feasible family, including wait, player pursuit, exact item/gold give/take, consume, lock/unlock, activation, and trade/menu outcomes where OpenMW supplies sufficient authority and observable completion.
-5. Keep generation/session/actor/target fencing, tiered confirmation, bounded parameters, negotiated capabilities, ALMSIVI-owned package cleanup, and exactly one terminal receipt for every action.
+5. Keep generation/session/actor/target fencing, tiered confirmation, bounded parameters, negotiated capabilities, LORKHAN-owned package cleanup, and exactly one terminal receipt for every action.
 6. For each non-portable action, retain the Herika UI landmark only when useful, mark it `Not Applicable`, and record the exact missing OpenMW API or unsafe authority boundary. Never substitute arbitrary console, Lua, MWScript, filesystem, network, spawn/delete, quest mutation, faction mutation, or unbounded teleport execution.
 7. Validate group speaker/addressee behavior, interruption, target changes, loads, cell changes, reconnects, and provider failures.
 8. Keep normal Morrowind subtitles as the sole dialogue text surface unless the user opens History/Diagnostics.
@@ -289,7 +289,7 @@ Manual gameplay is a post-goal verification step, not a blocker for completing t
 
 ## 11. Recommended implementation slices
 
-Keep each slice paired across ALMSIVI and ALMSIVIserver:
+Keep each slice paired across LORKHAN and LORKHANserver:
 
 1. CI and evidence-ledger repair.
 2. Schema/table inventory and excluded-feature quarantine.

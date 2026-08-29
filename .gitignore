@@ -19,7 +19,7 @@ __pycache__/
 *.user
 *.suo
 *.zip
-almsivi.local.toml
+lorkhan.local.toml
 secrets/
 .local/
 Morrowind.esm

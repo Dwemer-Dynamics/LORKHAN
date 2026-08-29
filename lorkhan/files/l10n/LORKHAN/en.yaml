@@ -1,0 +1,106 @@
+SettingsPage_name: LORKHAN
+SettingsPage_description: Configure LORKHAN hotkeys, automatic NPC activation, conversation behavior, sound, agents, and advanced tools.
+HotkeysGroup_name: Hotkeys
+HotkeysGroup_description: Focused gameplay controls. Click a binding to clear it, then press a keyboard, mouse, or controller button to assign it.
+ControlsGroup_name: Hotkeys
+ControlsGroup_description: Focused gameplay controls. Click a binding to clear it, then press a keyboard, mouse, or controller button to assign it.
+Talk_name: Talk with LORKHAN
+Talk_description: Target the actor under the crosshair and open typed chat; click the input box, type, and press Enter to send.
+StopDialogue_name: Stop current dialogue
+StopDialogue_description: Cancel the active response and speech without disabling LORKHAN or stopping unrelated NPC behavior.
+Halt_name: Stop all LORKHAN work
+Halt_description: Recoverably cancel current dialogue, generated speech, microphone capture, and LORKHAN-owned actor actions.
+PushToTalk_name: Push to talk with LORKHAN
+PushToTalk_description: Hold to record your microphone, transcribe it through LORKHANserver, and send the transcript to the selected NPC group.
+OpenMic_name: Toggle LORKHAN open microphone
+OpenMic_description: Opt in to voice-activated recording for the selected NPC group; toggle again to stop immediately.
+OpenMicMute_name: Mute LORKHAN open microphone
+OpenMicMute_description: Temporarily pause or resume voice-activated recording without turning open microphone mode off.
+ManualActivate_name: Manually activate AI agents
+ManualActivate_description: Add or remove the aimed NPC as a pinned agent, or pin a bounded nearby group when no NPC is aimed at.
+ActionsMenu_name: Open LORKHAN actions menu
+ActionsMenu_description: Open actor-scoped roleplay and safety actions for the current NPC.
+ActorTools_name: Targeted NPC tools
+ActorTools_description: Open the compact menu for the aimed NPC, including activation, profiles, conversation controls, and actor actions.
+MasterMenu_name: Open LORKHAN master menu
+MasterMenu_description: Legacy binding retained for compatibility; opens Targeted NPC Tools in the focused interface.
+ToggleMode_name: Cycle LORKHAN dialogue mode
+ToggleMode_description: Open the Standard, Whisper, Close, and Shout conversation routing selector.
+ModeMenu_name: Dialogue mode
+ModeMenu_description: Open the compact Standard, Whisper, Close, and Shout mode selector.
+ModelMenu_name: LLM model
+ModelMenu_description: Open the compact server-owned LLM model selector for the current target.
+ProfileMenu_name: Dynamic profiles
+ProfileMenu_description: Choose targeted NPC, nearby AI NPC, or narrator profile management.
+StatusHud_name: Toggle LORKHAN status HUD
+StatusHud_description: Show or hide the compact target, mode, voice, and server status display.
+History_name: Conversation history
+History_description: Open or close the recent LORKHAN conversation history panel.
+Diagnostics_name: Diagnostics panel
+Diagnostics_description: Open or close the safe in-game LORKHAN status and diagnostics panel.
+AutoActivateGroup_name: Auto Activate
+AutoActivateGroup_description: Automatically manage nearby eligible NPCs using bounded active-cell scans.
+AutoActivateEnabled_name: Enable Auto Activate
+AutoActivateEnabled_description: Automatically add eligible nearby NPCs as LORKHAN agents.
+InteriorDistance_name: Interior activation distance
+InteriorDistance_description: Maximum automatic activation distance inside buildings and interior cells.
+ExteriorDistance_name: Exterior activation distance
+ExteriorDistance_description: Maximum automatic activation distance in exterior cells.
+InteriorHearingDistance_name: Interior hearing distance
+InteriorHearingDistance_description: Nearby managed actors inside this distance may join spatial conversation in interior cells.
+ExteriorHearingDistance_name: Exterior hearing distance
+ExteriorHearingDistance_description: Nearby managed actors inside this distance may join spatial conversation in exterior cells.
+AddHostile_name: Include hostile NPCs
+AddHostile_description: Allow hostile NPCs to be automatically managed by LORKHAN.
+AddCreatures_name: Include creatures
+AddCreatures_description: Allow creatures as well as NPCs to be automatically managed by LORKHAN.
+BehaviorGroup_name: Behavior
+BehaviorGroup_description: Control AI actions and optional autonomous conversation behavior.
+ActionsEnabled_name: Enable AI actions
+ActionsEnabled_description: Allow negotiated LORKHAN action intents to execute in OpenMW.
+AutoGreeting_name: Enable automatic greetings
+AutoGreeting_description: Allow eligible managed NPCs to greet the player subject to distance and cooldown rules.
+Rechat_name: Enable conversation continuation
+Rechat_description: Allow a recent conversation to continue after a bounded quiet period.
+RechatDelay_name: Rechat quiet time
+RechatDelay_description: Seconds after completed dialogue before the selected NPC may continue the conversation.
+RechatMaxDepth_name: Maximum rechat turns
+RechatMaxDepth_description: Maximum consecutive autonomous continuation turns before LORKHAN waits for new player input.
+Boredom_name: Enable idle conversation
+Boredom_description: Allow occasional context-aware conversation when no active turn is running.
+BoredomDelay_name: Idle conversation quiet time
+BoredomDelay_description: Seconds without active dialogue before a managed NPC may start an idle conversation.
+AvoidAutonomyInMenus_name: Pause autonomous dialogue in menus
+AvoidAutonomyInMenus_description: Reset the idle timer while an OpenMW menu or interface is open.
+AvoidAutonomyInCombat_name: Pause autonomous dialogue in combat
+AvoidAutonomyInCombat_description: Reset the idle timer while a managed nearby actor is fighting the player.
+AvoidAutonomyWhenSneaking_name: Pause autonomous dialogue while sneaking
+AvoidAutonomyWhenSneaking_description: Reset the idle timer while the player is sneaking.
+CancelDialogueOnCombat_name: Stop dialogue when combat starts
+CancelDialogueOnCombat_description: Cancel active LORKHAN dialogue and voice capture when a managed actor begins fighting the player.
+CombatBarks_name: Enable combat barks
+CombatBarks_description: Allow managed hostile actors to make bounded contextual combat remarks when no other LORKHAN work is active.
+CombatBarkPeriod_name: Combat bark interval
+CombatBarkPeriod_description: Minimum seconds between LORKHAN combat remarks while a managed actor remains hostile to the player.
+OpenMicSensitivity_name: Open microphone sensitivity
+OpenMicSensitivity_description: RMS level required to detect speech. Higher values require louder speech.
+OpenMicEndDelay_name: Open microphone end delay
+OpenMicEndDelay_description: Milliseconds of silence after speech before LORKHAN submits the recording.
+RecordingDevice_name: Recording device ID
+RecordingDevice_description: WinMM recording device used by LORKHAN. Use -1 for the Windows default; Diagnostics lists every available ID and name. Restart capture after changing it.
+CurrentRecordingDevice_name: Selected recording device
+CurrentRecordingDevice_description: Read-only name resolved for the configured recording device ID when LORKHAN loaded.
+SoundGroup_name: Sound
+SoundGroup_description: Configure LORKHAN-generated speech playback without changing other OpenMW audio.
+AgentsGroup_name: AI Agents
+AgentsGroup_description: Configure capabilities available to managed LORKHAN actors.
+ToolsGroup_name: Tools / Advanced
+ToolsGroup_description: Optional status and retained transcript controls. Normal play does not require these settings.
+PresentationGroup_name: Tools / Advanced
+PresentationGroup_description: Optional status and retained transcript controls.
+ShowStatusHud_name: Show compact status HUD
+ShowStatusHud_description: Keep a compact LORKHAN status strip visible. Off by default; important updates still appear briefly.
+TranscriptRows_name: Transcript history rows
+TranscriptRows_description: Maximum recent dialogue rows retained in the in-game conversation panel.
+TtsVolumeBoost_name: TTS volume boost
+TtsVolumeBoost_description: Multiply only LORKHAN-generated speech volume. 1 uses normal OpenMW voice volume; 4 is four times louder.

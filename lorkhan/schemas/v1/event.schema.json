@@ -1,0 +1,90 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/event.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "action_result": {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+        "observed": {"additionalProperties": false, "maxProperties": 32, "properties": {}, "type": "object"},
+        "reason_code": {"maxLength": 128, "minLength": 1, "type": "string"},
+        "status": {"enum": ["cancelled", "failed", "rejected", "succeeded", "timed_out"], "type": "string"}
+      },
+      "required": ["action_id", "status", "reason_code", "observed"],
+      "type": "object"
+    },
+    "captured_dialogue": {
+      "additionalProperties": false,
+      "properties": {
+        "listener": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+        "speaker": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+        "text": {"maxLength": 4096, "minLength": 1, "type": "string"},
+        "topic": {"maxLength": 256, "type": "string"}
+      },
+      "required": ["speaker", "listener", "text", "topic"],
+      "type": "object"
+    },
+    "delivery": {
+      "additionalProperties": false,
+      "properties": {
+        "reason_code": {"maxLength": 128, "type": "string"},
+        "state": {"enum": ["cancelled", "failed", "played", "skipped"], "type": "string"},
+        "utterance_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+      },
+      "required": ["utterance_id", "state", "reason_code"],
+      "type": "object"
+    },
+    "journal": {
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "journal_id": {"maxLength": 256, "minLength": 1, "type": "string"},
+              "stage": {"maximum": 2147483647, "minimum": 0, "type": "integer"},
+              "status": {"enum": ["active", "completed", "failed", "mentioned"], "type": "string"},
+              "text": {"maxLength": 4096, "minLength": 1, "type": "string"},
+              "title": {"maxLength": 512, "minLength": 1, "type": "string"}
+            },
+            "required": ["journal_id", "title", "status", "stage", "text"],
+            "type": "object"
+          },
+          "maxItems": 128,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": ["entries"],
+      "type": "object"
+    },
+    "player_text": {
+      "additionalProperties": false,
+      "properties": {
+        "language": {"maxLength": 35, "minLength": 2, "type": "string"},
+        "text": {"maxLength": 16384, "minLength": 1, "type": "string"}
+      },
+      "required": ["text", "language"],
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "audience": {"items": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"}, "maxItems": 12, "type": "array", "uniqueItems": true},
+    "event_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "event_name": {"enum": ["action.result", "dialogue.captured", "dialogue.delivery", "journal.observed", "player.text"], "type": "string"},
+    "game": {"const": "tes3", "type": "string"},
+    "generation": {"maximum": 9007199254740991, "minimum": 1, "type": "integer"},
+    "installation_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "observed_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+    "payload": {"oneOf": [{"$ref": "https://lorkhan.invalid/schemas/v1/event.schema.json#/$defs/action_result"}, {"$ref": "https://lorkhan.invalid/schemas/v1/event.schema.json#/$defs/captured_dialogue"}, {"$ref": "https://lorkhan.invalid/schemas/v1/event.schema.json#/$defs/delivery"}, {"$ref": "https://lorkhan.invalid/schemas/v1/event.schema.json#/$defs/journal"}, {"$ref": "https://lorkhan.invalid/schemas/v1/event.schema.json#/$defs/player_text"}]},
+    "playthrough_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "runtime_generation": {"maximum": 9007199254740991, "minimum": 1, "type": "integer"},
+    "schema": {"const": "lorkhan.event.v1", "type": "string"},
+    "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "turn_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+  },
+  "required": ["schema", "event_id", "installation_id", "playthrough_id", "session_id", "turn_id", "request_id", "generation", "runtime_generation", "observed_at", "game", "event_name", "audience", "payload"],
+  "type": "object"
+}

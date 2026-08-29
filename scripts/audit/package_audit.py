@@ -7,8 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
-from almsivi_foundation import read_json, sha256_file, write_json
-from almsivi_packaging import (PackagingError, apply_suppressions, audit_archive_content, audit_notices,
+from lorkhan_foundation import read_json, sha256_file, write_json
+from lorkhan_packaging import (PackagingError, apply_suppressions, audit_archive_content, audit_notices,
                                audit_source_inputs, audit_tree, load_suppressions, normalized_archive_comparison,
                                tracked_implementation_paths, validate_package_set, validate_provenance, validate_spdx)
 
@@ -81,7 +81,7 @@ def compare(args: argparse.Namespace) -> None:
 
 
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(description="Fail-closed ALMSIVI package audits")
+    result = argparse.ArgumentParser(description="Fail-closed LORKHAN package audits")
     result.add_argument("--repository", default=str(ROOT))
     sub = result.add_subparsers(dest="command", required=True)
     one = sub.add_parser("archive")

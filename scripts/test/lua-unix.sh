@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-TEST_ROOT=${ALMSIVI_LUA_TEST_ROOT:-$ROOT/almsivi/files/scripts/ALMSIVI/tests}
-REQUIRED=${ALMSIVI_REQUIRE_LUA_TESTS:-0}
+TEST_ROOT=${LORKHAN_LUA_TEST_ROOT:-$ROOT/lorkhan/files/scripts/LORKHAN/tests}
+REQUIRED=${LORKHAN_REQUIRE_LUA_TESTS:-0}
 LUA=${LUA:-}
 if [ -z "$LUA" ]; then
   for name in luajit lua5.4 lua54 lua5.3 lua; do if command -v "$name" >/dev/null 2>&1; then LUA=$name; break; fi; done

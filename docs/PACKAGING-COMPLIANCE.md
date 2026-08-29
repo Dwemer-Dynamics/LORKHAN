@@ -20,7 +20,7 @@ export SOURCE_DATE_EPOCH=1700000000
   /isolated/install-root --output /isolated/ownership.json
 ```
 
-PowerShell uses `scripts/package/windows.ps1` and `scripts/audit/package.ps1` with the same Python arguments. The builder writes a content manifest, release manifest, SPDX 2.3 JSON SBOM, and `SHA256SUMS`. Release manifests bind the set to the exact ALMSIVI Git commit, OpenMW pin, patch-manifest SHA-256, and dependency-lock hashes.
+PowerShell uses `scripts/package/windows.ps1` and `scripts/audit/package.ps1` with the same Python arguments. The builder writes a content manifest, release manifest, SPDX 2.3 JSON SBOM, and `SHA256SUMS`. Release manifests bind the set to the exact LORKHAN Git commit, OpenMW pin, patch-manifest SHA-256, and dependency-lock hashes.
 
 ## Fail-closed gates
 

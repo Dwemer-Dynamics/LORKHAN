@@ -14,7 +14,7 @@ mods and does not change existing script permissions.
 Prefer new files under:
 
 ```text
-apps/openmw/mwalmsivi/
+apps/openmw/mwlorkhan/
   bridge.hpp/.cpp
   client.hpp/.cpp
   configuration.hpp/.cpp
@@ -22,8 +22,8 @@ apps/openmw/mwalmsivi/
   mediastore.hpp/.cpp
   validation.hpp/.cpp
 apps/openmw/mwlua/
-  almsivibindings.hpp/.cpp
-components/almsivi/
+  lorkhanbindings.hpp/.cpp
+components/lorkhan/
   protocol.hpp/.cpp
   queues.hpp
   result.hpp
@@ -34,7 +34,7 @@ and registration, application lifecycle construction/shutdown, VFS/media registr
 required, version branding, and packaging. Every edit is listed with rationale and upstream base
 blob SHA in `patch-manifest.json`.
 
-`openmw.almsivi` is registered for GLOBAL, PLAYER and CUSTOM/local scripts. MENU receives a separate
+`openmw.lorkhan` is registered for GLOBAL, PLAYER and CUSTOM/local scripts. MENU receives a separate
 status-only surface if needed; LOAD receives none. Context tests prove unavailable functions cannot
 be required or invoked outside their intended context.
 
@@ -84,10 +84,10 @@ controlled media service:
 
 1. Server response supplies media ID, relative server route, SHA-256, byte count, codec and expiry.
 2. Native code constructs the fixed loopback route; Lua cannot provide it.
-3. Bytes stream to a private ALMSIVI cache using a temporary name, size cap and restrictive access.
+3. Bytes stream to a private LORKHAN cache using a temporary name, size cap and restrictive access.
 4. Validate HTTP type, byte count, SHA-256 and allowlisted codec (`wav`, `ogg`, `mp3` as supported by
    the pinned FFmpeg build); atomically promote under a hash-derived name.
-5. Register/open the verified resource through an ALMSIVI-only resource manager/decoder seam and
+5. Register/open the verified resource through an LORKHAN-only resource manager/decoder seam and
    invoke the existing voice playback/loudness path so lip animation and spatial voice work.
 6. Enforce 512 MiB default quota, LRU eviction of unpinned entries, expiry, no path traversal and no
    deletion outside the resolved cache root.
@@ -95,7 +95,7 @@ controlled media service:
 If the least-invasive implementation can mount one controlled cache directory into VFS before the
 game starts, use that. Runtime-generated files still enter through the native verifier and opaque
 IDs; Lua never gains general VFS writes. If live VFS indexing cannot safely observe atomic additions,
-use a dedicated ALMSIVI decoder entry point. This is an implementation branch with an objective
+use a dedicated LORKHAN decoder entry point. This is an implementation branch with an objective
 probe and fixed preference order, not an architectural question.
 
 ## Lifecycle and threading

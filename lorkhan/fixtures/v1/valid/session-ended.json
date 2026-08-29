@@ -1,0 +1,5 @@
+{
+  "description": "Generation-bound session end acceptance",
+  "instance": {"ended": true, "generation": 7, "request_id": "00000000-0000-4000-8000-000000000050", "schema": "lorkhan.session.ended.v1", "session_id": "00000000-0000-4000-8000-000000000007"},
+  "schema": "https://lorkhan.invalid/schemas/v1/session-ended.schema.json"
+}

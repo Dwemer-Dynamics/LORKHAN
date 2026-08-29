@@ -1,11 +1,11 @@
-# ALMSIVI protocol v1
+# LORKHAN protocol v1
 
-This document and `ALMSIVIserver/docs/PROTOCOL.md` must remain semantically identical. Canonical
+This document and `LORKHANserver/docs/PROTOCOL.md` must remain semantically identical. Canonical
 JSON Schemas and fixtures live in both repos and CI compares their SHA-256 manifest.
 
 ## Transport
 
-- Base: `http://127.0.0.1:8089/ALMSIVIserver/api/v1` by default.
+- Base: `http://127.0.0.1:8089/LORKHANserver/api/v1` by default.
 - Authentication uses `hmac-sha256-v1` request MACs. Fixed native headers carry installation ID, canonical UTC timestamp, unique random nonce, body SHA-256 and signature over algorithm/method/canonical target/content type/body digest/installation/timestamp/nonce. The 256-bit pairing MAC key is never transmitted routinely. Server persistence binds it to one installation, accepts active or bounded-overlap keys, rejects revoked keys, enforces clock skew and database nonce uniqueness, and covers JSON, event, session and media routes. Plaintext loopback still does not provide payload confidentiality against privileged local software; TLS is not claimed without server support.
 - Requests and ordinary responses: `application/json; charset=utf-8`.
 - STT uses bounded native WAV capture, authenticated binary upload, durable transcription, and fenced transcript events.
@@ -19,7 +19,7 @@ JSON Schemas and fixtures live in both repos and CI compares their SHA-256 manif
 
 ```json
 {
-  "schema": "almsivi.turn.v1",
+  "schema": "lorkhan.turn.v1",
   "message_id": "019...",
   "request_id": "019...",
   "turn_id": "019...",
@@ -50,17 +50,17 @@ The server accepts only current sessions/generations for turns and results.
 
 ## Canonical input, event, response, and game-data split
 
-`almsivi.input.v1` is the normalized player-text/STT input envelope. `almsivi.event.v1` is the
-typed source-event envelope. `almsivi.response.v1` contains only `ok`, an ordered bounded `lines`
+`lorkhan.input.v1` is the normalized player-text/STT input envelope. `lorkhan.event.v1` is the
+typed source-event envelope. `lorkhan.response.v1` contains only `ok`, an ordered bounded `lines`
 array, `close`, an error string, and the required installation/profile/playthrough/session/turn/request
-plus response/runtime generation correlation. Every `almsivi.response.line.v1` is either `say` or
+plus response/runtime generation correlation. Every `lorkhan.response.line.v1` is either `say` or
 `rolecommand`, carries stable speaker/listener/rechat identities and request/utterance IDs, and has
 bounded text, TTS/media/cache, command, and metadata fields. The server normalizes provider output
 once into this format; persistence, events, TTS, actions, delivery, diagnostics, and rechat consume it.
 
-`almsivi.gamedata.v1` accepts only typed TES3 actor, inventory, nearby-actor, world, Journal,
+`lorkhan.gamedata.v1` accepts only typed TES3 actor, inventory, nearby-actor, world, Journal,
 captured-dialogue, and prompt-bridge payloads. It does not accept AI quest, boredom, greeting,
-combat-bark, ITT, or Background Life variants. The required `almsivi.events.v1.autonomy` field is
+combat-bark, ITT, or Background Life variants. The required `lorkhan.events.v1.autonomy` field is
 retained for v1 wire compatibility but must always be an empty array. Rechat is a normal correlated
 turn and never an autonomy directive. All canonical envelopes require both response generation and
 runtime generation values greater than zero.
@@ -87,16 +87,16 @@ version/API plus the ordered content list and file identity metadata, never prop
 
 | Method/path | Request schema | Response |
 | --- | --- | --- |
-| `GET /health` | none | `almsivi.health.v1` |
-| `POST /sessions` | `almsivi.session.init.v1` | accepted session/capabilities/config revision |
-| `DELETE /sessions/{id}` | no body; UUID `Idempotency-Key` | `almsivi.session.ended.v1` |
-| `POST /turns` | `almsivi.turn.v1` | accepted request + first event cursor |
-| `POST /controls/query` | `almsivi.controls.query.v1` | safe server-owned model slots, NPC profiles, narrator ID, and target-effective settings snapshot |
-| `POST /controls/select` | `almsivi.controls.select.v1` | idempotent session model/profile selection or revision-safe NPC/narrator generation |
-| `POST /stt` | `almsivi.stt.request.v1` metadata headers plus a binary WAV body | `almsivi.stt.accepted.v1`; durable work later emits `stt.transcript` or `stt.failed`. |
-| `GET /events` | session/cursor/wait | `almsivi.events.v1` |
-| `POST /action-results` | `almsivi.action-result.v1` | persisted acknowledgement |
-| `POST /interruptions` | `almsivi.interrupt.v1` | cancellation acknowledgement |
+| `GET /health` | none | `lorkhan.health.v1` |
+| `POST /sessions` | `lorkhan.session.init.v1` | accepted session/capabilities/config revision |
+| `DELETE /sessions/{id}` | no body; UUID `Idempotency-Key` | `lorkhan.session.ended.v1` |
+| `POST /turns` | `lorkhan.turn.v1` | accepted request + first event cursor |
+| `POST /controls/query` | `lorkhan.controls.query.v1` | safe server-owned model slots, NPC profiles, narrator ID, and target-effective settings snapshot |
+| `POST /controls/select` | `lorkhan.controls.select.v1` | idempotent session model/profile selection or revision-safe NPC/narrator generation |
+| `POST /stt` | `lorkhan.stt.request.v1` metadata headers plus a binary WAV body | `lorkhan.stt.accepted.v1`; durable work later emits `stt.transcript` or `stt.failed`. |
+| `GET /events` | session/cursor/wait | `lorkhan.events.v1` |
+| `POST /action-results` | `lorkhan.action-result.v1` | persisted acknowledgement |
+| `POST /interruptions` | `lorkhan.interrupt.v1` | cancellation acknowledgement |
 | `GET /media/{opaque_id}` | none | verified allowlisted audio bytes |
 
 ## Turn payload
@@ -106,7 +106,7 @@ bounded context snapshot/delta, recent terminal action results, and UI source. I
 pairing token, provider key, host file path, save bytes, proprietary assets, engine pointers, or raw
 unbounded logs.
 
-A playback-driven rechat turn sets `ui_source` to `almsivi_rechat` and carries the Herika-compatible
+A playback-driven rechat turn sets `ui_source` to `lorkhan_rechat` and carries the Herika-compatible
 typed hint vocabulary: `speaker`, `listener_hint`, `rechat_target_hint`, `origin_line`,
 `rechat_depth`, and `chain_id` (plus the originating turn correlation). The server owns mode,
 probability pre-roll, round budget, and responder selection, then resolves that NPC's profile, LLM,
@@ -150,7 +150,7 @@ Source-derived memories additionally require witnessed-source eligibility. Unbou
 inherit another actor's relationships or manual memories from the session profile. Every accepted turn
 freezes the assembled prompt and selected provider revision before worker execution.
 
-Every controls response includes `almsivi.effective-settings.v1` for the active target. It carries the
+Every controls response includes `lorkhan.effective-settings.v1` for the active target. It carries the
 resolved rechat, memory, narrator, safety, and client-visible routing values; Global/Core Profile/NPC source metadata; bound profile
 revisions; and a deterministic change token. Local hotkeys, HUD visibility, panel layout, and TTS volume boost
 remain OpenMW preferences and are never replaced when the target changes. The effective settings
@@ -174,7 +174,7 @@ amendments rather than accepted open variants.
 
 ```json
 {
-  "schema": "almsivi.action-intent.v1",
+  "schema": "lorkhan.action-intent.v1",
   "action_id": "019...",
   "turn_id": "019...",
   "name": "ai.follow",
@@ -188,7 +188,7 @@ amendments rather than accepted open variants.
 
 ```json
 {
-  "schema": "almsivi.action-result.v1",
+  "schema": "lorkhan.action-result.v1",
   "message_id": "019...",
   "request_id": "019...",
   "action_id": "019...",

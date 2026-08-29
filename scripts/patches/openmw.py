@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
 
-from almsivi_foundation import FoundationError, read_json, require_tool, validate_pin
+from lorkhan_foundation import FoundationError, read_json, require_tool, validate_pin
 from openmw_patches import (apply_series, audit, build_artifacts, load_manifest, validate_manifest,
                             verify_result, write_artifacts)
 

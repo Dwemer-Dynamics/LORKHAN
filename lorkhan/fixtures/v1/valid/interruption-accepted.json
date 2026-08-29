@@ -1,0 +1,5 @@
+{
+  "description": "Idempotent interruption acceptance",
+  "instance": {"duplicate": false, "event_cursor": 5, "generation": 7, "message_id": "00000000-0000-4000-8000-000000000030", "request_id": "00000000-0000-4000-8000-000000000031", "schema": "lorkhan.interruption.accepted.v1", "session_id": "00000000-0000-4000-8000-000000000007", "turn_id": "00000000-0000-4000-8000-000000000008"},
+  "schema": "https://lorkhan.invalid/schemas/v1/interruption-accepted.schema.json"
+}

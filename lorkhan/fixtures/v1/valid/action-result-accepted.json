@@ -1,0 +1,5 @@
+{
+  "description": "Terminal action result acceptance",
+  "instance": {"action_id": "00000000-0000-4000-8000-000000000020", "duplicate": false, "generation": 7, "message_id": "00000000-0000-4000-8000-000000000040", "request_id": "00000000-0000-4000-8000-000000000041", "schema": "lorkhan.action-result.accepted.v1", "session_id": "00000000-0000-4000-8000-000000000007", "status": "succeeded", "turn_id": "00000000-0000-4000-8000-000000000008"},
+  "schema": "https://lorkhan.invalid/schemas/v1/action-result-accepted.schema.json"
+}

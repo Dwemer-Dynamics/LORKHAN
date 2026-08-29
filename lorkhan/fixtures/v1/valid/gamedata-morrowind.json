@@ -1,0 +1,17 @@
+{
+  "description": "TES3 nearby actor snapshot keyed by content file record and runtime reference",
+  "instance": {
+    "game": "tes3",
+    "generation": 12,
+    "installation_id": "10000000-0000-4000-8000-000000000001",
+    "observed_at": "2026-08-09T18:00:03Z",
+    "payload": {"actors": [{"dead": false, "distance": 128.5, "hostile": false, "identity": {"cell": {"grid_x": -2, "grid_y": -9, "kind": "exterior"}, "content_file": "Morrowind.esm", "display_name": "Draren Thiralas", "kind": "npc", "record_id": "draren thiralas", "refnum": {"content_file": 0, "index": 918}}, "scene_eligible": true}]},
+    "playthrough_id": "10000000-0000-4000-8000-000000000002",
+    "request_id": "10000000-0000-4000-8000-000000000004",
+    "runtime_generation": 4,
+    "schema": "lorkhan.gamedata.v1",
+    "session_id": "10000000-0000-4000-8000-000000000005",
+    "type": "nearby_actors"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json"
+}

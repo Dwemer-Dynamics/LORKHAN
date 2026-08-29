@@ -46,7 +46,7 @@ jobs:
         run: cmake -S . -B build/native -G "Visual Studio 17 2022" -A x64
       - name: Build standalone native core and tests
         shell: pwsh
-        run: cmake --build build/native --target almsivi_core almsivi_native_tests --config Release
+        run: cmake --build build/native --target lorkhan_core lorkhan_native_tests --config Release
       - name: Test standalone native core
         shell: pwsh
-        run: ctest --test-dir build/native --build-config Release --output-on-failure -R '^almsivi-native$'
+        run: ctest --test-dir build/native --build-config Release --output-on-failure -R '^lorkhan-native$'

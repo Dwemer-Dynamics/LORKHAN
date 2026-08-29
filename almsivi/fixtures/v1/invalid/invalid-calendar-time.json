@@ -1,5 +1,0 @@
-{
-  "description": "Syntactically shaped but impossible calendar timestamp",
-  "instance": {"action_id": "00000000-0000-4000-8000-000000000020", "completed_at": "2026-02-30T12:00:00Z", "generation": 7, "message_id": "00000000-0000-4000-8000-000000000040", "observed": {}, "reason_code": "package_started", "request_id": "00000000-0000-4000-8000-000000000041", "schema": "almsivi.action-result.v1", "session_id": "00000000-0000-4000-8000-000000000007", "status": "succeeded", "turn_id": "00000000-0000-4000-8000-000000000008"},
-  "schema": "https://almsivi.invalid/schemas/v1/action-result.schema.json"
-}

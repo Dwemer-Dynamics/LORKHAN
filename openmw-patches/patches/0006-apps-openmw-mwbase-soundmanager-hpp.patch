@@ -1,5 +1,5 @@
 diff --git a/apps/openmw/mwbase/soundmanager.hpp b/apps/openmw/mwbase/soundmanager.hpp
-index 9b6b579c2ffc52431a974b0a5455a3f7da7f4e3e..0afd35d46ee76ca06115c6b12bc9195522066b21 100644
+index 9b6b579c2ffc52431a974b0a5455a3f7da7f4e3e..de9bc349ef44f6c788af8260f5dec015335a3c1e 100644
 --- a/apps/openmw/mwbase/soundmanager.hpp
 +++ b/apps/openmw/mwbase/soundmanager.hpp
 @@ -6,6 +6,7 @@
@@ -14,10 +14,10 @@ index 9b6b579c2ffc52431a974b0a5455a3f7da7f4e3e..0afd35d46ee76ca06115c6b12bc91955
          ///< Make an actor say some text.
          /// \param filename name of a sound file in the VFS
  
-+        virtual bool sayAlmsiviMedia(
++        virtual bool sayLorkhanMedia(
 +            const MWWorld::ConstPtr& reference, Files::IStreamPtr media, std::string_view name, float volumeBoost)
 +            = 0;
-+        ///< Play a natively verified ALMSIVI media stream without exposing a host path to Lua.
++        ///< Play a natively verified LORKHAN media stream without exposing a host path to Lua.
 +
          virtual void say(VFS::Path::NormalizedView filename) = 0;
          ///< Say some text, without an actor ref

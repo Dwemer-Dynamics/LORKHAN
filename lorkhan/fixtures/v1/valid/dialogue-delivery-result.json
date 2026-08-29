@@ -1,0 +1,31 @@
+{
+  "description": "Terminal dialogue delivery result",
+  "instance": {
+    "completed_at": "2026-07-19T20:00:02Z",
+    "dialogue_message_id": "00000000-0000-4000-8000-000000000034",
+    "generation": 7,
+    "message_id": "00000000-0000-4000-8000-000000000030",
+    "reason_code": "playback_completed",
+    "request_id": "00000000-0000-4000-8000-000000000031",
+    "schema": "lorkhan.dialogue-delivery-result.v1",
+    "session_id": "00000000-0000-4000-8000-000000000033",
+    "speaker": {
+      "cell": {
+        "grid_x": -2,
+        "grid_y": -9,
+        "kind": "exterior"
+      },
+      "content_file": "Morrowind.esm",
+      "display_name": "Fargoth",
+      "kind": "npc",
+      "record_id": "fargoth",
+      "refnum": {
+        "content_file": 0,
+        "index": 112
+      }
+    },
+    "status": "played",
+    "turn_id": "00000000-0000-4000-8000-000000000032"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/dialogue-delivery-result.schema.json"
+}
