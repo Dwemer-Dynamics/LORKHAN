@@ -1,15 +1,15 @@
 [CmdletBinding()]
 param(
-  [ValidateSet('control','patched')][string]$State = $env:ALMSIVI_PATCH_STATE,
-  [string]$Source = $env:ALMSIVI_SOURCE_DIR,
-  [string]$Build = $env:ALMSIVI_BUILD_DIR,
-  [string]$Install = $env:ALMSIVI_INSTALL_DIR,
-  [string]$Output = $env:ALMSIVI_OUTPUT_DIR,
-  [ValidateSet('Debug','RelWithDebInfo','Release')][string]$Config = $(if ($env:ALMSIVI_BUILD_CONFIG) { $env:ALMSIVI_BUILD_CONFIG } else { 'RelWithDebInfo' }),
-  [ValidateSet('msvc','clang')][string]$Compiler = $(if ($env:ALMSIVI_COMPILER) { $env:ALMSIVI_COMPILER } else { 'msvc' }),
-  [string]$Target = $env:ALMSIVI_BUILD_TARGET,
-  [string]$TestTarget = $env:ALMSIVI_REQUIRED_TEST_TARGET,
-  [string]$ExpectedPin = $(if ($env:ALMSIVI_EXPECTED_PIN) { $env:ALMSIVI_EXPECTED_PIN } else { 'f4bec41444214a7903bebd178389ca22ca13f646' }),
+  [ValidateSet('control','patched')][string]$State = $env:LORKHAN_PATCH_STATE,
+  [string]$Source = $env:LORKHAN_SOURCE_DIR,
+  [string]$Build = $env:LORKHAN_BUILD_DIR,
+  [string]$Install = $env:LORKHAN_INSTALL_DIR,
+  [string]$Output = $env:LORKHAN_OUTPUT_DIR,
+  [ValidateSet('Debug','RelWithDebInfo','Release')][string]$Config = $(if ($env:LORKHAN_BUILD_CONFIG) { $env:LORKHAN_BUILD_CONFIG } else { 'RelWithDebInfo' }),
+  [ValidateSet('msvc','clang')][string]$Compiler = $(if ($env:LORKHAN_COMPILER) { $env:LORKHAN_COMPILER } else { 'msvc' }),
+  [string]$Target = $env:LORKHAN_BUILD_TARGET,
+  [string]$TestTarget = $env:LORKHAN_REQUIRED_TEST_TARGET,
+  [string]$ExpectedPin = $(if ($env:LORKHAN_EXPECTED_PIN) { $env:LORKHAN_EXPECTED_PIN } else { 'f4bec41444214a7903bebd178389ca22ca13f646' }),
   [long]$Epoch = $(if ($env:SOURCE_DATE_EPOCH) { [long]$env:SOURCE_DATE_EPOCH } else { 1784442566 }),
   [Parameter(ValueFromRemainingArguments=$true)][string[]]$CMakeArgument
 )
@@ -32,13 +32,18 @@ foreach ($path in @($Build,$Install,$Output)) { New-Item -ItemType Directory -Fo
 if ($Build.StartsWith($Source + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or $Install.StartsWith($Source + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'build and install roots must be outside source root' }
 $env:SOURCE_DATE_EPOCH = "$Epoch"; $env:TZ = 'UTC'; $env:LANG = 'C'; $env:LC_ALL = 'C'
 $generatorArgs = @('-G','Visual Studio 17 2022','-A','x64')
-$mapFlags = "/Brepro /pathmap:$Source=C:\src\almsivi /pathmap:$Build=C:\src\almsivi-build"
-if ($Compiler -eq 'clang') { $generatorArgs += @('-T','ClangCL'); $mapFlags = "-Xclang -ffile-prefix-map=$Source=C:/src/almsivi -Xclang -fdebug-prefix-map=$Source=C:/src/almsivi /Brepro" }
+$cFlags = '/Brepro'
+$cxxFlags = "/EHsc $cFlags"
+if ($Compiler -eq 'clang') {
+  $generatorArgs += @('-T','ClangCL')
+  $cFlags = "-Xclang -ffile-prefix-map=$Source=C:/src/lorkhan -Xclang -fdebug-prefix-map=$Source=C:/src/lorkhan /Brepro"
+  $cxxFlags = $cFlags
+}
 $manifest = Join-Path $Output "build-$State-$Compiler-$Config.txt"
 @("state=$State","config=$Config","compiler=$Compiler","source=$Source","build=$Build","install=$Install","pin=$ExpectedPin","epoch=$Epoch",'status_begin',$status,'status_end',(& cmake --version | Select-Object -First 1)) | Set-Content -Encoding utf8 $manifest
 $log = Join-Path $Output "build-$State-$Compiler-$Config.log"
-$productArgs = if ($State -eq 'patched') { @("-DALMSIVI_SOURCE_ROOT=$RepoRoot") } else { @() }
-$configure = @('-S',$Source,'-B',$Build) + $generatorArgs + @("-DCMAKE_INSTALL_PREFIX=$Install","-DCMAKE_C_FLAGS=$mapFlags","-DCMAKE_CXX_FLAGS=$mapFlags") + $productArgs + $CMakeArgument
+$productArgs = if ($State -eq 'patched') { @("-DLORKHAN_SOURCE_ROOT=$RepoRoot") } else { @() }
+$configure = @('-S',$Source,'-B',$Build) + $generatorArgs + @("-DCMAKE_INSTALL_PREFIX=$Install","-DCMAKE_C_FLAGS=$cFlags","-DCMAKE_CXX_FLAGS=$cxxFlags") + $productArgs + $CMakeArgument
 & cmake @configure 2>&1 | Tee-Object -FilePath $log
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $buildArgs = @('--build',$Build,'--config',$Config); if ($Target) { $buildArgs += @('--target',$Target) }

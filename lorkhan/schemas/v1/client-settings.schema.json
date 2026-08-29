@@ -1,0 +1,75 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/client-settings.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "behavior": {
+      "additionalProperties": false,
+      "properties": {
+        "auto_greeting": {"type": "boolean"},
+        "boredom": {"type": "boolean"},
+        "boredom_delay_seconds": {"maximum": 86400, "minimum": 30, "type": "integer"},
+        "combat_bark_period_seconds": {"maximum": 300, "minimum": 5, "type": "integer"},
+        "combat_barks": {"type": "boolean"},
+        "rechat": {"type": "boolean"},
+        "end_conversation_cooldown_seconds": {"maximum": 300, "minimum": 0, "type": "integer"},
+        "open_rechat": {"type": "boolean"},
+        "rechat_allow_actions": {"type": "boolean"},
+        "rechat_delay_seconds": {"maximum": 3600, "minimum": 30, "type": "integer"},
+        "rechat_max_depth": {"maximum": 20, "minimum": 1, "type": "integer"},
+        "rechat_mode": {"enum": ["tight", "conversational", "group", "random"], "type": "string"},
+        "rechat_probability_percent": {"maximum": 100, "minimum": 0, "type": "integer"},
+        "rechat_strict_targeting": {"type": "boolean"}
+      },
+      "required": ["auto_greeting", "rechat", "rechat_delay_seconds", "rechat_max_depth", "rechat_probability_percent", "rechat_mode", "rechat_strict_targeting", "open_rechat", "rechat_allow_actions", "end_conversation_cooldown_seconds", "boredom", "boredom_delay_seconds", "combat_barks", "combat_bark_period_seconds"],
+      "type": "object"
+    },
+    "memory": {
+      "additionalProperties": false,
+      "properties": {
+        "knowledge_limit": {"maximum": 20, "minimum": 0, "type": "integer"},
+        "recent_turn_limit": {"maximum": 100, "minimum": 1, "type": "integer"}
+      },
+      "required": ["recent_turn_limit", "knowledge_limit"],
+      "type": "object"
+    },
+    "narrator": {
+      "additionalProperties": false,
+      "properties": {
+        "book_events": {"type": "boolean"},
+        "context_visibility": {"type": "boolean"},
+        "enabled": {"type": "boolean"},
+        "inline_mode": {"enum": ["Disabled", "Narrator", "NPC", "Text Only"], "type": "string"},
+        "name": {"maxLength": 128, "minLength": 1, "type": "string"},
+        "quest_events": {"type": "boolean"},
+        "random_events": {"type": "boolean"},
+        "welcome_events": {"type": "boolean"}
+      },
+      "required": ["enabled", "name", "context_visibility", "inline_mode", "welcome_events", "random_events", "quest_events", "book_events"],
+      "type": "object"
+    },
+    "presentation": {
+      "additionalProperties": false,
+      "properties": {
+        "show_status_hud": {"type": "boolean"},
+        "transcript_rows": {"maximum": 20, "minimum": 2, "type": "integer"},
+        "tts_volume_boost": {"maximum": 4, "minimum": 1, "type": "integer"}
+      },
+      "required": ["show_status_hud", "transcript_rows", "tts_volume_boost"],
+      "type": "object"
+    },
+    "safety": {
+      "additionalProperties": false,
+      "properties": {
+        "actions_enabled": {"type": "boolean"},
+        "allow_creatures": {"type": "boolean"},
+        "allow_hostile": {"type": "boolean"}
+      },
+      "required": ["actions_enabled", "allow_hostile", "allow_creatures"],
+      "type": "object"
+    },
+    "schema": {"const": "lorkhan.client-settings.v1", "type": "string"}
+  },
+  "required": ["schema", "behavior", "memory", "narrator", "presentation", "safety"],
+  "type": "object"
+}

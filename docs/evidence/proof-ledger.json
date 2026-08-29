@@ -62,8 +62,8 @@
       "claim": "Strict bounded JSON syntax parsing and contracted health/error response mapping pass in the current native CTest lane",
       "state": "AUTOMATED",
       "evidence": [
-        "components/almsivi/tests/native_tests.cpp",
-        "components/almsivi/fuzz/json_fuzz.cpp",
+        "components/lorkhan/tests/native_tests.cpp",
+        "components/lorkhan/fuzz/json_fuzz.cpp",
         "docs/evidence/local-acceptance-2026-08-03.md"
       ]
     },
@@ -83,7 +83,7 @@
       "evidence": [
         "docs/evidence/runs/3717eff-local/lua-structural.json",
         "docs/evidence/runs/3717eff-local/lua-structural.txt",
-        "almsivi/tests/run.py",
+        "lorkhan/tests/run.py",
         "docs/evidence/local-acceptance-2026-08-03.md"
       ]
     },
@@ -92,7 +92,7 @@
       "claim": "The 47-test Lua suite passes under Lua 5.1 against the fake OpenMW harness at client commit b60908ed18044271fa615a233e120b15d288f464",
       "state": "AUTOMATED",
       "evidence": [
-        "almsivi/files/scripts/ALMSIVI/tests/run.lua",
+        "lorkhan/files/scripts/LORKHAN/tests/run.lua",
         "scripts/test/lua-unix.sh",
         "scripts/test/lua-windows.ps1",
         "docs/evidence/local-acceptance-2026-08-03.md"
@@ -138,7 +138,7 @@
     },
     {
       "id": "engine-integration",
-      "claim": "Exact-pin ALMSIVI OpenMW 0.51.0 Windows x64 Release product build and local deployment pass; no unmodified control build or formal release package is claimed",
+      "claim": "Exact-pin LORKHAN OpenMW 0.51.0 Windows x64 Release product build and local deployment pass; no unmodified control build or formal release package is claimed",
       "state": "WINDOWS BUILD PROVEN",
       "evidence": [
         "openmw-patches/patch-manifest.json",
@@ -152,8 +152,8 @@
       "claim": "Plaintext loopback Beast transport includes request-scoped executor cancellation, typed-error correlation, and fixed opaque media GET with strict HTTP, media, and cache-entry verification plus atomic corrupt-entry replacement; peer-authentication hardening and engine playback remain unclaimed",
       "state": "AUTOMATED",
       "evidence": [
-        "components/almsivi/src/beast_transport.cpp",
-        "components/almsivi/tests/beast_transport_tests.cpp",
+        "components/lorkhan/src/beast_transport.cpp",
+        "components/lorkhan/tests/beast_transport_tests.cpp",
         "docs/evidence/completion-ledger.md"
       ]
     },

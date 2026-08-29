@@ -1,0 +1,18 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/dialogue-delivery-result-accepted.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "dialogue_message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "duplicate": {"type": "boolean"},
+    "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
+    "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "schema": {"const": "lorkhan.dialogue-delivery-result.accepted.v1", "type": "string"},
+    "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "status": {"enum": ["expired", "failed", "interrupted", "played"], "type": "string"},
+    "turn_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+  },
+  "required": ["schema", "message_id", "request_id", "dialogue_message_id", "turn_id", "session_id", "generation", "status", "duplicate"],
+  "type": "object"
+}

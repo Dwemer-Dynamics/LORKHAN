@@ -1,0 +1,20 @@
+{
+  "description": "UTF-8 Journal observation without an AI quest or autonomy directive",
+  "instance": {
+    "audience": [],
+    "event_id": "20000000-0000-4000-8000-000000000001",
+    "event_name": "journal.observed",
+    "game": "tes3",
+    "generation": 12,
+    "installation_id": "10000000-0000-4000-8000-000000000001",
+    "observed_at": "2026-08-09T18:00:01Z",
+    "payload": {"entries": [{"journal_id": "A1_1_FindSpymaster", "stage": 10, "status": "active", "text": "Caius Cosades asked me to visit the informants in Vivec’s cantons.", "title": "Report to Caius Cosades"}]},
+    "playthrough_id": "10000000-0000-4000-8000-000000000002",
+    "request_id": "10000000-0000-4000-8000-000000000004",
+    "runtime_generation": 4,
+    "schema": "lorkhan.event.v1",
+    "session_id": "10000000-0000-4000-8000-000000000005",
+    "turn_id": "10000000-0000-4000-8000-000000000006"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/event.schema.json"
+}

@@ -1,5 +1,5 @@
 diff --git a/apps/openmw/CMakeLists.txt b/apps/openmw/CMakeLists.txt
-index 17c4e96b16903e518958c63923e4a7cc9a7d816f..2aa48a96e83f7b5d27b7bd30baafeb7184bac273 100644
+index 17c4e96b16903e518958c63923e4a7cc9a7d816f..473daaf26b238d2d986d31047614067948670d78 100644
 --- a/apps/openmw/CMakeLists.txt
 +++ b/apps/openmw/CMakeLists.txt
 @@ -14,6 +14,12 @@
@@ -7,11 +7,11 @@ index 17c4e96b16903e518958c63923e4a7cc9a7d816f..2aa48a96e83f7b5d27b7bd30baafeb71
      profile.hpp
  )
 +
-+if(NOT ALMSIVI_SOURCE_ROOT)
-+    message(FATAL_ERROR "ALMSIVI_SOURCE_ROOT must point to the ALMSIVI source checkout")
++if(NOT LORKHAN_SOURCE_ROOT)
++    message(FATAL_ERROR "LORKHAN_SOURCE_ROOT must point to the LORKHAN source checkout")
 +endif()
-+set(ALMSIVI_WITH_BOOST_BEAST ON CACHE BOOL "" FORCE)
-+add_subdirectory(${ALMSIVI_SOURCE_ROOT}/components/almsivi ${CMAKE_BINARY_DIR}/almsivi)
++set(LORKHAN_WITH_BOOST_BEAST ON CACHE BOOL "" FORCE)
++add_subdirectory(${LORKHAN_SOURCE_ROOT}/components/lorkhan ${CMAKE_BINARY_DIR}/lorkhan)
  
  source_group(apps/openmw FILES main.cpp androidmain.cpp ${OPENMW_SOURCES} ${OPENMW_HEADERS} ${OPENMW_RESOURCES})
  
@@ -20,7 +20,7 @@ index 17c4e96b16903e518958c63923e4a7cc9a7d816f..2aa48a96e83f7b5d27b7bd30baafeb71
  add_openmw_dir (mwlua
      luamanagerimp object objectlists userdataserializer luaevents engineevents objectvariant loadscripts contentbindings
 -    context menuscripts globalscripts localscripts playerscripts luabindings objectbindings cellbindings coremwscriptbindings
-+    context menuscripts globalscripts localscripts playerscripts luabindings almsivibindings objectbindings cellbindings coremwscriptbindings
++    context menuscripts globalscripts localscripts playerscripts luabindings lorkhanbindings objectbindings cellbindings coremwscriptbindings
      mwscriptbindings camerabindings vfsbindings uibindings soundbindings inputbindings nearbybindings dialoguebindings
      postprocessingbindings stats recordstore debugbindings corebindings worldbindings worker landbindings magicbindings factionbindings
      classbindings itemdata inputprocessor animationbindings birthsignbindings racebindings markupbindings weatherbindings regionbindings
@@ -28,7 +28,7 @@ index 17c4e96b16903e518958c63923e4a7cc9a7d816f..2aa48a96e83f7b5d27b7bd30baafeb71
      osg-ffmpeg-videoplayer
      oics
      components
-+    almsivi_core
++    lorkhan_core
  )
  
  if (MSVC AND PRECOMPILE_HEADERS_WITH_MSVC)

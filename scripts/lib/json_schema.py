@@ -1,4 +1,4 @@
-"""Small dependency-free validator for the JSON Schema keywords used by ALMSIVI ledgers."""
+"""Small dependency-free validator for the JSON Schema keywords used by LORKHAN ledgers."""
 from __future__ import annotations
 
 import re

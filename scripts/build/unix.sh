@@ -5,10 +5,10 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 usage() {
   cat <<'EOF'
 Usage: unix.sh --state control|patched [options] [-- <extra CMake configure arguments>]
-  --source DIR       source root (required; ALMSIVI_SOURCE_DIR)
-  --build DIR        build root (required; ALMSIVI_BUILD_DIR)
-  --install DIR      install root (required; ALMSIVI_INSTALL_DIR)
-  --output DIR       logs/manifests root (required; ALMSIVI_OUTPUT_DIR)
+  --source DIR       source root (required; LORKHAN_SOURCE_DIR)
+  --build DIR        build root (required; LORKHAN_BUILD_DIR)
+  --install DIR      install root (required; LORKHAN_INSTALL_DIR)
+  --output DIR       logs/manifests root (required; LORKHAN_OUTPUT_DIR)
   --config NAME      Debug, RelWithDebInfo, or Release (default: RelWithDebInfo)
   --compiler NAME    gcc or clang (default: gcc)
   --target NAME      build target (optional)
@@ -19,18 +19,18 @@ Usage: unix.sh --state control|patched [options] [-- <extra CMake configure argu
 EOF
 }
 
-STATE=${ALMSIVI_PATCH_STATE:-}
-SOURCE=${ALMSIVI_SOURCE_DIR:-}
-BUILD=${ALMSIVI_BUILD_DIR:-}
-INSTALL=${ALMSIVI_INSTALL_DIR:-}
-OUTPUT=${ALMSIVI_OUTPUT_DIR:-}
-CONFIG=${ALMSIVI_BUILD_CONFIG:-RelWithDebInfo}
-COMPILER=${ALMSIVI_COMPILER:-gcc}
-TARGET=${ALMSIVI_BUILD_TARGET:-}
-TEST_TARGET=${ALMSIVI_REQUIRED_TEST_TARGET:-}
-PIN=${ALMSIVI_EXPECTED_PIN:-f4bec41444214a7903bebd178389ca22ca13f646}
+STATE=${LORKHAN_PATCH_STATE:-}
+SOURCE=${LORKHAN_SOURCE_DIR:-}
+BUILD=${LORKHAN_BUILD_DIR:-}
+INSTALL=${LORKHAN_INSTALL_DIR:-}
+OUTPUT=${LORKHAN_OUTPUT_DIR:-}
+CONFIG=${LORKHAN_BUILD_CONFIG:-RelWithDebInfo}
+COMPILER=${LORKHAN_COMPILER:-gcc}
+TARGET=${LORKHAN_BUILD_TARGET:-}
+TEST_TARGET=${LORKHAN_REQUIRED_TEST_TARGET:-}
+PIN=${LORKHAN_EXPECTED_PIN:-f4bec41444214a7903bebd178389ca22ca13f646}
 EPOCH=${SOURCE_DATE_EPOCH:-1784442566}
-GENERATOR=${ALMSIVI_GENERATOR:-Ninja}
+GENERATOR=${LORKHAN_GENERATOR:-Ninja}
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -75,7 +75,7 @@ case "$INSTALL/" in "$SOURCE/"*) printf 'error: install root must be outside sou
 
 export SOURCE_DATE_EPOCH=$EPOCH TZ=UTC LC_ALL=C LANG=C
 export CC CXX
-MAP="-ffile-prefix-map=$SOURCE=/usr/src/almsivi -fdebug-prefix-map=$SOURCE=/usr/src/almsivi -ffile-prefix-map=$BUILD=/usr/src/almsivi-build -fdebug-prefix-map=$BUILD=/usr/src/almsivi-build"
+MAP="-ffile-prefix-map=$SOURCE=/usr/src/lorkhan -fdebug-prefix-map=$SOURCE=/usr/src/lorkhan -ffile-prefix-map=$BUILD=/usr/src/lorkhan-build -fdebug-prefix-map=$BUILD=/usr/src/lorkhan-build"
 export CFLAGS="${CFLAGS:+$CFLAGS }$MAP"
 export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }$MAP"
 export LDFLAGS="${LDFLAGS:-}"
@@ -98,7 +98,7 @@ run_logged() {
   "$CC" --version | sed -n '1p'
 } > "$MANIFEST"
 
-if [ "$STATE" = patched ]; then set -- -DALMSIVI_SOURCE_ROOT="$ROOT" "$@"; fi
+if [ "$STATE" = patched ]; then set -- -DLORKHAN_SOURCE_ROOT="$ROOT" "$@"; fi
 run_logged cmake -S "$SOURCE" -B "$BUILD" -G "$GENERATOR" -DCMAKE_BUILD_TYPE="$CONFIG" -DCMAKE_INSTALL_PREFIX="$INSTALL" -DCMAKE_C_FLAGS="$CFLAGS" -DCMAKE_CXX_FLAGS="$CXXFLAGS" "$@"
 if [ -n "$TARGET" ]; then run_logged cmake --build "$BUILD" --config "$CONFIG" --target "$TARGET"; else run_logged cmake --build "$BUILD" --config "$CONFIG"; fi
 if [ -n "$TEST_TARGET" ]; then

@@ -8,8 +8,8 @@ from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
-from almsivi_foundation import FoundationError, read_json, validate_pin
-from almsivi_packaging import PackagingError, tracked_implementation_paths, validate_provenance
+from lorkhan_foundation import FoundationError, read_json, validate_pin
+from lorkhan_packaging import PackagingError, tracked_implementation_paths, validate_provenance
 from json_schema import SchemaError, validate
 from openmw_patches import load_manifest, validate_manifest
 

@@ -15,7 +15,7 @@ Supported configurations are `Debug`, `RelWithDebInfo`, and `Release`. Unix sele
 Online prefetch is a separate, explicit operation:
 
 ```sh
-ALMSIVI_CACHE_DIR=/absolute/cache ALMSIVI_RUN_MANIFEST=/absolute/runs/prefetch.json scripts/bootstrap/prefetch-unix.sh
+LORKHAN_CACHE_DIR=/absolute/cache LORKHAN_RUN_MANIFEST=/absolute/runs/prefetch.json scripts/bootstrap/prefetch-unix.sh
 ```
 
 PowerShell uses the equivalent environment variables with `scripts/bootstrap/prefetch-windows.ps1`. Prefetch verifies the tagged commit and creates a content-addressed bundle plus index. The generated cache is deliberately not committed.
@@ -23,7 +23,7 @@ PowerShell uses the equivalent environment variables with `scripts/bootstrap/pre
 Bootstrap is strictly offline: it accepts no repository override, verifies the cached SHA-256 and exact pin, materializes a source with no remote, and records a manifest.
 
 ```sh
-ALMSIVI_CACHE_DIR=/absolute/cache ALMSIVI_SOURCE_DIR=/absolute/openmw ALMSIVI_RUN_MANIFEST=/absolute/runs/bootstrap.json scripts/bootstrap/unix.sh
+LORKHAN_CACHE_DIR=/absolute/cache LORKHAN_SOURCE_DIR=/absolute/openmw LORKHAN_RUN_MANIFEST=/absolute/runs/bootstrap.json scripts/bootstrap/unix.sh
 ```
 
 An empty destination is required. Cache transfer into an offline environment is an operator responsibility; preserve the entire cache tree and verify it through bootstrap rather than trusting transport metadata.
@@ -39,7 +39,7 @@ scripts/build/unix.sh --state patched --source /absolute/openmw-patched --build 
 ./scripts/build/windows.ps1 -State control -Source C:\work\openmw -Build C:\work\build-control -Install C:\work\install-control -Output C:\work\results\control -Config Release -Compiler msvc
 ```
 
-A declared `--test-target`/`-TestTarget` is required and fails when absent. Without one, CTest runs only when it discovers tests; zero tests emits a skip note and is not proof. Lua wrappers similarly run discovered `*_test.lua` files only when an interpreter and test root exist. Set `ALMSIVI_REQUIRE_LUA_TESTS=1` to turn absence into failure.
+A declared `--test-target`/`-TestTarget` is required and fails when absent. Without one, CTest runs only when it discovers tests; zero tests emits a skip note and is not proof. Lua wrappers similarly run discovered `*_test.lua` files only when an interpreter and test root exist. Set `LORKHAN_REQUIRE_LUA_TESTS=1` to turn absence into failure.
 
 The independent native and Lua entry points are:
 

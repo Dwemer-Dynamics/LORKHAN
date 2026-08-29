@@ -1,12 +1,12 @@
 diff --git a/apps/openmw/mwlua/luabindings.cpp b/apps/openmw/mwlua/luabindings.cpp
-index dc20205cbe15f17230b87cea60a6c4276972f0a6..f769388873042259cbbdb30a3f022984f6550b75 100644
+index dc20205cbe15f17230b87cea60a6c4276972f0a6..2340a3f7845c1939d132a976345792973c473c90 100644
 --- a/apps/openmw/mwlua/luabindings.cpp
 +++ b/apps/openmw/mwlua/luabindings.cpp
 @@ -7,6 +7,7 @@
  #include "../mwbase/world.hpp"
  #include "../mwworld/datetimemanager.hpp"
  
-+#include "almsivibindings.hpp"
++#include "lorkhanbindings.hpp"
  #include "animationbindings.hpp"
  #include "camerabindings.hpp"
  #include "cellbindings.hpp"
@@ -14,7 +14,7 @@ index dc20205cbe15f17230b87cea60a6c4276972f0a6..f769388873042259cbbdb30a3f022984
              { "openmw.core", initCorePackage(context) },
              { "openmw.types", initTypesPackage(context) },
              { "openmw.world", initWorldPackage(context) },
-+            { "openmw.almsivi", initAlmsiviPackage(context) },
++            { "openmw.lorkhan", initLorkhanPackage(context) },
          };
      }
  
@@ -22,7 +22,7 @@ index dc20205cbe15f17230b87cea60a6c4276972f0a6..f769388873042259cbbdb30a3f022984
              { "openmw.core", initCorePackage(context) },
              { "openmw.types", initTypesPackage(context) },
              { "openmw.nearby", initNearbyPackage(context) },
-+            { "openmw.almsivi", initAlmsiviCustomPackageLoader(context) },
++            { "openmw.lorkhan", initLorkhanCustomPackageLoader(context) },
          };
      }
  
@@ -30,6 +30,6 @@ index dc20205cbe15f17230b87cea60a6c4276972f0a6..f769388873042259cbbdb30a3f022984
              { "openmw.input", initInputPackage(context) },
              { "openmw.postprocessing", initPostprocessingPackage(context) },
              { "openmw.ui", initUserInterfacePackage(context) },
-+            { "openmw.almsivi", initAlmsiviPackage(context) },
++            { "openmw.lorkhan", initLorkhanPackage(context) },
          };
      }

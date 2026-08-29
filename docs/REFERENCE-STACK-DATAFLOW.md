@@ -1,4 +1,4 @@
-# Reference stack and ALMSIVI data flow
+# Reference stack and LORKHAN data flow
 
 This is implementation context for how CHIM, HerikaServer, Dialectic, DialecticServer, SYNTH and
 OpenMW divide work. It defines behaviors and authority boundaries to preserve; it is not permission
@@ -25,8 +25,8 @@ CHIM/Dialectic-style systems have two physical sides:
   character/world context and prompts, calls LLM/STT/TTS providers, manages memories/profiles/actions,
   serves media and exposes a browser management UI. Workers perform slower derived tasks.
 
-ALMSIVI keeps this separation. OpenMW replaces Bethesda executable/extender/Papyrus integration;
-ALMSIVIserver replaces game-specific Fallout/Skyrim semantics while preserving mature server product
+LORKHAN keeps this separation. OpenMW replaces Bethesda executable/extender/Papyrus integration;
+LORKHANserver replaces game-specific Fallout/Skyrim semantics while preserving mature server product
 outcomes. Provider keys and database access never cross into the game runtime.
 
 ## Reference setup sequence
@@ -38,7 +38,7 @@ outcomes. Provider keys and database access never cross into the game runtime.
 5. Start game: client emits init/capabilities and initial world/character state.
 6. Server binds the session to a playthrough and returns current safe configuration.
 
-ALMSIVI adapts this to a side-by-side OpenMW package, `ALMSIVI.omwscripts`, a server-generated pairing
+LORKHAN adapts this to a side-by-side OpenMW package, `LORKHAN.omwscripts`, a server-generated pairing
 token and a separate OpenMW config profile. There is no F4SE/NVSE/SKSE loader, Papyrus polling bridge,
 ESP requirement, or credential in Lua.
 
@@ -69,7 +69,7 @@ sequenceDiagram
 
 Important invariants are source-event-first persistence, explicit actor/audience identity, bounded
 context, correlated response, game-side authority over actual engine action, and a terminal result
-return. ALMSIVI preserves them with strict v1 JSON and generations rather than legacy tuples/files.
+return. LORKHAN preserves them with strict v1 JSON and generations rather than legacy tuples/files.
 
 ## Client initialization and context maintenance
 
@@ -78,7 +78,7 @@ current location/time, nearby/active actors, target, equipment/state, quests, lo
 capabilities. They update this on lifecycle and meaningful world changes rather than trusting the
 server to infer the current game.
 
-ALMSIVI mapping:
+LORKHAN mapping:
 
 - OpenMW engine handlers begin/rebind sessions on player add/load/new game and discover active actors.
 - GLOBAL Lua owns a stable registry and takes full/delta snapshots under strict budgets.
@@ -98,9 +98,9 @@ Reference servers typically combine:
 - current game context and active action-result state;
 - provider/model configuration and safety/size limits.
 
-ALMSIVIserver retains those systems and translates the domain to Morrowind/TES3/OpenMW. The client
+LORKHANserver retains those systems and translates the domain to Morrowind/TES3/OpenMW. The client
 never assembles provider prompts, stores provider keys or decides a model's authority. The server does
-not invent engine success: it requests a typed action and waits for ALMSIVI's observed result.
+not invent engine success: it requests a typed action and waits for LORKHAN's observed result.
 
 ## Response, speech, and action return
 
@@ -108,7 +108,7 @@ Reference clients stream or poll response text, assign a speaker, display subtit
 play it on the correct actor. They may execute a structured action and send its outcome back so the
 character can react.
 
-ALMSIVI mapping:
+LORKHAN mapping:
 
 - Server exposes ordered long-poll events; native code validates them and Lua renders deltas.
 - Final utterance has explicit speaker/addressee/audience. Missing/stale actors cause delivery failure.
@@ -117,7 +117,7 @@ ALMSIVI mapping:
 - Action intent is schema/tier/expiry/actor/target/parameters, never code.
 - Lua verifies current state, actor script executes self-safe APIs on the game thread, and exactly one
   typed terminal result returns through server persistence.
-- Halt has reserved capacity and cancels transport, speech, queued actions and ALMSIVI-owned AI.
+- Halt has reserved capacity and cancels transport, speech, queued actions and LORKHAN-owned AI.
 
 ## Persistent server data flow
 
@@ -157,13 +157,13 @@ CHIM/Herika ecosystems may include plugins/quests/spells/scripts/assets that are
 native client and server. Dialectic similarly has game-content companions. Those packages illustrate
 why records and redistributed assets need separate provenance, load-order, save and acceptance gates.
 
-ALMSIVI needs no content records for its first product because `.omwscripts` and the engine API cover
+LORKHAN needs no content records for its first product because `.omwscripts` and the engine API cover
 core behavior. `CONTENT-ADDON-DEFERRED.md` defines the later original-content gate. Never import a
-Skyrim/Fallout content package or Bethesda asset into ALMSIVI.
+Skyrim/Fallout content package or Bethesda asset into LORKHAN.
 
 ## Component disposition
 
-| Reference capability/component | ALMSIVI owner | Disposition |
+| Reference capability/component | LORKHAN owner | Disposition |
 | --- | --- | --- |
 | Game extender/native lifecycle | OpenMW + bridge | Redesign for native OpenMW lifecycle and generations. |
 | Papyrus/temporary-file polling | None | Exclude; typed native bridge replaces it. |
@@ -172,20 +172,20 @@ Skyrim/Fallout content package or Bethesda asset into ALMSIVI.
 | Actor animation/voice/AI | CUSTOM actor Lua + engine | Preserve using self/event APIs and voice path. |
 | Game context collectors | GLOBAL Lua | Semantic TES3/OpenMW rewrite. |
 | FNV/Skyrim IDs/offsets/ABI | None | Exclude. Use RecordId/RefNum/content/cell identity. |
-| Event/prompt/provider pipeline | ALMSIVIserver | Import final Synthserver architecture, translate semantics. |
-| Profiles/memory/relationship/knowledge | ALMSIVIserver | Preserve and migrate. |
+| Event/prompt/provider pipeline | LORKHANserver | Import final Synthserver architecture, translate semantics. |
+| Profiles/memory/relationship/knowledge | LORKHANserver | Preserve and migrate. |
 | Narrator/diary/playback-gated rechat | Both | Preserve manual narrative behavior and action-free continuation with current-game safety in Lua. |
 | Boredom/greetings/combat barks/Background Life/ITT | None | Exclude; no scheduler, capability, worker, or model trigger. |
 | Model actions | Server policy + Lua execution | Preserve typed intent/result; new allowlist. |
-| Management UI/workers/backups | ALMSIVIserver | Preserve and rebrand/translate. |
+| Management UI/workers/backups | LORKHANserver | Preserve and rebrand/translate. |
 | ESP/ESM content | Deferred addon | Exclude from core; original records only after gate. |
 
-## Required end-to-end ALMSIVI flows
+## Required end-to-end LORKHAN flows
 
 ### Bootstrap and pairing
 
 Server setup creates database/config, generates token and prints/writes a redacted client config
-snippet. User imports it to ALMSIVI's OpenMW profile. Native bridge validates loopback, sends health
+snippet. User imports it to LORKHAN's OpenMW profile. Native bridge validates loopback, sends health
 and session init; server returns schema/capabilities/profile binding. Lua displays ready/offline/
 mismatch without learning the token.
 
@@ -243,7 +243,7 @@ At the pinned OpenMW tag, begin with:
 - `apps/openmw/CMakeLists.txt`, root `CMakeLists.txt`, `CI/before_script.msvc.sh` and `.gitlab-ci.yml`
   for target/dependencies/MSVC 2022 patterns;
 - `docs/source/reference/lua-scripting/` for API revision 129 contracts;
-- sibling ALMSIVIserver reference/migration documents for server paths and tests.
+- sibling LORKHANserver reference/migration documents for server paths and tests.
 
 Inspect the final SYNTH repositories only after their start gate, then pin exact paths/SHAs in the
 evidence map. Do not retain Fallout names as aliases merely to make an import compile.

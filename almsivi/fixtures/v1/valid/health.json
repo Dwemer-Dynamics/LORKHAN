@@ -1,5 +1,0 @@
-{
-  "description": "Healthy protocol endpoint",
-  "instance": {"schema": "almsivi.health.v1"},
-  "schema": "https://almsivi.invalid/schemas/v1/health.schema.json"
-}

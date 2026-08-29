@@ -2,7 +2,7 @@
 
 ## Decision
 
-The first ALMSIVI product uses `ALMSIVI.omwscripts` and the native bridge; it requires no `.esp`,
+The first LORKHAN product uses `LORKHAN.omwscripts` and the native bridge; it requires no `.esp`,
 `.esm`, or `.omwaddon`. OpenMW 0.51 supports dynamic Lua scripts and significant world/runtime APIs,
 so records are not a prerequisite for dialogue, UI, speech, context, memory or the initial action set.
 
@@ -25,7 +25,7 @@ or Fallout architecture.
 
 ```text
 content-addon/
-  ALMSIVI.omwaddon
+  LORKHAN.omwaddon
   source/                 # OpenMW-CS source/export inputs
   assets/                 # original or licensed only
   localization/
@@ -33,7 +33,7 @@ content-addon/
   LICENSES/
 ```
 
-Record IDs use a unique `almsivi_` namespace. Scripts remain in `scripts/ALMSIVI`. The addon has a
+Record IDs use a unique `lorkhan_` namespace. Scripts remain in `scripts/LORKHAN`. The addon has a
 schema/version capability announced to the server and a clean feature-disabled path when absent.
 
 ## Build and acceptance

@@ -1,4 +1,4 @@
-# Run ALMSIVI with Azure GPT-5.6 Sol in Claude Code
+# Run LORKHAN with Azure GPT-5.6 Sol in Claude Code
 
 This is the operator runbook. The project is evidence-gated, not scheduled: leave the worker running
 and resume it until the task stop condition is true. Do not start the implementation while SYNTH is
@@ -16,7 +16,7 @@ git -C ~/Projects/SYNTH status --short
 git -C ~/Projects/Synthserver status --short
 ```
 
-If either status prints files or either project is unfinished, continue SYNTH instead. ALMSIVI's
+If either status prints files or either project is unfinished, continue SYNTH instead. LORKHAN's
 worker is instructed to refuse source import until this gate is proven.
 
 ## 2. Prepare the two repositories
@@ -26,10 +26,10 @@ The repos should be sibling directories under the intentionally non-Git `~/Proje
 ```bash
 mkdir -p ~/Projects
 cd ~/Projects
-gh repo clone RANGROO/ALMSIVI
-gh repo clone RANGROO/ALMSIVIserver
-git -C ALMSIVI remote -v
-git -C ALMSIVIserver remote -v
+gh repo clone RANGROO/LORKHAN
+gh repo clone RANGROO/LORKHANserver
+git -C LORKHAN remote -v
+git -C LORKHANserver remote -v
 ```
 
 If the existing local clones are current and clean, use them instead of cloning again. Never nest
@@ -44,8 +44,8 @@ not paste it into the prompt, environment transcript, repository, task files or 
 On the Mac, a simple durable setup is:
 
 ```bash
-cd ~/Projects/ALMSIVI
-tmux new -s almsivi
+cd ~/Projects/LORKHAN
+tmux new -s lorkhan
 caffeinate -dimsu claude
 ```
 
@@ -53,7 +53,7 @@ If `tmux` is unavailable, install/use it or keep the terminal window open; `caff
 sleep while Claude Code is running. Detach from tmux with `Ctrl-b d` and later resume with:
 
 ```bash
-tmux attach -t almsivi
+tmux attach -t lorkhan
 ```
 
 Confirm inside Claude Code that the active custom model is the Azure GPT-5.6 Sol deployment already
@@ -65,7 +65,7 @@ Paste exactly:
 
 > Read `CLAUDEX-TASK.md` completely, then read every client and sibling-server document it requires.
 > Execute the assignment end to end using the approved Azure GPT-5.6 Sol deployment. The sibling is
-> `../ALMSIVIserver`. First prove the post-SYNTH start gate and record the final SYNTH/Synthserver
+> `../LORKHANserver`. First prove the post-SYNTH start gate and record the final SYNTH/Synthserver
 > SHAs. Use the documented parent/child ownership, keep worktrees and files disjoint, commit coherent
 > checkpoints locally, and continue until the task's stop condition is true. Do not push, publish,
 > release, deploy, expose a service, use live provider billing, modify reference repositories, or
@@ -104,10 +104,10 @@ data, saves or local configuration.
 Periodically check from a second read-only terminal:
 
 ```bash
-git -C ~/Projects/ALMSIVI status --short
-git -C ~/Projects/ALMSIVI log --oneline -8
-git -C ~/Projects/ALMSIVIserver status --short
-git -C ~/Projects/ALMSIVIserver log --oneline -8
+git -C ~/Projects/LORKHAN status --short
+git -C ~/Projects/LORKHAN log --oneline -8
+git -C ~/Projects/LORKHANserver status --short
+git -C ~/Projects/LORKHANserver log --oneline -8
 ```
 
 Ask the parent for a short status only when needed: current gate, last green command, next incomplete

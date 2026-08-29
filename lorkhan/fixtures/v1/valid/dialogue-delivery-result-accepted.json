@@ -1,0 +1,15 @@
+{
+  "description": "Dialogue delivery result acceptance",
+  "instance": {
+    "dialogue_message_id": "00000000-0000-4000-8000-000000000034",
+    "duplicate": false,
+    "generation": 7,
+    "message_id": "00000000-0000-4000-8000-000000000030",
+    "request_id": "00000000-0000-4000-8000-000000000031",
+    "schema": "lorkhan.dialogue-delivery-result.accepted.v1",
+    "session_id": "00000000-0000-4000-8000-000000000033",
+    "status": "played",
+    "turn_id": "00000000-0000-4000-8000-000000000032"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/dialogue-delivery-result-accepted.schema.json"
+}

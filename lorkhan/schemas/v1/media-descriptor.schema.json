@@ -1,0 +1,16 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/media-descriptor.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "bytes": {"maximum": 33554432, "minimum": 1, "type": "integer"},
+    "codec": {"enum": ["mp3", "ogg", "wav"], "type": "string"},
+    "duration_ms": {"minimum": 1, "type": "integer"},
+    "dialogue_message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "expires_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+    "media_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "sha256": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/sha256"}
+  },
+  "required": ["media_id", "dialogue_message_id", "sha256", "bytes", "codec", "duration_ms", "expires_at"],
+  "type": "object"
+}

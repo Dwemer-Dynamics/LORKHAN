@@ -1,0 +1,10 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/health.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "lorkhan.health.v1", "type": "string"}
+  },
+  "required": ["schema"],
+  "type": "object"
+}

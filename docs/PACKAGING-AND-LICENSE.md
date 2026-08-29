@@ -2,13 +2,13 @@
 
 ## License boundary
 
-OpenMW is GPLv3. ALMSIVI modifies and distributes the OpenMW program, so every runtime distribution
+OpenMW is GPLv3. LORKHAN modifies and distributes the OpenMW program, so every runtime distribution
 must preserve GPL notices and provide the exact corresponding source in a GPL-compliant manner. A
 private repository does not remove distribution obligations once binaries are shared.
 
 The Lua mod is distributed with the runtime under a GPLv3-compatible license selected in the first
 implementation provenance commit. Server licensing is inherited only after auditing the final
-Synthserver and every imported DialecticServer/HerikaServer file; original ALMSIVIserver code uses a
+Synthserver and every imported DialecticServer/HerikaServer file; original LORKHANserver code uses a
 compatible declared license. Unknown provenance blocks release, not implementation of an original
 replacement.
 
@@ -30,8 +30,8 @@ license or replace them with an independently authored implementation based on d
 
 ## Runtime archive allowlist
 
-The Windows runtime archive may contain only the ALMSIVI-branded OpenMW game executable and required
-runtime libraries/resources, ALMSIVI Lua mod/default config/schema, user documentation, license/
+The Windows runtime archive may contain only the LORKHAN-branded OpenMW game executable and required
+runtime libraries/resources, LORKHAN Lua mod/default config/schema, user documentation, license/
 copyright/notices/SBOM, build/version manifest and checksums. Exclude OpenMW-CS/editor/dev tools unless
 separately packaged and needed, plus all build caches/logs/dumps/saves/user config/secrets/provider
 payloads/media cache and proprietary game/third-party mod files.
@@ -39,7 +39,7 @@ payloads/media cache and proprietary game/third-party mod files.
 Installer behavior:
 
 - installs into a versioned side-by-side directory;
-- creates a separate ALMSIVI OpenMW configuration profile only with confirmation;
+- creates a separate LORKHAN OpenMW configuration profile only with confirmation;
 - discovers but never copies/uploads game data outside the user's chosen local path;
 - imports pairing configuration without displaying/logging the token;
 - backs up any file it edits and records an uninstall manifest;
@@ -47,7 +47,7 @@ Installer behavior:
 
 ## Corresponding source archive
 
-Include the exact OpenMW/ALMSIVI source used, full ALMSIVI changes/patch manifest, Lua source, CMake and
+Include the exact OpenMW/LORKHAN source used, full LORKHAN changes/patch manifest, Lua source, CMake and
 dependency acquisition/build/package scripts, schemas/fixtures, licenses/notices and instructions
 sufficient for a recipient to rebuild the distributed runtime. Pin dependency source/binary versions
 and preserve their licenses. A GitHub link alone is not the only source offer for a private/deletable

@@ -1,0 +1,20 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/dialogue-delivery-result.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "completed_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+    "dialogue_message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
+    "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "reason_code": {"maxLength": 128, "minLength": 1, "pattern": "^[a-z][a-z0-9_]{0,127}$", "type": "string"},
+    "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "schema": {"const": "lorkhan.dialogue-delivery-result.v1", "type": "string"},
+    "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "speaker": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+    "status": {"enum": ["expired", "failed", "interrupted", "played"], "type": "string"},
+    "turn_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+  },
+  "required": ["schema", "message_id", "request_id", "dialogue_message_id", "turn_id", "session_id", "generation", "speaker", "status", "reason_code", "completed_at"],
+  "type": "object"
+}

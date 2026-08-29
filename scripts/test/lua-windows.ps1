@@ -1,12 +1,12 @@
 [CmdletBinding()]
 param(
-  [string]$TestRoot = $env:ALMSIVI_LUA_TEST_ROOT,
+  [string]$TestRoot = $env:LORKHAN_LUA_TEST_ROOT,
   [switch]$Required
 )
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-if (-not $TestRoot) { $TestRoot = Join-Path $Root 'almsivi/files/scripts/ALMSIVI/tests' }
-if (-not $Required -and $env:ALMSIVI_REQUIRE_LUA_TESTS -eq '1') { $Required = $true }
+if (-not $TestRoot) { $TestRoot = Join-Path $Root 'lorkhan/files/scripts/LORKHAN/tests' }
+if (-not $Required -and $env:LORKHAN_REQUIRE_LUA_TESTS -eq '1') { $Required = $true }
 $Lua = if ($env:LUA) { Get-Command $env:LUA -ErrorAction SilentlyContinue } else { Get-Command luajit,lua54,lua5.4,lua5.3,lua -ErrorAction SilentlyContinue | Select-Object -First 1 }
 if (-not (Test-Path -LiteralPath $TestRoot -PathType Container)) {
   if ($Required) { throw "required Lua test root missing: $TestRoot" }

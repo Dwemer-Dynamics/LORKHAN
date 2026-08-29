@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
-from almsivi_foundation import FoundationError, canonical_json
+from lorkhan_foundation import FoundationError, canonical_json
 from openmw_patches import (apply_series, audit, build_artifacts, git_blob_oid, safe_upstream_path,
                             validate_manifest, validate_spec, verify_result, write_artifacts)
 

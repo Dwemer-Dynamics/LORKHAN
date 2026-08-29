@@ -20,11 +20,11 @@ if (-not [Net.IPAddress]::TryParse($addressText, [ref]$address) -or
     throw 'Could not resolve the WSL IPv4 address.'
 }
 
-# Replace only ALMSIVI's exact loopback mapping; do not touch other portproxy entries.
+# Replace only LORKHAN's exact loopback mapping; do not touch other portproxy entries.
 & netsh.exe interface portproxy delete v4tov4 listenaddress=127.0.0.1 listenport=$Port 2>$null | Out-Null
 & netsh.exe interface portproxy add v4tov4 listenaddress=127.0.0.1 listenport=$Port connectaddress=$addressText connectport=$Port | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Failed to configure the ALMSIVI WSL loopback proxy.' }
+if ($LASTEXITCODE -ne 0) { throw 'Failed to configure the LORKHAN WSL loopback proxy.' }
 
-$health = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/ALMSIVIserver/api/v1/health" -TimeoutSec 5
-if ($health.schema -ne 'almsivi.health.v1') { throw 'ALMSIVIserver did not pass the Windows loopback health check.' }
-Write-Output "ALMSIVIserver is available at http://127.0.0.1:$Port/ALMSIVIserver"
+$health = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/LORKHANserver/api/v1/health" -TimeoutSec 5
+if ($health.schema -ne 'lorkhan.health.v1') { throw 'LORKHANserver did not pass the Windows loopback health check.' }
+Write-Output "LORKHANserver is available at http://127.0.0.1:$Port/LORKHANserver"

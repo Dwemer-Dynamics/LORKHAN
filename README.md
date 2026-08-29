@@ -1,13 +1,13 @@
-# ALMSIVI
+# LORKHAN
 
-ALMSIVI is the OpenMW/Morrowind client for a CHIM- and Dialectic-style AI character system. It
+LORKHAN is the OpenMW/Morrowind client for a CHIM- and Dialectic-style AI character system. It
 combines a narrowly scoped OpenMW engine integration with an ordinary OpenMW Lua mod, and talks to
-the separate `RANGROO/ALMSIVIserver` backend over authenticated loopback HTTP.
+the separate `RANGROO/LORKHANserver` backend over authenticated loopback HTTP.
 
 ## Status
 
 The playable development stack is implemented through the no-game gate. The exact-pinned OpenMW
-0.51.0 engine builds with the restricted `openmw.almsivi` package and live authenticated Beast
+0.51.0 engine builds with the restricted `openmw.lorkhan` package and live authenticated Beast
 transport. The OpenMW Lua mod provides targeting, multi-actor conversation controls, typed conversation UI,
 bounded TES3 context collection, subtitles, TTS playback, interruption, `inspect.report`, owned
 `ai.follow`/stop/wander actions, and start/stop combat. Combat initiation is held for explicit player
@@ -29,13 +29,13 @@ is Windows x64. Linux x64 and macOS arm64 are build/test lanes; Android is defer
 
 ## Product shape
 
-- A side-by-side ALMSIVI-branded OpenMW build; it never overwrites stock OpenMW.
-- A minimal native `openmw.almsivi` package: typed asynchronous requests, media staging, status,
+- A side-by-side LORKHAN-branded OpenMW build; it never overwrites stock OpenMW.
+- A minimal native `openmw.lorkhan` package: typed asynchronous requests, media staging, status,
   cancellation, and no generic HTTP, shell, or filesystem access.
 - An OpenMW Lua mod owning targeting, conversations, custom UI, context collection, actor-local
   actions, save/load state, subtitles, and voice playback.
 - No Bethesda game data, saves, or third-party mod assets in source or release archives.
-- Vanilla dialogue remains available. ALMSIVI starts from its own configurable input and captures
+- Vanilla dialogue remains available. LORKHAN starts from its own configurable input and captures
   vanilla dialogue responses only as context.
 
 ## Start here
@@ -64,10 +64,10 @@ it into a content-addressed cache, verifies the bundle and tag, and writes a det
 manifest. All locations are configurable:
 
 ```bash
-ALMSIVI_CACHE_DIR=/safe/cache ALMSIVI_RUN_MANIFEST=/safe/runs/prefetch.json \
+LORKHAN_CACHE_DIR=/safe/cache LORKHAN_RUN_MANIFEST=/safe/runs/prefetch.json \
   ./scripts/bootstrap/prefetch-unix.sh
-ALMSIVI_CACHE_DIR=/safe/cache ALMSIVI_SOURCE_DIR=/safe/work/openmw \
-  ALMSIVI_RUN_MANIFEST=/safe/runs/bootstrap.json ./scripts/bootstrap/unix.sh
+LORKHAN_CACHE_DIR=/safe/cache LORKHAN_SOURCE_DIR=/safe/work/openmw \
+  LORKHAN_RUN_MANIFEST=/safe/runs/bootstrap.json ./scripts/bootstrap/unix.sh
 python3 ./scripts/evidence/validate.py
 cmake --preset foundation && cmake --build --preset foundation
 ```
@@ -127,7 +127,7 @@ the manifest.
 
 Strict Draft 2020-12 schemas, canonical positive/negative/hostile fixtures, deterministic local hashes,
 a standard-library discipline validator, and the loopback fake-server contract harness live under
-`almsivi/`. The durable run records seven passing loopback tests. They cover the local
+`lorkhan/`. The durable run records seven passing loopback tests. They cover the local
 contract and fake server only, not the Beast live wire or cross-repository parity. See
 `docs/PROTOCOL-CONTRACTS.md` for commands, scope, and contracts deliberately deferred rather than
 invented.

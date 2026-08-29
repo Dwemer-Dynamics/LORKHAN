@@ -2,19 +2,19 @@
 
 ## Policy
 
-ALMSIVI supports OpenMW-native mods and content order; it does not support MWSE-only behavior. A
-profile is proven only against a recorded list/version/manifest and exact ALMSIVI package. Third-party
-mods are never bundled. Compatibility fixes stay in ALMSIVI when general; list-specific adapters are
+LORKHAN supports OpenMW-native mods and content order; it does not support MWSE-only behavior. A
+profile is proven only against a recorded list/version/manifest and exact LORKHAN package. Third-party
+mods are never bundled. Compatibility fixes stay in LORKHAN when general; list-specific adapters are
 small, declared and tested without silently changing other profiles.
 
 The current Modding-OpenMW lists require OpenMW 0.51. The published Total Overhaul and Expanded
 Vanilla lists are intentionally large, useful stress tests rather than dependencies. Record list
-version/date at acceptance because these lists change independently of ALMSIVI.
+version/date at acceptance because these lists change independently of LORKHAN.
 
 ## Common matrix for every profile
 
 - startup/content load, new game, copied save load/save/reload and clean exit;
-- ALMSIVI target selection, overlay/controller input, vanilla dialogue coexistence;
+- LORKHAN target selection, overlay/controller input, vanilla dialogue coexistence;
 - solo/group text conversation, STT/TTS/subtitle/interrupt/halt;
 - added NPC/creature identity, cell/region/journal/faction/inventory/content context;
 - all enabled action families on vanilla and mod-added actors/items;
@@ -25,7 +25,7 @@ version/date at acceptance because these lists change independently of ALMSIVI.
 
 ## Profile A: minimal legal GOTY
 
-Morrowind, Tribunal and Bloodmoon data plus ALMSIVI only, on the pinned Windows x64 runtime. This is
+Morrowind, Tribunal and Bloodmoon data plus LORKHAN only, on the pinned Windows x64 runtime. This is
 the release-blocking functional baseline and the source of deterministic in-game smoke saves.
 
 ## Profile B: I Heart Vanilla
@@ -64,26 +64,26 @@ runtime support is claimed only after this profile, even if CI builds earlier.
 
 Install a current OpenMW-compatible voiceover mod such as Voices of Vvardenfell or the selected
 equivalent, plus representative popular OpenMW Lua UI/gameplay mods from the chosen lists. Test
-vanilla dialogue voices, ALMSIVI generated speech, subtitle ownership, simultaneous/interrupt policy,
-lip/loudness behavior, filenames/cache, script interfaces, input bindings and UI layers. ALMSIVI must
+vanilla dialogue voices, LORKHAN generated speech, subtitle ownership, simultaneous/interrupt policy,
+lip/loudness behavior, filenames/cache, script interfaces, input bindings and UI layers. LORKHAN must
 not suppress existing voice playback globally.
 
-## Profile H: ALMSIVI development helpers
+## Profile H: LORKHAN development helpers
 
 Keep a separate local profile containing H3lp Yours3lf, Follower Detection Util and Dynamic Camera.
-H3 is a compatibility/library probe rather than an ALMSIVI dependency. Follower Detection Util is an
+H3 is a compatibility/library probe rather than an LORKHAN dependency. Follower Detection Util is an
 optional provider for bounded follower/leader context through its published interface. Dynamic Camera
-is a camera/UI coexistence probe and does not replace ALMSIVI target authority. Record exact archive
-versions and hashes, keep every mod in its own `C:\Modlists\ALMSIVI\Mods` directory, and retain the
+is a camera/UI coexistence probe and does not replace LORKHAN target authority. Record exact archive
+versions and hashes, keep every mod in its own `C:\Modlists\LORKHAN\Mods` directory, and retain the
 minimal legal GOTY profile for release-blocking comparisons. The local Compatibility profile sets
-`user-data=.` so its saves and logs remain isolated. The ALMSIVI profile manager owns ordered `data=`
+`user-data=.` so its saves and logs remain isolated. The LORKHAN profile manager owns ordered `data=`
 and `content=` entries, reports loose-file conflicts with the final winning folder, validates missing
 paths/content, backs up the profile before saving, and starts the server/private client environment
 before handing off to the OpenMW launcher.
 
 ## Conflict rules
 
-1. Use unique `scripts/ALMSIVI` paths, interfaces, storage sections and semantic input actions.
+1. Use unique `scripts/LORKHAN` paths, interfaces, storage sections and semantic input actions.
 2. Do not override built-in or third-party interfaces when event/listener composition is possible.
 3. Never depend on load-order priority to bypass a conflict silently; detect/report required order.
 4. Capture ordered content through OpenMW, not by parsing a user's config heuristically in Lua.

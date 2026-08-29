@@ -1,4 +1,4 @@
-# ALMSIVI feature parity and completion matrix
+# LORKHAN feature parity and completion matrix
 
 The implementation ledger copies these rows and attaches evidence. `Keep` means required; `Adapt`
 means the user outcome remains but implementation is OpenMW-native; `Defer` has a defined later gate;
@@ -6,7 +6,7 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 
 ## Foundation and flow
 
-| Capability | Decision | ALMSIVI implementation / proof |
+| Capability | Decision | LORKHAN implementation / proof |
 | --- | --- | --- |
 | Lifecycle/init/health | Keep | OpenMW session/generation + native health round trip; fake E2E and in-game log/UI. |
 | Local server discovery | Adapt | Fixed loopback profile config and pairing token; no legacy file probing. |
@@ -76,7 +76,7 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 | --- | --- | --- |
 | Inspect/report and inventory check | Keep | Tier 0 bounded read-only reports. |
 | Follow/stop/approach/wait/travel/escort/wander | Keep | Tier 1 owned, bounded, same-cell API-129 packages. |
-| Start/stop combat | Keep | Start is Tier 2 confirmed; stop cancels only ALMSIVI-owned combat. |
+| Start/stop combat | Keep | Start is Tier 2 confirmed; stop cancels only LORKHAN-owned combat. |
 | Face and generic animation | Keep | Tier 1, allowlisted, bounded, and lifecycle-cancellable. |
 | Equip/unequip/use/consume | Keep | Tier 2, acting-NPC inventory and allowlisted equipment slots only. |
 | Give/take/pickup item or currency | Not Applicable | Local actor scripts lack safe global-object transfer authority. |
@@ -96,7 +96,7 @@ The exhaustive frozen-catalog disposition and API evidence are recorded in
 | Linux x64/macOS arm64 | Deferred and removed from CI. No package or compatibility claim until a separate platform plan is approved. |
 | Upstream control | Unmodified OpenMW pin builds/tests with same environment. |
 | Patch narrowness | Manifest and diff audit, API surface/security tests. |
-| Runtime archive | Deterministic ALMSIVI app, mod/default config, notices/SBOM; no unrelated apps/data. |
+| Runtime archive | Deterministic LORKHAN app, mod/default config, notices/SBOM; no unrelated apps/data. |
 | Corresponding source | Exact fork source/patches/build scripts/license/checksums. |
 | Minimal GOTY | Full dialogue/context/action/save/menu/cell/soak matrix. |
 | I Heart Vanilla | Install/profile manifest and regression matrix. |

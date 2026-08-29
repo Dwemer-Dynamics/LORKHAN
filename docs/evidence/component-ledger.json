@@ -28,7 +28,7 @@
     {
       "id": "protocol-harness",
       "source": "local v1 schemas and classified fixtures",
-      "target": "almsivi schemas, manifests, validators, and fake-server harness",
+      "target": "lorkhan schemas, manifests, validators, and fake-server harness",
       "owner": "protocol foundations",
       "state": "AUTOMATED",
       "proof": "docs/evidence/runs/3717eff-local/index.json; protocol.json, protocol-manifest.json, and loopback-tests.json"
@@ -36,15 +36,15 @@
     {
       "id": "native-pure",
       "source": "typed native client foundation",
-      "target": "components/almsivi and components/almsivi/tests/native_tests.cpp",
+      "target": "components/lorkhan and components/lorkhan/tests/native_tests.cpp",
       "owner": "native foundations",
       "state": "AUTOMATED",
       "proof": "docs/evidence/runs/3717eff-local/index.json; native.json; integrated OpenMW excluded"
     },
     {
       "id": "native-json-response-parsers",
-      "source": "independently authored strict parsing from documented ALMSIVI v1 contracts",
-      "target": "components/almsivi JSON syntax and contracted health/error response parsers",
+      "source": "independently authored strict parsing from documented LORKHAN v1 contracts",
+      "target": "components/lorkhan JSON syntax and contracted health/error response parsers",
       "owner": "native foundations",
       "state": "PLANNED",
       "proof": "implementation and local tests pass; durable clean-commit evidence is pending"
@@ -69,10 +69,10 @@
     {
       "id": "lua-structural",
       "source": "docs/LUA-MOD-ARCHITECTURE.md",
-      "target": "almsivi/files/scripts/ALMSIVI and source manifest",
+      "target": "lorkhan/files/scripts/LORKHAN and source manifest",
       "owner": "Lua foundations",
       "state": "AUTOMATED",
-      "proof": "docs/evidence/runs/3717eff-local/index.json; lua-structural.json and almsivi/tests/run.py; Lua runtime excluded"
+      "proof": "docs/evidence/runs/3717eff-local/index.json; lua-structural.json and lorkhan/tests/run.py; Lua runtime excluded"
     },
     {
       "id": "lua-runtime",
@@ -102,7 +102,7 @@
     {
       "id": "final-server-import",
       "source": "final tested SYNTH and Synthserver SHAs",
-      "target": "ALMSIVI and ALMSIVIserver migration and parity",
+      "target": "LORKHAN and LORKHANserver migration and parity",
       "owner": "cross-repository integration",
       "state": "DEFERRED",
       "proof": "docs/evidence/start-gate-blocker.md records predecessor gate metadata and test evidence only; no predecessor source was imported or semantically copied",

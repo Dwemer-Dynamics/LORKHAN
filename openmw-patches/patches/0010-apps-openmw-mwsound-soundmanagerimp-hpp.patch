@@ -1,12 +1,12 @@
 diff --git a/apps/openmw/mwsound/soundmanagerimp.hpp b/apps/openmw/mwsound/soundmanagerimp.hpp
-index 48ff293002779cac943d8f15daced46b982b7fa5..e2866cd27024fc3c223068d9aeacf1911e98dca2 100644
+index 48ff293002779cac943d8f15daced46b982b7fa5..4c2d2972b95259865fad9e964825712f98dc3638 100644
 --- a/apps/openmw/mwsound/soundmanagerimp.hpp
 +++ b/apps/openmw/mwsound/soundmanagerimp.hpp
 @@ -114,11 +114,12 @@
  
          // returns a decoder to start streaming, or nullptr if the sound was not found
          DecoderPtr loadVoice(VFS::Path::NormalizedView voicefile);
-+        DecoderPtr loadAlmsiviMedia(Files::IStreamPtr media, std::string_view name);
++        DecoderPtr loadLorkhanMedia(Files::IStreamPtr media, std::string_view name);
  
          SoundPtr getSoundRef();
          StreamPtr getStreamRef();
@@ -20,7 +20,7 @@ index 48ff293002779cac943d8f15daced46b982b7fa5..e2866cd27024fc3c223068d9aeacf191
          ///< Make an actor say some text.
          /// \param filename name of a sound file in the VFS
  
-+        bool sayAlmsiviMedia(const MWWorld::ConstPtr& reference, Files::IStreamPtr media, std::string_view name,
++        bool sayLorkhanMedia(const MWWorld::ConstPtr& reference, Files::IStreamPtr media, std::string_view name,
 +            float volumeBoost) override;
 +
          void say(VFS::Path::NormalizedView filename) override;

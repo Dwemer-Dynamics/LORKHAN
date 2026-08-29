@@ -1,0 +1,250 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/turn.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "content_fingerprint": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/content_fingerprint"
+    },
+    "created_at": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+    },
+    "generation": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+    },
+    "installation_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "message_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "payload": {
+      "additionalProperties": false,
+      "properties": {
+        "action_request": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.]{0,63}$",
+              "type": "string"
+            },
+            "parameters": {
+              "$comment": "Deferred catalog-validated action parameters; bounded envelope only.",
+              "maxProperties": 16,
+              "type": "object"
+            },
+            "target": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+            },
+            "tier": {
+              "maximum": 3,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "name",
+            "tier",
+            "parameters"
+          ],
+          "type": "object"
+        },
+        "audience": {
+          "items": {
+            "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+          },
+          "maxItems": 12,
+          "type": "array"
+        },
+        "context": {
+          "$comment": "Deferred bounded context snapshot shape.",
+          "maxProperties": 256,
+          "type": "object"
+        },
+        "input": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "stt",
+                "text"
+              ],
+              "type": "string"
+            },
+            "language": {
+              "maxLength": 35,
+              "minLength": 2,
+              "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+              "type": "string"
+            },
+            "mood": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "happy",
+                        "sad",
+                        "angry",
+                        "annoyed",
+                        "scared",
+                        "surprised",
+                        "confused",
+                        "suspicious",
+                        "playful",
+                        "flirty"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "custom": {
+                      "maxLength": 80,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000-\\u001F\\u007F]+$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "custom",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "custom"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },            "text": {
+              "maxLength": 16384,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "text",
+            "language"
+          ],
+          "type": "object"
+        },
+        "recent_action_results": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "action_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "completed_at": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+              },
+              "observed": {
+                "$comment": "Deferred typed observed result contents; bounded envelope only.",
+                "maxProperties": 64,
+                "type": "object"
+              },
+              "reason_code": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "cancelled",
+                  "failed",
+                  "rejected",
+                  "succeeded",
+                  "timed_out"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "action_id",
+              "status",
+              "reason_code",
+              "observed",
+              "completed_at"
+            ],
+            "type": "object"
+          },
+          "maxItems": 16,
+          "type": "array"
+        },
+        "speaker": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+        },
+        "target": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+        },
+        "ui_source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "input",
+        "speaker",
+        "target",
+        "audience",
+        "context",
+        "recent_action_results",
+        "ui_source"
+      ],
+      "type": "object"
+    },
+    "playthrough_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "profile_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "request_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "runtime": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/runtime"
+    },
+    "runtime_generation": {
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "schema": {
+      "const": "lorkhan.turn.v1",
+      "type": "string"
+    },
+    "session_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "turn_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    }
+  },
+  "required": [
+    "schema",
+    "message_id",
+    "request_id",
+    "turn_id",
+    "installation_id",
+    "profile_id",
+    "playthrough_id",
+    "session_id",
+    "generation",
+    "created_at",
+    "runtime",
+    "runtime_generation",
+    "content_fingerprint",
+    "payload"
+  ],
+  "type": "object"
+}

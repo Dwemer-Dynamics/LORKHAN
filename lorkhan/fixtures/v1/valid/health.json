@@ -1,0 +1,5 @@
+{
+  "description": "Healthy protocol endpoint",
+  "instance": {"schema": "lorkhan.health.v1"},
+  "schema": "https://lorkhan.invalid/schemas/v1/health.schema.json"
+}

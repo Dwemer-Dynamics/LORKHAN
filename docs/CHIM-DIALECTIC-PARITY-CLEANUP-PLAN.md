@@ -1,4 +1,4 @@
-# ALMSIVI CHIM/Dialectic parity cleanup plan
+# LORKHAN CHIM/Dialectic parity cleanup plan
 
 Status: active implementation record based on a live client, server, browser, protocol, and test audit on 2026-08-03.
 
@@ -8,17 +8,17 @@ Scope override for this implementation goal: timer-driven autonomy is excluded. 
 
 ## 1. Target outcome
 
-ALMSIVI should deliver the same understandable product shape as CHIM and Dialectic while remaining native to Morrowind and OpenMW:
+LORKHAN should deliver the same understandable product shape as CHIM and Dialectic while remaining native to Morrowind and OpenMW:
 
 - The browser UI uses the pinned HerikaServer presentation baseline 1:1 for its shell, navigation, page structure, controls, assets, CSS behavior, density, and responsive layout.
-- Browser controls use ALMSIVI's typed PHP services, PostgreSQL repositories, browser session, and CSRF workflows.
+- Browser controls use LORKHAN's typed PHP services, PostgreSQL repositories, browser session, and CSRF workflows.
 - In-game interaction reaches outcome parity with the applicable CHIM/Dialectic controls: discoverable hotkeys, targeting, text conversation, response management, TTS, HUD/history/diagnostics, profile/model selection, agent controls, context, and actions.
 - Settings resolve predictably through Global settings, a Core Profile, and explicit NPC overrides.
 - Morrowind-specific context and actions are surfaced using OpenMW-native APIs and terminology.
 - Unsupported Herika controls remain visible in the browser baseline but are disabled and labelled centrally as `Planned`, `Excluded`, `Not Applicable`, or `Replaced`.
 - Timer-driven autonomy, ITT, and Background Life remain functionally excluded. STT is installation-global and intentionally sits outside the Global/Core Profile/NPC settings hierarchy.
 
-Parity means equivalent user outcomes, not blind runtime code copying. HerikaServer supplies the browser presentation contract. CHIM and Dialectic supply applicable behavior and control expectations. ALMSIVI keeps its own typed backend, protocol, database, OpenMW implementation, branding, terminology, and game-specific constraints.
+Parity means equivalent user outcomes, not blind runtime code copying. HerikaServer supplies the browser presentation contract. CHIM and Dialectic supply applicable behavior and control expectations. LORKHAN keeps its own typed backend, protocol, database, OpenMW implementation, branding, terminology, and game-specific constraints.
 
 ## 2. Audited baselines
 
@@ -26,10 +26,10 @@ The implementation must record both baselines in its validation evidence:
 
 | Concern | Locked presentation/behavior reference | Current refresh reference |
 |---|---|---|
-| CHIM client behavior | Existing ALMSIVI task pin `77c73ffb6bb32c226340bbda93b3aac5a7ad49f8` | `origin/unstable` at `6752f97` on 2026-08-03 |
-| HerikaServer presentation and controls | Existing ALMSIVI task pin `0dbfa3eb4d3197d8159b5ff2c77bfdb5bf98b4d0` | `origin/unstable` at `b3c28e2f` on 2026-08-03 |
-| Dialectic client behavior | Existing ALMSIVI task pin `eddbdc77a8347128b5cf5bcd68df0c2404fbf074` | `origin/unstable` at `7b9c1f9` on 2026-08-03 |
-| DialecticServer presentation and controls | Existing ALMSIVI task pin `f447a9c6b59bfc689c788fb0139a0d13c6c6dc51` | `origin/unstable` at `debe32b` on 2026-08-03 |
+| CHIM client behavior | Existing LORKHAN task pin `77c73ffb6bb32c226340bbda93b3aac5a7ad49f8` | `origin/unstable` at `6752f97` on 2026-08-03 |
+| HerikaServer presentation and controls | Existing LORKHAN task pin `0dbfa3eb4d3197d8159b5ff2c77bfdb5bf98b4d0` | `origin/unstable` at `b3c28e2f` on 2026-08-03 |
+| Dialectic client behavior | Existing LORKHAN task pin `eddbdc77a8347128b5cf5bcd68df0c2404fbf074` | `origin/unstable` at `7b9c1f9` on 2026-08-03 |
+| DialecticServer presentation and controls | Existing LORKHAN task pin `f447a9c6b59bfc689c788fb0139a0d13c6c6dc51` | `origin/unstable` at `debe32b` on 2026-08-03 |
 
 Do not silently replace a locked baseline with the newest upstream state. New upstream behavior is a separate parity refresh decision.
 
@@ -45,7 +45,7 @@ The foundations are substantially present, but the product is not yet at full pa
 | Roleplay pages | Events, responses, records, memories, books, and canonical Journal are present | Final populated/empty/error-state visual matrix remains |
 | Control Panel | Diagnostic, monitoring, and data/tool families use canonical routes | Final destructive-confirmation and empty/error-state visual matrix remains |
 | Text conversation | Targeting, target confirmation, chat submission, cancellation, generation, delivery, History, Diagnostics, and HUD paths exist | Requires complete in-game acceptance testing |
-| TTS | Actor/narrator playback, ordered delivery, cancellation, and ALMSIVI boost exist | Full per-NPC voice and volume acceptance matrix remains unproven |
+| TTS | Actor/narrator playback, ordered delivery, cancellation, and LORKHAN boost exist | Full per-NPC voice and volume acceptance matrix remains unproven |
 | In-game controls | All applicable controls are exposed; History and Diagnostics open their named panels; Diagnostics uses the configured server URL and native bridge/session state | Requires keyboard/controller and scene-safety acceptance in OpenMW |
 | Morrowind context | Bounded player, actor, world, inventory, Journal, book, environment, and recent vanilla-dialogue context is present | Requires prompt inspection against live representative actors and scenes |
 | Autonomy | Shipped UI/event wiring is removed and current capabilities do not advertise autonomy | Compatibility internals remain quarantined and negative runtime acceptance remains |
@@ -60,7 +60,7 @@ These are correctness or scope contradictions and should be fixed before broad U
 
 ### P0.1 Incorrect in-game panel routing — resolved
 
-`ALMSIVI_History` and `ALMSIVI_Diagnostics` currently open the Actor Tools panel. Each binding must open its named panel. Add direct keyboard/controller acceptance checks so the structural test cannot preserve the wrong mapping.
+`LORKHAN_History` and `LORKHAN_Diagnostics` currently open the Actor Tools panel. Each binding must open its named panel. Add direct keyboard/controller acceptance checks so the structural test cannot preserve the wrong mapping.
 
 Resolution: both triggers now open their named panels, with structural coverage. Keyboard/controller runtime acceptance remains on the post-goal user gameplay checklist and does not block the automated build/deployment goal.
 
@@ -122,7 +122,7 @@ Resolution: visible hubs use canonical pages, legacy aliases redirect, and the e
 
 ### P0.9 No reproducible 1:1 visual proof — partially resolved
 
-The live shell is responsive, but page-specific copied CSS is not a durable presentation contract. Pin the exact Herika assets and structural markup used by the rebuild, isolate ALMSIVI branding into the smallest token layer, and add screenshot comparison evidence for each page family. Visual parity should be judged at the same viewport, content fixture, scroll position, and UI state.
+The live shell is responsive, but page-specific copied CSS is not a durable presentation contract. Pin the exact Herika assets and structural markup used by the rebuild, isolate LORKHAN branding into the smallest token layer, and add screenshot comparison evidence for each page family. Visual parity should be judged at the same viewport, content fixture, scroll position, and UI state.
 
 Current evidence: the pinned Herika shell/assets, shared navbar geometry, Home, Configuration, Roleplay, Control Panel, NPCs, Profiles, Player, LLM, Global Settings, and NPC modal states were compared live at 1280x720. The remaining gate is the full fixed-viewport responsive screenshot matrix.
 
@@ -130,7 +130,7 @@ Current evidence: the pinned Herika shell/assets, shared navbar geometry, Home, 
 
 ### 5.1 Shared shell
 
-The following must remain structurally identical to the pinned Herika baseline except for ALMSIVI branding and game terminology:
+The following must remain structurally identical to the pinned Herika baseline except for LORKHAN branding and game terminology:
 
 - header, logo, background, and product menu;
 - Home, Roleplay, Configuration, Control Panel, and DwemerDistro navigation;
@@ -139,13 +139,13 @@ The following must remain structurally identical to the pinned Herika baseline e
 - desktop and mobile breakpoints;
 - keyboard focus, disabled state, and accessible labelling.
 
-Create one presentation manifest containing the pinned source path/ref and the allowed ALMSIVI substitutions. Avoid per-page reinterpretations of the baseline.
+Create one presentation manifest containing the pinned source path/ref and the allowed LORKHAN substitutions. Avoid per-page reinterpretations of the baseline.
 
 ### 5.2 Configuration hub
 
 | Page | Required disposition | Completion work |
 |---|---|---|
-| ALMSIVI NPCs | Live | Keep Herika NPC grid, pagination, search, filters, profile actions, lock/favorite/revision controls, and modal structure. Rewire to stable Morrowind identity: content file + record ID + runtime ref data. |
+| LORKHAN NPCs | Live | Keep Herika NPC grid, pagination, search, filters, profile actions, lock/favorite/revision controls, and modal structure. Rewire to stable Morrowind identity: content file + record ID + runtime ref data. |
 | Profiles | Live | Preserve list/edit/import/export/clone/default/rules/test presentation. Wire the Global -> Core -> NPC model explicitly; unsupported automation controls remain visible and disabled. |
 | Player | Live | Wire player profile revisions, observed inputs, speech style generation, and status feedback. Fix the current 422 workflow. |
 | Narration | Live | Preserve narrator identity, enablement, prompt, voice, generation, revision, and routing controls. |
@@ -161,7 +161,7 @@ Create one presentation manifest containing the pinned source path/ref and the a
 | Descriptions | Live | Support stable content-file/record identity and revision-safe edits. |
 | Action Editor | Live | Show negotiated OpenMW actions and policy controls. Unsupported Herika actions remain visible only if they help parity mapping and are clearly disabled. |
 | Prompts Manager | Live | Preserve prompt list/editor/assignment/import/export/revision presentation and typed persistence. |
-| Server Plugins | Replaced | Keep the baseline landmark disabled and link/explain the ALMSIVI-native extension approach when it exists. |
+| Server Plugins | Replaced | Keep the baseline landmark disabled and link/explain the LORKHAN-native extension approach when it exists. |
 
 ### 5.3 Roleplay hub
 
@@ -171,7 +171,7 @@ Create one presentation manifest containing the pinned source path/ref and the a
 | Activity & Logs | AI Responses | Live, including request/result/failure state without exposing secrets |
 | Activity & Logs | Adventure Log | Live if it represents narrative summaries distinct from Journal; otherwise merge/rename cleanly |
 | Memories & Records | Memories | Live, with tiers, provenance, revisions, rebuild controls, and safe deletion |
-| Memories & Records | ALMSIVI Diaries | Live if separately generated records exist; otherwise visible Planned |
+| Memories & Records | LORKHAN Diaries | Live if separately generated records exist; otherwise visible Planned |
 | Memories & Records | Books | Live Morrowind book observations and bounded text provenance |
 | Memories & Records | Soulgaze | Not Applicable |
 | World & Quests | Journal | Live and canonical; replaces the visible Active Quests entry |
@@ -202,7 +202,7 @@ Replace ad hoc badges with one authoritative feature/control manifest. Each entr
 
 - stable feature ID;
 - hub group and canonical route;
-- baseline label and ALMSIVI label;
+- baseline label and LORKHAN label;
 - disposition: Live, Planned, Excluded, Not Applicable, or Replaced;
 - whether the control is visible, enabled, and routable;
 - backend service/repository owner;
@@ -266,7 +266,7 @@ Required outcomes:
 
 - actor voice resolves by exact provider actor/record identity before race/gender fallback;
 - narrator uses narrator routing and never inherits the active NPC voice;
-- ALMSIVI-specific TTS boost is locally configurable and clamps safely;
+- LORKHAN-specific TTS boost is locally configurable and clamps safely;
 - server and client volume factors combine predictably without clipping;
 - Stop Dialogue and Halt have distinct semantics;
 - queued clips remain ordered and are cancelled on invalid lifecycle transitions;
@@ -350,9 +350,9 @@ Browser forms and game protocol handlers must call the same typed service/reposi
 1. Record full refs for all four baselines.
 2. Capture the pinned Herika pages at agreed desktop and mobile viewports using stable fixture data.
 3. Create the feature/control manifest and canonical route map.
-4. Record the current ALMSIVI browser and in-game coverage matrix with proof state.
+4. Record the current LORKHAN browser and in-game coverage matrix with proof state.
 
-Exit gate: every visible baseline control has one disposition and one canonical ALMSIVI owner; every page family has a reproducible comparison fixture.
+Exit gate: every visible baseline control has one disposition and one canonical LORKHAN owner; every page family has a reproducible comparison fixture.
 
 ### Phase 1 - Correct P0 behavior and enforce exclusions
 
@@ -369,7 +369,7 @@ Exit gate: focused client structural/runtime checks and management HTTP tests pa
 ### Phase 2 - Lock the Herika presentation shell
 
 1. Port the exact pinned shell, hub markup, shared assets, CSS, controls, and responsive rules.
-2. Restrict ALMSIVI differences to brand tokens, labels, game data, feature badges, and typed form wiring.
+2. Restrict LORKHAN differences to brand tokens, labels, game data, feature badges, and typed form wiring.
 3. Replace local page-specific approximations with shared baseline components where doing so preserves exact layout.
 4. Validate desktop and mobile screenshots for Home and the three hubs before proceeding.
 
@@ -412,7 +412,7 @@ Exit gate: the in-game acceptance matrix passes without duplicate replies, stale
 
 1. Run migrations from both fresh and representative upgrade databases.
 2. Validate logs, queues, workers, provider attempts, backup/restore, and playthrough history.
-3. Deploy with the maintained ALMSIVI full-deploy workflow while preserving local configuration and data.
+3. Deploy with the maintained LORKHAN full-deploy workflow while preserving local configuration and data.
 4. Run all automatable fake-client, protocol, HTTP, worker, deployment, and current-log smoke tests.
 5. Produce a clean-profile and existing-playthrough user gameplay checklist.
 6. Record exact source refs, artifacts, destinations, and remaining engine limitations.
@@ -457,7 +457,7 @@ Use a clean OpenMW profile and an existing playthrough. Cover at least:
 - action allow, deny, confirm, cancel, success, failure, timeout, and stale receipt;
 - Journal, book, vanilla dialogue, inventory, faction/disposition, and nearby-world context.
 
-Correlate OpenMW, ALMSIVI client, server, Apache/PHP, provider, TTS, and worker logs by current timestamps and IDs.
+Correlate OpenMW, LORKHAN client, server, Apache/PHP, provider, TTS, and worker logs by current timestamps and IDs.
 
 ## 10. Recommended work packages
 
@@ -481,16 +481,16 @@ Each package should contain the smallest complete behavior, update the master ma
 
 ## 11. Definition of complete
 
-ALMSIVI reaches this parity milestone only when all of the following are true:
+LORKHAN reaches this parity milestone only when all of the following are true:
 
-- The browser shell and all shared page structures match the pinned Herika baseline at the required viewports, with every difference documented as an ALMSIVI substitution.
+- The browser shell and all shared page structures match the pinned Herika baseline at the required viewports, with every difference documented as an LORKHAN substitution.
 - Every baseline control is present and either functional or visibly disabled with an authoritative status.
-- All browser forms use typed ALMSIVI services/repositories, scoped browser sessions, CSRF protection, and revision-safe PostgreSQL persistence.
+- All browser forms use typed LORKHAN services/repositories, scoped browser sessions, CSRF protection, and revision-safe PostgreSQL persistence.
 - Journal is the canonical Morrowind quest surface; Relationships is absent from Roleplay navigation but remains available as administrative logs and prompt data where needed.
 - Global -> Core Profile -> NPC inheritance is real end to end and its source is visible.
 - Every applicable in-game action is discoverable in OpenMW Settings and opens or performs the correct behavior.
 - Text conversation, cancellation, response queuing, subtitles, and TTS pass the lifecycle matrix.
-- Exact actor voice routing and ALMSIVI volume boost pass automated routing/configuration tests and are listed on the post-goal gameplay checklist.
+- Exact actor voice routing and LORKHAN volume boost pass automated routing/configuration tests and are listed on the post-goal gameplay checklist.
 - Morrowind context, including Journal, books, and recent vanilla dialogue, is bounded and reaches prompts correctly.
 - Timer-driven autonomy, ITT, and Background Life cannot be activated by the shipped product.
 - Fresh-install and upgrade migrations, server integration, management HTTP, client checks, browser comparisons, builds, deployment checks, and fake-client smoke tests pass; manual gameplay remains explicitly unverified until performed.
@@ -498,8 +498,8 @@ ALMSIVI reaches this parity milestone only when all of the following are true:
 
 ## 12. Explicit non-goals and guardrails
 
-- Do not copy Herika runtime/database code into ALMSIVI merely to make a page render.
-- Do not remove ALMSIVI's typed services, repositories, session, CSRF, revision, job, or protocol boundaries.
+- Do not copy Herika runtime/database code into LORKHAN merely to make a page render.
+- Do not remove LORKHAN's typed services, repositories, session, CSRF, revision, job, or protocol boundaries.
 - Do not add functional ITT, Background Life, Soulgaze, PipVision, or Skyrim-only quest systems in this milestone.
 - Do not allow per-NPC settings to override local hotkeys or local UI/audio preferences.
 - Do not advertise capabilities or actions that the current client and server cannot complete.

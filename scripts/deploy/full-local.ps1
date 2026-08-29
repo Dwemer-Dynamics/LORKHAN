@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$Distro = 'DwemerAI4Skyrim3',
-    [string]$ClientRoot = 'C:\Modlists\ALMSIVI',
+    [string]$ClientRoot = 'C:\Modlists\LORKHAN',
     [ValidateSet('Debug', 'RelWithDebInfo', 'Release')]
     [string]$Configuration = 'Release',
     [string]$EngineSource,
@@ -18,7 +18,7 @@ Set-StrictMode -Version Latest
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $monorepoRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot '..'))
-$serverRoot = Join-Path $monorepoRoot 'ALMSIVIserver'
+$serverRoot = Join-Path $monorepoRoot 'LORKHANserver'
 if (-not $EngineSource) { $EngineSource = Join-Path $repoRoot '.work\openmw-edited' }
 if (-not $BuildRoot) { $BuildRoot = Join-Path $EngineSource 'MSVC2022_64' }
 $EngineSource = [IO.Path]::GetFullPath($EngineSource)
@@ -29,7 +29,7 @@ $stageResults = [System.Collections.Generic.List[object]]::new()
 $reservedLocalPorts = @(8020, 8021, 8022, 8023, 8024, 8082, 8085, 8086, 12346)
 
 if ($reservedLocalPorts -contains $ServerPort) {
-    throw "Port $ServerPort is reserved by another Dwemer service. ALMSIVI uses dedicated port 8089 by default."
+    throw "Port $ServerPort is reserved by another Dwemer service. LORKHAN uses dedicated port 8089 by default."
 }
 
 function Get-CMakeExecutable {
@@ -137,15 +137,15 @@ function Update-OpenMwUserConfiguration {
     $updated = [System.Collections.Generic.List[string]]::new()
     $dataAdded = $false
     foreach ($line in [IO.File]::ReadAllLines($openmwConfig)) {
-        if ($line -match '(?i)^data=.*(?:Deployments[\\/]+ALMSIVI|Modlists[\\/]+ALMSIVI[\\/]+Data)') {
+        if ($line -match '(?i)^data=.*(?:Deployments[\\/]+LORKHAN|Modlists[\\/]+LORKHAN[\\/]+Data)') {
             if (-not $dataAdded) { $updated.Add($dataLine); $dataAdded = $true }
             continue
         }
-        if ($line -eq 'content=ALMSIVI.omwscripts') { continue }
+        if ($line -eq 'content=LORKHAN.omwscripts') { continue }
         $updated.Add($line)
     }
     if (-not $dataAdded) { $updated.Add($dataLine) }
-    $updated.Add('content=ALMSIVI.omwscripts')
+    $updated.Add('content=LORKHAN.omwscripts')
     [IO.File]::WriteAllLines($openmwConfig, $updated, [Text.UTF8Encoding]::new($false))
 
     $launcherConfig = Join-Path $userRoot 'launcher.cfg'
@@ -157,19 +157,19 @@ function Update-OpenMwUserConfiguration {
         if ($line -eq '[Profiles]') { $inProfiles = $true; $launcherLines.Add($line); continue }
         if ($inProfiles -and $line -match '^\[') {
             if (-not $profileWritten) {
-                $launcherLines.Add("ALMSIVI/data=$DataRoot")
-                $launcherLines.Add('ALMSIVI/content=ALMSIVI.omwscripts')
+                $launcherLines.Add("LORKHAN/data=$DataRoot")
+                $launcherLines.Add('LORKHAN/content=LORKHAN.omwscripts')
                 $profileWritten = $true
             }
             $inProfiles = $false
         }
-        if ($inProfiles -and $line -match '(?i)^ALMSIVI/data=.*(?:Deployments[\\/]+ALMSIVI|Modlists[\\/]+ALMSIVI[\\/]+Data)') { continue }
-        if ($inProfiles -and $line -eq 'ALMSIVI/content=ALMSIVI.omwscripts') { continue }
+        if ($inProfiles -and $line -match '(?i)^LORKHAN/data=.*(?:Deployments[\\/]+LORKHAN|Modlists[\\/]+LORKHAN[\\/]+Data)') { continue }
+        if ($inProfiles -and $line -eq 'LORKHAN/content=LORKHAN.omwscripts') { continue }
         $launcherLines.Add($line)
     }
     if ($inProfiles -and -not $profileWritten) {
-        $launcherLines.Add("ALMSIVI/data=$DataRoot")
-        $launcherLines.Add('ALMSIVI/content=ALMSIVI.omwscripts')
+        $launcherLines.Add("LORKHAN/data=$DataRoot")
+        $launcherLines.Add('LORKHAN/content=LORKHAN.omwscripts')
     }
     [IO.File]::WriteAllLines($launcherConfig, $launcherLines, [Text.UTF8Encoding]::new($false))
 }
@@ -207,13 +207,13 @@ content=H3lp Yours3lf.esp
 language=English
 
 [Profiles]
-currentprofile=ALMSIVI Compatibility
-ALMSIVI Compatibility/data=$Root\Mods\Dynamic Camera
-ALMSIVI Compatibility/data=$Root\Mods\Follower Detection Util
-ALMSIVI Compatibility/data=$Root\Mods\H3lp Yours3lf
-ALMSIVI Compatibility/content=DynamicCamera.omwscripts
-ALMSIVI Compatibility/content=FollowerDetectionUtil.omwscripts
-ALMSIVI Compatibility/content=H3lp Yours3lf.esp
+currentprofile=LORKHAN Compatibility
+LORKHAN Compatibility/data=$Root\Mods\Dynamic Camera
+LORKHAN Compatibility/data=$Root\Mods\Follower Detection Util
+LORKHAN Compatibility/data=$Root\Mods\H3lp Yours3lf
+LORKHAN Compatibility/content=DynamicCamera.omwscripts
+LORKHAN Compatibility/content=FollowerDetectionUtil.omwscripts
+LORKHAN Compatibility/content=H3lp Yours3lf.esp
 
 [General]
 firstrun=false
@@ -225,79 +225,79 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $engine = Join-Path $PSScriptRoot 'OpenMW\openmw.exe'
-$clientConfig = Join-Path $PSScriptRoot 'Config\almsivi-client.conf'
-if (-not (Test-Path -LiteralPath $engine -PathType Leaf)) { throw "The ALMSIVI OpenMW executable is missing: $engine" }
-if (-not (Test-Path -LiteralPath $clientConfig -PathType Leaf)) { throw "The private ALMSIVI client configuration is missing: $clientConfig" }
+$clientConfig = Join-Path $PSScriptRoot 'Config\lorkhan-client.conf'
+if (-not (Test-Path -LiteralPath $engine -PathType Leaf)) { throw "The LORKHAN OpenMW executable is missing: $engine" }
+if (-not (Test-Path -LiteralPath $clientConfig -PathType Leaf)) { throw "The private LORKHAN client configuration is missing: $clientConfig" }
 
-& wsl.exe -d DwemerAI4Skyrim3 -u root -- bash -lc 'service postgresql start >/dev/null; service apache2 start >/dev/null; service almsiviserver-worker start >/dev/null'
-if ($LASTEXITCODE -ne 0) { throw 'The ALMSIVI WSL services could not be started.' }
-$health = Invoke-RestMethod -Uri 'http://127.0.0.1:@ALMSIVI_HTTP_PORT@/ALMSIVIserver/api/v1/health' -TimeoutSec 5
-if ($health.schema -ne 'almsivi.health.v1') { throw 'ALMSIVIserver returned an unexpected health response.' }
-$env:ALMSIVI_CLIENT_CONFIG = $clientConfig
+& wsl.exe -d DwemerAI4Skyrim3 -u root -- bash -lc 'service postgresql start >/dev/null; service apache2 start >/dev/null; service lorkhanserver-worker start >/dev/null'
+if ($LASTEXITCODE -ne 0) { throw 'The LORKHAN WSL services could not be started.' }
+$health = Invoke-RestMethod -Uri 'http://127.0.0.1:@LORKHAN_HTTP_PORT@/LORKHANserver/api/v1/health' -TimeoutSec 5
+if ($health.schema -ne 'lorkhan.health.v1') { throw 'LORKHANserver returned an unexpected health response.' }
+$env:LORKHAN_CLIENT_CONFIG = $clientConfig
 & $engine
 '@
-    $launchScript = $launchScript.Replace('@ALMSIVI_HTTP_PORT@', [string]$HttpPort)
-    Write-Utf8NoBom -Path (Join-Path $Root 'Launch-ALMSIVI.ps1') -Content $launchScript
-    Write-Utf8NoBom -Path (Join-Path $Root 'Play-ALMSIVI.cmd') -Content "@echo off`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0Launch-ALMSIVI.ps1`"`r`nif errorlevel 1 pause`r`n"
+    $launchScript = $launchScript.Replace('@LORKHAN_HTTP_PORT@', [string]$HttpPort)
+    Write-Utf8NoBom -Path (Join-Path $Root 'Launch-LORKHAN.ps1') -Content $launchScript
+    Write-Utf8NoBom -Path (Join-Path $Root 'Play-LORKHAN.cmd') -Content "@echo off`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0Launch-LORKHAN.ps1`"`r`nif errorlevel 1 pause`r`n"
 
     $compatibilityLaunchScript = @'
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $engine = Join-Path $PSScriptRoot 'OpenMW\openmw.exe'
-$clientConfig = Join-Path $PSScriptRoot 'Config\almsivi-client.conf'
+$clientConfig = Join-Path $PSScriptRoot 'Config\lorkhan-client.conf'
 $profile = Join-Path $PSScriptRoot 'Profiles\Compatibility'
 $requiredMods = @(
     (Join-Path $PSScriptRoot 'Mods\Dynamic Camera\DynamicCamera.omwscripts'),
     (Join-Path $PSScriptRoot 'Mods\Follower Detection Util\FollowerDetectionUtil.omwscripts'),
     (Join-Path $PSScriptRoot 'Mods\H3lp Yours3lf\H3lp Yours3lf.esp')
 )
-if (-not (Test-Path -LiteralPath $engine -PathType Leaf)) { throw "The ALMSIVI OpenMW executable is missing: $engine" }
-if (-not (Test-Path -LiteralPath $clientConfig -PathType Leaf)) { throw "The private ALMSIVI client configuration is missing: $clientConfig" }
-if (-not (Test-Path -LiteralPath (Join-Path $profile 'openmw.cfg') -PathType Leaf)) { throw "The ALMSIVI compatibility profile is missing: $profile" }
+if (-not (Test-Path -LiteralPath $engine -PathType Leaf)) { throw "The LORKHAN OpenMW executable is missing: $engine" }
+if (-not (Test-Path -LiteralPath $clientConfig -PathType Leaf)) { throw "The private LORKHAN client configuration is missing: $clientConfig" }
+if (-not (Test-Path -LiteralPath (Join-Path $profile 'openmw.cfg') -PathType Leaf)) { throw "The LORKHAN compatibility profile is missing: $profile" }
 foreach ($requiredMod in $requiredMods) {
     if (-not (Test-Path -LiteralPath $requiredMod -PathType Leaf)) { throw "A required compatibility mod is missing: $requiredMod" }
 }
 
-& wsl.exe -d DwemerAI4Skyrim3 -u root -- bash -lc 'service postgresql start >/dev/null; service apache2 start >/dev/null; service almsiviserver-worker start >/dev/null'
-if ($LASTEXITCODE -ne 0) { throw 'The ALMSIVI WSL services could not be started.' }
-$health = Invoke-RestMethod -Uri 'http://127.0.0.1:@ALMSIVI_HTTP_PORT@/ALMSIVIserver/api/v1/health' -TimeoutSec 5
-if ($health.schema -ne 'almsivi.health.v1') { throw 'ALMSIVIserver returned an unexpected health response.' }
-$env:ALMSIVI_CLIENT_CONFIG = $clientConfig
+& wsl.exe -d DwemerAI4Skyrim3 -u root -- bash -lc 'service postgresql start >/dev/null; service apache2 start >/dev/null; service lorkhanserver-worker start >/dev/null'
+if ($LASTEXITCODE -ne 0) { throw 'The LORKHAN WSL services could not be started.' }
+$health = Invoke-RestMethod -Uri 'http://127.0.0.1:@LORKHAN_HTTP_PORT@/LORKHANserver/api/v1/health' -TimeoutSec 5
+if ($health.schema -ne 'lorkhan.health.v1') { throw 'LORKHANserver returned an unexpected health response.' }
+$env:LORKHAN_CLIENT_CONFIG = $clientConfig
 & $engine --config $profile
 '@
-    $compatibilityLaunchScript = $compatibilityLaunchScript.Replace('@ALMSIVI_HTTP_PORT@', [string]$HttpPort)
-    Write-Utf8NoBom -Path (Join-Path $Root 'Launch-ALMSIVI-Compatibility.ps1') -Content $compatibilityLaunchScript
-    Write-Utf8NoBom -Path (Join-Path $Root 'Play-ALMSIVI-Compatibility.cmd') -Content "@echo off`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0Launch-ALMSIVI-Compatibility.ps1`"`r`nif errorlevel 1 pause`r`n"
-    Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts\tools\manage-openmw-profile.ps1') -Destination (Join-Path $Root 'Manage-ALMSIVI-Profile.ps1') -Force
-    Write-Utf8NoBom -Path (Join-Path $Root 'Manage-ALMSIVI-Mods.cmd') -Content "@echo off`r`nset `"ALMSIVI_CLIENT_CONFIG=%~dp0Config\almsivi-client.conf`"`r`nwsl.exe -d DwemerAI4Skyrim3 -u root -- bash -lc `"service postgresql start >/dev/null; service apache2 start >/dev/null; service almsiviserver-worker start >/dev/null`"`r`nif errorlevel 1 (`r`n  echo The ALMSIVI WSL services could not be started.`r`n  pause`r`n  exit /b 1`r`n)`r`nstart `"ALMSIVI OpenMW Launcher`" `"%~dp0OpenMW\openmw-launcher.exe`"`r`n"
-    Write-Utf8NoBom -Path (Join-Path $Root 'Manage-ALMSIVI-Compatibility-Mods.cmd') -Content "@echo off`r`nstart `"ALMSIVI Compatibility Mod Manager`" powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0Manage-ALMSIVI-Profile.ps1`" -Root `"%~dp0`" -ProfileName Compatibility`r`n"
+    $compatibilityLaunchScript = $compatibilityLaunchScript.Replace('@LORKHAN_HTTP_PORT@', [string]$HttpPort)
+    Write-Utf8NoBom -Path (Join-Path $Root 'Launch-LORKHAN-Compatibility.ps1') -Content $compatibilityLaunchScript
+    Write-Utf8NoBom -Path (Join-Path $Root 'Play-LORKHAN-Compatibility.cmd') -Content "@echo off`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0Launch-LORKHAN-Compatibility.ps1`"`r`nif errorlevel 1 pause`r`n"
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts\tools\manage-openmw-profile.ps1') -Destination (Join-Path $Root 'Manage-LORKHAN-Profile.ps1') -Force
+    Write-Utf8NoBom -Path (Join-Path $Root 'Manage-LORKHAN-Mods.cmd') -Content "@echo off`r`nset `"LORKHAN_CLIENT_CONFIG=%~dp0Config\lorkhan-client.conf`"`r`nwsl.exe -d DwemerAI4Skyrim3 -u root -- bash -lc `"service postgresql start >/dev/null; service apache2 start >/dev/null; service lorkhanserver-worker start >/dev/null`"`r`nif errorlevel 1 (`r`n  echo The LORKHAN WSL services could not be started.`r`n  pause`r`n  exit /b 1`r`n)`r`nstart `"LORKHAN OpenMW Launcher`" `"%~dp0OpenMW\openmw-launcher.exe`"`r`n"
+    Write-Utf8NoBom -Path (Join-Path $Root 'Manage-LORKHAN-Compatibility-Mods.cmd') -Content "@echo off`r`nstart `"LORKHAN Compatibility Mod Manager`" powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0Manage-LORKHAN-Profile.ps1`" -Root `"%~dp0`" -ProfileName Compatibility`r`n"
     Write-Utf8NoBom -Path (Join-Path $Root 'README.txt') -Content @"
-ALMSIVI OpenMW local installation
+LORKHAN OpenMW local installation
 
-Play: Play-ALMSIVI.cmd
-Play with the recommended compatibility mods: Play-ALMSIVI-Compatibility.cmd
-Manage OpenMW content: Manage-ALMSIVI-Mods.cmd
-Manage compatibility mods and native OpenMW content: Manage-ALMSIVI-Compatibility-Mods.cmd
-Management UI: http://127.0.0.1:$HttpPort/ALMSIVIserver/manage
+Play: Play-LORKHAN.cmd
+Play with the recommended compatibility mods: Play-LORKHAN-Compatibility.cmd
+Manage OpenMW content: Manage-LORKHAN-Mods.cmd
+Manage compatibility mods and native OpenMW content: Manage-LORKHAN-Compatibility-Mods.cmd
+Management UI: http://127.0.0.1:$HttpPort/LORKHANserver/manage
 
 Install a mod by extracting it into its own Mods\Mod Name folder. Open the
-ALMSIVI Compatibility Mod Manager, enable the folder and its content files,
+LORKHAN Compatibility Mod Manager, enable the folder and its content files,
 set their order, then save. The manager backs up the profile before changes.
-Use Manage-ALMSIVI-Mods.cmd for OpenMW engine and general launcher settings.
+Use Manage-LORKHAN-Mods.cmd for OpenMW engine and general launcher settings.
 
-F6 opens typed conversation. F7 stops current ALMSIVI work. F8 opens Actor Actions.
+F6 opens typed conversation. F7 stops current LORKHAN work. F8 opens Actor Actions.
 The Master Menu is linked inside the conversation and action panels.
-Rebind all ALMSIVI inputs under Options > Scripts > ALMSIVI.
+Rebind all LORKHAN inputs under Options > Scripts > LORKHAN.
 "@
 
     $desktop = [Environment]::GetFolderPath('Desktop')
     $shell = New-Object -ComObject WScript.Shell
     foreach ($shortcut in @(
-        @{ Name = 'Play ALMSIVI.lnk'; Target = (Join-Path $Root 'Play-ALMSIVI.cmd'); Icon = (Join-Path $Root 'OpenMW\openmw.exe') },
-        @{ Name = 'Play ALMSIVI - Compatibility.lnk'; Target = (Join-Path $Root 'Play-ALMSIVI-Compatibility.cmd'); Icon = (Join-Path $Root 'OpenMW\openmw.exe') },
-        @{ Name = 'ALMSIVI Mod Manager.lnk'; Target = (Join-Path $Root 'Manage-ALMSIVI-Mods.cmd'); Icon = (Join-Path $Root 'OpenMW\openmw-launcher.exe') },
-        @{ Name = 'ALMSIVI Compatibility Mod Manager.lnk'; Target = (Join-Path $Root 'Manage-ALMSIVI-Compatibility-Mods.cmd'); Icon = (Join-Path $Root 'OpenMW\openmw-launcher.exe') }
+        @{ Name = 'Play LORKHAN.lnk'; Target = (Join-Path $Root 'Play-LORKHAN.cmd'); Icon = (Join-Path $Root 'OpenMW\openmw.exe') },
+        @{ Name = 'Play LORKHAN - Compatibility.lnk'; Target = (Join-Path $Root 'Play-LORKHAN-Compatibility.cmd'); Icon = (Join-Path $Root 'OpenMW\openmw.exe') },
+        @{ Name = 'LORKHAN Mod Manager.lnk'; Target = (Join-Path $Root 'Manage-LORKHAN-Mods.cmd'); Icon = (Join-Path $Root 'OpenMW\openmw-launcher.exe') },
+        @{ Name = 'LORKHAN Compatibility Mod Manager.lnk'; Target = (Join-Path $Root 'Manage-LORKHAN-Compatibility-Mods.cmd'); Icon = (Join-Path $Root 'OpenMW\openmw-launcher.exe') }
     )) {
         $link = $shell.CreateShortcut((Join-Path $desktop $shortcut.Name))
         $link.TargetPath = $shortcut.Target
@@ -325,23 +325,23 @@ function Invoke-Stage {
 
 try {
     if (-not $SkipServer) {
-        Invoke-Stage -Name 'Stage 1 - ALMSIVIserver to WSL' -Action {
+        Invoke-Stage -Name 'Stage 1 - LORKHANserver to WSL' -Action {
             $serverDeploy = Join-Path $serverRoot 'scripts\deploy-local-wsl.sh'
             if (-not (Test-Path -LiteralPath $serverDeploy -PathType Leaf)) { throw "Server deploy script not found: $serverDeploy" }
             $serverDeployWsl = Convert-ToWslPath -WindowsPath $serverDeploy
             $serverRootWsl = Convert-ToWslPath -WindowsPath $serverRoot
-            & wsl.exe -d $Distro -u root -- env "ALMSIVI_HTTP_PORT=$ServerPort" bash $serverDeployWsl $serverRootWsl
-            if ($LASTEXITCODE -ne 0) { throw "ALMSIVIserver WSL deploy failed with exit code $LASTEXITCODE." }
+            & wsl.exe -d $Distro -u root -- env "LORKHAN_HTTP_PORT=$ServerPort" bash $serverDeployWsl $serverRootWsl
+            if ($LASTEXITCODE -ne 0) { throw "LORKHANserver WSL deploy failed with exit code $LASTEXITCODE." }
 
             $gameDataRoot = Find-MorrowindDataRoot
             $gameDataWsl = Convert-ToWslPath -WindowsPath $gameDataRoot
-            & wsl.exe -d $Distro -u root -- env ALMSIVI_CONFIG=/etc/almsiviserver/server.php php /var/www/html/ALMSIVIserver/scripts/import-morrowind-voices.php $gameDataWsl
+            & wsl.exe -d $Distro -u root -- env LORKHAN_CONFIG=/etc/lorkhanserver/server.php php /var/www/html/LORKHANserver/scripts/import-morrowind-voices.php $gameDataWsl
             if ($LASTEXITCODE -ne 0) { throw "Morrowind voice catalog import failed with exit code $LASTEXITCODE." }
         }
     }
 
     if (-not $SkipClient) {
-        Invoke-Stage -Name 'Stage 2 - Build and Deploy ALMSIVI OpenMW Client' -Action {
+        Invoke-Stage -Name 'Stage 2 - Build and Deploy LORKHAN OpenMW Client' -Action {
             if (-not (Test-Path -LiteralPath (Join-Path $EngineSource '.git'))) { throw "Pinned OpenMW source not found: $EngineSource" }
             $engineHead = (& git -C $EngineSource rev-parse HEAD).Trim()
             if ($LASTEXITCODE -ne 0 -or $engineHead -ne $expectedEnginePin) {
@@ -357,11 +357,11 @@ try {
             }
 
             $runtimeSource = Join-Path $BuildRoot $Configuration
-            $dataSource = Join-Path $repoRoot 'almsivi\files'
+            $dataSource = Join-Path $repoRoot 'lorkhan\files'
             $runtimeTarget = Join-Path $ClientRoot 'OpenMW'
             $dataTarget = Join-Path $ClientRoot 'Data'
-            $configTarget = Join-Path $ClientRoot 'Config\almsivi-client.conf'
-            foreach ($required in @((Join-Path $runtimeSource 'openmw.exe'), (Join-Path $runtimeSource 'openmw-launcher.exe'), (Join-Path $dataSource 'ALMSIVI.omwscripts'))) {
+            $configTarget = Join-Path $ClientRoot 'Config\lorkhan-client.conf'
+            foreach ($required in @((Join-Path $runtimeSource 'openmw.exe'), (Join-Path $runtimeSource 'openmw-launcher.exe'), (Join-Path $dataSource 'LORKHAN.omwscripts'))) {
                 if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Required client artifact not found: $required" }
             }
 
@@ -370,15 +370,15 @@ try {
             New-Item -ItemType Directory -Force -Path $ClientRoot, (Join-Path $ClientRoot 'Mods'), (Split-Path $configTarget -Parent) | Out-Null
             Invoke-RobocopyMirror -Source $runtimeSource -Destination $runtimeTarget -ExcludeFiles @('*_tests.exe', '*.pdb')
 
-            $cacheTarget = Join-Path $dataTarget 'ALMSIVI\cache'
+            $cacheTarget = Join-Path $dataTarget 'LORKHAN\cache'
             $cacheBackup = $null
             try {
                 if (Test-Path -LiteralPath $cacheTarget -PathType Container) {
-                    $cacheBackup = Join-Path ([IO.Path]::GetTempPath()) ('almsivi-cache-' + [guid]::NewGuid().ToString('N'))
+                    $cacheBackup = Join-Path ([IO.Path]::GetTempPath()) ('lorkhan-cache-' + [guid]::NewGuid().ToString('N'))
                     New-Item -ItemType Directory -Force -Path $cacheBackup | Out-Null
                     Invoke-RobocopyMirror -Source $cacheTarget -Destination $cacheBackup
                 }
-                Invoke-RobocopyMirror -Source $dataSource -Destination $dataTarget -ExcludeDirectories @((Join-Path $dataSource 'scripts\ALMSIVI\tests'))
+                Invoke-RobocopyMirror -Source $dataSource -Destination $dataTarget -ExcludeDirectories @((Join-Path $dataSource 'scripts\LORKHAN\tests'))
                 if ($cacheBackup) {
                     New-Item -ItemType Directory -Force -Path $cacheTarget | Out-Null
                     Invoke-RobocopyMirror -Source $cacheBackup -Destination $cacheTarget
@@ -394,9 +394,9 @@ try {
             $sourceHash = (Get-FileHash -LiteralPath (Join-Path $runtimeSource 'openmw.exe') -Algorithm SHA256).Hash
             $deployedHash = (Get-FileHash -LiteralPath (Join-Path $runtimeTarget 'openmw.exe') -Algorithm SHA256).Hash
             if ($sourceHash -ne $deployedHash) { throw 'The deployed openmw.exe hash does not match the build output.' }
-            $env:ALMSIVI_CLIENT_CONFIG = $configTarget
+            $env:LORKHAN_CLIENT_CONFIG = $configTarget
             & (Join-Path $runtimeTarget 'openmw.exe') --version
-            if ($LASTEXITCODE -ne 0) { throw 'The deployed ALMSIVI OpenMW executable failed its version probe.' }
+            if ($LASTEXITCODE -ne 0) { throw 'The deployed LORKHAN OpenMW executable failed its version probe.' }
             Write-Host "Client: $ClientRoot"
             Write-Host "Private config: $configTarget"
         }

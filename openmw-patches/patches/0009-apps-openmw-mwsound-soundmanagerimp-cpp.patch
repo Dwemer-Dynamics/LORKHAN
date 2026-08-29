@@ -1,12 +1,12 @@
 diff --git a/apps/openmw/mwsound/soundmanagerimp.cpp b/apps/openmw/mwsound/soundmanagerimp.cpp
-index 8471dbe0beb73ba1894a5d73c117c0ab2927a68b..e7dba6eb3307295fc460182268f7b9107558311c 100644
+index 8471dbe0beb73ba1894a5d73c117c0ab2927a68b..47934b3c305f09450a79e7e69a8750dddea99713 100644
 --- a/apps/openmw/mwsound/soundmanagerimp.cpp
 +++ b/apps/openmw/mwsound/soundmanagerimp.cpp
 @@ -189,6 +189,22 @@
          return nullptr;
      }
  
-+    DecoderPtr SoundManager::loadAlmsiviMedia(Files::IStreamPtr media, std::string_view name)
++    DecoderPtr SoundManager::loadLorkhanMedia(Files::IStreamPtr media, std::string_view name)
 +    {
 +        try
 +        {
@@ -16,7 +16,7 @@ index 8471dbe0beb73ba1894a5d73c117c0ab2927a68b..e7dba6eb3307295fc460182268f7b910
 +        }
 +        catch (const std::exception& e)
 +        {
-+            Log(Debug::Error) << "Failed to load verified ALMSIVI audio: " << e.what();
++            Log(Debug::Error) << "Failed to load verified LORKHAN audio: " << e.what();
 +        }
 +
 +        return nullptr;
@@ -57,13 +57,13 @@ index 8471dbe0beb73ba1894a5d73c117c0ab2927a68b..e7dba6eb3307295fc460182268f7b910
          mSaySoundsQueue.emplace(ptr.mRef, SaySound{ ptr.mCell, std::move(sound) });
 +    }
 +
-+    bool SoundManager::sayAlmsiviMedia(
++    bool SoundManager::sayLorkhanMedia(
 +        const MWWorld::ConstPtr& ptr, Files::IStreamPtr media, std::string_view name, float volumeBoost)
 +    {
 +        if (!mOutput->isInitialized())
 +            return false;
 +
-+        DecoderPtr decoder = loadAlmsiviMedia(std::move(media), name);
++        DecoderPtr decoder = loadLorkhanMedia(std::move(media), name);
 +        if (!decoder)
 +            return false;
 +

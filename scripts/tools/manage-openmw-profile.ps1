@@ -13,7 +13,7 @@ $profileRoot = Join-Path $Root "Profiles\$ProfileName"
 $profilePath = Join-Path $profileRoot 'openmw.cfg'
 $modsRoot = Join-Path $Root 'Mods'
 $launcherPath = Join-Path $Root 'OpenMW\openmw-launcher.exe'
-$clientConfigPath = Join-Path $Root 'Config\almsivi-client.conf'
+$clientConfigPath = Join-Path $Root 'Config\lorkhan-client.conf'
 $contentExtensions = @('.esm', '.esp', '.omwgame', '.omwaddon', '.omwscripts')
 
 function Unquote-OpenMwValue {
@@ -125,7 +125,7 @@ $enabledContent = [System.Collections.Generic.HashSet[string]]::new([StringCompa
 foreach ($name in $state.Content) { [void]$enabledContent.Add($name) }
 
 $form = [Windows.Forms.Form]::new()
-$form.Text = "ALMSIVI OpenMW Profile Manager - $ProfileName"
+$form.Text = "LORKHAN OpenMW Profile Manager - $ProfileName"
 $form.StartPosition = 'CenterScreen'
 $form.Size = [Drawing.Size]::new(1040, 700)
 $form.MinimumSize = [Drawing.Size]::new(880, 560)
@@ -134,7 +134,7 @@ $form.ForeColor = [Drawing.Color]::FromArgb(236, 213, 173)
 $form.Font = [Drawing.Font]::new('Segoe UI', 10)
 
 $title = [Windows.Forms.Label]::new()
-$title.Text = 'ALMSIVI OpenMW Profile Manager'
+$title.Text = 'LORKHAN OpenMW Profile Manager'
 $title.Font = [Drawing.Font]::new('Segoe UI Semibold', 18)
 $title.ForeColor = [Drawing.Color]::FromArgb(244, 145, 54)
 $title.SetBounds(18, 14, 700, 38)
@@ -283,7 +283,7 @@ function Show-ModConflicts {
     }
     $conflicts = @($providers.Keys | Where-Object { $providers[$_].Count -gt 1 } | Sort-Object)
     if ($conflicts.Count -eq 0) {
-        [Windows.Forms.MessageBox]::Show('No overlapping files were found in the enabled mod folders.', 'ALMSIVI mod conflicts') | Out-Null
+        [Windows.Forms.MessageBox]::Show('No overlapping files were found in the enabled mod folders.', 'LORKHAN mod conflicts') | Out-Null
         return
     }
 
@@ -299,7 +299,7 @@ function Show-ModConflicts {
     if ($conflicts.Count -gt 500) { $lines.Add('Only the first 500 conflicts are shown.') }
 
     $dialog = [Windows.Forms.Form]::new()
-    $dialog.Text = 'ALMSIVI OpenMW File Conflicts'
+    $dialog.Text = 'LORKHAN OpenMW File Conflicts'
     $dialog.StartPosition = 'CenterParent'
     $dialog.Size = [Drawing.Size]::new(900, 650)
     $dialog.BackColor = $form.BackColor
@@ -344,15 +344,16 @@ function New-Button {
     $form.Controls.Add($button)
 }
 
-function Start-AlmsiviServices {
+function Start-LorkhanServices {
     if (-not (Test-Path -LiteralPath $clientConfigPath -PathType Leaf)) {
-        throw "The private ALMSIVI client configuration is missing: $clientConfigPath"
+        throw "The private LORKHAN client configuration is missing: $clientConfigPath"
     }
-    & wsl.exe -d DwemerAI4Skyrim3 -u root -- bash -lc 'service postgresql start >/dev/null; service apache2 start >/dev/null; service almsiviserver-worker start >/dev/null'
-    if ($LASTEXITCODE -ne 0) { throw 'The ALMSIVI WSL services could not be started.' }
-    $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8089/ALMSIVIserver/api/v1/health' -TimeoutSec 5
-    if ($health.schema -ne 'almsivi.health.v1') { throw 'ALMSIVIserver returned an unexpected health response.' }
-    $env:ALMSIVI_CLIENT_CONFIG = $clientConfigPath
+    & wsl.exe -d DwemerAI4Skyrim3 -u root -- bash -lc 'service postgresql start >/dev/null; service apache2 start >/dev/null; service lorkhanserver-worker start >/dev/null'
+    if ($LASTEXITCODE -ne 0) { throw 'The LORKHAN WSL services could not be started.' }
+    $healthUri = 'http://127.0.0.1:8089/' + 'LORKHANserver/api/v1/health'
+    $health = Invoke-RestMethod -Uri $healthUri -TimeoutSec 5
+    if ($health.schema -ne 'lorkhan.health.v1') { throw 'LORKHANserver returned an unexpected health response.' }
+    $env:LORKHAN_CLIENT_CONFIG = $clientConfigPath
 }
 
 Refresh-ModList
@@ -366,12 +367,12 @@ New-Button 'Open Mods folder' 364 548 126 { Start-Process explorer.exe -Argument
 New-Button 'Move content up' 520 548 130 { Move-SelectedItem $contentList -1 }
 New-Button 'Move content down' 658 548 140 { Move-SelectedItem $contentList 1 }
 New-Button 'Open OpenMW Launcher' 806 548 194 {
-    if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) { [Windows.Forms.MessageBox]::Show("Launcher not found: $launcherPath", 'ALMSIVI') | Out-Null; return }
+    if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) { [Windows.Forms.MessageBox]::Show("Launcher not found: $launcherPath", 'LORKHAN') | Out-Null; return }
     try {
-        Start-AlmsiviServices
+        Start-LorkhanServices
         Start-Process -FilePath $launcherPath -ArgumentList @('--config', $profileRoot) -WorkingDirectory (Split-Path $launcherPath -Parent)
     } catch {
-        [Windows.Forms.MessageBox]::Show($_.Exception.Message, 'ALMSIVI launcher') | Out-Null
+        [Windows.Forms.MessageBox]::Show($_.Exception.Message, 'LORKHAN launcher') | Out-Null
     }
 }
 New-Button 'Show file conflicts' 684 604 154 { Show-ModConflicts }
@@ -380,7 +381,7 @@ New-Button 'Save profile' 846 604 154 {
     $selectedContent = @($contentList.Items | Where-Object Checked | ForEach-Object { [string]$_.Tag.Name })
     $missingData = @($modEntries | Where-Object { $_.Enabled -and -not $_.Exists })
     if ($missingData.Count -gt 0) {
-        [Windows.Forms.MessageBox]::Show(('Cannot save because these directories are missing:' + [Environment]::NewLine + ($missingData.Path -join [Environment]::NewLine)), 'ALMSIVI profile validation') | Out-Null
+        [Windows.Forms.MessageBox]::Show(('Cannot save because these directories are missing:' + [Environment]::NewLine + ($missingData.Path -join [Environment]::NewLine)), 'LORKHAN profile validation') | Out-Null
         return
     }
     $preserved = @($state.Lines | Where-Object { $_ -notmatch '^\s*(data|content)\s*=' })

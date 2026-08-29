@@ -1,9 +1,9 @@
-# Azure Sol assignment: build ALMSIVI
+# Azure Sol assignment: build LORKHAN
 
 ## Objective
 
-Implement ALMSIVI as a side-by-side OpenMW 0.51.0 distribution plus Lua mod that preserves every
-applicable CHIM/Dialectic/SYNTH behavior, communicates with sibling `RANGROO/ALMSIVIserver`, and
+Implement LORKHAN as a side-by-side OpenMW 0.51.0 distribution plus Lua mod that preserves every
+applicable CHIM/Dialectic/SYNTH behavior, communicates with sibling `RANGROO/LORKHANserver`, and
 produces deterministic Windows x64 packages with focused supported-platform CI. Do not weaken
 OpenMW's Lua sandbox and do not require a proprietary content addon for the first complete product.
 
@@ -17,7 +17,7 @@ explicitly unverified until the user runs the supplied checklist.
 Do not begin source import until `RANGROO/SYNTH` and `RANGROO/Synthserver` have completed their
 documented non-game stop conditions. Record their final SHAs in `docs/evidence/source-pins.md`.
 
-- Working repositories: `RANGROO/ALMSIVI` and sibling `RANGROO/ALMSIVIserver`.
+- Working repositories: `RANGROO/LORKHAN` and sibling `RANGROO/LORKHANserver`.
 - Engine: `OpenMW/openmw` tag `openmw-0.51.0`, commit
   `f4bec41444214a7903bebd178389ca22ca13f646`, Lua API revision 129, GPLv3.
 - Server seed: the final tested `RANGROO/Synthserver` main SHA after SYNTH completion.
@@ -41,7 +41,7 @@ Read, in order:
 4. `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md`, and the sibling protocol document.
 5. `docs/FEATURE-PARITY-MATRIX.md`, `docs/OPENMW-TOOLCHAIN.md`,
    `docs/COMPATIBILITY-PLAN.md`, and `docs/PACKAGING-AND-LICENSE.md`.
-6. Every sibling `ALMSIVIserver/docs/*.md` document.
+6. Every sibling `LORKHANserver/docs/*.md` document.
 
 The decisions in those documents are closed. A discovered engine fact may require a documented
 change proposal and failing evidence, but it is not permission to silently redesign the boundary.
@@ -50,11 +50,11 @@ change proposal and failing evidence, but it is not permission to silently redes
 
 Use one Sol parent and at most four non-overlapping children:
 
-1. **Engine/transport owner:** pinned OpenMW worktree, `openmw.almsivi`, bounded Boost.Beast loopback
+1. **Engine/transport owner:** pinned OpenMW worktree, `openmw.lorkhan`, bounded Boost.Beast loopback
    transport, configuration, cancellation, media staging, C++ tests, patch manifest.
 2. **Lua/gameplay owner:** `.omwscripts`, global/player/CUSTOM scripts, UI, input, targeting,
    snapshots, actions, save/load, Lua tests.
-3. **Server owner:** sibling ALMSIVIserver migration, protocol, schema, providers, UI, workers, PHP
+3. **Server owner:** sibling LORKHANserver migration, protocol, schema, providers, UI, workers, PHP
    tests. It may not edit client protocol fixtures directly.
 4. **Verifier/critic:** read-only parity, sandbox, threading, GPL/provenance, package, compatibility,
    and evidence audit until given isolated test/fixture ownership.
@@ -71,7 +71,7 @@ files. Do not spend agents repeating the same repository scan.
 2. **Reproducible OpenMW foundation.** Add an upstream remote/pin script and deterministic patch
    manifest. Establish the supported MSVC 2022 Windows x64 Release lane plus portable Ubuntu
    foundation/contract checks. Produce an unmodified upstream control build before the first patch.
-3. **Typed native bridge.** Implement `openmw.almsivi` only in GLOBAL, PLAYER, and CUSTOM local
+3. **Typed native bridge.** Implement `openmw.lorkhan` only in GLOBAL, PLAYER, and CUSTOM local
    contexts. Add config/status/capabilities, bounded async request/cancel/poll, and verified media
    staging/playback operations. Use Boost.Asio/Beast with `Boost::system`; accept only HTTP to an IP
    loopback literal, reject DNS/redirects, keep the pairing secret native, and expose no generic
@@ -80,7 +80,7 @@ files. Do not spend agents repeating the same repository scan.
    engine event -> immutable DTO -> worker -> strict response -> generation-bound Lua event ->
    visible UI/status. Prove timeout, cancellation, malformed/oversized responses, disconnect, and
    stale-generation suppression before dialogue work.
-5. **Lua foundation and dialogue slice.** Add `ALMSIVI.omwscripts`, GLOBAL orchestration, PLAYER
+5. **Lua foundation and dialogue slice.** Add `LORKHAN.omwscripts`, GLOBAL orchestration, PLAYER
    input/UI, dynamically attached CUSTOM actor script, protocol mappers, storage, and one complete
    targeted text dialogue flow. Use a dedicated action/hotkey; never replace vanilla activation.
 6. **Input, groups, and media.** Add configurable keyboard/controller actions, text entry, semantic
@@ -100,7 +100,7 @@ files. Do not spend agents repeating the same repository scan.
 9. **Management and operations.** Complete the server quickstart, profiles, provider settings,
    prompt/action editor, request traces, memories, relationships, world knowledge, playthroughs,
    health, backups, worker supervision, credential redaction, import/export, and diagnostics UI.
-10. **Hardening and packages.** Run upstream and ALMSIVI tests, protocol fixture parity, fuzz and
+10. **Hardening and packages.** Run upstream and LORKHAN tests, protocol fixture parity, fuzz and
     negative fixtures, deterministic packaging, SBOM/notices/source archive, secret/proprietary-data
     scans, upgrade/rollback, and all no-game compatibility tests.
 11. **Windows acceptance.** On legally supplied Morrowind GOTY data, run minimal vanilla and each
@@ -109,7 +109,7 @@ files. Do not spend agents repeating the same repository scan.
 
 ## Proof required without Morrowind data
 
-- Clean Windows x64 Release ALMSIVI build from the exact OpenMW pin plus portable Ubuntu
+- Clean Windows x64 Release LORKHAN build from the exact OpenMW pin plus portable Ubuntu
   Python/Lua/contract/audit results. Linux-native and macOS builds are deferred.
 - An unmodified upstream control build plus patch-manifest audit proving the integration is narrow.
 - C++ tests for URL/IP enforcement, authentication, schema/size/hash validation, bounded queues,
@@ -126,7 +126,7 @@ files. Do not spend agents repeating the same repository scan.
 
 - In-game behavior until the user supplies a legal Morrowind GOTY installation on Windows.
 - Android packaging and touch/mobile lifecycle.
-- Multiplayer/shared-world authority; ALMSIVI is a single-player multi-character system.
+- Multiplayer/shared-world authority; LORKHAN is a single-player multi-character system.
 - Original `.omwaddon` records. The first release uses `.omwscripts`; add records only through the
   separately gated process in `CONTENT-ADDON-DEFERRED.md`.
 - Automatic support for a future OpenMW tag. Each upgrade is a new pin, API/schema review, control
@@ -134,7 +134,7 @@ files. Do not spend agents repeating the same repository scan.
 
 ## Boundaries
 
-- Work only in ALMSIVI, sibling ALMSIVIserver, and isolated temporary worktrees.
+- Work only in LORKHAN, sibling LORKHANserver, and isolated temporary worktrees.
 - Pushes to the two existing draft PR branches and the final local deployment are authorized by the
   active goal. Do not merge, release, publish, change GitHub settings, or modify reference repos.
 - Do not put source, secrets, saves, game data, provider payloads, or personal data outside the

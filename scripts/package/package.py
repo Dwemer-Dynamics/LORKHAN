@@ -9,8 +9,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
-from almsivi_foundation import canonical_json, read_json, write_json
-from almsivi_packaging import (RELEASE_NAME, PackagingError, archive_manifest, content_manifest, create_tar, create_zip,
+from lorkhan_foundation import canonical_json, read_json, write_json
+from lorkhan_packaging import (RELEASE_NAME, PackagingError, archive_manifest, content_manifest, create_tar, create_zip,
                                enforce_allowlist, generate_spdx, install_plan, package_set_linkage,
                                release_name_guard, sha256sums, source_date_epoch, uninstall_plan,
                                validate_spdx, write_release_manifest)
@@ -30,13 +30,13 @@ def package(args: argparse.Namespace) -> None:
     suffix = ".zip" if args.format == "zip" else ".tar"
     output_dir.mkdir(parents=True, exist_ok=True)
     archive = output_dir / f"{args.name}{suffix}"
-    namespace = f"https://almsivi.invalid/spdx/{linkage['almsivi_commit']}/{args.name}"
+    namespace = f"https://lorkhan.invalid/spdx/{linkage['lorkhan_commit']}/{args.name}"
     sbom = generate_spdx(args.name, namespace, args.version, manifest["files"], linkage)
     validate_spdx(sbom, manifest["files"])
-    with tempfile.TemporaryDirectory(prefix="almsivi-package-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="lorkhan-package-") as temporary:
         stage = Path(temporary) / "stage"
         shutil.copytree(input_root, stage, symlinks=True)
-        write_json(stage / "sbom/almsivi.spdx.json", sbom)
+        write_json(stage / "sbom/lorkhan.spdx.json", sbom)
         staged_manifest = content_manifest(stage)
         enforce_allowlist(staged_manifest["files"], policy[f"{allowlist_kind}_allowlist"], policy["denylist"])
         if args.format == "zip":
@@ -63,7 +63,7 @@ def package(args: argparse.Namespace) -> None:
 
 def ownership(args: argparse.Namespace) -> None:
     archive = Path(args.archive).resolve()
-    from almsivi_packaging import inspect_archive
+    from lorkhan_packaging import inspect_archive
     plan = install_plan(inspect_archive(archive), Path(args.install_root))
     uninstall = uninstall_plan(plan, Path(args.install_root))
     document = {"install": plan, "uninstall": uninstall}
@@ -74,7 +74,7 @@ def ownership(args: argparse.Namespace) -> None:
 
 
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(description="Deterministic ALMSIVI package builder")
+    result = argparse.ArgumentParser(description="Deterministic LORKHAN package builder")
     sub = result.add_subparsers(dest="command", required=True)
     build = sub.add_parser("build")
     build.add_argument("--repository", default=str(ROOT))

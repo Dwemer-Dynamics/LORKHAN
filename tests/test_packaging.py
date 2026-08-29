@@ -17,8 +17,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
-from almsivi_foundation import read_json
-from almsivi_packaging import (PackagingError, apply_suppressions, archive_manifest, audit_archive_content,
+from lorkhan_foundation import read_json
+from lorkhan_packaging import (PackagingError, apply_suppressions, archive_manifest, audit_archive_content,
                                audit_bytes, audit_notices, audit_source_inputs, audit_tree, collect_source_tree,
                                collect_tree, content_manifest,
                                create_tar, create_zip, generate_spdx, install_plan, load_suppressions,
@@ -42,7 +42,7 @@ class PackagingTests(unittest.TestCase):
         root = self.temp / "tree"
         (root / "bin").mkdir(parents=True)
         (root / "docs").mkdir()
-        executable = root / "bin/almsivi"
+        executable = root / "bin/lorkhan"
         executable.write_bytes(b"fixture executable\n")
         executable.chmod(0o755)
         (root / "docs/README.txt").write_bytes(b"fixture docs\n")
@@ -86,7 +86,7 @@ class PackagingTests(unittest.TestCase):
         self.assertTrue(comparison["normalized_equal"])
         with zipfile.ZipFile(first) as archive:
             self.assertEqual(archive.namelist(), sorted(archive.namelist()))
-            self.assertEqual((archive.getinfo("bin/almsivi").external_attr >> 16) & 0o777, 0o755)
+            self.assertEqual((archive.getinfo("bin/lorkhan").external_attr >> 16) & 0o777, 0o755)
 
     def test_tar_is_byte_reproducible_and_normalized(self):
         root = self.tree()
@@ -129,8 +129,8 @@ class PackagingTests(unittest.TestCase):
     def test_manifest_sums_and_spdx_cover_every_file(self):
         root = self.tree()
         manifest = content_manifest(root)
-        sbom = generate_spdx("fixture-runtime", "https://almsivi.invalid/test", "0", manifest["files"],
-                             {"almsivi_commit": "a" * 40})
+        sbom = generate_spdx("fixture-runtime", "https://lorkhan.invalid/test", "0", manifest["files"],
+                             {"lorkhan_commit": "a" * 40})
         validate_spdx(sbom, manifest["files"])
         sbom["files"][0]["checksums"][0]["checksumValue"] = "0" * 64
         with self.assertRaisesRegex(PackagingError, "coverage mismatch"):
@@ -145,22 +145,22 @@ class PackagingTests(unittest.TestCase):
         with self.assertRaisesRegex(PackagingError, "clearly named"):
             release_name_guard("candidate-runtime", ROOT, stage, self.policy, "runtime")
         with self.assertRaisesRegex(PackagingError, "release-named package fails closed"):
-            release_name_guard("ALMSIVI-OpenMW-0.1-windows-x64", ROOT, stage, self.policy, "runtime")
+            release_name_guard("LORKHAN-OpenMW-0.1-windows-x64", ROOT, stage, self.policy, "runtime")
         with self.assertRaisesRegex(PackagingError, "release-named package fails closed"):
-            release_name_guard("ALMSIVI-source-0.1", ROOT, stage, self.policy, "source")
+            release_name_guard("LORKHAN-source-0.1", ROOT, stage, self.policy, "source")
         with self.assertRaisesRegex(PackagingError, "release-named package fails closed"):
-            release_name_guard("ALMSIVI-Lua-0.1", ROOT, stage, self.policy, "runtime")
+            release_name_guard("LORKHAN-Lua-0.1", ROOT, stage, self.policy, "runtime")
 
     def test_provenance_scope_includes_untracked_implementation_files(self):
         repository = self.repository_fixture()
-        untracked = repository / "components/almsivi/src/untracked.cpp"
+        untracked = repository / "components/lorkhan/src/untracked.cpp"
         untracked.parent.mkdir(parents=True, exist_ok=True)
         untracked.write_text("// original fixture\n")
-        self.assertIn("components/almsivi/src/untracked.cpp", tracked_implementation_paths(repository))
+        self.assertIn("components/lorkhan/src/untracked.cpp", tracked_implementation_paths(repository))
 
     def test_package_linkage_uses_commit_pin_patch_hash_and_locks(self):
         linkage = package_set_linkage(ROOT, self.policy)
-        self.assertRegex(linkage["almsivi_commit"], r"^[0-9a-f]{40}$")
+        self.assertRegex(linkage["lorkhan_commit"], r"^[0-9a-f]{40}$")
         self.assertEqual(linkage["openmw_commit"], "f4bec41444214a7903bebd178389ca22ca13f646")
         self.assertRegex(linkage["patch_manifest_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(linkage["provenance_ledger_sha256"], r"^[0-9a-f]{64}$")
@@ -214,11 +214,11 @@ class PackagingTests(unittest.TestCase):
         for relative in policy["required_product_paths"]["runtime"] + policy["required_corresponding_source_paths"]:
             target = stage / relative; target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text("fixture prerequisite\n", encoding="utf-8")
-        with self.assertRaisesRegex(PackagingError, "cannot determine exact ALMSIVI commit"):
-            release_name_guard("ALMSIVI-OpenMW-0.1-windows-x64", repository, stage, policy, "runtime")
+        with self.assertRaisesRegex(PackagingError, "cannot determine exact LORKHAN commit"):
+            release_name_guard("LORKHAN-OpenMW-0.1-windows-x64", repository, stage, policy, "runtime")
         (repository / policy["patch_manifest"]).unlink()
         with self.assertRaisesRegex(PackagingError, "authoritative repository input"):
-            release_name_guard("ALMSIVI-OpenMW-0.1-windows-x64", repository, stage, policy, "runtime")
+            release_name_guard("LORKHAN-OpenMW-0.1-windows-x64", repository, stage, policy, "runtime")
 
     def test_install_uninstall_dry_run_owns_only_archive_files(self):
         entries = content_manifest(self.tree())["files"]
@@ -339,7 +339,7 @@ class PackagingTests(unittest.TestCase):
     def test_package_set_mismatch_fails(self):
         runtime = self.temp / "r.zip"; source = self.temp / "s.tar"
         runtime.write_bytes(b"r"); source.write_bytes(b"s")
-        linkage = {"almsivi_commit":"a"*40,"openmw_commit":"b"*40,"openmw_tag":"tag",
+        linkage = {"lorkhan_commit":"a"*40,"openmw_commit":"b"*40,"openmw_tag":"tag",
                    "patch_manifest_sha256":"c"*64,"provenance_ledger_sha256":"e"*64,
                    "dependency_locks":[{"path":"x","sha256":"d"*64}]}
         rmanifest = {"linkage": linkage, "archive_sha256": hashlib.sha256(b"r").hexdigest()}

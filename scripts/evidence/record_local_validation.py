@@ -92,8 +92,8 @@ def main() -> int:
     commands: list[tuple[str, list[str]]] = [
         ("native", [str(ROOT / "scripts/test/native.sh")]),
         ("python-tests", [sys.executable, "-m", "unittest", "discover", "-s", str(ROOT / "tests"), "-v"]),
-        ("loopback-tests", [sys.executable, "-m", "unittest", "discover", "-s", str(ROOT / "almsivi/tests"), "-v"]),
-        ("lua-structural", [sys.executable, str(ROOT / "almsivi/tests/run.py")]),
+        ("loopback-tests", [sys.executable, "-m", "unittest", "discover", "-s", str(ROOT / "lorkhan/tests"), "-v"]),
+        ("lua-structural", [sys.executable, str(ROOT / "lorkhan/tests/run.py")]),
         ("evidence", [sys.executable, str(ROOT / "scripts/evidence/validate.py")]),
         ("protocol", [sys.executable, str(ROOT / "scripts/protocol/validate.py")]),
         ("protocol-manifest", [sys.executable, str(ROOT / "scripts/protocol/generate_manifest.py"), "--check"]),
@@ -102,7 +102,7 @@ def main() -> int:
         ("source-audit", [str(ROOT / "scripts/audit/package.sh"), "source-tree"]),
         ("provenance", [sys.executable, str(ROOT / "scripts/audit/package_audit.py"), "--repository", str(ROOT), "provenance"]),
     ]
-    with tempfile.TemporaryDirectory(prefix="almsivi-validation-evidence-") as staging_root:
+    with tempfile.TemporaryDirectory(prefix="lorkhan-validation-evidence-") as staging_root:
         output = Path(staging_root) / "run"
         output.mkdir()
         replacements: dict[str, str] = {}
@@ -117,7 +117,7 @@ def main() -> int:
         if args.cache_dir:
             cache = args.cache_dir.resolve()
             add_replacement(replacements, cache, "$OPENMW_CACHE")
-            with tempfile.TemporaryDirectory(prefix="almsivi-evidence-openmw-") as temporary:
+            with tempfile.TemporaryDirectory(prefix="lorkhan-evidence-openmw-") as temporary:
                 source = Path(temporary) / "openmw"
                 raw_manifest = Path(temporary) / "bootstrap.json"
                 add_replacement(replacements, source, "$OPENMW_SOURCE")

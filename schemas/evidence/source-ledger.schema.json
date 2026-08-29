@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://almsivi.invalid/schemas/source-ledger.schema.json",
+  "$id": "https://lorkhan.invalid/schemas/source-ledger.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "sources"],

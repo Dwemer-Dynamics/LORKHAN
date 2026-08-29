@@ -3,7 +3,7 @@
 Checkpoint date: 2026-07-20.
 
 The complete client work through implementation head `1c1eaf188f39dae7c292fc2af41f7675e58ac056`
-is preserved on `main`. Continue against the private `RANGROO/ALMSIVIserver` repository's `main`
+is preserved on `main`. Continue against the private `RANGROO/LORKHANserver` repository's `main`
 branch. The older foundation-only wording in `README.md` is not the complete current state; use
 `docs/evidence/completion-ledger.md` and the code on `main` when assessing what exists.
 
@@ -26,18 +26,18 @@ validation behavior meaningful.
 
 ## Resume on another machine
 
-Clone `ALMSIVI` and `ALMSIVIserver` beside each other, use `main` in both, and start with:
+Clone `LORKHAN` and `LORKHANserver` beside each other, use `main` in both, and start with:
 
 ```bash
 python3 scripts/evidence/validate.py
 python3 scripts/protocol/validate.py
-python3 almsivi/tests/run.py
+python3 lorkhan/tests/run.py
 ./scripts/test/native.sh
 ./scripts/test/lua-unix.sh
 ```
 
 Then repair CI and rerun the server's cross-repository protocol and Beast HTTP suites against the
-root `ALMSIVI` checkout. The old nested `.claude/worktrees/independent-client-foundations` path is
+root `LORKHAN` checkout. The old nested `.claude/worktrees/independent-client-foundations` path is
 no longer required because its commits are in `main`.
 
 Windows OpenMW control/product builds, a legal Morrowind installation, Lua inside OpenMW, and

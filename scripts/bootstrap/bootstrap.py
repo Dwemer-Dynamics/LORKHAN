@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 
-from almsivi_foundation import (FoundationError, cache_index_path, canonical_json, clean_git_environment,
+from lorkhan_foundation import (FoundationError, cache_index_path, canonical_json, clean_git_environment,
                                git_version, materialize_bundle, read_json, require_tool, run, run_manifest,
                                sha256_file, validate_pin, verify_cache, write_json)
 
@@ -29,7 +29,7 @@ def parser() -> argparse.ArgumentParser:
 def prefetch(pin: dict, cache_dir: Path, repository: str, git: str) -> tuple[Path, dict]:
     validate_pin(pin)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="almsivi-prefetch-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="lorkhan-prefetch-") as temporary:
         repo = Path(temporary) / "openmw.git"
         env = clean_git_environment()
         run([git, "init", "--bare", str(repo)], env=env)

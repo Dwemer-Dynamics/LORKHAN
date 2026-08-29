@@ -1,4 +1,4 @@
-# ALMSIVI program plan
+# LORKHAN program plan
 
 Research date: 2026-07-18
 
@@ -7,12 +7,12 @@ Research date: 2026-07-18
 Build the Morrowind/OpenMW sibling to CHIM, Dialectic, and SYNTH in two independently maintainable
 private repositories:
 
-- `ALMSIVI`: a pinned, side-by-side OpenMW runtime, minimal native bridge, Lua gameplay/UI mod,
+- `LORKHAN`: a pinned, side-by-side OpenMW runtime, minimal native bridge, Lua gameplay/UI mod,
   tests, patches, source packaging, and installer.
-- `ALMSIVIserver`: the final Synthserver architecture adapted to TES3/OpenMW identity, context,
+- `LORKHANserver`: the final Synthserver architecture adapted to TES3/OpenMW identity, context,
   actions, setup, UI, persistence, and provider flows.
 
-The first useful vertical slice is: launch an ALMSIVI profile, select an NPC, open the ALMSIVI
+The first useful vertical slice is: launch an LORKHAN profile, select an NPC, open the LORKHAN
 overlay, type a line, send a bounded snapshot, receive a mocked response, show a subtitle, and play
 verified actor-positioned speech. Loading a save or halting invalidates the old request.
 
@@ -40,20 +40,20 @@ is a deterministic gate, not an open design question.
 
 | ID | Decision |
 | --- | --- |
-| D01 | Repositories are `RANGROO/ALMSIVI` and `RANGROO/ALMSIVIserver`, both private during development. |
-| D02 | ALMSIVI begins only after SYNTH and Synthserver meet their non-game stop conditions. |
+| D01 | Repositories are `RANGROO/LORKHAN` and `RANGROO/LORKHANserver`, both private during development. |
+| D02 | LORKHAN begins only after SYNTH and Synthserver meet their non-game stop conditions. |
 | D03 | Runtime pin is OpenMW 0.51.0 commit `f4bec...f646`, Lua API revision 129. No floating `stable`/`latest`. |
-| D04 | The product is a side-by-side ALMSIVI-branded OpenMW build plus `.omwscripts`; stock OpenMW is never overwritten. |
+| D04 | The product is a side-by-side LORKHAN-branded OpenMW build plus `.omwscripts`; stock OpenMW is never overwritten. |
 | D05 | A pure Lua implementation is rejected because OpenMW Lua is OS-sandboxed and has no network package. |
-| D06 | Native code exposes only typed ALMSIVI operations. There is no generic HTTP/socket/filesystem/shell Lua API. |
+| D06 | Native code exposes only typed LORKHAN operations. There is no generic HTTP/socket/filesystem/shell Lua API. |
 | D07 | Transport is asynchronous HTTP/1.1 over an IP loopback literal using Boost.Asio/Beast and `Boost::system`; redirects, DNS and non-loopback endpoints are rejected. |
 | D08 | Authentication is a 256-bit server-generated pairing token stored only in native configuration and server secret configuration, never returned to Lua or logs. |
 | D09 | Server base is the final tested Synthserver, migrated by explicit semantic mapping to TES3/OpenMW. |
 | D10 | Windows x64 Release is the supported product build and CI platform. Linux x64, macOS arm64, and Android are deferred and have no continuous build requirement. |
-| D11 | Vanilla dialogue remains intact. ALMSIVI uses a dedicated configurable action and passively captures `DialogueResponse` context. |
+| D11 | Vanilla dialogue remains intact. LORKHAN uses a dedicated configurable action and passively captures `DialogueResponse` context. |
 | D12 | GLOBAL Lua orchestrates; PLAYER Lua owns input/UI; dynamically attached CUSTOM actor scripts own self-only AI/animation/speech. |
-| D13 | Generated speech is downloaded and hash-verified natively into an ALMSIVI cache, mounted/registered through a controlled engine media service, and invoked through opaque media IDs. Lua never supplies host paths. |
-| D14 | Protocol is `almsivi.*.v1`, strict JSON envelopes plus bounded event polling. It retains SYNTH request/action-result semantics but uses TES3/OpenMW identity. |
+| D13 | Generated speech is downloaded and hash-verified natively into an LORKHAN cache, mounted/registered through a controlled engine media service, and invoked through opaque media IDs. Lua never supplies host paths. |
+| D14 | Protocol is `lorkhan.*.v1`, strict JSON envelopes plus bounded event polling. It retains SYNTH request/action-result semantics but uses TES3/OpenMW identity. |
 | D15 | One game profile has one server playthrough and session. Group dialogue supports many active characters; network multiplayer is out of scope. |
 | D16 | No `.omwaddon` is needed initially. Original records/content are a separately gated later deliverable. |
 | D17 | Model actions are a typed allowlist with read-only and mutation tiers. No arbitrary console, Lua, MWScript, record creation, file path, or URL. |
@@ -73,7 +73,7 @@ provider credentials) have deterministic intake steps and do not change architec
 3. Keep engine objects on the main thread; transport moves immutable, bounded DTOs.
 4. Bind every result to profile, playthrough, session, generation, request, and turn.
 5. Use stable TES3 identities: content file/load order plus RecordId and runtime RefNum/FormId.
-6. Keep vanilla gameplay available and ALMSIVI independently disableable.
+6. Keep vanilla gameplay available and LORKHAN independently disableable.
 7. Make setup local-first: Apache and the bridge listen/connect on loopback only by default.
 8. Measure parity end to end. A UI label or database table alone is not a feature.
 9. Preserve provenance and GPL/source obligations from the first import.
@@ -83,9 +83,9 @@ provider credentials) have deterministic intake steps and do not change architec
 
 ```mermaid
 flowchart LR
-  G["OpenMW 0.51 game state"] --> L["ALMSIVI Lua global/player/actor scripts"]
-  L -->|"typed DTO only"| B["openmw.almsivi native package"]
-  B -->|"bounded loopback HTTP"| A["ALMSIVIserver Apache/PHP"]
+  G["OpenMW 0.51 game state"] --> L["LORKHAN Lua global/player/actor scripts"]
+  L -->|"typed DTO only"| B["openmw.lorkhan native package"]
+  B -->|"bounded loopback HTTP"| A["LORKHANserver Apache/PHP"]
   A --> D["PostgreSQL + pgvector"]
   A --> P["LLM/STT/TTS connectors"]
   A --> U["Management UI + workers"]
@@ -111,7 +111,7 @@ repositories; no reference repo is modified.
 
 - Add native configuration, token handling, URL enforcement, worker lifecycle, bounded queues,
   cancellation, generation, status/capability DTOs, and strict response parsing.
-- Register `openmw.almsivi` only in intended script contexts.
+- Register `openmw.lorkhan` only in intended script contexts.
 - Complete init/health round trip with a visible Lua status surface.
 
 Gate: control and patched OpenMW tests pass; fake-server positive and abuse cases pass; a static API

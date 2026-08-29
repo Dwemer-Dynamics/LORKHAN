@@ -68,7 +68,7 @@ for workflow in workflows:
     missing = required_events - events
     if missing:
         raise SystemExit(f"error: mandatory CI triggers missing: {workflow}: {sorted(missing)}")
-    if re.search(r"(?i)(ALMSIVIserver|Synthserver|RANGROO/SYNTH|\.\./(?:ALMSIVIserver|SYNTH|Synthserver))", text):
+    if re.search(r"(?i)(LORKHANserver|Synthserver|RANGROO/SYNTH|\.\./(?:LORKHANserver|SYNTH|Synthserver))", text):
         raise SystemExit(f"error: sibling checkout/reference forbidden in workflow: {workflow}")
     if re.search(r"(?m)^\s*repository:\s*", text):
         raise SystemExit(f"error: checkout repository override forbidden: {workflow}")

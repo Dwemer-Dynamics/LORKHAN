@@ -1,18 +1,18 @@
 # Protocol contract implementation
 
-The canonical ALMSIVI v1 bytes are under `almsivi/schemas/v1` and `almsivi/fixtures/v1`. They use JSON Schema Draft 2020-12, strict contract-owned objects, canonical lowercase UUIDs, UTC RFC 3339 timestamps, the OpenMW 0.51.0/API-129 runtime pin, bounded arrays/strings/media, and TES3 identities.
+The canonical LORKHAN v1 bytes are under `lorkhan/schemas/v1` and `lorkhan/fixtures/v1`. They use JSON Schema Draft 2020-12, strict contract-owned objects, canonical lowercase UUIDs, UTC RFC 3339 timestamps, the OpenMW 0.51.0/API-129 runtime pin, bounded arrays/strings/media, and TES3 identities.
 
 ## Independent decision revision
 
-The original planning lock deferred server-owned response details until an authoritative server existed. On 2026-07-19 the sibling ALMSIVIserver independently implemented the no-game PostgreSQL vertical slice. This batch deliberately revises that deferral only for the concrete shapes emitted by that implementation: session acceptance, turn acceptance, events, interruption acceptance, action-result acceptance, and session end. The revision is evidenced by byte-identical dual-repository schemas/fixtures, authoritative Draft 2020-12 fixture validation, captured server-response validation, typed C++ parsing, Lua mapping checks, and the disposable-PostgreSQL cross-repository harness. It does not authorize broader product semantics.
+The original planning lock deferred server-owned response details until an authoritative server existed. On 2026-07-19 the sibling LORKHANserver independently implemented the no-game PostgreSQL vertical slice. This batch deliberately revises that deferral only for the concrete shapes emitted by that implementation: session acceptance, turn acceptance, events, interruption acceptance, action-result acceptance, and session end. The revision is evidenced by byte-identical dual-repository schemas/fixtures, authoritative Draft 2020-12 fixture validation, captured server-response validation, typed C++ parsing, Lua mapping checks, and the disposable-PostgreSQL cross-repository harness. It does not authorize broader product semantics.
 
 Run locally:
 
 ```bash
 python3 scripts/protocol/generate_manifest.py --check
 python3 scripts/protocol/validate.py --require-jsonschema
-python3 -m unittest discover -s almsivi/tests -v
-# sibling ALMSIVIserver:
+python3 -m unittest discover -s lorkhan/tests -v
+# sibling LORKHANserver:
 scripts/verify-protocol-parity.sh
 scripts/test/cross-repo-integration.sh
 ```
@@ -21,12 +21,12 @@ scripts/test/cross-repo-integration.sh
 
 ## Contracted response surface
 
-- `almsivi.session.accepted.v1`: originating message, session/generation, negotiated capabilities, configuration revision and cursor.
-- `almsivi.turn.accepted.v1`: full message/request/turn/session/generation correlation and cursor.
-- `almsivi.events.v1`: session/generation/cursor plus at most 100 strict event envelopes.
-- `almsivi.interruption.accepted.v1`: full correlation, cursor and duplicate marker.
-- `almsivi.action-result.accepted.v1`: full correlation, action/status and duplicate marker.
-- `almsivi.session.ended.v1`: delete request/session/generation and whether this call ended it.
+- `lorkhan.session.accepted.v1`: originating message, session/generation, negotiated capabilities, configuration revision and cursor.
+- `lorkhan.turn.accepted.v1`: full message/request/turn/session/generation correlation and cursor.
+- `lorkhan.events.v1`: session/generation/cursor plus at most 100 strict event envelopes.
+- `lorkhan.interruption.accepted.v1`: full correlation, cursor and duplicate marker.
+- `lorkhan.action-result.accepted.v1`: full correlation, action/status and duplicate marker.
+- `lorkhan.session.ended.v1`: delete request/session/generation and whether this call ended it.
 
 Contracted event variants are exactly the current server outputs: `turn.accepted`, `dialogue.complete`, `action.intent`, `turn.complete`, `turn.cancelled`, `turn.failed` for provider timeout/unavailability, and `speech.ready`. Every event carries message, request, turn, session, generation, sequence and creation time. Media must be non-empty and independently hash/size/type/expiry validated.
 
