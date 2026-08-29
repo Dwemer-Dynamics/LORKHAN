@@ -4,7 +4,7 @@ param(
     [string]$Output = (Join-Path $PSScriptRoot '..\..\.local\lorkhan-client.conf'),
     [string]$MediaCacheRoot = 'C:\Modlists\LORKHAN\Data\LORKHAN\cache',
     [ValidateRange(1024, 65535)]
-    [int]$ServerPort = 8089
+    [int]$ProxyPort = 7514
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,7 +51,7 @@ if ($contentFingerprint -notmatch '^sha256:[0-9a-f]{64}$') {
     $contentFingerprint = 'sha256:0000000000000000000000000000000000000000000000000000000000000000'
 }
 $lines = @(
-    "base_url=http://127.0.0.1:$ServerPort/LORKHANserver/api/v1",
+    "base_url=http://127.0.0.1:$ProxyPort/LORKHANserver/api/v1",
     "pairing_key=$pairingKey",
     "installation_id=$installationId",
     "profile_id=$profileId",

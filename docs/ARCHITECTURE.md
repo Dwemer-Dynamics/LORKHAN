@@ -3,7 +3,7 @@
 ## Deployment boundary
 
 Windows runs a side-by-side LORKHAN OpenMW package and the Lua mod against user-supplied Morrowind
-GOTY data. WSL2 runs Apache/PHP/PostgreSQL at `http://127.0.0.1:8089/LORKHANserver`. The management
+GOTY data. WSL2 runs Apache/PHP/PostgreSQL on port `8090`; DwemerDistro Launcher exposes it to the Windows client at `http://127.0.0.1:7514/LORKHANserver`. The management
 UI is browser-only; the game uses versioned `/api/v1` endpoints. Provider calls originate only from
 the server. Neither Lua nor the runtime receives provider credentials.
 
@@ -82,7 +82,7 @@ directory in `lorkhan.toml`; native code reads it and exposes only safe derived 
 3. user `lorkhan.toml`;
 4. command-line diagnostic overrides limited to non-secret test settings.
 
-The endpoint defaults to `http://127.0.0.1:8089/LORKHANserver/api/v1`. Only `127.0.0.0/8` and `::1`
+The endpoint defaults to `http://127.0.0.1:7514/LORKHANserver/api/v1`. Only `127.0.0.0/8` and `::1`
 IP literals are valid. The server setup generates the pairing token and writes an importable config
 snippet with restrictive permissions. Logs print a token fingerprint only.
 

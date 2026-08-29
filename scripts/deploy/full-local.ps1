@@ -7,7 +7,9 @@ param(
     [string]$EngineSource,
     [string]$BuildRoot,
     [ValidateRange(1024, 65535)]
-    [int]$ServerPort = 8089,
+    [int]$ServerPort = 8090,
+    [ValidateRange(1024, 65535)]
+    [int]$ProxyPort = 7514,
     [switch]$SkipServer,
     [switch]$SkipBuild,
     [switch]$SkipClient
@@ -26,10 +28,10 @@ $BuildRoot = [IO.Path]::GetFullPath($BuildRoot)
 $ClientRoot = [IO.Path]::GetFullPath($ClientRoot)
 $expectedEnginePin = 'f4bec41444214a7903bebd178389ca22ca13f646'
 $stageResults = [System.Collections.Generic.List[object]]::new()
-$reservedLocalPorts = @(8020, 8021, 8022, 8023, 8024, 8082, 8085, 8086, 12346)
+$reservedLocalPorts = @(8020, 8021, 8022, 8023, 8024, 8082, 8085, 8086, 8089, 12346)
 
 if ($reservedLocalPorts -contains $ServerPort) {
-    throw "Port $ServerPort is reserved by another Dwemer service. LORKHAN uses dedicated port 8089 by default."
+    throw "Port $ServerPort is reserved by another Dwemer service. LORKHAN uses dedicated WSL port 8090 by default."
 }
 
 function Get-CMakeExecutable {
@@ -387,9 +389,9 @@ try {
                 if ($cacheBackup -and (Test-Path -LiteralPath $cacheBackup)) { Remove-Item -LiteralPath $cacheBackup -Recurse -Force }
             }
 
-            & (Join-Path $PSScriptRoot 'configure-local-client.ps1') -Distro $Distro -Output $configTarget -MediaCacheRoot $cacheTarget -ServerPort $ServerPort
+            & (Join-Path $PSScriptRoot 'configure-local-client.ps1') -Distro $Distro -Output $configTarget -MediaCacheRoot $cacheTarget -ProxyPort $ProxyPort
             Update-OpenMwUserConfiguration -DataRoot $dataTarget
-            Install-LaunchHelpers -Root $ClientRoot -HttpPort $ServerPort
+            Install-LaunchHelpers -Root $ClientRoot -HttpPort $ProxyPort
 
             $sourceHash = (Get-FileHash -LiteralPath (Join-Path $runtimeSource 'openmw.exe') -Algorithm SHA256).Hash
             $deployedHash = (Get-FileHash -LiteralPath (Join-Path $runtimeTarget 'openmw.exe') -Algorithm SHA256).Hash
