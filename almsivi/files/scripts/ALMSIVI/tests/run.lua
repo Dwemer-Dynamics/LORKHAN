@@ -233,10 +233,21 @@ test('media prepare handoff is opaque generation-bound and fake-adapter tested',
   orchestrator.lifecycle(s,'load');truthy(s.responseQueue.unfinished==false)
  end)
 test('rechat waits for terminal playback and submits one correlated continuation',function()
- local b=fake.bridge() local s=orchestrator.new(b,nil,function()return true end)
+ local busy=fake.identity('npc','busy_actor',4)
+ local b=fake.bridge() local s
+ s=orchestrator.new(b,nil,function(actorIdentity,name,payload)
+  if name=='ALMSIVI_ACTOR_CONVERSATION_STATE_REQUEST' then
+   orchestrator.actorCombatStatus(s,{actor=actorIdentity,hostile_to_player=false,activity='idle',
+    conversation_state=identity.same(actorIdentity,busy) and 'busy' or 'active',conversation_state_proven=true,
+    probe_id=payload.probe_id})
+  end
+  return true
+ end)
  s.settings={behavior={rechat=true,rechatMaxDepth=2},presentation={ttsVolumeBoost=3}}
  orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+ orchestrator.activate(s,enemy,{});orchestrator.activate(s,busy,{})
  truthy(conversation.setTarget(s.conversation,npc))
+ truthy(conversation.addAudience(s.conversation,enemy));truthy(conversation.addAudience(s.conversation,busy))
  truthy(orchestrator.submitText(s,{message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,
   installation_id='00000000-0000-4000-8000-000000000060',profile_id='00000000-0000-4000-8000-000000000061',
   playthrough_id='00000000-0000-4000-8000-000000000062',created_at='2026-07-19T20:00:00Z',platform='windows',
@@ -250,14 +261,54 @@ test('rechat waits for terminal playback and submits one correlated continuation
  eq(orchestrator.poll(s),4);eq(#b.submitted,1)
  b.media[descriptor.media_id]={state='ready'};orchestrator.poll(s);eq(#b.submitted,1)
  truthy(orchestrator.speechStatus(s,{media_id=descriptor.media_id,active=false,status='played'}))
+ truthy(orchestrator.pollRechatEligibility(s,0))
  eq(#b.submitted,2);eq(b.submitted[2].payload.ui_source,'almsivi_rechat')
  eq(b.submitted[2].payload.context.rechat.rechat_depth,1);eq(b.submitted[2].payload.context.rechat.origin_turn_id,UUID.turn)
  eq(b.submitted[2].payload.context.rechat.origin_line,'Hello.')
  truthy(identity.same(b.submitted[2].payload.context.rechat.speaker,npc))
  truthy(identity.same(b.submitted[2].payload.context.rechat.listener_hint,playerId))
  truthy(identity.same(b.submitted[2].payload.context.rechat.rechat_target_hint,npc))
+ eq(#b.submitted[2].payload.audience,2);truthy(identity.same(b.submitted[2].payload.audience[1],enemy))
+ truthy(identity.same(b.submitted[2].payload.audience[2],busy))
+ local participantStates=b.submitted[2].payload.context.rechat.participant_states
+ eq(#participantStates,3);eq(participantStates[1].state,'active')
+ eq(participantStates[2].state,'active');eq(participantStates[3].state,'busy')
  eq(s.rechat.requestInFlight,true)
  eq(s.rechat.originTurnId,UUID.turn)
+end)
+test('rechat cancels when the previous speaker is freshly busy',function()
+ local b=fake.bridge() local s
+ s=orchestrator.new(b,nil,function(actorIdentity,name,payload)
+  if name=='ALMSIVI_ACTOR_CONVERSATION_STATE_REQUEST' then
+   orchestrator.actorCombatStatus(s,{actor=actorIdentity,hostile_to_player=false,activity='combat',
+    conversation_state=identity.same(actorIdentity,npc) and 'busy' or 'active',conversation_state_proven=true,
+    probe_id=payload.probe_id})
+  end
+  return true
+ end)
+ s.settings={behavior={rechat=true,rechatMaxDepth=2},presentation={ttsVolumeBoost=3}}
+ orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{});orchestrator.activate(s,enemy,{})
+ truthy(conversation.setTarget(s.conversation,npc));truthy(conversation.addAudience(s.conversation,enemy))
+ truthy(orchestrator.submitText(s,{message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,
+  installation_id=uuid(60),profile_id=uuid(61),playthrough_id=uuid(62),created_at='2026-07-19T20:00:00Z',
+  platform='windows',content_fingerprint='sha256:'..string.rep('a',64),text='Hello.',input_key='player:busy',
+  language='en-US',speaker=playerId,context={},capabilities={'dialogue.text','speech.say'},
+  recent_action_results={},ui_source='almsivi_text'}))
+ local line=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Busy.'});line.message_id=UUID.message
+ local media={media_id=uuid(5),dialogue_message_id=UUID.message,sha256=string.rep('a',64),bytes=4,
+  codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
+ b.results={responseEvent(1,{dialogueLine(0,UUID.message,npc,playerId,'Busy.',true,true)},1),line,
+  event(3,'speech.ready',1,media),event(4,'turn.complete',1,{status='complete'})}
+ eq(orchestrator.poll(s),4);b.media[media.media_id]={state='ready'};orchestrator.poll(s)
+ truthy(orchestrator.speechStatus(s,{media_id=media.media_id,active=false,status='played'}))
+ eq(orchestrator.pollRechatEligibility(s,0),false);eq(#b.submitted,1);truthy(s.rechat.cancelled)
+end)
+test('rechat probe ignores an unproven compatibility fallback',function()
+ local s=orchestrator.new(fake.bridge()) local key=identity.key(npc)
+ s.rechatEligibility={probeId=UUID.message,expected={[key]=true},states={}}
+ orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,activity='idle',conversation_state='active',
+  conversation_state_proven=false,probe_id=UUID.message})
+ eq(s.rechatEligibility.states[key],nil)
 end)
 test('multi-speaker media plays in dialogue order without overlap',function()
  local b=fake.bridge() local sent={}
@@ -521,6 +572,9 @@ test('auto-managed actors attacking the player are removed unless explicitly all
  eq(combatEvents[#combatEvents].active,true);eq(#combatEvents[#combatEvents].threats,1)
  removed,reason=orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false})
  eq(removed,false);eq(reason,'agent_retained');eq(combatEvents[#combatEvents].active,false)
+ removed,reason=orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,
+  activity='inactive',conversation_state='inactive'})
+ truthy(removed);eq(reason,'inactive_removed');eq(#agentRegistry.snapshot(s.agents),0)
  orchestrator.lifecycle(s,'load');eq(combatEvents[#combatEvents].active,false);eq(combatEvents[#combatEvents].count,0)
 end)
 test('explicit hard halt clears queues and blocks submit',function()
@@ -769,7 +823,8 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
  local candidate=openmwAdapter.resolveCameraTarget(512,modules);eq(candidate.identity.record_id,'fargoth');eq(candidate.distance,300)
  eq(openmwAdapter.actorDistance(mapped,modules),300)
  local combatStatus=openmwAdapter.combatStatus(modules);truthy(combatStatus.hostile_to_player);eq(combatStatus.target.kind,'player')
- eq(combatStatus.activity,'combat')
+ eq(combatStatus.activity,'combat');eq(combatStatus.conversation_state,'unconscious')
+ eq(combatStatus.conversation_state_proven,true)
  local destination=openmwAdapter.resolveCameraPoint(512,modules);eq(destination.destination_y,256);eq(destination.destination_cell,'exterior:-2:-9')
  truthy(openmwAdapter.travel(destination,modules));eq(started.type,'Travel');eq(started.destPosition.y,256)
  truthy(openmwAdapter.stopAi({type='Travel',destination=destination},modules))

@@ -342,8 +342,19 @@ function M.combatStatus(modules)
     local fleeing=safe(ai.isFleeing)==true
     local activity=fleeing and 'fleeing' or package and type(package.type)=='string' and package.type:lower() or 'idle'
     local target=package and package.target and M.identity(package.target,modules) or nil
+    local conversationState=(fleeing or activity=='combat') and 'busy' or 'active'
+    local conversationStateProven=false
+    local bridge=M.bridge()
+    if bridge and bridge.actorConversationState then
+        local native=safe(bridge.actorConversationState,modules.self)
+        if type(native)=='table' and ({active=true,busy=true,sleeping=true,unconscious=true,inactive=true})[native.state] then
+            conversationState=native.state
+            conversationStateProven=true
+        end
+    end
     return {hostile_to_player=package and package.type=='Combat' and target and target.kind=='player' or false,
-        activity=activity,target=target}
+        activity=activity,target=target,conversation_state=conversationState,
+        conversation_state_proven=conversationStateProven}
 end
 
 local function dynamicStats(actor, modules)

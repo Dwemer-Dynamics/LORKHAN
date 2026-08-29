@@ -83,6 +83,7 @@ Other semantic actions are deliberately unbound until the player assigns them in
 | Requirement | Current implementation | Current proof |
 | --- | --- | --- |
 | Playback-gated rechat | An enabled profile can continue only after the preceding response finishes, while retaining the current target/session/generation fence and bounded continuation depth | AUTOMATED logic; full runtime chain proof required |
+| Live participant eligibility | After final playback, the global script requests an immediate actor-local API-129 state probe for the previous speaker and at most 12 candidates. Missing/late proof fails closed; busy, unconscious, inactive, or dead actors cannot respond. OpenMW sleep detection remains unavailable, so the server-only direct-address sleep rule is forward-compatible rather than claimed native proof. | AUTOMATED Lua/native source and server integration; in-game state transitions required |
 | Cancellation safety | Halt, target/session/generation changes and newer accepted turns cancel or fence stale continuation work | AUTOMATED source checks; in-game state proof required |
 | Automatic greeting | No scheduler or automatic model-triggering | EXCLUDED |
 | Bored conversation | No quiet timer, actor rotation or automatic model-triggering | EXCLUDED |

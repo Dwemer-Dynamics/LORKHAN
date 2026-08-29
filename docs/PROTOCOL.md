@@ -112,8 +112,13 @@ typed hint vocabulary: `speaker`, `listener_hint`, `rechat_target_hint`, `origin
 probability pre-roll, round budget, and responder selection, then resolves that NPC's profile, LLM,
 TTS, and voice. The client owns ordered playback and cancellation. It submits only after the complete
 speech lane is terminal and its final delivery result is `played`, with at most one rechat request in
-flight. Rechat provider actions are always discarded, and a chain closes at its server-owned budget
-or cancels on new player input, failure, combat, lifecycle changes, stop, or stale state.
+flight. Immediately before submission it requests one bounded actor-local OpenMW state probe for the
+previous speaker and at most 12 candidate responders. The optional `participant_states` list carries
+only stable identities and `active`, `busy`, `sleeping`, `unconscious`, or `inactive`; API 129 currently
+proves all except sleeping. Missing or late proof fails closed, busy/unconscious/inactive actors are
+excluded, and sleeping remains a forward-compatible server rule for a directly addressed actor only.
+Rechat provider actions are always discarded, and a chain closes at its server-owned budget or cancels
+on new player input, failure, combat, lifecycle changes, stop, or stale state.
 
 An in-game action menu may add `action_request` with a catalog action name, exact tier, bounded
 parameters, and an optional explicit target. The server derives the actor from the resolved turn target.

@@ -14,7 +14,11 @@
 #include <components/settings/values.hpp>
 
 #include "../mwbase/environment.hpp"
+#include "../mwbase/mechanicsmanager.hpp"
 #include "../mwbase/soundmanager.hpp"
+#include "../mwmechanics/aisequence.hpp"
+#include "../mwmechanics/creaturestats.hpp"
+#include "../mwworld/class.hpp"
 
 #include "luamanagerimp.hpp"
 #include "objectvariant.hpp"
@@ -413,6 +417,33 @@ namespace MWLua
             if (ptr.isEmpty())
                 throw std::runtime_error("Invalid object");
             return ptr;
+        }
+
+        // Classify only engine states that make an actor unable to take a fresh conversation turn.
+        std::tuple<sol::object, sol::object> actorConversationState(sol::state_view lua, const sol::object& actor)
+        {
+            try
+            {
+                const MWWorld::Ptr ptr = mutablePtrOrThrow(actor);
+                if (!ptr.getClass().isActor())
+                    return { sol::make_object(lua, sol::nil), sol::make_object(lua, "actor_required") };
+                const MWMechanics::CreatureStats& stats = ptr.getClass().getCreatureStats(ptr);
+                std::string state = "active";
+                if (stats.isDead())
+                    state = "inactive";
+                else if (stats.getKnockedDown() || stats.isParalyzed())
+                    state = "unconscious";
+                else if (stats.getAiSequence().isInCombat() || stats.getAiSequence().isInPursuit()
+                    || MWBase::Environment::get().getMechanicsManager()->isAttackingOrSpell(ptr))
+                    state = "busy";
+                sol::table result(lua, sol::create);
+                result["state"] = state;
+                return { sol::make_object(lua, result), sol::make_object(lua, sol::nil) };
+            }
+            catch (const std::exception& error)
+            {
+                return { sol::make_object(lua, sol::nil), sol::make_object(lua, error.what()) };
+            }
         }
 
         class NativeClient
@@ -1154,6 +1185,9 @@ namespace MWLua
             };
             api["isSpeechActive"] = [](const sol::object& actor) { return client().isSpeechActive(actor); };
             api["stopSpeech"] = [](const sol::object& actor) { return client().stopSpeech(actor); };
+            api["actorConversationState"] = [lua](const sol::object& actor) {
+                return actorConversationState(lua, actor);
+            };
             api["releaseMedia"] = [](const std::string& id) { return client().releaseMedia(id); };
             api["submitActionResult"] = [lua](sol::table dto) { return client().submitActionResult(lua, std::move(dto)); };
             api["submitDialogueDeliveryResult"] = [lua](sol::table dto) {

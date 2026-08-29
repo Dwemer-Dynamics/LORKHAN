@@ -56,22 +56,27 @@ local function authority(command)
     return {session_id=command.session_id,resolve=function(actor) return adapter.resolve(actor) end,
         expired=function(timestamp) return not bridge or not bridge.isExpired or bridge.isExpired(timestamp) end}
 end
-local function reportCombatStatus()
+local function reportCombatStatus(probeId,force)
     if not state or state.attached==false or not core or not core.sendGlobalEvent then return end
     local status=adapter.combatStatus()
     if not status then return end
     local target=status.target
-    local signature=tostring(status.hostile_to_player)..':'..tostring(status.activity)..':'..tostring(target and target.content_file)
+    local signature=tostring(status.hostile_to_player)..':'..tostring(status.activity)..':'..tostring(status.conversation_state)
+        ..':'..tostring(status.conversation_state_proven)
+        ..':'..tostring(target and target.content_file)
         ..':'..tostring(target and target.refnum and target.refnum.index)
-    if signature==lastCombatSignature then return end
+    if not force and signature==lastCombatSignature then return end
     lastCombatSignature=signature
     core.sendGlobalEvent('ALMSIVI_ACTOR_COMBAT_STATUS',{actor=state.identity,
-        hostile_to_player=status.hostile_to_player,activity=status.activity,target=target})
+        hostile_to_player=status.hostile_to_player,activity=status.activity,
+        conversation_state=status.conversation_state,conversation_state_proven=status.conversation_state_proven==true,
+        target=target,probe_id=probeId})
 end
 local function clearCombatStatus()
     if not state or not core or not core.sendGlobalEvent then return end
-    lastCombatSignature='false:inactive:nil:nil'
-    core.sendGlobalEvent('ALMSIVI_ACTOR_COMBAT_STATUS',{actor=state.identity,hostile_to_player=false,activity='inactive'})
+    lastCombatSignature='false:inactive:inactive:false:nil:nil'
+    core.sendGlobalEvent('ALMSIVI_ACTOR_COMBAT_STATUS',{actor=state.identity,hostile_to_player=false,
+        activity='inactive',conversation_state='inactive'})
 end
 local function cancelFace(reason)
     if not state then return end
@@ -113,6 +118,11 @@ return {
                 state=executor.new(command.actor,command.generation,command.capabilities)
             else executor.attach(state,command and command.generation,command and command.capabilities) end
             lastCombatSignature=nil reportCombatStatus()
+        end,
+        ALMSIVI_ACTOR_CONVERSATION_STATE_REQUEST=function(command)
+            if state and command and command.generation==state.generation and type(command.probe_id)=='string' then
+                reportCombatStatus(command.probe_id,true)
+            end
         end,
         ALMSIVI_ACTOR_ACTION=function(command)
             if not state then return end

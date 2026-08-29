@@ -18,6 +18,12 @@ playback-gated rechat. The 46-test Lua runtime suite, standalone MSVC native CTe
 validators, and the pinned OpenMW 0.51 Release `openmw` plus `openmw-launcher` build pass locally.
 This is automated/build evidence only; it does not claim deployment or in-game playback proof.
 
+The live-participant checkpoint adds an immediate, bounded actor-local OpenMW state probe after final
+playback. Lua tests prove that busy candidates are excluded, a busy previous speaker cancels, and an
+inactive actor leaves the managed registry. The native seam classifies dead, knocked-down/paralyzed,
+combat/pursuit, and attacking/casting actors; API 129 does not expose reliable sleep state. Engine
+compilation and in-game state-transition proof are required before this checkpoint is promoted.
+
 The action-catalog parity checkpoint maps the frozen CHIM/Dialectic catalogs to 16 strict ALMSIVI actions.
 It adds bounded read-only inventory inspection, same-cell approach, and bounded wait; exposes the previously
 implemented travel, escort, and face actions to provider normalization; and records every unsupported action

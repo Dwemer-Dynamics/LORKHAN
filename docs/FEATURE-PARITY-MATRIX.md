@@ -31,7 +31,7 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 | Subtitles/transcript | Keep | Custom UI with speaker and status, independent of stock subtitle toggle. |
 | Interrupt/skip/hard halt | Keep | Reserved control lane; speech/action/server cancellation. |
 | Automatic greeting | Exclude | Baseline control remains visible and disabled; no automatic model-triggering. |
-| Rechat | Keep | Playback-driven continuation of a player-started conversation with a bounded chain ID/depth; only final `played` delivery advances the chain, and rechat cannot emit actions. |
+| Rechat | Keep | Playback-driven continuation of a player-started conversation with a bounded chain ID/depth; only final `played` delivery advances the chain, an immediate bounded actor-local state probe removes busy/unconscious/inactive participants, and rechat cannot emit actions. |
 | Boredom | Exclude | Baseline control remains visible and disabled; no scheduler, cooldown, or automatic model-triggering. |
 | Vanilla dialogue context | Adapt | Passive `DialogueResponse` capture; never replace vanilla UI. |
 | Skyrim/Fallout HUD widgets | Adapt | OpenMW Lua UI built from scratch; no copied SWF/Papyrus. |
@@ -62,7 +62,7 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 | Dynamic profiles | Keep | Server-controlled revisions with source/event history. |
 | World knowledge | Keep | Scoped documents/facts with retrieval trace. |
 | Narrator and diary | Keep | Opt-in narrator persona, inline routing, player-local speech, and revision-safe PHP/in-game narrator generation are implemented; dedicated narrator/diary/summary CRUD exists, while automatic diary generation remains deferred. |
-| Rechat | Keep | Uses the CHIM-style history/prompt/response records and a typed playback-gated chain; new player input or any invalid/stale/failed delivery cancels continuation. |
+| Rechat | Keep | Uses the CHIM-style history/prompt/response records and a typed playback-gated chain with a fresh bounded participant-state snapshot; new player input or any invalid/stale/failed delivery cancels continuation. |
 | Boredom, greetings and combat barks | Exclude | Baseline controls remain visible and disabled; no runtime scheduler or automatic model-triggering is shipped. |
 | Playthrough export/restore | Keep | Transactional server snapshot plus binding safeguards. |
 | LLM/TTS/STT providers | Keep | Typed LLM/TTS catalogs plus one installation-global STT connector, bounded adapters, health and secret handling, API Badge integration, per-profile LLM/TTS routing, portable preset workflows, and persistent voice management. |
