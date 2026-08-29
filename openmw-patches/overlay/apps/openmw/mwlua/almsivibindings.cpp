@@ -14,7 +14,11 @@
 #include <components/settings/values.hpp>
 
 #include "../mwbase/environment.hpp"
+#include "../mwbase/mechanicsmanager.hpp"
 #include "../mwbase/soundmanager.hpp"
+#include "../mwmechanics/aisequence.hpp"
+#include "../mwmechanics/creaturestats.hpp"
+#include "../mwworld/class.hpp"
 
 #include "luamanagerimp.hpp"
 #include "objectvariant.hpp"
@@ -415,6 +419,33 @@ namespace MWLua
             return ptr;
         }
 
+        // Classify only engine states that make an actor unable to take a fresh conversation turn.
+        std::tuple<sol::object, sol::object> actorConversationState(sol::state_view lua, const sol::object& actor)
+        {
+            try
+            {
+                const MWWorld::Ptr ptr = mutablePtrOrThrow(actor);
+                if (!ptr.getClass().isActor())
+                    return { sol::make_object(lua, sol::nil), sol::make_object(lua, "actor_required") };
+                const MWMechanics::CreatureStats& stats = ptr.getClass().getCreatureStats(ptr);
+                std::string state = "active";
+                if (stats.isDead())
+                    state = "inactive";
+                else if (stats.getKnockedDown() || stats.isParalyzed())
+                    state = "unconscious";
+                else if (stats.getAiSequence().isInCombat() || stats.getAiSequence().isInPursuit()
+                    || MWBase::Environment::get().getMechanicsManager()->isAttackingOrSpell(ptr))
+                    state = "busy";
+                sol::table result(lua, sol::create);
+                result["state"] = state;
+                return { sol::make_object(lua, result), sol::make_object(lua, sol::nil) };
+            }
+            catch (const std::exception& error)
+            {
+                return { sol::make_object(lua, sol::nil), sol::make_object(lua, error.what()) };
+            }
+        }
+
         class NativeClient
         {
         public:
@@ -612,12 +643,18 @@ namespace MWLua
                 if(m_controls->narratorProfileId)result["narrator_profile_id"]=*m_controls->narratorProfileId;
                 const auto& snapshot=m_controls->effectiveSettings;
                 sol::table effective(lua,sol::create),settings(lua,sol::create),memory(lua,sol::create),narrator(lua,sol::create);
-                sol::table safety(lua,sol::create),routing(lua,sol::create),sources(lua,sol::create);
+                sol::table behavior(lua,sol::create),safety(lua,sol::create),routing(lua,sol::create),sources(lua,sol::create);
                 effective["schema"]=snapshot.schema;effective["change_token"]=snapshot.changeToken;
                 if(snapshot.profileId)effective["profile_id"]=*snapshot.profileId;
                 if(snapshot.profileRevision)effective["profile_revision"]=*snapshot.profileRevision;
                 if(snapshot.coreProfileId)effective["core_profile_id"]=*snapshot.coreProfileId;
                 if(snapshot.coreProfileRevision)effective["core_profile_revision"]=*snapshot.coreProfileRevision;
+                // Only playback-gated rechat crosses into Lua; presentation and legacy timers stay excluded.
+                behavior["rechat"]=snapshot.behavior.rechat;behavior["rechat_max_depth"]=snapshot.behavior.rechatMaxDepth;
+                behavior["rechat_probability_percent"]=snapshot.behavior.rechatProbabilityPercent;
+                behavior["rechat_mode"]=snapshot.behavior.rechatMode;behavior["rechat_strict_targeting"]=snapshot.behavior.rechatStrictTargeting;
+                behavior["open_rechat"]=snapshot.behavior.openRechat;
+                behavior["end_conversation_cooldown_seconds"]=snapshot.behavior.endConversationCooldownSeconds;
                 memory["recent_turn_limit"]=snapshot.memory.recentTurnLimit;memory["knowledge_limit"]=snapshot.memory.knowledgeLimit;
                 narrator["enabled"]=snapshot.narrator.enabled;narrator["name"]=snapshot.narrator.name;
                 narrator["context_visibility"]=snapshot.narrator.contextVisibility;narrator["inline_mode"]=snapshot.narrator.inlineMode;
@@ -625,7 +662,7 @@ namespace MWLua
                 narrator["quest_events"]=snapshot.narrator.questEvents;narrator["book_events"]=snapshot.narrator.bookEvents;
                 safety["actions_enabled"]=snapshot.safety.actionsEnabled;safety["allow_hostile"]=snapshot.safety.allowHostile;
                 safety["allow_creatures"]=snapshot.safety.allowCreatures;
-                settings["memory"]=memory;settings["narrator"]=narrator;settings["safety"]=safety;
+                settings["behavior"]=behavior;settings["memory"]=memory;settings["narrator"]=narrator;settings["safety"]=safety;
                 for(const auto&[key,value]:snapshot.routing){if(const auto* text=std::get_if<std::string>(&value))routing[key]=*text;
                     else routing[key]=std::get<bool>(value);}
                 for(const auto&[key,source]:snapshot.sourceMap)sources[key]=source;
@@ -1148,6 +1185,9 @@ namespace MWLua
             };
             api["isSpeechActive"] = [](const sol::object& actor) { return client().isSpeechActive(actor); };
             api["stopSpeech"] = [](const sol::object& actor) { return client().stopSpeech(actor); };
+            api["actorConversationState"] = [lua](const sol::object& actor) {
+                return actorConversationState(lua, actor);
+            };
             api["releaseMedia"] = [](const std::string& id) { return client().releaseMedia(id); };
             api["submitActionResult"] = [lua](sol::table dto) { return client().submitActionResult(lua, std::move(dto)); };
             api["submitDialogueDeliveryResult"] = [lua](sol::table dto) {

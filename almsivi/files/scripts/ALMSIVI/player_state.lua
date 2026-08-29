@@ -2,6 +2,26 @@ local ui=require('scripts.ALMSIVI.ui.state')
 local targeting=require('scripts.ALMSIVI.targeting')
 local M={}
 function M.new() return {ui=ui.new(),action='ALMSIVI_Talk',haltAction='ALMSIVI_Halt'} end
+-- Apply the selected target's policy without replacing local presentation or enabling excluded automation.
+function M.applyTargetSettings(settings,targetSettings)
+    targetSettings=targetSettings or {}
+    local safety=targetSettings.safety or {}
+    local remote=targetSettings.behavior or {}
+    local auto=settings.autoActivate
+    local behavior=settings.behavior
+    auto.addHostile=auto.addHostile==true and safety.allow_hostile==true
+    auto.addCreatures=auto.addCreatures==true and safety.allow_creatures==true
+    behavior.actionsEnabled=behavior.actionsEnabled==true and safety.actions_enabled==true
+    behavior.rechat=remote.rechat==true
+    behavior.rechatMaxDepth=remote.rechat_max_depth or 2
+    behavior.rechatProbabilityPercent=remote.rechat_probability_percent or 50
+    behavior.rechatMode=remote.rechat_mode or 'random'
+    behavior.rechatStrictTargeting=remote.rechat_strict_targeting==true
+    behavior.openRechat=remote.open_rechat~=false
+    behavior.endConversationCooldownSeconds=remote.end_conversation_cooldown_seconds or 60
+    settings.narrator=targetSettings.narrator or {}
+    settings.memory=targetSettings.memory or {}
+end
 -- Convert the editable widget value into a single-line message and surface Enter as submit.
 function M.consumeTextEdit(value)
     if type(value)~='string' then return '',false end

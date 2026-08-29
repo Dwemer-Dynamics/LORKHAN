@@ -2,7 +2,9 @@ local adapter=require('scripts.ALMSIVI.adapters.openmw')
 local identity=require('scripts.ALMSIVI.identity')
 local player=require('scripts.ALMSIVI.player_state')
 local protocol=require('scripts.ALMSIVI.protocol')
+local playerInput=require('scripts.ALMSIVI.player_input')
 local chatbox=require('scripts.ALMSIVI.ui.chatbox')
+local uiState=require('scripts.ALMSIVI.ui.state')
 local selector=require('scripts.ALMSIVI.ui.selector')
 local actorTools=require('scripts.ALMSIVI.ui.actor_tools')
 local notifications=require('scripts.ALMSIVI.ui.notifications')
@@ -34,7 +36,7 @@ local narratorSpeech
 local ownsUiMode=false
 local controlsSignature
 local responseQueueSnapshot={}
-local MODES={'Standard','Whisper','Close','Shout'}
+local MODES=uiState.MODES
 local EQUIPMENT_SLOTS={'helmet','cuirass','greaves','left_pauldron','right_pauldron','left_gauntlet',
     'right_gauntlet','boots','shirt','pants','skirt','robe','left_ring','right_ring','amulet','belt',
     'carried_right','carried_left','ammunition'}
@@ -43,6 +45,7 @@ local behaviorSettings=storageOk and openmwStorage.playerSection('SettingsALMSIV
 local soundSettings=storageOk and openmwStorage.playerSection('SettingsALMSIVISound') or nil
 local agentSettings=storageOk and openmwStorage.playerSection('SettingsALMSIVIAgents') or nil
 local presentationSettings=storageOk and openmwStorage.playerSection('SettingsALMSIVIPresentation') or nil
+local playerInputSettings=storageOk and openmwStorage.playerSection('SettingsALMSIVIPlayerInput') or nil
 local inputBindings=storageOk and openmwStorage.playerSection('OMWInputBindings') or nil
 local unpackValues=table.unpack or unpack
 local whiteTexture=uiOk and openmwUi.texture and openmwUi.texture({path='white'}) or nil
@@ -58,6 +61,10 @@ local settingsRefreshElapsed=0.5
 local SETTINGS_REFRESH_INTERVAL=0.5
 local AIM_SCAN_INTERVAL=0.25
 local AUTO_SCAN_INTERVAL=1.0
+if playerInputSettings then
+    uiState.setMood(state.ui,playerInputSettings:get('mood') or 'None')
+    if state.ui.mood=='Custom' then uiState.setMoodDirection(state.ui,playerInputSettings:get('customMood') or '') end
+end
 local function send(name,payload) if core and core.sendGlobalEvent then core.sendGlobalEvent(name,payload) end end
 local CAPABILITIES={'dialogue.text','speech.say','speech.listen','action.ai.follow','action.ai.stop',
     'action.ai.approach','action.ai.wait','action.ai.travel','action.ai.escort','action.ai.face','action.ai.wander',
@@ -89,7 +96,7 @@ end
 local function voicePayload(uiSource)
     local snapshot=conversationContext(state.ui.target);snapshot.dialogueMode=state.ui.mode
     return {speaker=adapter.identity(self),target=state.ui.target,context=snapshot,language='en-US',capabilities=CAPABILITIES,
-        recent_action_results={},ui_source=uiSource,
+        recent_action_results={},ui_source=uiSource,dialogueMode=state.ui.mode,mood=uiState.moodSelection(state.ui),
         vad_sensitivity=tonumber(behaviorSettings and behaviorSettings:get('openMicSensitivity')) or 700,
         end_delay_ms=tonumber(behaviorSettings and behaviorSettings:get('openMicEndDelayMs')) or 900,
         recording_device=math.floor(tonumber(behaviorSettings and behaviorSettings:get('recordingDevice')) or -1)}
@@ -164,10 +171,10 @@ local chooseTarget
 
 local function submitText()
     if pendingTextSubmit or awaitingTextQueue then return false end
-    local text=state.ui.input
-    if not text or text:match('^%s*$') then
+    local parsed,parseReason=playerInput.parse(state.ui.input)
+    if not parsed then
         state.ui.status='message required'
-        print('[ALMSIVI] text submit rejected: empty message')
+        print('[ALMSIVI] text submit rejected: '..tostring(parseReason))
         render()
         return false
     end
@@ -181,11 +188,13 @@ local function submitText()
     end
     local speaker=adapter.identity(self)
     local context=conversationContext(state.ui.target)
-    context.dialogueMode=state.ui.mode
-    send('ALMSIVI_SUBMIT_TEXT',{text=text,language='en-US',speaker=speaker,
+    local effectiveMode=parsed.mode or state.ui.mode
+    context.dialogueMode=effectiveMode
+    send('ALMSIVI_SUBMIT_TEXT',{text=parsed.text,language='en-US',speaker=speaker,dialogueMode=effectiveMode,
+        mood=uiState.moodSelection(state.ui),
         context=context,capabilities=CAPABILITIES,
         recent_action_results={},ui_source='almsivi_text'})
-    pendingHistory={speaker=speaker,text=text}
+    pendingHistory={speaker=speaker,text=parsed.text}
     awaitingTextQueue=true
     state.ui.status='submitting'
     pendingTextSubmit=false
@@ -266,6 +275,18 @@ local function setMode(mode)
         end
     end
     return false
+end
+
+-- Mood is player-side presentation reused by typed and spoken input. It never changes the saved mode.
+local function setMood(mood)
+    if not uiState.setMood(state.ui,mood) then return false end
+    if playerInputSettings then
+        playerInputSettings:set('mood',state.ui.mood)
+        playerInputSettings:set('customMood',state.ui.moodDirection)
+    end
+    state.ui.status='mood: '..uiState.moodLabel(state.ui)
+    render()
+    return true
 end
 
 local function actionContext(actionTarget)
@@ -357,14 +378,22 @@ render=function()
     end
     local transcript={}
     if state.ui.panel=='conversation' then
+        uiState.refreshTurnPreview(state.ui)
         transcript=chatbox.build({ui=openmwUi,util=util,whiteTexture=whiteTexture,text=state.ui.input,
             target=displayName(state.ui.target),
-            onTextChanged=adapter.callback(function(value) state.ui.input=player.consumeTextEdit(value) end),
+            mood=uiState.moodSummary(state.ui),mode=state.ui.mode,shortcuts=uiState.SHORTCUTS,
+            turnMode=state.ui.turnMode,turnPrefix=state.ui.turnPrefix,
+            onTextChanged=adapter.callback(function(value)
+                state.ui.input=player.consumeTextEdit(value)
+                -- Redraw only when the previewed one-turn mode actually changes so typing stays uninterrupted.
+                if uiState.shortcutPreview(state.ui.input)~=state.ui.turnMode then render() end
+            end),
             onKeyPress=adapter.callback(function(event)
                 if inputOk and event and event.code==input.KEY.Escape then
                     pendingTextSubmit=false state.ui.visible=false leaveUiMode() render()
                 end
             end),
+            onSelectMood=adapter.callback(function() state.ui.panel='moods' render() end),
             onSend=adapter.callback(submitText),
             onClose=adapter.callback(function() pendingTextSubmit=false state.ui.visible=false leaveUiMode() render() end)})
     elseif state.ui.panel=='nearby-profiles' then
@@ -692,6 +721,26 @@ render=function()
             textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function() refreshSessionControls(state.ui.panel) end)}}
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
             textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function() state.ui.panel='actor-tools' render() end)}}
+    elseif state.ui.panel=='moods' then
+        local moods={}
+        for _,mood in ipairs(uiState.MOODS) do
+            moods[#moods+1]={label=mood,active=mood==state.ui.mood,
+                onSelect=adapter.callback(function() setMood(mood) end)}
+        end
+        transcript=chatbox.buildMoodPanel({ui=openmwUi,util=util,whiteTexture=whiteTexture,moods=moods,
+            customVisible=state.ui.mood=='Custom',customText=state.ui.moodDirection,
+            customLimit=uiState.MOOD_DIRECTION_LIMIT,
+            onCustomChanged=adapter.callback(function(value)
+                uiState.setMoodDirection(state.ui,value)
+                if playerInputSettings then playerInputSettings:set('customMood',state.ui.moodDirection) end
+            end),
+            onCustomKeyPress=adapter.callback(function(event)
+                if inputOk and event and event.code==input.KEY.Escape then
+                    state.ui.panel='conversation' render()
+                end
+            end),
+            onBack=adapter.callback(function() state.ui.panel='conversation' render() end),
+            onClose=adapter.callback(function() state.ui.visible=false leaveUiMode() render() end)})
     elseif state.ui.panel=='modes' then
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Dialogue Mode',textSize=20,
             textColor=util.color.rgb(0.95,0.9,0.82)}}
@@ -708,6 +757,9 @@ render=function()
                 events={mouseClick=adapter.callback(function() setMode(mode) end)}}
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=descriptions[mode],textSize=14,
                 textColor=util.color.rgb(0.72,0.68,0.62)}}
+        end
+        for _,row in ipairs(chatbox.buildShortcutHelp({ui=openmwUi,util=util,shortcuts=uiState.SHORTCUTS})) do
+            transcript[#transcript+1]=row
         end
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
             textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
@@ -732,8 +784,8 @@ render=function()
                 state.ui.pendingAction=nil render()
             end)}}
     end
-    local panelSizes={conversation={560,210},['actor-tools']={540,360},['profile-menu']={520,300},
-        modes={540,390},models={580,420},profiles={580,420},narrator={580,330},
+    local panelSizes={conversation={560,250},['actor-tools']={540,360},['profile-menu']={520,300},
+        modes={540,480},moods={520,470},models={580,420},profiles={580,420},narrator={580,330},
         ['nearby-profiles']={680,460},history={760,620},diagnostics={760,620}}
     local panelSize=panelSizes[state.ui.panel] or {680,460}
     local contentWidth=panelSize[1]-20
@@ -938,11 +990,6 @@ applySettings=function(session,controls)
     local effective=controls and state.ui.target and identity.same(controls.target,state.ui.target)
         and controls.effective_settings or nil
     local targetSettings=effective and effective.settings or {}
-    local serverSafety=targetSettings.safety or {}
-    local function restricted(localValue,serverValue,localDefault)
-        if localValue==nil then localValue=localDefault end
-        return localValue==true and serverValue==true
-    end
     local legacyHearing=autoSettings and autoSettings:get('hearingDistance')
     local interiorHearing=autoSettings and autoSettings:get('interiorHearingDistance') or legacyHearing or 500
     local exteriorHearing=autoSettings and autoSettings:get('exteriorHearingDistance') or legacyHearing or 1000
@@ -958,22 +1005,15 @@ applySettings=function(session,controls)
             hearingDistance=exterior and exteriorHearing or interiorHearing,
             interiorHearingDistance=interiorHearing,
             exteriorHearingDistance=exteriorHearing,
-            addHostile=restricted(autoSettings and autoSettings:get('addHostile'),serverSafety.allowHostile,false),
-            addCreatures=restricted(autoSettings and autoSettings:get('addCreatures'),serverSafety.allowCreatures,false)},
-        behavior={actionsEnabled=restricted(actionsEnabled,serverSafety.actionsEnabled,true),
-            cancelDialogueOnCombat=behaviorSettings and behaviorSettings:get('cancelDialogueOnCombat'),
-            rechat=targetSettings.behavior and targetSettings.behavior.rechat==true,
-            rechatMaxDepth=targetSettings.behavior and targetSettings.behavior.rechat_max_depth or 2,
-            rechatProbabilityPercent=targetSettings.behavior and targetSettings.behavior.rechat_probability_percent or 50,
-            rechatMode=targetSettings.behavior and targetSettings.behavior.rechat_mode or 'random',
-            rechatStrictTargeting=targetSettings.behavior and targetSettings.behavior.rechat_strict_targeting==true,
-            openRechat=not targetSettings.behavior or targetSettings.behavior.open_rechat~=false,
-            endConversationCooldownSeconds=targetSettings.behavior and targetSettings.behavior.end_conversation_cooldown_seconds or 60},
+            addHostile=autoSettings and autoSettings:get('addHostile'),
+            addCreatures=autoSettings and autoSettings:get('addCreatures')},
+        behavior={actionsEnabled=actionsEnabled,
+            cancelDialogueOnCombat=behaviorSettings and behaviorSettings:get('cancelDialogueOnCombat')},
         presentation={showStatusHud=presentationSettings and presentationSettings:get('showStatusHud')==true,
             transcriptRows=tonumber(presentationSettings and presentationSettings:get('transcriptRows')) or 12,
             ttsVolumeBoost=tonumber(ttsVolumeBoost) or 3},
-        narrator=targetSettings.narrator or {},memory=targetSettings.memory or {},
     }
+    player.applyTargetSettings(current,targetSettings)
     local auto=current.autoActivate or {}
     local behavior=current.behavior or {}
     local presentation=current.presentation or {}

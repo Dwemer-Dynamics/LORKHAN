@@ -158,9 +158,15 @@ check("target-effective settings are strict and keep local presentation client-o
     '"effective_settings"', '"almsivi.effective-settings.v1"', '"change_token"', '"source_map"'])
       and all(fragment in native_parser for fragment in ["parseEffectiveSettings", "effective settings source map mismatch"])
       and all(fragment in native_binding for fragment in ['result["effective_settings"]=effective', 'effective["change_token"]'])
-      and all(fragment in player_lua for fragment in ["controls.effective_settings", "targetSettings.safety",
+      and all(fragment in player_lua for fragment in ["controls.effective_settings", "player.applyTargetSettings(current,targetSettings)",
           "effective and effective.change_token", "refreshSessionControls(nil,true)"])
-      and "serverPresentation" not in player_lua)
+      and "serverPresentation" not in player_lua and 'settings["presentation"]' not in native_binding
+      and 'settings["behavior"]=behavior' in native_binding
+      and all('behavior["' + key + '"]' in native_binding for key in [
+          'rechat', 'rechat_max_depth', 'rechat_probability_percent', 'rechat_mode',
+          'rechat_strict_targeting', 'open_rechat', 'end_conversation_cooldown_seconds'])
+      and all('behavior["' + key + '"]' not in native_binding for key in [
+          'auto_greeting', 'rechat_delay_seconds', 'rechat_allow_actions', 'boredom', 'combat_barks']))
 check("OpenMW Scripts page exposes bounded ALMSIVI TTS volume boost", all(fragment in settings for fragment in [
     "key='ttsVolumeBoost'", "default=3", "integer=true,min=1,max=4"]))
 check("conflict-free F6 and F7 defaults seed only once", all(fragment in settings for fragment in [

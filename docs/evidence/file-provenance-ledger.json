@@ -256,6 +256,7 @@
         "almsivi/files/scripts/ALMSIVI/identity.lua",
         "almsivi/files/scripts/ALMSIVI/orchestrator.lua",
         "almsivi/files/scripts/ALMSIVI/player.lua",
+        "almsivi/files/scripts/ALMSIVI/player_input.lua",
         "almsivi/files/scripts/ALMSIVI/player_state.lua",
         "almsivi/files/scripts/ALMSIVI/protocol.lua",
         "almsivi/files/scripts/ALMSIVI/response_queue.lua",

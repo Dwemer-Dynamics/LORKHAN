@@ -847,12 +847,16 @@ std::optional<ErrorCode> protocolCode(std::string_view code)
     struct Mapping { std::string_view name; ErrorCode code; };
     static constexpr std::array mappings{
         Mapping{"action_disabled", ErrorCode::action_disabled},
+        Mapping{"action_parameters_invalid", ErrorCode::invalid_action},
         Mapping{"action_result_expired", ErrorCode::invalid_action},
         Mapping{"action_result_mismatch", ErrorCode::invalid_action},
+        Mapping{"action_target_invalid", ErrorCode::invalid_action},
+        Mapping{"action_tier_mismatch", ErrorCode::invalid_action},
         Mapping{"cursor_expired", ErrorCode::cursor_expired},
         Mapping{"duplicate_conflict", ErrorCode::duplicate_conflict},
         Mapping{"forbidden", ErrorCode::forbidden},
         Mapping{"internal_error", ErrorCode::internal_error},
+        Mapping{"invalid_audio", ErrorCode::media_rejected},
         Mapping{"invalid_idempotency_key", ErrorCode::duplicate_conflict},
         Mapping{"invalid_schema", ErrorCode::invalid_schema},
         Mapping{"media_unavailable", ErrorCode::media_rejected},

@@ -78,7 +78,54 @@
               "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
               "type": "string"
             },
-            "text": {
+            "mood": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "happy",
+                        "sad",
+                        "angry",
+                        "annoyed",
+                        "scared",
+                        "surprised",
+                        "confused",
+                        "suspicious",
+                        "playful",
+                        "flirty"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "custom": {
+                      "maxLength": 80,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000-\\u001F\\u007F]+$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "custom",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "custom"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },            "text": {
               "maxLength": 16384,
               "minLength": 1,
               "type": "string"
