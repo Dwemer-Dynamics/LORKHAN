@@ -247,6 +247,7 @@ class FoundationTests(unittest.TestCase):
         self.assertNotIn("native.playSpeech(status.media_id,actor", player)
         self.assertIn("manageActor(event.actor,state.generation)", global_script)
         self.assertIn("sendActor(event.actor,'LORKHAN_MENU_DIALOGUE_SPEAK',event)", global_script)
+        self.assertIn("elapsed=math.max(0,now-lastBridgePollAt)", global_script)
         self.assertIn("LORKHAN_MENU_DIALOGUE_SPEAK=function(command)", actor)
         self.assertIn("adapter.playSpeech(command.media_id,'',command.volume_boost)", actor)
 

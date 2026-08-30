@@ -9,6 +9,7 @@ local state
 local pendingPlayerEvents={}
 local bridgeStatus
 local bridgePollElapsed=0.05
+local lastBridgePollAt
 local BRIDGE_POLL_INTERVAL=0.05
 
 local function currentPlayer()
@@ -194,7 +195,13 @@ return {
             flushPlayerEvents(object)
         end,
         onUpdate=function(dt)
-            bridgePollElapsed=bridgePollElapsed+(tonumber(dt) or 0)
+            local elapsed=tonumber(dt) or 0
+            if core and core.getRealTime then
+                local now=core.getRealTime()
+                if lastBridgePollAt then elapsed=math.max(0,now-lastBridgePollAt) end
+                lastBridgePollAt=now
+            end
+            bridgePollElapsed=bridgePollElapsed+elapsed
             if bridgePollElapsed<BRIDGE_POLL_INTERVAL then return end
             bridgePollElapsed=0
             flushPlayerEvents()
