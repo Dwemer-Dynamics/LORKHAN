@@ -193,6 +193,14 @@ struct ControlsSelectRequest {
     std::string serializedTarget;
 };
 
+struct MenuDialogueTtsRequest {
+    MessageId message;
+    RequestCorrelation correlation;
+    std::string createdAt;
+    std::string serializedActor;
+    std::string text;
+};
+
 enum class MediaCodec { wav, ogg, mp3 };
 
 struct MediaDescriptor {
@@ -216,7 +224,8 @@ struct PreparedMedia {
 
 using RequestPayload = std::variant<HealthRequest, InitRequest, TurnRequest, EventPollRequest,
     InterruptionRequest, ActionResultRequest, SessionEndRequest, SttRequest,
-    DialogueDeliveryResultRequest, ControlsQueryRequest, ControlsSelectRequest, MediaPrepareRequest>;
+    DialogueDeliveryResultRequest, ControlsQueryRequest, ControlsSelectRequest, MenuDialogueTtsRequest,
+    MediaPrepareRequest>;
 
 enum class RequestKind {
     health,
@@ -230,10 +239,11 @@ enum class RequestKind {
     stt,
     controls_query,
     controls_select,
+    menu_dialogue_tts,
     media,
 };
 
-enum class ResponseKind { accepted, event, completed, failure, cancelled, media_ready, status, controls };
+enum class ResponseKind { accepted, event, completed, failure, cancelled, media_ready, menu_dialogue_ready, status, controls };
 
 struct OutboundRequest {
     RequestId id;

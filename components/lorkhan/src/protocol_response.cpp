@@ -1267,6 +1267,29 @@ Result<DialogueDeliveryResultAcceptedResponse> parseDialogueDeliveryResultAccept
         MessageId(std::move(dialogueMessage).value()), status.value(), duplicate.value()});
 }
 
+Result<MenuDialogueTtsReadyResponse> parseMenuDialogueTtsReadyResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits)
+{
+    auto object=parseObject(body,headers,"lorkhan.menu-dialogue-tts.ready.v1",limits);
+    if(!object)return Result<MenuDialogueTtsReadyResponse>::failure(object.error());
+    if(!hasExactly(object.value(),{"schema","message_id","request_id","session_id","generation","actor","media"}))
+        return invalidSchemaValue<MenuDialogueTtsReadyResponse>("menu dialogue TTS fields mismatch");
+    auto message=requireUuid(object.value(),"message_id");auto request=requireUuid(object.value(),"request_id");
+    auto session=requireUuid(object.value(),"session_id");auto generation=requireUnsigned(object.value(),"generation");
+    const auto* actorValue=json::find(object.value(),"actor");const auto* mediaValue=json::find(object.value(),"media");
+    if(!message)return invalidSchemaValue<MenuDialogueTtsReadyResponse>(message.error().message);
+    if(!request)return invalidSchemaValue<MenuDialogueTtsReadyResponse>(request.error().message);
+    if(!session)return invalidSchemaValue<MenuDialogueTtsReadyResponse>(session.error().message);
+    if(!generation)return invalidSchemaValue<MenuDialogueTtsReadyResponse>(generation.error().message);
+    if(!actorValue||!mediaValue)return invalidSchemaValue<MenuDialogueTtsReadyResponse>("menu dialogue TTS payload is missing");
+    auto actor=parseIdentity(*actorValue);auto media=parseCanonicalMedia(*mediaValue);
+    if(!actor)return invalidSchemaValue<MenuDialogueTtsReadyResponse>(actor.error().message);
+    if(!media)return invalidSchemaValue<MenuDialogueTtsReadyResponse>(media.error().message);
+    return Result<MenuDialogueTtsReadyResponse>::success({MessageId(std::move(message).value()),
+        RequestId(std::move(request).value()),SessionId(std::move(session).value()),Generation(generation.value()),
+        std::move(actor).value(),std::move(media).value()});
+}
+
 Result<SessionEndedResponse> parseSessionEndedResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits)
 {

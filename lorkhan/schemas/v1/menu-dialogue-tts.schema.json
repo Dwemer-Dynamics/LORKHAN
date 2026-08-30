@@ -1,0 +1,17 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/menu-dialogue-tts.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actor": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+    "created_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+    "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
+    "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "schema": {"const": "lorkhan.menu-dialogue-tts.v1", "type": "string"},
+    "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "text": {"maxLength": 4096, "minLength": 1, "type": "string"}
+  },
+  "required": ["schema", "message_id", "request_id", "session_id", "generation", "created_at", "actor", "text"],
+  "type": "object"
+}

@@ -706,6 +706,50 @@ namespace MWLua
                 catch (const std::exception& error) { return failure(lua, error.what()); }
             }
 
+            std::tuple<sol::object, sol::object> requestMenuDialogueTts(
+                sol::state_view lua, sol::table actor, const std::string& text)
+            {
+                if(!ready())return failure(lua,"bridge_not_ready");
+                cancelMenuDialogueTts();
+                try{
+                    if(text.empty()||text.size()>16U*1024U)throw std::runtime_error("invalid_menu_dialogue_text");
+                    if(m_pollRequest){static_cast<void>(m_service->cancel(*m_pollRequest));m_pollRequest.reset();}
+                    const lorkhan::RequestId request(uuid());const lorkhan::MessageId message(uuid());
+                    lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),
+                        lorkhan::RequestKind::menu_dialogue_tts,lorkhan::MenuDialogueTtsRequest{message,
+                            {request,*m_session,m_service->generation()},utcNow(),
+                            toJson(sol::make_object(lua,actor)),text}};
+                    auto accepted=m_service->enqueue(std::move(outbound));
+                    if(!accepted)return failure(lua,accepted.error().message);
+                    m_menuDialogue=MenuDialogueState{"requesting",{},request,{}};
+                    return success(lua,request.value());
+                }catch(const std::exception& error){return failure(lua,error.what());}
+            }
+
+            bool cancelMenuDialogueTts()
+            {
+                if(!m_menuDialogue)return false;
+                if(m_menuDialogue->request&&m_service)static_cast<void>(m_service->cancel(*m_menuDialogue->request));
+                if(m_menuDialogue->media){
+                    const std::string id=m_menuDialogue->media->media.value();
+                    const auto found=m_media.find(id);
+                    if(found!=m_media.end()&&found->second.request&&m_service)
+                        static_cast<void>(m_service->cancel(*found->second.request));
+                    m_media.erase(id);
+                }
+                m_menuDialogue.reset();
+                return true;
+            }
+
+            sol::object menuDialogueTtsStatus(sol::state_view lua) const
+            {
+                if(!m_menuDialogue)return sol::make_object(lua,sol::nil);
+                sol::table result(lua,sol::create);result["state"]=m_menuDialogue->state;
+                if(!m_menuDialogue->reason.empty())result["reason"]=m_menuDialogue->reason;
+                if(m_menuDialogue->media)result["media_id"]=m_menuDialogue->media->media.value();
+                return sol::make_object(lua,result);
+            }
+
             sol::object mediaStatus(sol::state_view lua, const std::string& mediaId) const
             {
                 const auto found = m_media.find(mediaId);
@@ -852,6 +896,11 @@ namespace MWLua
                     if (result.kind == lorkhan::ResponseKind::failure)
                     {
                         const bool pollFailure = m_pollRequest && result.request == *m_pollRequest;
+                        const bool menuFailure=m_menuDialogue&&m_menuDialogue->request
+                            &&result.request==*m_menuDialogue->request;
+                        if(menuFailure){m_menuDialogue->state="failed";
+                            m_menuDialogue->reason=result.failure?result.failure->message:"transport_failure";
+                            m_menuDialogue->request.reset();}
                         bool mediaFailure = false;
                         for (auto& [unused, media] : m_media)
                         {
@@ -879,7 +928,7 @@ namespace MWLua
                             m_status = "error";
                         else if (!mediaFailure)
                             m_status = "ready";
-                        if (!mediaFailure)
+                        if (!mediaFailure&&!menuFailure)
                             m_error = result.failure ? result.failure->message : "transport_failure";
                     }
                     else if (m_initRequest && result.request == *m_initRequest && result.kind == lorkhan::ResponseKind::accepted)
@@ -918,7 +967,19 @@ namespace MWLua
                             found->second.state = "ready";
                             found->second.reason.clear();
                             found->second.request.reset();
+                            if(m_menuDialogue&&m_menuDialogue->media
+                                &&m_menuDialogue->media->media.value()==result.payload){
+                                m_menuDialogue->state="ready";m_menuDialogue->reason.clear();
+                                m_menuDialogue->request.reset();}
                         }
+                    }
+                    else if(m_menuDialogue&&m_menuDialogue->request&&result.request==*m_menuDialogue->request
+                        &&result.kind==lorkhan::ResponseKind::menu_dialogue_ready)
+                    {
+                        auto parsed=lorkhan::parseMenuDialogueTtsReadyResponse(result.payload,jsonHeaders());
+                        if(!parsed){m_menuDialogue->state="failed";m_menuDialogue->reason=parsed.error().message;
+                            m_menuDialogue->request.reset();}
+                        else prepareMenuDialogueMedia(parsed.value().media);
                     }
                     else if(m_controlsRequest&&result.request==*m_controlsRequest
                         &&result.kind==lorkhan::ResponseKind::controls)
@@ -937,6 +998,7 @@ namespace MWLua
                 if (!m_service) return false;
                 auto result = m_service->cancelGeneration(lorkhan::Generation(generation));
                 if (!result) return false;
+                cancelMenuDialogueTts();
                 m_session.reset(); m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();beginSession();
                 m_status = "connecting";
                 return true;
@@ -958,6 +1020,27 @@ namespace MWLua
             { return { sol::make_object(lua, sol::nil), sol::make_object(lua, reason) }; }
             static std::tuple<sol::object, sol::object> success(sol::state_view lua, const std::string& value)
             { return { sol::make_object(lua, value), sol::make_object(lua, sol::nil) }; }
+
+            // Queue the authenticated media download after a menu TTS response has passed strict parsing.
+            void prepareMenuDialogueMedia(const lorkhan::CanonicalMediaDescriptor& media)
+            {
+                try{
+                    lorkhan::MediaDescriptor descriptor{media.media,parseSha256(media.sha256),
+                        static_cast<std::size_t>(media.bytes),media.codec,parseUtc(media.expiresAt)};
+                    const lorkhan::RequestId request(uuid());
+                    lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),lorkhan::RequestKind::media,
+                        lorkhan::MediaPrepareRequest{{request,*m_session,m_service->generation()},descriptor}};
+                    auto accepted=m_service->enqueue(std::move(outbound));
+                    if(!accepted)throw std::runtime_error(accepted.error().message);
+                    const std::string extension=media.codec==lorkhan::MediaCodec::wav?".wav"
+                        :media.codec==lorkhan::MediaCodec::ogg?".ogg":".mp3";
+                    m_media[media.media.value()]={"preparing",
+                        m_config->cacheRoot/media.sha256.substr(0,2)/(media.sha256+extension),{},request};
+                    m_menuDialogue->state="preparing";m_menuDialogue->reason.clear();
+                    m_menuDialogue->request=request;m_menuDialogue->media=media;
+                }catch(const std::exception& error){m_menuDialogue->state="failed";
+                    m_menuDialogue->reason=error.what();m_menuDialogue->request.reset();}
+            }
 
             void beginSession()
             {
@@ -1112,7 +1195,14 @@ namespace MWLua
                 std::string reason;
                 std::optional<lorkhan::RequestId> request;
             };
+            struct MenuDialogueState {
+                std::string state;
+                std::string reason;
+                std::optional<lorkhan::RequestId> request;
+                std::optional<lorkhan::CanonicalMediaDescriptor> media;
+            };
             std::map<std::string, MediaState> m_media;
+            std::optional<MenuDialogueState> m_menuDialogue;
             std::string m_status{"unconfigured"};
             std::string m_error;
             std::uint64_t m_resultsSeen{};
@@ -1177,6 +1267,10 @@ namespace MWLua
             api["pollResults"] = [lua](std::size_t maximum) { return client().poll(lua, maximum); };
             api["prepareMedia"] = [lua](sol::table dto) { return client().prepareMedia(lua, std::move(dto)); };
             api["mediaStatus"] = [lua](const std::string& id) { return client().mediaStatus(lua, id); };
+            api["requestMenuDialogueTts"] = [lua](sol::table actor,const std::string& text) {
+                return client().requestMenuDialogueTts(lua,std::move(actor),text); };
+            api["cancelMenuDialogueTts"] = [] { return client().cancelMenuDialogueTts(); };
+            api["menuDialogueTtsStatus"] = [lua] { return client().menuDialogueTtsStatus(lua); };
             api["playSpeech"] = [lua, luaManager](const std::string& id, const sol::object& actor,
                                     sol::optional<std::string> subtitle, sol::optional<float> volumeBoost) {
                 return client().playSpeech(lua, id, actor, subtitle.value_or(""), volumeBoost.value_or(3.f), luaManager);

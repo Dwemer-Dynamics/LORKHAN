@@ -33,6 +33,7 @@ local actorActivities={}
 local contextCollectionSamples={}
 local speechActors={}
 local narratorSpeech
+local menuDialogueSpeech
 local ownsUiMode=false
 local controlsSignature
 local responseQueueSnapshot={}
@@ -146,6 +147,54 @@ end
 local function stopNarrator(reason)
     if not narratorSpeech then return end
     adapter.stopSpeech();reportNarrator('interrupted',reason or 'client_interrupted')
+end
+
+-- Stop only the regular-menu speech lane so a newly selected response replaces it immediately.
+local function stopMenuDialogueSpeech()
+    local current=menuDialogueSpeech
+    if nativeOk and native and native.cancelMenuDialogueTts then pcall(native.cancelMenuDialogueTts) end
+    if current then
+        local actor=adapter.resolve(current.actor)
+        if actor and nativeOk and native and native.stopSpeech then pcall(native.stopSpeech,actor) end
+        if current.media_id and nativeOk and native and native.releaseMedia then pcall(native.releaseMedia,current.media_id) end
+    end
+    menuDialogueSpeech=nil
+end
+
+local function startMenuDialogueSpeech(response)
+    stopMenuDialogueSpeech()
+    if not response or not ({greeting=true,persuasion=true,topic=true})[response.dialogue_type] then return end
+    local enabled=not soundSettings or soundSettings:get('menuDialogueTts')~=false
+    if not enabled or not nativeOk or not native or not native.requestMenuDialogueTts then return end
+    local request,reason=native.requestMenuDialogueTts(response.actor,response.text)
+    if request then menuDialogueSpeech={request_id=request,actor=response.actor,played=false}
+    else print('[LORKHAN] menu dialogue TTS unavailable: '..tostring(reason)) end
+end
+
+local function updateMenuDialogueSpeech()
+    if not menuDialogueSpeech then return end
+    if soundSettings and soundSettings:get('menuDialogueTts')==false then stopMenuDialogueSpeech() return end
+    if not nativeOk or not native or not native.menuDialogueTtsStatus then stopMenuDialogueSpeech() return end
+    local status=native.menuDialogueTtsStatus()
+    if not status then menuDialogueSpeech=nil return end
+    if status.state=='failed' then
+        print('[LORKHAN] menu dialogue TTS failed: '..tostring(status.reason or 'unavailable'))
+        stopMenuDialogueSpeech()
+        return
+    end
+    if status.state=='ready' and not menuDialogueSpeech.played then
+        local actor,reason=adapter.resolve(menuDialogueSpeech.actor)
+        if not actor then print('[LORKHAN] menu dialogue actor unavailable: '..tostring(reason)) stopMenuDialogueSpeech() return end
+        local volume=tonumber(soundSettings and soundSettings:get('ttsVolumeBoost')) or 3
+        local ok,playReason=native.playSpeech(status.media_id,actor,'',volume)
+        if not ok then print('[LORKHAN] menu dialogue playback failed: '..tostring(playReason)) stopMenuDialogueSpeech() return end
+        menuDialogueSpeech.played=true;menuDialogueSpeech.media_id=status.media_id
+        return
+    end
+    if menuDialogueSpeech.played then
+        local actor=adapter.resolve(menuDialogueSpeech.actor)
+        if not actor or not native.isSpeechActive(actor) then stopMenuDialogueSpeech() end
+    end
 end
 local function controlsAllowed()
     if not interfacesOk or not interfaces or not interfaces.UI or not interfaces.UI.getMode then return true end
@@ -1102,6 +1151,7 @@ return {
         end,
         onUpdate=function(dt)
             if narratorSpeech and not adapter.isSpeechActive() then reportNarrator('played','playback_completed') end
+            updateMenuDialogueSpeech()
             local statusChanged=notifications.update(notification,dt)
             if statusChanged then renderStatusHud() end
             local elapsed=tonumber(dt) or 0
@@ -1145,7 +1195,7 @@ return {
     eventHandlers={
         DialogueResponse=function(event)
             local response=adapter.dialogueResponse(event)
-            if response then send('LORKHAN_VANILLA_DIALOGUE',response) end
+            if response then send('LORKHAN_VANILLA_DIALOGUE',response) startMenuDialogueSpeech(response) end
         end,
         LORKHAN_NARRATOR_SPEAK=function(command)
             stopNarrator('speech_replaced')

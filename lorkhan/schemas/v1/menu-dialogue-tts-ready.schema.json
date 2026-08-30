@@ -1,0 +1,16 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/menu-dialogue-tts-ready.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actor": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+    "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
+    "media": {"$ref": "https://lorkhan.invalid/schemas/v1/media-descriptor.schema.json"},
+    "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "schema": {"const": "lorkhan.menu-dialogue-tts.ready.v1", "type": "string"},
+    "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+  },
+  "required": ["schema", "message_id", "request_id", "session_id", "generation", "actor", "media"],
+  "type": "object"
+}

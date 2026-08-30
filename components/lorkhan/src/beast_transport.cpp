@@ -551,6 +551,21 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
                 + ",\"target\":" + controls->serializedTarget + "}";
             break;
         }
+        case RequestKind::menu_dialogue_tts: {
+            const auto* menu=std::get_if<MenuDialogueTtsRequest>(&request.payload);
+            if(!menu)break;
+            auto actor=requireJsonObject(menu->serializedActor,"menu dialogue actor");
+            if(!actor)return Result<WireRequest>::failure(actor.error());
+            wire.method=http::verb::post;wire.target=route("/menu-dialogue-tts");wire.expectedStatus=201;
+            wire.idempotencyKey=menu->message.value();
+            wire.body="{\"schema\":\"lorkhan.menu-dialogue-tts.v1\",\"message_id\":"+escapeJson(menu->message.value())
+                +",\"request_id\":"+escapeJson(menu->correlation.request.value())
+                +",\"session_id\":"+escapeJson(menu->correlation.session.value())
+                +",\"generation\":"+std::to_string(menu->correlation.generation.value())
+                +",\"created_at\":"+escapeJson(menu->createdAt)+",\"actor\":"+menu->serializedActor
+                +",\"text\":"+escapeJson(menu->text)+"}";
+            break;
+        }
         case RequestKind::media: {
             const auto* media = std::get_if<MediaPrepareRequest>(&request.payload);
             if (!media)
@@ -739,6 +754,18 @@ Result<InboundResult> validateResponse(const OutboundRequest& request, const Wir
                 return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
                     "controls-select response correlation mismatch"));
             kind = ResponseKind::controls;
+            break;
+        }
+        case RequestKind::menu_dialogue_tts: {
+            const auto& sent=std::get<MenuDialogueTtsRequest>(request.payload);
+            auto parsed=parseMenuDialogueTtsReadyResponse(response.body(),headers);
+            if(!parsed)return Result<InboundResult>::failure(parsed.error());
+            if(parsed.value().message!=sent.message||parsed.value().request!=sent.correlation.request
+                ||parsed.value().session!=sent.correlation.session||parsed.value().generation!=sent.correlation.generation
+                ||parsed.value().media.dialogueMessage!=sent.message)
+                return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
+                    "menu dialogue TTS response correlation mismatch"));
+            kind=ResponseKind::menu_dialogue_ready;
             break;
         }
         case RequestKind::media:
