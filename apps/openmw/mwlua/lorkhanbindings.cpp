@@ -580,7 +580,8 @@ namespace MWLua
                         runtime.capabilities.push_back(capabilities.get<std::string>(index));
                     const std::string payload = toJson(dto.get<sol::object>("payload"));
                     lorkhan::OutboundRequest request{ ids.request, ids.session, ids.generation, lorkhan::RequestKind::turn,
-                        lorkhan::TurnRequest{ std::move(ids), std::move(runtime), dto.get<std::string>("content_fingerprint"),
+                        lorkhan::TurnRequest{ std::move(ids), lorkhan::Generation(dto.get<std::uint64_t>("runtime_generation")),
+                            std::move(runtime), dto.get<std::string>("content_fingerprint"),
                             dto.get<std::string>("created_at"), payload } };
                     auto accepted = m_service->enqueue(std::move(request));
                     if (!accepted) return failure(lua, accepted.error().message);
