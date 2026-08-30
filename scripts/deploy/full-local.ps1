@@ -98,6 +98,68 @@ function Invoke-RobocopyMirror {
     if ($exitCode -gt 7) { throw "robocopy failed with exit code $exitCode while mirroring $Source" }
 }
 
+function Invoke-RobocopyOverlay {
+    param(
+        [Parameter(Mandatory)][string]$Source,
+        [Parameter(Mandatory)][string]$Destination,
+        [string[]]$ExcludeFiles = @()
+    )
+
+    if (-not (Test-Path -LiteralPath $Source -PathType Container)) {
+        throw "Overlay source directory not found: $Source"
+    }
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    $arguments = @($Source, $Destination, '/E', '/R:1', '/W:1', '/NFL', '/NDL', '/NP')
+    if ($ExcludeFiles.Count -gt 0) { $arguments += '/XF'; $arguments += $ExcludeFiles }
+    & "$env:SystemRoot\System32\robocopy.exe" @arguments
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -gt 7) { throw "robocopy failed with exit code $exitCode while overlaying $Source" }
+}
+
+function Get-CMakeCacheValue {
+    param([Parameter(Mandatory)][string]$CachePath, [Parameter(Mandatory)][string]$Name)
+
+    $prefix = $Name + ':'
+    $line = [IO.File]::ReadLines($CachePath) | Where-Object { $_.StartsWith($prefix, [StringComparison]::Ordinal) } | Select-Object -First 1
+    if (-not $line) { throw "CMake cache value '$Name' was not found in $CachePath" }
+    $separator = $line.IndexOf('=')
+    if ($separator -lt 0 -or $separator -eq $line.Length - 1) { throw "CMake cache value '$Name' is malformed." }
+    return $line.Substring($separator + 1)
+}
+
+# Assemble a deterministic runnable OpenMW directory from build output and its external runtime dependencies.
+function Prepare-OpenMwRuntime {
+    param(
+        [Parameter(Mandatory)][string]$BuildDirectory,
+        [Parameter(Mandatory)][string]$ConfigurationName,
+        [Parameter(Mandatory)][string]$Destination
+    )
+
+    $cachePath = Join-Path $BuildDirectory 'CMakeCache.txt'
+    if (-not (Test-Path -LiteralPath $cachePath -PathType Leaf)) { throw "OpenMW CMake cache not found: $cachePath" }
+    $vcpkgInstalled = Get-CMakeCacheValue -CachePath $cachePath -Name 'VCPKG_INSTALLED_DIR'
+    $triplet = 'x64-windows'
+    try { $triplet = Get-CMakeCacheValue -CachePath $cachePath -Name 'VCPKG_TARGET_TRIPLET' } catch {}
+    $dependencyRuntime = Join-Path $vcpkgInstalled "$triplet\bin"
+    $myGuiRuntime = Join-Path $dependencyRuntime 'Release\MyGUIEngine.dll'
+    $buildRuntime = Join-Path $BuildDirectory $ConfigurationName
+    $yamlRuntime = Join-Path $BuildDirectory "_deps\yaml-cpp-build\$ConfigurationName\yaml-cpp.dll"
+    $qt6Directory = Get-CMakeCacheValue -CachePath $cachePath -Name 'Qt6_DIR'
+    $qtRoot = [IO.Path]::GetFullPath((Join-Path $qt6Directory '..\..\..'))
+    $qtDeploy = Join-Path $qtRoot 'bin\windeployqt.exe'
+
+    foreach ($required in @($dependencyRuntime, $myGuiRuntime, $buildRuntime, $yamlRuntime, $qtDeploy)) {
+        if (-not (Test-Path -LiteralPath $required)) { throw "OpenMW runtime dependency not found: $required" }
+    }
+    Invoke-RobocopyMirror -Source $dependencyRuntime -Destination $Destination `
+        -ExcludeDirectories @((Join-Path $dependencyRuntime 'Release')) -ExcludeFiles @('*.pdb')
+    Invoke-RobocopyOverlay -Source $buildRuntime -Destination $Destination -ExcludeFiles @('*_tests.exe', '*.pdb')
+    Copy-Item -LiteralPath $myGuiRuntime -Destination (Join-Path $Destination 'MyGUIEngine.dll') -Force
+    Copy-Item -LiteralPath $yamlRuntime -Destination (Join-Path $Destination 'yaml-cpp.dll') -Force
+    & $qtDeploy --release --no-translations --dir $Destination (Join-Path $Destination 'openmw-launcher.exe')
+    if ($LASTEXITCODE -ne 0) { throw "windeployqt failed with exit code $LASTEXITCODE." }
+}
+
 # Refresh the generated exact-pin OpenMW worktree from every tracked overlay file before compiling.
 function Sync-OpenMwOverlay {
     param([Parameter(Mandatory)][string]$Destination)
@@ -236,7 +298,8 @@ if ($LASTEXITCODE -ne 0) { throw 'The LORKHAN WSL services could not be started.
 $health = Invoke-RestMethod -Uri 'http://127.0.0.1:@LORKHAN_HTTP_PORT@/LORKHANserver/api/v1/health' -TimeoutSec 5
 if ($health.schema -ne 'lorkhan.health.v1') { throw 'LORKHANserver returned an unexpected health response.' }
 $env:LORKHAN_CLIENT_CONFIG = $clientConfig
-& $engine
+$process = Start-Process -FilePath $engine -WorkingDirectory (Split-Path $engine -Parent) -Wait -PassThru
+if ($process.ExitCode -ne 0) { throw "LORKHAN OpenMW exited with code $($process.ExitCode)." }
 '@
     $launchScript = $launchScript.Replace('@LORKHAN_HTTP_PORT@', [string]$HttpPort)
     Write-Utf8NoBom -Path (Join-Path $Root 'Launch-LORKHAN.ps1') -Content $launchScript
@@ -266,7 +329,8 @@ if ($LASTEXITCODE -ne 0) { throw 'The LORKHAN WSL services could not be started.
 $health = Invoke-RestMethod -Uri 'http://127.0.0.1:@LORKHAN_HTTP_PORT@/LORKHANserver/api/v1/health' -TimeoutSec 5
 if ($health.schema -ne 'lorkhan.health.v1') { throw 'LORKHANserver returned an unexpected health response.' }
 $env:LORKHAN_CLIENT_CONFIG = $clientConfig
-& $engine --config $profile
+$process = Start-Process -FilePath $engine -ArgumentList @('--config', ('"' + $profile + '"')) -WorkingDirectory (Split-Path $engine -Parent) -Wait -PassThru
+if ($process.ExitCode -ne 0) { throw "LORKHAN OpenMW exited with code $($process.ExitCode)." }
 '@
     $compatibilityLaunchScript = $compatibilityLaunchScript.Replace('@LORKHAN_HTTP_PORT@', [string]$HttpPort)
     Write-Utf8NoBom -Path (Join-Path $Root 'Launch-LORKHAN-Compatibility.ps1') -Content $compatibilityLaunchScript
@@ -370,7 +434,13 @@ try {
             $driveRoot = [IO.Path]::GetPathRoot($ClientRoot)
             if ($ClientRoot.TrimEnd('\') -eq $driveRoot.TrimEnd('\')) { throw "Refusing to deploy to a drive root: $ClientRoot" }
             New-Item -ItemType Directory -Force -Path $ClientRoot, (Join-Path $ClientRoot 'Mods'), (Split-Path $configTarget -Parent) | Out-Null
-            Invoke-RobocopyMirror -Source $runtimeSource -Destination $runtimeTarget -ExcludeFiles @('*_tests.exe', '*.pdb')
+            $runtimeStage = Join-Path ([IO.Path]::GetTempPath()) ('lorkhan-runtime-' + [guid]::NewGuid().ToString('N'))
+            try {
+                Prepare-OpenMwRuntime -BuildDirectory $BuildRoot -ConfigurationName $Configuration -Destination $runtimeStage
+                Invoke-RobocopyMirror -Source $runtimeStage -Destination $runtimeTarget
+            } finally {
+                if (Test-Path -LiteralPath $runtimeStage) { Remove-Item -LiteralPath $runtimeStage -Recurse -Force }
+            }
 
             $cacheTarget = Join-Path $dataTarget 'LORKHAN\cache'
             $cacheBackup = $null
@@ -397,8 +467,8 @@ try {
             $deployedHash = (Get-FileHash -LiteralPath (Join-Path $runtimeTarget 'openmw.exe') -Algorithm SHA256).Hash
             if ($sourceHash -ne $deployedHash) { throw 'The deployed openmw.exe hash does not match the build output.' }
             $env:LORKHAN_CLIENT_CONFIG = $configTarget
-            & (Join-Path $runtimeTarget 'openmw.exe') --version
-            if ($LASTEXITCODE -ne 0) { throw 'The deployed LORKHAN OpenMW executable failed its version probe.' }
+            $probe = Start-Process -FilePath (Join-Path $runtimeTarget 'openmw.exe') -ArgumentList '--version' -WorkingDirectory $runtimeTarget -Wait -PassThru
+            if ($probe.ExitCode -ne 0) { throw "The deployed LORKHAN OpenMW executable failed its version probe with code $($probe.ExitCode)." }
             Write-Host "Client: $ClientRoot"
             Write-Host "Private config: $configTarget"
         }

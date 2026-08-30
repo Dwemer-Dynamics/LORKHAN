@@ -258,7 +258,8 @@ check("Lua tests reject 191 193 and noninteger follow", all(fragment in text(SCR
 check("pure Lua runner present", (SCRIPTS / "tests" / "run.lua").is_file())
 deploy_script = text(DEPLOY)
 check("compatibility launcher keeps third-party mods out of the clean profile", all(fragment in deploy_script for fragment in [
-    "Profiles\\Compatibility", "Play-LORKHAN-Compatibility.cmd", "Manage-LORKHAN-Compatibility-Mods.cmd", "& $engine --config $profile",
+    "Profiles\\Compatibility", "Play-LORKHAN-Compatibility.cmd", "Manage-LORKHAN-Compatibility-Mods.cmd",
+    "Start-Process -FilePath $engine", "-ArgumentList @('--config'", "LORKHAN OpenMW exited with code",
     "currentprofile=LORKHAN Compatibility", "firstrun=false", "user-data=.",
     "content=DynamicCamera.omwscripts", "content=FollowerDetectionUtil.omwscripts", "content=H3lp Yours3lf.esp"]))
 profile_manager = text(PROFILE_MANAGER)
