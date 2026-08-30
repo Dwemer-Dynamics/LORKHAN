@@ -1,0 +1,25 @@
+{
+  "description": "A vanilla ambient line observed by the player and nearby NPCs",
+  "instance": {
+    "game": "tes3",
+    "generation": 12,
+    "installation_id": "10000000-0000-4000-8000-000000000001",
+    "observed_at": "2026-08-09T18:00:03Z",
+    "payload": {
+      "audience": [],
+      "game_time": 43210.5,
+      "listener": {"cell": {"kind": "interior", "name": "Balmora"}, "content_file": "Morrowind.esm", "display_name": "Player", "kind": "player", "record_id": "player", "refnum": {"content_file": 0, "index": 0}},
+      "source": "background",
+      "speaker": {"cell": {"kind": "interior", "name": "Balmora"}, "content_file": "Morrowind.esm", "display_name": "Fargoth", "kind": "npc", "record_id": "fargoth", "refnum": {"content_file": 0, "index": 16384}},
+      "text": "I have a feeling you and I are about to become very close.",
+      "topic": "hello"
+    },
+    "playthrough_id": "10000000-0000-4000-8000-000000000002",
+    "request_id": "10000000-0000-4000-8000-000000000004",
+    "runtime_generation": 4,
+    "schema": "lorkhan.gamedata.v1",
+    "session_id": "10000000-0000-4000-8000-000000000005",
+    "type": "captured_dialogue"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json"
+}

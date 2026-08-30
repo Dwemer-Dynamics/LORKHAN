@@ -505,6 +505,27 @@ void testSttAndDialogueDelivery()
         auto result = transport.execute(request, {});
         CHECK(result && result.value().kind == lorkhan::ResponseKind::completed);
     }
+    {
+        OneShotServer server([](const CapturedRequest& request, tcp::socket& socket) {
+            CHECK(request.method == http::verb::post);
+            CHECK(request.target == std::string(kBasePath) + "/gamedata");
+            CHECK(request.idempotency == kRequest);
+            CHECK(request.body.find("\"schema\":\"lorkhan.gamedata.v1\"") != std::string::npos);
+            CHECK(request.body.find("\"type\":\"captured_dialogue\"") != std::string::npos);
+            CHECK(request.body.find("\"source\":\"background\"") != std::string::npos);
+            sendJson(socket, 202, std::string(R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":")")
+                + kRequest + R"(","session_id":")" + kSession
+                + R"(","generation":7,"type":"captured_dialogue","duplicate":false})");
+        });
+        lorkhan::OutboundRequest request{lorkhan::RequestId(kRequest), lorkhan::SessionId(kSession),
+            lorkhan::Generation(7), lorkhan::RequestKind::gamedata,
+            lorkhan::GameDataRequest{lorkhan::InstallationId(kInstallation), lorkhan::PlaythroughId(kPlaythrough),
+                lorkhan::RequestId(kRequest), lorkhan::Generation(7), "2026-07-19T20:00:02Z",
+                R"({"source":"background","speaker":{"kind":"npc"},"listener":{"kind":"player"},"audience":[],"text":"Hello.","topic":"hello"})"}};
+        lorkhan::BeastTransport transport(url(server.port()), lorkhan::InstallationId(kInstallation), token(), cacheRoot());
+        auto result = transport.execute(request, {});
+        CHECK(result && result.value().kind == lorkhan::ResponseKind::accepted);
+    }
 }
 
 void testAuthenticatedVerifiedMedia()

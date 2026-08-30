@@ -1290,6 +1290,28 @@ Result<MenuDialogueTtsReadyResponse> parseMenuDialogueTtsReadyResponse(
         std::move(actor).value(),std::move(media).value()});
 }
 
+Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits)
+{
+    auto object = parseObject(body, headers, "lorkhan.gamedata.accepted.v1", limits);
+    if (!object) return Result<GameDataAcceptedResponse>::failure(object.error());
+    if (!hasExactly(object.value(), {"schema", "request_id", "session_id", "generation", "type", "duplicate"}))
+        return invalidSchemaValue<GameDataAcceptedResponse>("game-data accepted fields mismatch");
+    auto request = requireUuid(object.value(), "request_id");
+    auto session = requireUuid(object.value(), "session_id");
+    auto generation = requireUnsigned(object.value(), "generation", kMaximumProtocolInteger, 1);
+    auto type = requireString(object.value(), "type", 1, 64);
+    auto duplicate = requireBoolean(object.value(), "duplicate");
+    if (!request) return invalidSchemaValue<GameDataAcceptedResponse>(request.error().message);
+    if (!session) return invalidSchemaValue<GameDataAcceptedResponse>(session.error().message);
+    if (!generation) return invalidSchemaValue<GameDataAcceptedResponse>(generation.error().message);
+    if (!type || type.value() != "captured_dialogue")
+        return invalidSchemaValue<GameDataAcceptedResponse>("game-data type mismatch");
+    if (!duplicate) return invalidSchemaValue<GameDataAcceptedResponse>(duplicate.error().message);
+    return Result<GameDataAcceptedResponse>::success({RequestId(std::move(request).value()),
+        SessionId(std::move(session).value()), Generation(generation.value()), std::move(type).value(), duplicate.value()});
+}
+
 Result<SessionEndedResponse> parseSessionEndedResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits)
 {

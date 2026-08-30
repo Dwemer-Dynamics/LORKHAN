@@ -155,6 +155,30 @@ function M.turn(args)
     }
 end
 
+-- Validate the only game-data payload that the native bridge currently exposes.
+function M.capturedDialogue(args)
+    if type(args)~='table' then return nil,'invalid_captured_dialogue' end
+    if args.source~='background' and args.source~='menu' then return nil,'invalid_dialogue_source' end
+    if not identity.validate(args.speaker) or not identity.validate(args.listener) then
+        return nil,'invalid_dialogue_identity'
+    end
+    if type(args.text)~='string' or #args.text<1 or #args.text>4096 then return nil,'invalid_dialogue_text' end
+    if type(args.topic)~='string' or #args.topic>256 then return nil,'invalid_dialogue_topic' end
+    if type(args.audience)~='table' or #args.audience>constants.MAX_AUDIENCE then return nil,'invalid_dialogue_audience' end
+    local seen={}
+    for _,actor in ipairs(args.audience) do
+        if not identity.validate(actor) then return nil,'invalid_dialogue_audience' end
+        local key=identity.key(actor)
+        if seen[key] then return nil,'duplicate_dialogue_audience' end
+        seen[key]=true
+    end
+    if args.game_time~=nil and (type(args.game_time)~='number' or args.game_time<0) then
+        return nil,'invalid_dialogue_game_time'
+    end
+    return {source=args.source,speaker=util.copy(args.speaker),listener=util.copy(args.listener),
+        audience=util.arrayCopy(args.audience),text=args.text,topic=args.topic,game_time=args.game_time}
+end
+
 -- pollResults returns native-validated internal DTOs, not canonical wire envelopes.
 function M.validatePolledEvent(event)
     if type(event)~='table' then return nil,'event_not_table' end

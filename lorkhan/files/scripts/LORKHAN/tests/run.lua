@@ -209,6 +209,20 @@ test('vanilla dialogue is bounded and consumed by the next accepted turn',functi
  local recent=b.submitted[1].payload.context.recentVanillaDialogue.items
  eq(#recent,8);eq(recent[1].text,'line 3');eq(recent[8].text,'line 10');eq(#s.recentVanillaDialogue,0)
 end)
+test('captured vanilla dialogue preserves CHIM background and menu classifications',function()
+ local background,reason=protocol.capturedDialogue({source='background',speaker=npc,listener=playerId,
+  audience={},text='Wealth beyond measure, outlander.',topic='voice',game_time=123.5})
+ assert(background,reason);eq(background.source,'background');eq(background.game_time,123.5)
+ local menu=assert(protocol.capturedDialogue({source='menu',speaker=npc,listener=playerId,
+  audience={enemy},text='What can Fargoth do for you?',topic='greeting'}))
+ eq(menu.source,'menu');eq(menu.audience[1].record_id,enemy.record_id)
+ local invalid,invalidReason=protocol.capturedDialogue({source='journal',speaker=npc,listener=playerId,
+  audience={},text='No.',topic=''})
+ eq(invalid,nil);eq(invalidReason,'invalid_dialogue_source')
+ invalid,invalidReason=protocol.capturedDialogue({source='background',speaker=npc,listener=playerId,
+  audience={enemy,enemy},text='No.',topic=''})
+ eq(invalid,nil);eq(invalidReason,'duplicate_dialogue_audience')
+end)
 test('identity registry refuses substitution and ambiguity',function()
  local r=identity.Registry() local one={} truthy(r:activate(npc,one)); eq(r:activate(npc,{}),nil)
  local clone=fake.identity('npc','fargoth',9);eq(r:resolve(clone),nil);eq(r:resolve(npc),one)

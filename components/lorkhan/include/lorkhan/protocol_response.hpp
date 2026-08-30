@@ -304,6 +304,14 @@ struct MenuDialogueTtsReadyResponse {
     CanonicalMediaDescriptor media;
 };
 
+struct GameDataAcceptedResponse {
+    RequestId request;
+    SessionId session;
+    Generation generation;
+    std::string type;
+    bool duplicate{};
+};
+
 [[nodiscard]] Result<ProtocolIdentity> parseProtocolIdentity(std::string_view body,
     json::ParseLimits limits = {});
 
@@ -375,6 +383,8 @@ struct ControlsResponse {
 [[nodiscard]] Result<DialogueDeliveryResultAcceptedResponse> parseDialogueDeliveryResultAcceptedResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 [[nodiscard]] Result<MenuDialogueTtsReadyResponse> parseMenuDialogueTtsReadyResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 [[nodiscard]] Result<SessionEndedResponse> parseSessionEndedResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
