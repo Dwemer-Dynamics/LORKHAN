@@ -293,6 +293,24 @@ return {
         LORKHAN_HARD_HALT_REQUEST=function() orchestrator.hardHalt(state) end,
         LORKHAN_SETTINGS_UPDATE=function(event) state.settings=event end,
         LORKHAN_VANILLA_DIALOGUE=function(event) orchestrator.recordVanillaDialogue(state,event) end,
+        LORKHAN_MENU_DIALOGUE_SPEAK=function(event)
+            if type(event)~='table' or type(event.actor)~='table' or type(event.media_id)~='string' then return end
+            local managed,reason=manageActor(event.actor,state.generation)
+            if managed then
+                event.generation=state.generation
+                local sent,sendReason=sendActor(event.actor,'LORKHAN_MENU_DIALOGUE_SPEAK',event)
+                if sent then return end
+                reason=sendReason
+            end
+            if bridge.releaseMedia then bridge.releaseMedia(event.media_id) end
+            emit('LORKHAN_MENU_DIALOGUE_SPEECH_STATUS',{actor=event.actor,request_id=event.request_id,
+                media_id=event.media_id,active=false,status='failed',reason=reason or 'actor_speech_unavailable'})
+        end,
+        LORKHAN_MENU_DIALOGUE_STOP=function(event)
+            if type(event)=='table' and type(event.actor)=='table' then
+                sendActor(event.actor,'LORKHAN_MENU_DIALOGUE_STOP',event)
+            end
+        end,
         LORKHAN_MODE_CHANGED=function(event) state.dialogueMode=event.mode end,
         LORKHAN_CONFIRM_ACTION=function(event) orchestrator.confirmAction(state,event.action_id,event.approved==true) end,
         LORKHAN_ACTION_RESULT=function(event)
@@ -307,6 +325,9 @@ return {
         LORKHAN_SPEECH_STATUS=function(event)
             orchestrator.speechStatus(state,event)
             emit('LORKHAN_SPEECH_STATUS',event)
+        end,
+        LORKHAN_MENU_DIALOGUE_SPEECH_STATUS=function(event)
+            emit('LORKHAN_MENU_DIALOGUE_SPEECH_STATUS',event)
         end,
     },
 }

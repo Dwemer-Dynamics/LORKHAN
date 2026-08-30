@@ -154,9 +154,12 @@ local function stopMenuDialogueSpeech()
     local current=menuDialogueSpeech
     if nativeOk and native and native.cancelMenuDialogueTts then pcall(native.cancelMenuDialogueTts) end
     if current then
-        local actor=adapter.resolve(current.actor)
-        if actor and nativeOk and native and native.stopSpeech then pcall(native.stopSpeech,actor) end
-        if current.media_id and nativeOk and native and native.releaseMedia then pcall(native.releaseMedia,current.media_id) end
+        if current.dispatched then
+            send('LORKHAN_MENU_DIALOGUE_STOP',{actor=current.actor,request_id=current.request_id,
+                media_id=current.media_id})
+        elseif current.media_id and nativeOk and native and native.releaseMedia then
+            pcall(native.releaseMedia,current.media_id)
+        end
     end
     menuDialogueSpeech=nil
 end
@@ -183,17 +186,11 @@ local function updateMenuDialogueSpeech()
         return
     end
     if status.state=='ready' and not menuDialogueSpeech.played then
-        local actor,reason=adapter.resolve(menuDialogueSpeech.actor)
-        if not actor then print('[LORKHAN] menu dialogue actor unavailable: '..tostring(reason)) stopMenuDialogueSpeech() return end
         local volume=tonumber(soundSettings and soundSettings:get('ttsVolumeBoost')) or 3
-        local ok,playReason=native.playSpeech(status.media_id,actor,'',volume)
-        if not ok then print('[LORKHAN] menu dialogue playback failed: '..tostring(playReason)) stopMenuDialogueSpeech() return end
-        menuDialogueSpeech.played=true;menuDialogueSpeech.media_id=status.media_id
+        menuDialogueSpeech.played=true;menuDialogueSpeech.dispatched=true;menuDialogueSpeech.media_id=status.media_id
+        send('LORKHAN_MENU_DIALOGUE_SPEAK',{actor=menuDialogueSpeech.actor,request_id=menuDialogueSpeech.request_id,
+            media_id=status.media_id,volume_boost=volume})
         return
-    end
-    if menuDialogueSpeech.played then
-        local actor=adapter.resolve(menuDialogueSpeech.actor)
-        if not actor or not native.isSpeechActive(actor) then stopMenuDialogueSpeech() end
     end
 end
 local function controlsAllowed()
@@ -1196,6 +1193,14 @@ return {
         DialogueResponse=function(event)
             local response=adapter.dialogueResponse(event)
             if response then send('LORKHAN_VANILLA_DIALOGUE',response) startMenuDialogueSpeech(response) end
+        end,
+        LORKHAN_MENU_DIALOGUE_SPEECH_STATUS=function(event)
+            if not menuDialogueSpeech or not event or event.request_id~=menuDialogueSpeech.request_id then return end
+            if event.active==true then return end
+            if event.status=='failed' then
+                print('[LORKHAN] menu dialogue playback failed: '..tostring(event.reason or 'playback_failed'))
+            end
+            menuDialogueSpeech=nil
         end,
         LORKHAN_NARRATOR_SPEAK=function(command)
             stopNarrator('speech_replaced')
