@@ -35,6 +35,9 @@ local contextCollectionSamples={}
 local speechActors={}
 local narratorSpeech
 local menuDialogueSpeech
+local pendingCapturedDialogue={}
+local capturedDialogueSeen={}
+local capturedDialogueFlushElapsed=0
 local ownsUiMode=false
 local controlsSignature
 local responseQueueSnapshot={}
@@ -195,6 +198,65 @@ local function startMenuDialogueSpeech(response)
         menuDialogueSpeech={actor=response.actor,sentences=queued,index=1,
             dialogueSeenOpen=dialogueMenuOpen()==true}
         submitMenuDialogueSentence(menuDialogueSpeech,queued[1])
+    end
+end
+
+-- Persist vanilla ambient and menu speech as bounded CHIM-style conversation history.
+local function captureVanillaDialogue(response)
+    if not response or not ({voice=true,greeting=true,persuasion=true,topic=true})[response.dialogue_type] then return end
+    local listener=adapter.identity(self)
+    if not listener then return end
+    local source=response.dialogue_type=='voice' and 'background' or 'menu'
+    local now=core and core.getRealTime and core.getRealTime() or 0
+    local signature=table.concat({source,identity.key(response.actor),response.info_id or '',response.text},'|')
+    local previous=capturedDialogueSeen[signature]
+    if previous and now-previous<2 then return end
+    capturedDialogueSeen[signature]=now
+    local audience,seen={},{}
+    seen[identity.key(response.actor)]=true
+    seen[identity.key(listener)]=true
+    for _,candidate in ipairs(adapter.nearbyActors(2048)) do
+        local actor=candidate.identity
+        local key=actor and identity.key(actor) or nil
+        if key and not seen[key] then
+            seen[key]=true audience[#audience+1]=actor
+            if #audience>=12 then break end
+        end
+    end
+    local payload,reason=protocol.capturedDialogue({source=source,speaker=response.actor,listener=listener,
+        audience=audience,text=response.text,topic=response.record_id or '',game_time=response.captured_game_time})
+    if not payload then print('[LORKHAN] vanilla dialogue capture rejected: '..tostring(reason)) return end
+    local request,submitReason
+    if nativeOk and native and native.submitCapturedDialogue then
+        request,submitReason=native.submitCapturedDialogue(payload)
+    else submitReason='bridge_not_ready' end
+    if request then return end
+    if #pendingCapturedDialogue>=32 then table.remove(pendingCapturedDialogue,1) end
+    pendingCapturedDialogue[#pendingCapturedDialogue+1]={payload=payload,attempts=0}
+    if submitReason~='bridge_not_ready' then
+        print('[LORKHAN] vanilla dialogue capture queued: '..tostring(submitReason))
+    end
+end
+
+local function flushCapturedDialogue(dt)
+    local now=core and core.getRealTime and core.getRealTime() or 0
+    for signature,capturedAt in pairs(capturedDialogueSeen) do
+        if now-capturedAt>=2 then capturedDialogueSeen[signature]=nil end
+    end
+    if #pendingCapturedDialogue==0 then return end
+    capturedDialogueFlushElapsed=capturedDialogueFlushElapsed+(tonumber(dt) or 0)
+    if capturedDialogueFlushElapsed<0.1 then return end
+    capturedDialogueFlushElapsed=0
+    local item=pendingCapturedDialogue[1]
+    local request,reason
+    if nativeOk and native and native.submitCapturedDialogue then
+        request,reason=native.submitCapturedDialogue(item.payload)
+    else reason='bridge_not_ready' end
+    if request then table.remove(pendingCapturedDialogue,1) return end
+    item.attempts=item.attempts+1
+    if item.attempts>=20 and reason~='bridge_not_ready' then
+        print('[LORKHAN] vanilla dialogue capture failed: '..tostring(reason))
+        table.remove(pendingCapturedDialogue,1)
     end
 end
 
@@ -1193,6 +1255,7 @@ return {
         onUpdate=function(dt)
             if narratorSpeech and not adapter.isSpeechActive() then reportNarrator('played','playback_completed') end
             updateMenuDialogueSpeech()
+            flushCapturedDialogue(dt)
             local statusChanged=notifications.update(notification,dt)
             if statusChanged then renderStatusHud() end
             local elapsed=tonumber(dt) or 0
@@ -1236,7 +1299,11 @@ return {
     eventHandlers={
         DialogueResponse=function(event)
             local response=adapter.dialogueResponse(event)
-            if response then send('LORKHAN_VANILLA_DIALOGUE',response) startMenuDialogueSpeech(response) end
+            if response then
+                send('LORKHAN_VANILLA_DIALOGUE',response)
+                captureVanillaDialogue(response)
+                startMenuDialogueSpeech(response)
+            end
         end,
         LORKHAN_MENU_DIALOGUE_SPEECH_STATUS=function(event)
             if not menuDialogueSpeech or not event then return end

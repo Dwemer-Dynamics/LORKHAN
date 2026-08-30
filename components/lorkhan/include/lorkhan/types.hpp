@@ -201,6 +201,16 @@ struct MenuDialogueTtsRequest {
     std::string text;
 };
 
+struct GameDataRequest {
+    InstallationId installation;
+    PlaythroughId playthrough;
+    RequestId request;
+    Generation runtimeGeneration;
+    std::string observedAt;
+    // A strict schema-owned captured_dialogue JSON object.
+    std::string serializedPayload;
+};
+
 enum class MediaCodec { wav, ogg, mp3 };
 
 struct MediaDescriptor {
@@ -224,7 +234,7 @@ struct PreparedMedia {
 
 using RequestPayload = std::variant<HealthRequest, InitRequest, TurnRequest, EventPollRequest,
     InterruptionRequest, ActionResultRequest, SessionEndRequest, SttRequest,
-    DialogueDeliveryResultRequest, ControlsQueryRequest, ControlsSelectRequest, MenuDialogueTtsRequest,
+    DialogueDeliveryResultRequest, ControlsQueryRequest, ControlsSelectRequest, MenuDialogueTtsRequest, GameDataRequest,
     MediaPrepareRequest>;
 
 enum class RequestKind {
@@ -240,6 +250,7 @@ enum class RequestKind {
     controls_query,
     controls_select,
     menu_dialogue_tts,
+    gamedata,
     media,
 };
 

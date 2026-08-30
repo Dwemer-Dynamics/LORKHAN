@@ -19,12 +19,15 @@
     "captured_dialogue": {
       "additionalProperties": false,
       "properties": {
+        "audience": {"items": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"}, "maxItems": 12, "type": "array", "uniqueItems": true},
+        "game_time": {"maximum": 9007199254740991, "minimum": 0, "type": "number"},
         "listener": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+        "source": {"enum": ["background", "menu"], "type": "string"},
         "speaker": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"},
         "text": {"maxLength": 4096, "minLength": 1, "type": "string"},
         "topic": {"maxLength": 256, "type": "string"}
       },
-      "required": ["speaker", "listener", "text", "topic"],
+      "required": ["source", "speaker", "listener", "audience", "text", "topic"],
       "type": "object"
     },
     "inventory": {

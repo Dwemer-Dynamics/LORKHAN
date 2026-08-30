@@ -603,6 +603,25 @@ namespace MWLua
                 catch (const std::exception& error) { return failure(lua, error.what()); }
             }
 
+            // Persist one bounded vanilla dialogue observation without exposing a generic transport primitive.
+            std::tuple<sol::object, sol::object> submitCapturedDialogue(sol::state_view lua, sol::table payload)
+            {
+                if (!ready()) return failure(lua, "bridge_not_ready");
+                try
+                {
+                    const lorkhan::RequestId request(uuid());
+                    const std::string serialized = toJson(sol::make_object(lua, payload));
+                    lorkhan::OutboundRequest outbound{request, *m_session, m_service->generation(),
+                        lorkhan::RequestKind::gamedata,
+                        lorkhan::GameDataRequest{m_config->installation, m_config->playthrough, request,
+                            m_service->generation(), utcNow(), serialized}};
+                    auto accepted = m_service->enqueue(std::move(outbound));
+                    if (!accepted) return failure(lua, accepted.error().message);
+                    return success(lua, request.value());
+                }
+                catch (const std::exception& error) { return failure(lua, error.what()); }
+            }
+
             std::tuple<sol::object, sol::object> requestControls(sol::state_view lua, sol::table target)
             {
                 if (!ready()) return failure(lua, "bridge_not_ready");
@@ -1268,6 +1287,9 @@ namespace MWLua
             api["sessionInfo"] = [lua] { return client().sessionInfo(lua); };
             api["nextTurnMetadata"] = [lua] { return client().nextTurnMetadata(lua); };
             api["submitTurn"] = [lua](sol::table dto) { return client().submitTurn(lua, std::move(dto)); };
+            api["submitCapturedDialogue"] = [lua](sol::table payload) {
+                return client().submitCapturedDialogue(lua, std::move(payload));
+            };
             api["requestSessionControls"] = [lua](sol::table target) { return client().requestControls(lua,std::move(target)); };
             api["selectSessionControl"] = [lua](const std::string& kind,sol::optional<std::string> selection,sol::table target) {
                 return client().selectControl(lua,kind,std::move(selection),std::move(target));

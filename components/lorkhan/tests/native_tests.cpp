@@ -327,6 +327,17 @@ void testAcceptedProtocolResponses()
         R"({"schema":"lorkhan.session.ended.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":-1,"ended":true})",
         jsonHeaders));
 
+    auto gameData = lorkhan::parseGameDataAcceptedResponse(
+        R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"captured_dialogue","duplicate":false})",
+        jsonHeaders);
+    CHECK(gameData && gameData.value().request == lorkhan::RequestId(kInstallation)
+        && gameData.value().session == lorkhan::SessionId(kSession)
+        && gameData.value().generation == lorkhan::Generation(7)
+        && gameData.value().type == "captured_dialogue" && !gameData.value().duplicate);
+    CHECK(!lorkhan::parseGameDataAcceptedResponse(
+        R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"journal","duplicate":false})",
+        jsonHeaders));
+
     auto controls = lorkhan::parseControlsResponse(
         R"({"schema":"lorkhan.controls.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"target":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"selected_model_slot_id":"01900000-0000-7000-8000-000000000011","selected_profile_id":null,"narrator_profile_id":"01900000-0000-7000-8000-000000000013","effective_settings":{"schema":"lorkhan.effective-settings.v1","change_token":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","profile_id":null,"profile_revision":null,"core_profile_id":"01900000-0000-7000-8000-000000000014","core_profile_revision":1,"settings":{"behavior":{"auto_greeting":false,"rechat":true,"rechat_delay_seconds":45,"rechat_max_depth":1,"rechat_probability_percent":0,"rechat_mode":"random","rechat_strict_targeting":false,"open_rechat":false,"rechat_allow_actions":false,"end_conversation_cooldown_seconds":0,"boredom":false,"boredom_delay_seconds":180,"combat_barks":false,"combat_bark_period_seconds":20},"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"random_events":false,"quest_events":false,"book_events":false},"presentation":{"show_status_hud":true,"transcript_rows":8,"tts_volume_boost":3},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"routing":{},"source_map":{}},"model_slots":[{"configuration_id":"01900000-0000-7000-8000-000000000011","name":"Dialogue","revision":2,"driver":"configured","model":"gpt-5-mini"}],"profiles":[{"profile_id":"01900000-0000-7000-8000-000000000012","name":"Fargoth","revision":3}]})",
         jsonHeaders);

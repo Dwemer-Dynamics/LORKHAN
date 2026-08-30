@@ -566,6 +566,26 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
                 +",\"text\":"+escapeJson(menu->text)+"}";
             break;
         }
+        case RequestKind::gamedata: {
+            const auto* gamedata = std::get_if<GameDataRequest>(&request.payload);
+            if (!gamedata) break;
+            auto payload = requireJsonObject(gamedata->serializedPayload, "captured dialogue payload");
+            if (!payload) return Result<WireRequest>::failure(payload.error());
+            wire.method = http::verb::post;
+            wire.target = route("/gamedata");
+            wire.expectedStatus = 202;
+            wire.idempotencyKey = gamedata->request.value();
+            wire.body = "{\"schema\":\"lorkhan.gamedata.v1\",\"installation_id\":"
+                + escapeJson(gamedata->installation.value()) + ",\"playthrough_id\":"
+                + escapeJson(gamedata->playthrough.value()) + ",\"session_id\":"
+                + escapeJson(request.session.value()) + ",\"request_id\":"
+                + escapeJson(gamedata->request.value()) + ",\"generation\":"
+                + std::to_string(request.generation.value()) + ",\"runtime_generation\":"
+                + std::to_string(gamedata->runtimeGeneration.value()) + ",\"observed_at\":"
+                + escapeJson(gamedata->observedAt) + ",\"game\":\"tes3\",\"type\":\"captured_dialogue\",\"payload\":"
+                + gamedata->serializedPayload + "}";
+            break;
+        }
         case RequestKind::media: {
             const auto* media = std::get_if<MediaPrepareRequest>(&request.payload);
             if (!media)
@@ -766,6 +786,16 @@ Result<InboundResult> validateResponse(const OutboundRequest& request, const Wir
                 return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
                     "menu dialogue TTS response correlation mismatch"));
             kind=ResponseKind::menu_dialogue_ready;
+            break;
+        }
+        case RequestKind::gamedata: {
+            const auto& sent = std::get<GameDataRequest>(request.payload);
+            auto parsed = parseGameDataAcceptedResponse(response.body(), headers);
+            if (!parsed) return Result<InboundResult>::failure(parsed.error());
+            if (parsed.value().request != sent.request || parsed.value().session != request.session
+                || parsed.value().generation != request.generation || parsed.value().type != "captured_dialogue")
+                return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
+                    "game-data response correlation mismatch"));
             break;
         }
         case RequestKind::media:

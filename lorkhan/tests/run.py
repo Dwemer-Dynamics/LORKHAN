@@ -118,6 +118,9 @@ check("shipped native package exposes typed STT while autonomy stays absent", al
     all(fragment in binding for fragment in required_native_voice_entries)
     and 'api["selectVoiceCaptureDevice"]' not in binding
     and 'api["pollAutonomy"]' not in binding for binding in [native_binding,native_overlay]))
+check("shipped native package exposes only typed captured-dialogue game data", all(
+    'api["submitCapturedDialogue"]' in binding and 'RequestKind::gamedata' in binding
+    for binding in [native_binding,native_overlay]))
 check("native handshake negotiates speech input", all(
     binding.count('"speech.listen"') >= 2
     and '"dialogue.text", "speech.say", "speech.listen", "controls.session"' in binding

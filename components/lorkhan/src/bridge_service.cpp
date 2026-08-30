@@ -54,6 +54,7 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         || (request.kind == RequestKind::controls_query) != std::holds_alternative<ControlsQueryRequest>(request.payload)
         || (request.kind == RequestKind::controls_select) != std::holds_alternative<ControlsSelectRequest>(request.payload)
         || (request.kind == RequestKind::menu_dialogue_tts) != std::holds_alternative<MenuDialogueTtsRequest>(request.payload)
+        || (request.kind == RequestKind::gamedata) != std::holds_alternative<GameDataRequest>(request.payload)
         || (request.kind == RequestKind::media) != std::holds_alternative<MediaPrepareRequest>(request.payload))
         return Result<void>::failure(makeError(ErrorCode::invalid_argument, "request kind does not match typed payload"));
     if (const auto* init = std::get_if<InitRequest>(&request.payload)) {
@@ -153,6 +154,13 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         if(!text||menu->text.empty())return Result<void>::failure(makeError(ErrorCode::invalid_argument,
             "menu dialogue TTS text is outside the closed contract"));
     }
+    if (const auto* gamedata = std::get_if<GameDataRequest>(&request.payload)) {
+        if (!validId(gamedata->installation) || !validId(gamedata->playthrough) || !validId(gamedata->request)
+            || gamedata->request != request.id || gamedata->runtimeGeneration != request.generation
+            || !isCanonicalUtcTimestamp(gamedata->observedAt))
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,
+                "game-data correlation is invalid"));
+    }
     const auto validatePayload = [](std::string_view value, std::size_t limit) -> Result<void> {
         auto valid = requireValidUtf8(value, limit);
         return valid ? Result<void>::success() : Result<void>::failure(valid.error());
@@ -178,6 +186,8 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         if (stt->codec != "wav")
             return Result<void>::failure(makeError(ErrorCode::invalid_argument, "STT codec must be wav"));
     }
+    if (const auto* gamedata = std::get_if<GameDataRequest>(&request.payload))
+        return validatePayload(gamedata->serializedPayload, kMaxJsonBytes);
     return Result<void>::success();
 }
 
