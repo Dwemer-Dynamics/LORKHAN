@@ -150,6 +150,13 @@ local function stopNarrator(reason)
     adapter.stopSpeech();reportNarrator('interrupted',reason or 'client_interrupted')
 end
 
+local function dialogueMenuOpen()
+    if not interfacesOk or not interfaces or not interfaces.UI or not interfaces.UI.getMode then return nil end
+    local ok,mode=pcall(interfaces.UI.getMode)
+    if not ok then return nil end
+    return mode=='Dialogue'
+end
+
 -- Stop only the regular-menu speech lane so a newly selected response replaces it immediately.
 local function stopMenuDialogueSpeech()
     local current=menuDialogueSpeech
@@ -185,13 +192,17 @@ local function startMenuDialogueSpeech(response)
         queued[#queued+1]={text=text,state='pending'}
     end
     if #queued>0 then
-        menuDialogueSpeech={actor=response.actor,sentences=queued,index=1}
+        menuDialogueSpeech={actor=response.actor,sentences=queued,index=1,
+            dialogueSeenOpen=dialogueMenuOpen()==true}
         submitMenuDialogueSentence(menuDialogueSpeech,queued[1])
     end
 end
 
 local function updateMenuDialogueSpeech()
     if not menuDialogueSpeech then return end
+    local menuOpen=dialogueMenuOpen()
+    if menuOpen==true then menuDialogueSpeech.dialogueSeenOpen=true
+    elseif menuOpen==false and menuDialogueSpeech.dialogueSeenOpen then stopMenuDialogueSpeech() return end
     if soundSettings and soundSettings:get('menuDialogueTts')==false then stopMenuDialogueSpeech() return end
     if not nativeOk or not native or not native.menuDialogueTtsStatus then stopMenuDialogueSpeech() return end
     for _,sentence in ipairs(menuDialogueSpeech.sentences) do

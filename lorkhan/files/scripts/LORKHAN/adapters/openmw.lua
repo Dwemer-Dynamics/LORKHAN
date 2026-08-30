@@ -114,9 +114,11 @@ function M.dialogueResponse(event, modules)
         and modules.core.dialogue[dialogueType].records
     local record=records and records[event.recordId]
     if not record or not record.infos then return nil,'dialogue_record_unavailable' end
-    local text
-    for _,info in pairs(record.infos) do
-        if info.id==event.infoId and type(info.text)=='string' then text=info.text break end
+    local text=type(event.text)=='string' and event.text or nil
+    if not text then
+        for _,info in pairs(record.infos) do
+            if info.id==event.infoId and type(info.text)=='string' then text=info.text break end
+        end
     end
     if not text or text=='' then return nil,'dialogue_info_unavailable' end
     if #text>4096 then text=text:sub(1,4096) end

@@ -950,7 +950,7 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
  local started,packageFilter
  local activePackage={type='Combat',target=playerTarget}
  local modules={core={contentFiles={list={'Morrowind.esm','Test.esp'}},getGameTime=function()return 1234 end,
-  dialogue={topic={records={vivec={infos={{id='vivec-info',text='The city is named for our god.'}}}}}},
+  dialogue={topic={records={vivec={infos={{id='vivec-info',text='I am %Name, %Class.'}}}}}},
   getFormId=function(_,index)if index==playerId.refnum.index then return 0x00000014 end return 0x01000070 end},self=selfObject,
   interfaces={FollowerDetectionUtil={version=2,getFollowerList=function()return{
     follower={actor=object,leader=playerTarget,superLeader=nil,followsPlayer=true}}
@@ -975,8 +975,11 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
  eq(mapped.refnum.content_file,1);eq(mapped.content_file,'Test.esp');eq(mapped.display_name,'Fargoth')
  local mappedPlayer=openmwAdapter.identity(playerTarget,modules);eq(mappedPlayer.kind,'player');eq(mappedPlayer.refnum.index,0)
  eq(mappedPlayer.refnum.content_file,0);eq(mappedPlayer.content_file,'Morrowind.esm');eq(mappedPlayer.display_name,'RANGROO')
- local response=openmwAdapter.dialogueResponse({actor=object,type='topic',recordId='vivec',infoId='vivec-info'},modules)
- eq(response.text,'The city is named for our god.');eq(response.actor.record_id,'fargoth');eq(response.captured_game_time,1234)
+ local response=openmwAdapter.dialogueResponse({actor=object,type='topic',recordId='vivec',infoId='vivec-info',
+   text='I am Fargoth, commoner.'},modules)
+ eq(response.text,'I am Fargoth, commoner.');eq(response.actor.record_id,'fargoth');eq(response.captured_game_time,1234)
+ local rawResponse=openmwAdapter.dialogueResponse({actor=object,type='topic',recordId='vivec',infoId='vivec-info'},modules)
+ eq(rawResponse.text,'I am %Name, %Class.')
  eq(openmwAdapter.resolve(mappedPlayer,modules),playerTarget)
  local aimed=openmwAdapter.resolveActorRay(512,modules);eq(aimed.identity.record_id,'fargoth');eq(aimed.distance,300)
  local candidate=openmwAdapter.resolveCameraTarget(512,modules);eq(candidate.identity.record_id,'fargoth');eq(candidate.distance,300)

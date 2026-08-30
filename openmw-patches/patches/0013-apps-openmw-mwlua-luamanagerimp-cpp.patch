@@ -1,0 +1,35 @@
+diff --git a/apps/openmw/mwlua/luamanagerimp.cpp b/apps/openmw/mwlua/luamanagerimp.cpp
+index c9c39344222ec38f3a20b9e5d109783e51300196..a48e91fea95a812fe93b5c140fc230e779114db6 100644
+--- a/apps/openmw/mwlua/luamanagerimp.cpp
++++ b/apps/openmw/mwlua/luamanagerimp.cpp
+@@ -15,6 +15,7 @@
+ #include <components/esm3/esmreader.hpp>
+ #include <components/esm3/esmwriter.hpp>
+ 
++#include <components/interpreter/defines.hpp>
+ #include <components/settings/values.hpp>
+ 
+ #include <components/l10n/manager.hpp>
+@@ -27,6 +28,8 @@
+ 
+ #include "../mwrender/bonegroup.hpp"
+ #include "../mwrender/postprocessor.hpp"
++
++#include "../mwscript/interpretercontext.hpp"
+ 
+ #include "../mwworld/datetimemanager.hpp"
+ #include "../mwworld/esmstore.hpp"
+@@ -504,6 +507,13 @@
+                 data["type"] = "voice";
+             data["infoId"] = info.mId.serializeText();
+             data["recordId"] = record.mId.serializeText();
++            if (actor.isEmpty())
++                data["text"] = info.mResponse;
++            else
++            {
++                MWScript::InterpreterContext context(&actor.getRefData().getLocals(), actor);
++                data["text"] = Interpreter::fixDefinesDialog(info.mResponse, context);
++            }
+             sendLocalEvent(mPlayer, "DialogueResponse", data);
+         });
+     }

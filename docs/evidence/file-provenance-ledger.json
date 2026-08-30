@@ -76,6 +76,7 @@
         "openmw-patches/patches/0010-apps-openmw-mwsound-soundmanagerimp-hpp.patch",
         "openmw-patches/patches/0011-apps-launcher-main-cpp.patch",
         "openmw-patches/patches/0012-apps-launcher-maindialog-cpp.patch",
+        "openmw-patches/patches/0013-apps-openmw-mwlua-luamanagerimp-cpp.patch",
         "openmw-patches/series",
         "schemas/evidence/file-provenance-ledger.schema.json",
         "schemas/evidence/patch-manifest.schema.json",
@@ -399,6 +400,7 @@
         "apps/openmw/mwlua/lorkhanbindings.cpp",
         "apps/openmw/mwlua/lorkhanbindings.hpp",
         "apps/openmw/mwlua/luabindings.cpp",
+        "apps/openmw/mwlua/luamanagerimp.cpp",
         "apps/openmw/mwsound/ffmpegdecoder.cpp",
         "apps/openmw/mwsound/ffmpegdecoder.hpp",
         "apps/openmw/mwsound/soundmanagerimp.cpp",
@@ -410,7 +412,7 @@
       "source_path": "apps/openmw",
       "license": "GPL-3.0-only",
       "copyright_notice": "OpenMW contributors and LORKHAN contributors",
-      "transformation": "Minimal exact-pin integration adds the context-gated LORKHAN typed package and an engine-internal verified-media stream seam that reuses actor-positioned voice playback without exposing URLs, tokens, host paths, filesystems, or generic HTTP to Lua.",
+      "transformation": "Minimal exact-pin integration adds the context-gated LORKHAN typed package, engine-expanded dialogue event text, and an engine-internal verified-media stream seam that reuses actor-positioned voice playback without exposing URLs, tokens, host paths, filesystems, or generic HTTP to Lua.",
       "reviewer": "LORKHAN maintainers"
     }
   ]

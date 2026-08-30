@@ -244,11 +244,16 @@ class FoundationTests(unittest.TestCase):
         global_script = (script_root / "global.lua").read_text(encoding="utf-8")
         actor = (script_root / "actor.lua").read_text(encoding="utf-8")
         native_bindings = (ROOT / "apps/openmw/mwlua/lorkhanbindings.cpp").read_text(encoding="utf-8")
+        dialogue_event_patch = (
+            ROOT / "openmw-patches/patches/0013-apps-openmw-mwlua-luamanagerimp-cpp.patch"
+        ).read_text(encoding="utf-8")
         self.assertIn("send('LORKHAN_MENU_DIALOGUE_SPEAK'", player)
         self.assertIn("support.splitSentences(response.text,8)", player)
         self.assertIn("queued[#queued+1]={text=text,state='pending'}", player)
         self.assertIn("submitMenuDialogueSentence(menuDialogueSpeech,queued[1])", player)
         self.assertIn("sentence.state=='preparing'", player)
+        self.assertIn("mode=='Dialogue'", player)
+        self.assertIn("dialogueSeenOpen then stopMenuDialogueSpeech() return", player)
         self.assertNotIn("native.playSpeech(status.media_id,actor", player)
         self.assertIn("manageActor(event.actor,state.generation)", global_script)
         self.assertIn("sendActor(event.actor,'LORKHAN_MENU_DIALOGUE_SPEAK',event)", global_script)
@@ -257,6 +262,10 @@ class FoundationTests(unittest.TestCase):
         self.assertIn("adapter.playSpeech(command.media_id,'',command.volume_boost)", actor)
         self.assertIn("std::map<std::string, MenuDialogueState> m_menuDialogues", native_bindings)
         self.assertIn("menuDialogueTtsStatus(lua,requestId)", native_bindings)
+        self.assertIn(
+            'data["text"] = Interpreter::fixDefinesDialog(info.mResponse, context)',
+            dialogue_event_patch,
+        )
 
     def test_offline_cache_miss(self):
         result = self.command(sys.executable, str(BOOTSTRAP), "bootstrap", "--cache-dir", str(self.temp / "none"),
