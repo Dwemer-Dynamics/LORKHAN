@@ -2,9 +2,11 @@ local adapter=require('scripts.LORKHAN.adapters.openmw')
 local executor=require('scripts.LORKHAN.actor_executor')
 local actions=require('scripts.LORKHAN.actions')
 local protocol=require('scripts.LORKHAN.protocol')
+local identity=require('scripts.LORKHAN.identity')
 local core=adapter.event()
 local state
 local lastCombatSignature
+local menuDialogueSpeech
 local combatStatusElapsed=0
 local COMBAT_STATUS_INTERVAL=0.25
 local engine={
@@ -83,6 +85,21 @@ local function cancelFace(reason)
     local result,command=executor.cancelFace(state,engine,reason)
     report(result,command)
 end
+local function reportMenuDialogue(command,status,reason,active)
+    if command and state and core and core.sendGlobalEvent then
+        core.sendGlobalEvent('LORKHAN_MENU_DIALOGUE_SPEECH_STATUS',{actor=state.identity,
+            request_id=command.request_id,media_id=command.media_id,active=active==true,status=status,reason=reason})
+    end
+end
+local function stopMenuDialogue(reason)
+    local command=menuDialogueSpeech
+    if not command then return end
+    menuDialogueSpeech=nil
+    adapter.stopSpeech()
+    local bridge=adapter.bridge()
+    if bridge and bridge.releaseMedia then bridge.releaseMedia(command.media_id) end
+    reportMenuDialogue(command,'interrupted',reason or 'client_interrupted',false)
+end
 return {
     engineHandlers={onInit=function(data) state=executor.new(data.actor,data.generation,data.capabilities) end,
         onActive=function()
@@ -103,11 +120,19 @@ return {
             if state and state.activeSpeech and not engine.isSpeechActive() then
                 reportDelivery(executor.completeSpeech(state),'played','playback_completed')
             end
+            if menuDialogueSpeech and not engine.isSpeechActive() then
+                local command=menuDialogueSpeech
+                menuDialogueSpeech=nil
+                local bridge=adapter.bridge()
+                if bridge and bridge.releaseMedia then bridge.releaseMedia(command.media_id) end
+                reportMenuDialogue(command,'played','playback_completed',false)
+            end
         end,
         onInactive=function()
             if state then
                 clearCombatStatus()
                 cancelFace('actor_became_inactive')
+                stopMenuDialogue('actor_became_inactive')
                 reportDelivery(executor.stop(state,engine),'interrupted','actor_became_inactive')
                 state.attached=false
             end
@@ -133,6 +158,7 @@ return {
         end,
         LORKHAN_ACTOR_SPEAK=function(command)
             if not state then return end
+            stopMenuDialogue('ai_speech_started')
             local ok,reason=executor.speak(state,command,engine,authority(command))
             if ok and core and core.sendGlobalEvent then
                 core.sendGlobalEvent('LORKHAN_SPEECH_STATUS',{actor=state.identity,media_id=command.media_id,
@@ -152,6 +178,31 @@ return {
         end,
         LORKHAN_ACTOR_STOP_SPEECH=function()
             if state then reportDelivery(executor.stopSpeech(state,engine),'interrupted','client_interrupted') end
+        end,
+        LORKHAN_MENU_DIALOGUE_SPEAK=function(command)
+            if not state or type(command)~='table' or command.generation~=state.generation
+                or not command.actor or not identity.same(command.actor,state.identity)
+                or type(command.request_id)~='string' or type(command.media_id)~='string' then
+                return
+            end
+            stopMenuDialogue('speech_replaced')
+            if state.activeSpeech then
+                reportDelivery(executor.stopSpeech(state,engine),'interrupted','menu_dialogue_started')
+            end
+            local ok,reason=adapter.playSpeech(command.media_id,'',command.volume_boost)
+            if ok then
+                menuDialogueSpeech=command
+                reportMenuDialogue(command,'playing',nil,true)
+            else
+                local bridge=adapter.bridge()
+                if bridge and bridge.releaseMedia then bridge.releaseMedia(command.media_id) end
+                reportMenuDialogue(command,'failed',reason or 'playback_failed',false)
+            end
+        end,
+        LORKHAN_MENU_DIALOGUE_STOP=function(command)
+            if menuDialogueSpeech and command and command.request_id==menuDialogueSpeech.request_id then
+                stopMenuDialogue('client_interrupted')
+            end
         end,
         LORKHAN_ACTOR_HALT_ACTIONS=function()
             if state then cancelFace('client_interrupted') executor.haltActions(state,engine) end
