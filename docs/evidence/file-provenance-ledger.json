@@ -165,6 +165,8 @@
         "lorkhan/schemas/v1/input.schema.json",
         "lorkhan/schemas/v1/interruption-accepted.schema.json",
         "lorkhan/schemas/v1/media-descriptor.schema.json",
+        "lorkhan/schemas/v1/menu-dialogue-tts-ready.schema.json",
+        "lorkhan/schemas/v1/menu-dialogue-tts.schema.json",
         "lorkhan/schemas/v1/response-line.schema.json",
         "lorkhan/schemas/v1/response.schema.json",
         "lorkhan/schemas/v1/session-accepted.schema.json",

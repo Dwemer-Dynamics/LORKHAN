@@ -342,6 +342,16 @@
       "sha256": "d1a9bd58b04fb60880dd862d9fb42d8ab23faf6555be188ac567b25e166fc4c0"
     },
     {
+      "bytes": 983,
+      "path": "lorkhan/schemas/v1/menu-dialogue-tts-ready.schema.json",
+      "sha256": "8a31db3b01b8c5f23a7e1a3db4c7539073cbfc40d0aebae5fdee53f401855fdc"
+    },
+    {
+      "bytes": 1063,
+      "path": "lorkhan/schemas/v1/menu-dialogue-tts.schema.json",
+      "sha256": "168ed1b8dc12d492cebfa4e09f597a94c004a19d6b17a480d18fd85adcccae7f"
+    },
+    {
       "bytes": 3688,
       "path": "lorkhan/schemas/v1/response-line.schema.json",
       "sha256": "12c97704dd00ca584bec21b8a3a065bce5a110c996e5779cf9c57289907ac9bf"

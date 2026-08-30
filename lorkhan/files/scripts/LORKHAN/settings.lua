@@ -141,6 +141,7 @@ I.Settings.registerGroup({
     description='SoundGroup_description',permanentStorage=true,order=3,
     settings={
         {key='ttsVolumeBoost',renderer='number',default=3,name='TtsVolumeBoost_name',description='TtsVolumeBoost_description',argument={integer=true,min=1,max=4}},
+        {key='menuDialogueTts',renderer='checkbox',default=true,name='MenuDialogueTts_name',description='MenuDialogueTts_description'},
     },
 })
 

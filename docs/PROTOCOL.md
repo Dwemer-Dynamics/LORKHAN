@@ -94,10 +94,16 @@ version/API plus the ordered content list and file identity metadata, never prop
 | `POST /controls/query` | `lorkhan.controls.query.v1` | safe server-owned model slots, NPC profiles, narrator ID, and target-effective settings snapshot |
 | `POST /controls/select` | `lorkhan.controls.select.v1` | idempotent session model/profile selection or revision-safe NPC/narrator generation |
 | `POST /stt` | `lorkhan.stt.request.v1` metadata headers plus a binary WAV body | `lorkhan.stt.accepted.v1`; durable work later emits `stt.transcript` or `stt.failed`. |
+| `POST /menu-dialogue-tts` | `lorkhan.menu-dialogue-tts.v1` | `lorkhan.menu-dialogue-tts.ready.v1` with one actor-owned, short-lived media descriptor |
 | `GET /events` | session/cursor/wait | `lorkhan.events.v1` |
 | `POST /action-results` | `lorkhan.action-result.v1` | persisted acknowledgement |
 | `POST /interruptions` | `lorkhan.interrupt.v1` | cancellation acknowledgement |
 | `GET /media/{opaque_id}` | none | verified allowlisted audio bytes |
+
+Regular Morrowind dialogue TTS uses the active session and the actor's normal TTS connector and voice
+resolution. It does not create an AI turn, response event, delivery receipt, memory, or rechat input.
+The client owns one cancellable menu request at a time and fetches its returned media through the same
+authenticated media route.
 
 ## Turn payload
 

@@ -53,6 +53,7 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         || (request.kind == RequestKind::stt) != std::holds_alternative<SttRequest>(request.payload)
         || (request.kind == RequestKind::controls_query) != std::holds_alternative<ControlsQueryRequest>(request.payload)
         || (request.kind == RequestKind::controls_select) != std::holds_alternative<ControlsSelectRequest>(request.payload)
+        || (request.kind == RequestKind::menu_dialogue_tts) != std::holds_alternative<MenuDialogueTtsRequest>(request.payload)
         || (request.kind == RequestKind::media) != std::holds_alternative<MediaPrepareRequest>(request.payload))
         return Result<void>::failure(makeError(ErrorCode::invalid_argument, "request kind does not match typed payload"));
     if (const auto* init = std::get_if<InitRequest>(&request.payload)) {
@@ -140,6 +141,17 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
                 "controls-select correlation or selection is invalid"));
         auto target = parseProtocolIdentity(controls->serializedTarget);
         if (!target) return Result<void>::failure(target.error());
+    }
+    if(const auto* menu=std::get_if<MenuDialogueTtsRequest>(&request.payload)){
+        if(!validId(menu->message)||!validId(menu->correlation.request)||!validId(menu->correlation.session)
+            ||menu->correlation.request!=request.id||menu->correlation.session!=request.session
+            ||menu->correlation.generation!=request.generation||!isCanonicalUtcTimestamp(menu->createdAt))
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,
+                "menu dialogue TTS correlation is invalid"));
+        auto actor=parseProtocolIdentity(menu->serializedActor);if(!actor)return Result<void>::failure(actor.error());
+        auto text=requireValidUtf8(menu->text,16U*1024U);
+        if(!text||menu->text.empty())return Result<void>::failure(makeError(ErrorCode::invalid_argument,
+            "menu dialogue TTS text is outside the closed contract"));
     }
     const auto validatePayload = [](std::string_view value, std::size_t limit) -> Result<void> {
         auto valid = requireValidUtf8(value, limit);
