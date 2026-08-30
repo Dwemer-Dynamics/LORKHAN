@@ -161,11 +161,18 @@ local function stopMenuDialogueSpeech()
         end
         if nativeOk and native and native.cancelMenuDialogueTts then
             for _,sentence in ipairs(current.sentences or {}) do
-                pcall(native.cancelMenuDialogueTts,sentence.request_id)
+                if sentence.request_id then pcall(native.cancelMenuDialogueTts,sentence.request_id) end
             end
         end
     end
     menuDialogueSpeech=nil
+end
+
+-- Submit one sentence at a time so its media download enters the FIFO bridge before later synthesis work.
+local function submitMenuDialogueSentence(current,sentence)
+    local request,reason=native.requestMenuDialogueTts(current.actor,sentence.text)
+    if request then sentence.request_id=request;sentence.state='requesting'
+    else sentence.state='failed';sentence.reason=reason or 'request_unavailable' end
 end
 
 local function startMenuDialogueSpeech(response)
@@ -175,11 +182,12 @@ local function startMenuDialogueSpeech(response)
     if not enabled or not nativeOk or not native or not native.requestMenuDialogueTts then return end
     local queued={}
     for _,text in ipairs(support.splitSentences(response.text,8)) do
-        local request,reason=native.requestMenuDialogueTts(response.actor,text)
-        if request then queued[#queued+1]={request_id=request,text=text,state='requesting'}
-        else print('[LORKHAN] menu dialogue TTS unavailable: '..tostring(reason)) break end
+        queued[#queued+1]={text=text,state='pending'}
     end
-    if #queued>0 then menuDialogueSpeech={actor=response.actor,sentences=queued,index=1} end
+    if #queued>0 then
+        menuDialogueSpeech={actor=response.actor,sentences=queued,index=1}
+        submitMenuDialogueSentence(menuDialogueSpeech,queued[1])
+    end
 end
 
 local function updateMenuDialogueSpeech()
@@ -187,17 +195,26 @@ local function updateMenuDialogueSpeech()
     if soundSettings and soundSettings:get('menuDialogueTts')==false then stopMenuDialogueSpeech() return end
     if not nativeOk or not native or not native.menuDialogueTtsStatus then stopMenuDialogueSpeech() return end
     for _,sentence in ipairs(menuDialogueSpeech.sentences) do
-        if sentence.state=='requesting' then
+        if sentence.state=='requesting' or sentence.state=='preparing' then
             local status=native.menuDialogueTtsStatus(sentence.request_id)
             if not status then sentence.state='failed';sentence.reason='request_unavailable'
             elseif status.state=='failed' then sentence.state='failed';sentence.reason=status.reason or 'unavailable'
-            elseif status.state=='ready' then sentence.state='ready';sentence.media_id=status.media_id end
+            else sentence.state=status.state;sentence.media_id=status.media_id or sentence.media_id end
+        end
+    end
+    for index=1,#menuDialogueSpeech.sentences-1 do
+        local sentence=menuDialogueSpeech.sentences[index]
+        local following=menuDialogueSpeech.sentences[index+1]
+        if following.state=='pending' and (sentence.state=='preparing' or sentence.state=='ready'
+            or sentence.state=='failed' or sentence.dispatched) then
+            submitMenuDialogueSentence(menuDialogueSpeech,following)
+            break
         end
     end
     local sentence=menuDialogueSpeech.sentences[menuDialogueSpeech.index]
     while sentence and sentence.state=='failed' do
         print('[LORKHAN] menu dialogue TTS failed: '..tostring(sentence.reason))
-        pcall(native.cancelMenuDialogueTts,sentence.request_id)
+        if sentence.request_id then pcall(native.cancelMenuDialogueTts,sentence.request_id) end
         menuDialogueSpeech.index=menuDialogueSpeech.index+1
         sentence=menuDialogueSpeech.sentences[menuDialogueSpeech.index]
     end
