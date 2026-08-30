@@ -116,6 +116,7 @@ struct InitRequest {
 };
 struct TurnRequest {
     EnvelopeIds ids;
+    Generation runtimeGeneration;
     RuntimeInfo runtime;
     std::string contentFingerprint;
     std::string createdAt;

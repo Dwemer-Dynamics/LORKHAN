@@ -388,6 +388,7 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
                 + ",\"playthrough_id\":" + escapeJson(turn->ids.playthrough.value())
                 + ",\"session_id\":" + escapeJson(turn->ids.session.value())
                 + ",\"generation\":" + std::to_string(turn->ids.generation.value())
+                + ",\"runtime_generation\":" + std::to_string(turn->runtimeGeneration.value())
                 + ",\"created_at\":" + escapeJson(turn->createdAt)
                 + ",\"runtime\":" + runtimeJson(turn->runtime)
                 + ",\"content_fingerprint\":" + escapeJson(turn->contentFingerprint)

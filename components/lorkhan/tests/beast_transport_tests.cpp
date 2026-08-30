@@ -207,7 +207,7 @@ lorkhan::OutboundRequest init()
 lorkhan::OutboundRequest turn()
 {
     return {lorkhan::RequestId(kRequest), lorkhan::SessionId(kSession), lorkhan::Generation(7),
-        lorkhan::RequestKind::turn, lorkhan::TurnRequest{ids(), runtime(),
+        lorkhan::RequestKind::turn, lorkhan::TurnRequest{ids(), lorkhan::Generation(9), runtime(),
             "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "2026-07-18T20:00:00Z", "{}"}};
 }
@@ -277,7 +277,7 @@ lorkhan::OutboundRequest liveTurn(const LiveIds& live, const lorkhan::SessionId&
         lorkhan::PlaythroughId(live.playthrough), session, lorkhan::RequestId(request), lorkhan::TurnId(turnId),
         lorkhan::MessageId(message), lorkhan::Generation(7)};
     return {lorkhan::RequestId(request), session, lorkhan::Generation(7), lorkhan::RequestKind::turn,
-        lorkhan::TurnRequest{std::move(envelope), liveRuntime(),
+        lorkhan::TurnRequest{std::move(envelope), lorkhan::Generation(9), liveRuntime(),
             "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "2026-07-19T20:00:00Z", livePayload(input)}};
 }
@@ -358,6 +358,7 @@ void testSessionTurnAndCorrelation()
             CHECK(request.target == std::string(kBasePath) + "/turns");
             CHECK(request.idempotency == kMessage);
             CHECK(request.body.find("\"payload\":{}") != std::string::npos);
+            CHECK(request.body.find("\"runtime_generation\":9") != std::string::npos);
             sendJson(socket, 202, std::string(R"({"schema":"lorkhan.turn.accepted.v1","message_id":")")
                 + kMessage + R"(","request_id":")" + kRequest + R"(","turn_id":")" + kTurn
                 + R"(","session_id":")" + kSession + R"(","generation":7,"event_cursor":1})");

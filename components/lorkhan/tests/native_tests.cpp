@@ -89,7 +89,7 @@ lorkhan::OutboundRequest request(std::string id, lorkhan::Generation generation)
         lorkhan::PlaythroughId(kPlaythrough), lorkhan::SessionId(kSession), lorkhan::RequestId(id),
         lorkhan::TurnId(kTurn), lorkhan::MessageId(kMessage), generation};
     return {lorkhan::RequestId(std::move(id)), lorkhan::SessionId(kSession), generation,
-        lorkhan::RequestKind::turn, lorkhan::TurnRequest{std::move(ids), {}, "sha256:test",
+        lorkhan::RequestKind::turn, lorkhan::TurnRequest{std::move(ids), generation, {}, "sha256:test",
             "2026-07-18T20:00:00Z", "{}"}};
 }
 
