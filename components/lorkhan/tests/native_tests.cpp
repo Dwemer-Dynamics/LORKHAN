@@ -110,7 +110,7 @@ void testUtf8()
 void testUrls()
 {
     const std::vector<std::string> valid{
-        "http://127.0.0.1:8089/LORKHANserver/api/v1", "http://127.1.2.3/", "http://[::1]:8089/api"};
+        "http://127.0.0.1:7514/LORKHANserver/api/v1", "http://127.1.2.3/", "http://[::1]:7514/api"};
     for (const auto& url : valid)
         CHECK(lorkhan::parseLoopbackBaseUrl(url));
     const std::vector<std::string> invalid{
@@ -121,8 +121,8 @@ void testUrls()
         "http://127.0.0.1:0/", "http://127.0.0.1\r\nX: y/", "http://[0:0:0:0:0:0:0:1]/"};
     for (const auto& url : invalid)
         CHECK(!lorkhan::parseLoopbackBaseUrl(url));
-    const auto parsed = lorkhan::parseLoopbackBaseUrl("http://[::1]:8089/api/");
-    CHECK(parsed && parsed.value().basePath == "/api" && parsed.value().authority() == "[::1]:8089");
+    const auto parsed = lorkhan::parseLoopbackBaseUrl("http://[::1]:7514/api/");
+    CHECK(parsed && parsed.value().basePath == "/api" && parsed.value().authority() == "[::1]:7514");
 }
 
 void testHeaders()

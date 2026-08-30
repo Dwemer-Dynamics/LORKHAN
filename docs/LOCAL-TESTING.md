@@ -2,7 +2,7 @@
 
 ## What is already deployed
 
-- LORKHANserver runs in WSL on port 8089 with PostgreSQL, Apache, migrations, a private pairing key,
+- LORKHANserver runs in WSL on port 8090 with PostgreSQL, Apache, migrations, a private pairing key,
   and the deterministic mock LLM/TTS providers.
 - The private client configuration is at `C:\Modlists\LORKHAN\Config\lorkhan-client.conf`. The
   pairing key is never printed by the setup script.
@@ -38,7 +38,7 @@ stock OpenMW executable.
 3. Enable `LORKHAN.omwscripts` in the OpenMW launcher content list.
 4. Set `LORKHAN_CLIENT_CONFIG` to the absolute `C:\Modlists\LORKHAN\Config\lorkhan-client.conf` path before launching the
    patched OpenMW executable.
-5. Confirm the `/LORKHANserver/api/v1/health` endpoint at `http://127.0.0.1:8089` works from Windows. If WSL localhost
+5. Start DwemerDistro Launcher and confirm `/LORKHANserver/api/v1/health` at `http://127.0.0.1:7514` works from Windows. The launcher refreshes the route to WSL port 8090 when the WSL address changes. If WSL localhost
    forwarding is disabled, run `scripts/deploy/enable-wsl-loopback.ps1` from an elevated PowerShell
    window. The native client intentionally rejects non-loopback server URLs.
 6. In game, center the crosshair on an NPC and press F6. LORKHAN selects that NPC automatically and
