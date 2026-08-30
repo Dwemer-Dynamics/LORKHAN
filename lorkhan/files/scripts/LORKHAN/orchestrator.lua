@@ -775,6 +775,8 @@ function M.poll(state)
                 if event.type=='response.complete' then
                     laneOk,laneReason=responseQueue.enqueue(state.responseQueue,event.payload,state.generation,
                         currentRuntimeGeneration(state))
+                elseif event.type=='dialogue.complete' then
+                    laneOk,laneReason=responseQueue.enqueueDialogueEvent(state.responseQueue,event,currentRuntimeGeneration(state))
                 elseif event.type=='speech.ready' then
                     laneOk,laneReason=responseQueue.attachMedia(state.responseQueue,event)
                 elseif event.type=='action.intent' then
@@ -782,7 +784,8 @@ function M.poll(state)
                 end
                 if not laneOk then applied=false applyReason=laneReason
                 else
-                    if event.type=='response.complete' or event.type=='speech.ready' or event.type=='action.intent' then emitQueue(state) end
+                    if event.type=='response.complete' or event.type=='dialogue.complete'
+                        or event.type=='speech.ready' or event.type=='action.intent' then emitQueue(state) end
                     accepted=accepted+1
                     if event.type=='dialogue.complete' and state.rechat then
                         state.rechat.lastSpeaker=util.copy(event.payload.speaker)
@@ -809,6 +812,7 @@ function M.poll(state)
         end
     end
     pumpResponseQueue(state)
+    if responseQueue.consumeRechat(state.responseQueue) then startPlaybackRechatProbe(state) end
     return accepted
 end
 

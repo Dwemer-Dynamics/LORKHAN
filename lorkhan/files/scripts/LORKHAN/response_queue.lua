@@ -42,6 +42,7 @@ end
 function M.new(generation,runtimeGeneration)
     return {generation=generation or 1,runtimeGeneration=runtimeGeneration or generation or 1,
         items={},byLine={},byMedia={},byAction={},active=nil,unfinished=false,source=nil,pendingRechat=false,
+        playedLines={},
         seenResponses={},seenResponseOrder={},seenLines={},seenLineOrder={},seenUtterances={},seenUtteranceOrder={},
         seenMedia={},seenMediaOrder={},seenActions={},seenActionOrder={},
         counters={queued=0,dispatched=0,cancelled=0,staleDrops=0,deduplicated=0,completed=0}}
@@ -73,19 +74,25 @@ function M.enqueue(state,response,generation,runtimeGeneration)
     end
     local dialogue,actions={},{}
     for _,line in ipairs(response.lines) do
+        local existing=state.byLine[line.line_id]
         if state.seenLines[line.line_id] or state.seenUtterances[line.utterance_id] then
             state.counters.deduplicated=state.counters.deduplicated+1
-            return nil,'duplicate_response_line'
+            if existing and existing.kind=='dialogue' and line.action=='say' then
+                existing.responseId=response.response_id existing.close=response.close existing.line=util.copy(line)
+            elseif line.action=='say' and line.final_response_line and state.playedLines[line.line_id] then
+                state.pendingRechat=true
+            end
+        else
+            local item={kind=line.action=='say' and 'dialogue' or 'action',status='queued',
+                responseId=response.response_id,requestId=response.request_id,turnId=response.turn_id,
+                sessionId=response.session_id,generation=response.generation,runtimeGeneration=response.runtime_generation,
+                close=response.close,line=util.copy(line)}
+            if item.kind=='dialogue' then
+                item.status=line.metadata.speech_enabled==false and 'subtitle_ready' or 'waiting_media'
+                if line.media then item.media=util.copy(line.media) item.status='new' end
+                dialogue[#dialogue+1]=item
+            else actions[#actions+1]=item end
         end
-        local item={kind=line.action=='say' and 'dialogue' or 'action',status='queued',
-            responseId=response.response_id,requestId=response.request_id,turnId=response.turn_id,
-            sessionId=response.session_id,generation=response.generation,runtimeGeneration=response.runtime_generation,
-            close=response.close,line=util.copy(line)}
-        if item.kind=='dialogue' then
-            item.status=line.metadata.speech_enabled==false and 'subtitle_ready' or 'waiting_media'
-            if line.media then item.media=util.copy(line.media) item.status='new' end
-            dialogue[#dialogue+1]=item
-        else actions[#actions+1]=item end
     end
     for _,item in ipairs(dialogue) do
         remember(state,'seenLines','seenLineOrder',item.line.line_id)
@@ -105,6 +112,32 @@ function M.enqueue(state,response,generation,runtimeGeneration)
     state.unfinished=#state.items>0
     state.source=response.response_id
     return true,#dialogue+#actions
+end
+
+-- Queue an authoritative streamed sentence before its enclosing response and media arrive.
+function M.enqueueDialogueEvent(state,event,runtimeGeneration)
+    if event.generation~=state.generation then return stale(state,'stale_dialogue_generation') end
+    if state.seenLines[event.message_id] then
+        state.counters.deduplicated=state.counters.deduplicated+1 return true,0
+    end
+    local payload=event.payload
+    local line={schema='lorkhan.response.line.v1',line_id=event.message_id,line_index=0,
+        speaker=payload.speaker.display_name or payload.speaker.record_id,
+        display_name=payload.speaker.display_name or payload.speaker.record_id,
+        speaker_identity=util.copy(payload.speaker),action='say',text=payload.text,subtitle=payload.text,
+        tts_text=payload.text,request_id=event.request_id,utterance_id=event.message_id,
+        listener=payload.addressee.display_name or payload.addressee.record_id,
+        listener_identity=util.copy(payload.addressee),rechat_target=payload.speaker.display_name or payload.speaker.record_id,
+        rechat_target_identity=util.copy(payload.speaker),final_response_line=false,
+        metadata={rechat_depth=0,speech_enabled=true,source='stream'}}
+    local item={kind='dialogue',status='waiting_media',responseId=nil,requestId=event.request_id,
+        turnId=event.turn_id,sessionId=event.session_id,generation=event.generation,
+        runtimeGeneration=runtimeGeneration,close=false,line=line}
+    remember(state,'seenLines','seenLineOrder',line.line_id)
+    remember(state,'seenUtterances','seenUtteranceOrder',line.utterance_id)
+    state.items[#state.items+1]=item state.byLine[line.line_id]=item
+    state.counters.queued=state.counters.queued+1 state.unfinished=true
+    return true,1
 end
 
 function M.attachMedia(state,event)
@@ -185,11 +218,17 @@ function M.completeDialogue(state,mediaId,status)
     if not item or item.kind~='dialogue' or (item.media and item.media.media_id~=mediaId) then
         return nil,'dialogue_not_active'
     end
-    if status=='played' and item.line.final_response_line then state.pendingRechat=true end
+    if status=='played' then
+        state.playedLines[item.line.line_id]=true
+        if item.line.final_response_line then state.pendingRechat=true end
+    end
     state.counters.completed=state.counters.completed+1
     removeHead(state)
     return true,shouldAdvanceRechat(state)
 end
+
+-- Consume a rechat decision that became knowable only when the final response arrived.
+function M.consumeRechat(state) return shouldAdvanceRechat(state) end
 
 function M.completeAction(state,actionId)
     local item=state.active

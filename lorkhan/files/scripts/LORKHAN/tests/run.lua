@@ -20,6 +20,7 @@ local actions=require('scripts.LORKHAN.actions')
 local actor=require('scripts.LORKHAN.actor_executor')
 local agentRegistry=require('scripts.LORKHAN.agent_registry')
 local orchestrator=require('scripts.LORKHAN.orchestrator')
+local responseQueue=require('scripts.LORKHAN.response_queue')
 local player=require('scripts.LORKHAN.player_state')
 local openmwAdapter=require('scripts.LORKHAN.adapters.openmw')
 local fake=require('fake_openmw')
@@ -88,6 +89,34 @@ test('speaker-less streaming delta uses the selected target',function()
  local s=player.new();s.ui.target=npc
  player.event(s,event(1,'dialogue.delta',3,{text='Welcome.'}))
  eq(s.ui.subtitle.speaker.record_id,'fargoth');eq(s.ui.subtitle.text,'Welcome.')
+end)
+test('streamed sentence media queues before the final response without replay',function()
+ local lineId=uuid(150);local mediaId=uuid(151);local q=responseQueue.new(3,3)
+ local streamed=event(1,'dialogue.complete',3,{speaker=npc,addressee=playerId,text='Early sentence.'})
+ streamed.message_id=lineId
+ local queued,count=responseQueue.enqueueDialogueEvent(q,streamed,3);assert(queued,count);eq(count,1)
+ local speech=event(2,'speech.ready',3,{media_id=mediaId,dialogue_message_id=lineId,sha256=string.rep('a',64),
+  bytes=16,codec='wav',duration_ms=100,expires_at='2026-07-19T21:00:00Z'})
+ local attached,attachReason=responseQueue.attachMedia(q,speech);assert(attached,attachReason);eq(q.items[1].media.media_id,mediaId)
+ local final=dialogueLine(0,lineId,npc,playerId,'Early sentence.',true,true)
+ local accepted,newLines=responseQueue.enqueue(q,responseEvent(3,{final},3).payload,3,3)
+ assert(accepted,newLines);eq(newLines,0);eq(#q.items,1);eq(q.items[1].line.final_response_line,true)
+ eq(q.counters.queued,1);eq(q.counters.deduplicated,1)
+end)
+
+test('final response advances rechat after its streamed sentence already played',function()
+ local lineId=uuid(152);local mediaId=uuid(153);local q=responseQueue.new(3,3)
+ local streamed=event(1,'dialogue.complete',3,{speaker=npc,addressee=playerId,text='Early final sentence.'})
+ streamed.message_id=lineId
+ assert(responseQueue.enqueueDialogueEvent(q,streamed,3))
+ local speech=event(2,'speech.ready',3,{media_id=mediaId,dialogue_message_id=lineId,sha256=string.rep('b',64),
+  bytes=16,codec='wav',duration_ms=100,expires_at='2026-07-19T21:00:00Z'})
+ assert(responseQueue.attachMedia(q,speech));q.items[1].status='ready'
+ assert(responseQueue.markDispatched(q,q.items[1]));assert(responseQueue.completeDialogue(q,mediaId,'played'))
+ eq(#q.items,0);eq(responseQueue.consumeRechat(q),false)
+ local final=dialogueLine(0,lineId,npc,playerId,'Early final sentence.',true,true)
+ assert(responseQueue.enqueue(q,responseEvent(3,{final},3).payload,3,3))
+ eq(responseQueue.consumeRechat(q),true);eq(responseQueue.consumeRechat(q),false)
 end)
 
 test('target settings preserve local presentation and enforce both safety gates',function()
