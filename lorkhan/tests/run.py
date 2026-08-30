@@ -93,6 +93,7 @@ check("native-authenticated cursor gaps recover without replaying duplicates",
 check("actor self identity required", "identity.same(command.actor,state.identity)" in text(SCRIPTS / "actor_executor.lua"))
 check("vanilla Activate not consumed", "return false -- built-in Activate" in text(SCRIPTS / "player_state.lua"))
 settings = text(SCRIPTS / "settings.lua")
+settings_l10n = text(FILES / "l10n" / "LORKHAN" / "en.yaml")
 player_script = text(SCRIPTS / "player.lua")
 check("OpenMW Scripts page exposes all applicable focused hotkeys", settings.count("renderer='inputBinding'") == 14
       and all(fragment in settings for fragment in ["I.Settings.registerPage", "key='LORKHAN_Talk'",
@@ -176,6 +177,21 @@ check("OpenMW settings rows have required localization metadata", all(fragment i
     "name='Talk_name',description='Talk_description'", "name='Halt_name',description='Halt_description'",
     "name='ModeMenu_name',description='ModeMenu_description'",
     "name='ActorTools_name',description='ActorTools_description'"]))
+compact_hotkey_order = ["key='TalkBinding'", "key='PushToTalkBinding'", "key='OpenMicBinding'",
+                        "key='OpenMicMuteBinding'", "key='StopDialogueBinding'", "key='HaltBinding'",
+                        "key='ManualActivateBinding'", "key='ActorToolsBinding'", "key='ModeMenuBinding'",
+                        "key='ModelMenuBinding'", "key='ProfileMenuBinding'", "key='StatusHudBinding'",
+                        "key='HistoryBinding'", "key='DiagnosticsBinding'"]
+check("OpenMW settings follow the compact conversation-first menu order",
+      all(item in settings for item in compact_hotkey_order)
+      and [settings.index(item) for item in compact_hotkey_order]
+          == sorted(settings.index(item) for item in compact_hotkey_order))
+check("OpenMW settings use compact labels and visible numeric units", all(fragment in settings_l10n for fragment in [
+    "Talk_name: Typed Chat", "PushToTalk_name: Voice Chat",
+    "BehaviorGroup_name: Conversation & Microphone", "ToolsGroup_name: Display",
+    "InteriorDistance_name: Interior Auto Activate Distance (units)",
+    "OpenMicEndDelay_name: Open Microphone End Delay (ms)",
+    "TtsVolumeBoost_name: AI Voice Volume Boost (x)"]))
 actor_script = text(SCRIPTS / "actor.lua")
 check("dialogue playback uses native Morrowind subtitles without a duplicate status-HUD notification",
       "playSpeech=function(mediaId,actorIdentity,subtitle,volumeBoost) return adapter.playSpeech(mediaId,subtitle,volumeBoost) end" in actor_script
