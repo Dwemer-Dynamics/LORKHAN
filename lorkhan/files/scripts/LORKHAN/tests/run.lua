@@ -23,6 +23,7 @@ local orchestrator=require('scripts.LORKHAN.orchestrator')
 local responseQueue=require('scripts.LORKHAN.response_queue')
 local player=require('scripts.LORKHAN.player_state')
 local openmwAdapter=require('scripts.LORKHAN.adapters.openmw')
+local support=require('scripts.LORKHAN.util')
 local fake=require('fake_openmw')
 local npc=fake.identity('npc','fargoth',1)
 local playerId=fake.identity('player','player',2)
@@ -32,6 +33,14 @@ local function event(sequence,kind,generation,payload)
  return {message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,session_id=UUID.session,generation=generation,
   sequence=sequence,created_at='2026-07-19T20:00:0'..tostring(sequence)..'Z',type=kind,payload=payload or {}}
 end
+test('menu dialogue splits into a bounded ordered sentence queue',function()
+ local sentences=support.splitSentences('First line. Second line! Third line?',8)
+ eq(#sentences,3);eq(sentences[1],'First line.');eq(sentences[2],'Second line!');eq(sentences[3],'Third line?')
+ sentences=support.splitSentences('Wait... Still here. Final.',2)
+ eq(#sentences,2);eq(sentences[1],'Wait...');eq(sentences[2],'Still here. Final.')
+ sentences=support.splitSentences('One line without punctuation',8)
+ eq(#sentences,1);eq(sentences[1],'One line without punctuation')
+end)
 local function uuid(value) return string.format('00000000-0000-4000-8000-%012x',value) end
 local function dialogueLine(index,lineId,speaker,listener,text,final,speechEnabled)
  return {schema='lorkhan.response.line.v1',line_id=lineId,line_index=index,speaker=speaker.display_name,

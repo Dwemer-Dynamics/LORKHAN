@@ -8,6 +8,7 @@ local uiState=require('scripts.LORKHAN.ui.state')
 local selector=require('scripts.LORKHAN.ui.selector')
 local actorTools=require('scripts.LORKHAN.ui.actor_tools')
 local notifications=require('scripts.LORKHAN.ui.notifications')
+local support=require('scripts.LORKHAN.util')
 local core=adapter.event()
 local inputOk,input=pcall(require,'openmw.input')
 local uiOk,openmwUi=pcall(require,'openmw.ui')
@@ -152,13 +153,16 @@ end
 -- Stop only the regular-menu speech lane so a newly selected response replaces it immediately.
 local function stopMenuDialogueSpeech()
     local current=menuDialogueSpeech
-    if nativeOk and native and native.cancelMenuDialogueTts then pcall(native.cancelMenuDialogueTts) end
     if current then
-        if current.dispatched then
-            send('LORKHAN_MENU_DIALOGUE_STOP',{actor=current.actor,request_id=current.request_id,
-                media_id=current.media_id})
-        elseif current.media_id and nativeOk and native and native.releaseMedia then
-            pcall(native.releaseMedia,current.media_id)
+        local active=current.sentences and current.sentences[current.index]
+        if active and active.dispatched then
+            send('LORKHAN_MENU_DIALOGUE_STOP',{actor=current.actor,request_id=active.request_id,
+                media_id=active.media_id})
+        end
+        if nativeOk and native and native.cancelMenuDialogueTts then
+            for _,sentence in ipairs(current.sentences or {}) do
+                pcall(native.cancelMenuDialogueTts,sentence.request_id)
+            end
         end
     end
     menuDialogueSpeech=nil
@@ -169,28 +173,40 @@ local function startMenuDialogueSpeech(response)
     if not response or not ({greeting=true,persuasion=true,topic=true})[response.dialogue_type] then return end
     local enabled=not soundSettings or soundSettings:get('menuDialogueTts')~=false
     if not enabled or not nativeOk or not native or not native.requestMenuDialogueTts then return end
-    local request,reason=native.requestMenuDialogueTts(response.actor,response.text)
-    if request then menuDialogueSpeech={request_id=request,actor=response.actor,played=false}
-    else print('[LORKHAN] menu dialogue TTS unavailable: '..tostring(reason)) end
+    local queued={}
+    for _,text in ipairs(support.splitSentences(response.text,8)) do
+        local request,reason=native.requestMenuDialogueTts(response.actor,text)
+        if request then queued[#queued+1]={request_id=request,text=text,state='requesting'}
+        else print('[LORKHAN] menu dialogue TTS unavailable: '..tostring(reason)) break end
+    end
+    if #queued>0 then menuDialogueSpeech={actor=response.actor,sentences=queued,index=1} end
 end
 
 local function updateMenuDialogueSpeech()
     if not menuDialogueSpeech then return end
     if soundSettings and soundSettings:get('menuDialogueTts')==false then stopMenuDialogueSpeech() return end
     if not nativeOk or not native or not native.menuDialogueTtsStatus then stopMenuDialogueSpeech() return end
-    local status=native.menuDialogueTtsStatus()
-    if not status then menuDialogueSpeech=nil return end
-    if status.state=='failed' then
-        print('[LORKHAN] menu dialogue TTS failed: '..tostring(status.reason or 'unavailable'))
-        stopMenuDialogueSpeech()
-        return
+    for _,sentence in ipairs(menuDialogueSpeech.sentences) do
+        if sentence.state=='requesting' then
+            local status=native.menuDialogueTtsStatus(sentence.request_id)
+            if not status then sentence.state='failed';sentence.reason='request_unavailable'
+            elseif status.state=='failed' then sentence.state='failed';sentence.reason=status.reason or 'unavailable'
+            elseif status.state=='ready' then sentence.state='ready';sentence.media_id=status.media_id end
+        end
     end
-    if status.state=='ready' and not menuDialogueSpeech.played then
+    local sentence=menuDialogueSpeech.sentences[menuDialogueSpeech.index]
+    while sentence and sentence.state=='failed' do
+        print('[LORKHAN] menu dialogue TTS failed: '..tostring(sentence.reason))
+        pcall(native.cancelMenuDialogueTts,sentence.request_id)
+        menuDialogueSpeech.index=menuDialogueSpeech.index+1
+        sentence=menuDialogueSpeech.sentences[menuDialogueSpeech.index]
+    end
+    if not sentence then menuDialogueSpeech=nil return end
+    if sentence.state=='ready' and not sentence.dispatched then
         local volume=tonumber(soundSettings and soundSettings:get('ttsVolumeBoost')) or 3
-        menuDialogueSpeech.played=true;menuDialogueSpeech.dispatched=true;menuDialogueSpeech.media_id=status.media_id
-        send('LORKHAN_MENU_DIALOGUE_SPEAK',{actor=menuDialogueSpeech.actor,request_id=menuDialogueSpeech.request_id,
-            media_id=status.media_id,volume_boost=volume})
-        return
+        sentence.dispatched=true
+        send('LORKHAN_MENU_DIALOGUE_SPEAK',{actor=menuDialogueSpeech.actor,request_id=sentence.request_id,
+            media_id=sentence.media_id,volume_boost=volume})
     end
 end
 local function controlsAllowed()
@@ -1195,12 +1211,18 @@ return {
             if response then send('LORKHAN_VANILLA_DIALOGUE',response) startMenuDialogueSpeech(response) end
         end,
         LORKHAN_MENU_DIALOGUE_SPEECH_STATUS=function(event)
-            if not menuDialogueSpeech or not event or event.request_id~=menuDialogueSpeech.request_id then return end
+            if not menuDialogueSpeech or not event then return end
+            local sentence=menuDialogueSpeech.sentences[menuDialogueSpeech.index]
+            if not sentence or event.request_id~=sentence.request_id then return end
             if event.active==true then return end
             if event.status=='failed' then
                 print('[LORKHAN] menu dialogue playback failed: '..tostring(event.reason or 'playback_failed'))
             end
-            menuDialogueSpeech=nil
+            if nativeOk and native and native.cancelMenuDialogueTts then
+                pcall(native.cancelMenuDialogueTts,sentence.request_id)
+            end
+            menuDialogueSpeech.index=menuDialogueSpeech.index+1
+            updateMenuDialogueSpeech()
         end,
         LORKHAN_NARRATOR_SPEAK=function(command)
             stopNarrator('speech_replaced')
