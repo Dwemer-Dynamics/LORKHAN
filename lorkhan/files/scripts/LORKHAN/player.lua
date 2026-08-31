@@ -7,7 +7,6 @@ local chatbox=require('scripts.LORKHAN.ui.chatbox')
 local uiState=require('scripts.LORKHAN.ui.state')
 local selector=require('scripts.LORKHAN.ui.selector')
 local actorTools=require('scripts.LORKHAN.ui.actor_tools')
-local notifications=require('scripts.LORKHAN.ui.notifications')
 local support=require('scripts.LORKHAN.util')
 local core=adapter.event()
 local inputOk,input=pcall(require,'openmw.input')
@@ -18,8 +17,6 @@ local interfacesOk,interfaces=pcall(require,'openmw.interfaces')
 local storageOk,openmwStorage=pcall(require,'openmw.storage')
 local nativeOk,native=pcall(require,'openmw.lorkhan')
 local state=player.new()
-local notification=notifications.new()
-local lastNotificationStatus
 local element
 local statusElement
 local voiceRecording=false
@@ -546,21 +543,15 @@ local function beginDestinationTarget(label,name,tier)
 end
 
 local function renderStatusHud()
-    local statusVisible=notifications.active(notification)
-    if state.ui.visible or not uiOk or not utilOk
-        or not state.ui.statusHudVisible and not statusVisible then
+    -- The top-left HUD is strictly opt-in: with the Status HUD toggle off nothing is drawn here.
+    if state.ui.visible or not uiOk or not utilOk or not state.ui.statusHudVisible then
         if statusElement then statusElement:destroy() statusElement=nil end
         return
     end
-    local text
-    if state.ui.statusHudVisible then
-        text='LORKHAN  |  Connection: '..tostring(nativeValue('status','unavailable'))..
-            '  |  Request: '..(turnActive and 'active' or 'idle')..
-            '  |  Speech: '..(speechActive() and 'speaking' or 'idle')..
-            '  |  Target: '..actorLabel(state.ui.target)..'  |  '..state.ui.mode
-    else
-        text='LORKHAN  |  '..tostring(notification.text or state.ui.status)
-    end
+    local text='LORKHAN  |  Connection: '..tostring(nativeValue('status','unavailable'))..
+        '  |  Request: '..(turnActive and 'active' or 'idle')..
+        '  |  Speech: '..(speechActive() and 'speaking' or 'idle')..
+        '  |  Target: '..actorLabel(state.ui.target)..'  |  '..state.ui.mode
     local width=520
     local height=42
     local layout={layer='HUD',type=openmwUi.TYPE.Container,
@@ -573,10 +564,6 @@ local function renderStatusHud()
     else statusElement=openmwUi.create(layout) end
 end
 render=function()
-    if state.ui.status~=lastNotificationStatus then
-        lastNotificationStatus=state.ui.status
-        notifications.show(notification,tostring(state.ui.status),4)
-    end
     renderStatusHud()
     if not state.ui.visible or not uiOk or not utilOk then
         if element then element:destroy() element=nil end
@@ -1315,8 +1302,6 @@ return {
             if narratorSpeech and not adapter.isSpeechActive() then reportNarrator('played','playback_completed') end
             updateMenuDialogueSpeech()
             flushCapturedDialogue(dt)
-            local statusChanged=notifications.update(notification,dt)
-            if statusChanged then renderStatusHud() end
             local elapsed=tonumber(dt) or 0
             settingsRefreshElapsed=settingsRefreshElapsed+elapsed
             if settingsRefreshElapsed>=SETTINGS_REFRESH_INTERVAL then

@@ -815,6 +815,11 @@ test('focused UI builders keep chat selectors tools and notifications independen
   onSend=function()end,onClose=function()end})
  eq(hudShown[MENU_FIRST+5].props.text,'Status HUD: on')
  eq(chatbox.statusHudLabel(true),'Status HUD: on');eq(chatbox.statusHudLabel(false),'Status HUD: off')
+ -- the top-left HUD draws only while statusHudVisible is set, so no transient status leaks when it is off
+ local hudSource=io.open(root..'/scripts/LORKHAN/player.lua')
+ local hudBody=assert(hudSource:read('*a'):match('local function renderStatusHud%(%)(.-)\nend\n'));hudSource:close()
+ truthy(hudBody:find('or not state.ui.statusHudVisible then',1,true))
+ eq(hudBody:find('notification',1,true),nil)
  local prefixed=chatbox.build({ui=ui,util=util,target='Fargoth',text='|| stay close',
   mood='Custom: hushed',mode='Standard',turnMode='Close',turnPrefix='||',shortcuts=uiState.SHORTCUTS,
   onTextChanged=function()end,onKeyPress=function()end,onSend=function()end,onClose=function()end})
