@@ -1132,7 +1132,7 @@ namespace MWLua
             { return { "dialogue.text", "speech.say", "speech.listen", "controls.session", "action.ai.follow", "action.ai.stop",
                 "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
-                "action.inspect.report", "action.inventory.inspect" }; }
+                "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" }; }
 
             static sol::table eventTable(sol::state_view lua, const lorkhan::ProtocolEvent& event)
             {
@@ -1201,7 +1201,11 @@ namespace MWLua
                         if (item.kind == lorkhan::ActionIntentKind::item_unequip)
                             parameters["slot"] = item.secondaryStringParameter;
                         if (item.kind == lorkhan::ActionIntentKind::item_use) parameters["record_id"] = item.stringParameter;
-                        payload["parameters"] = parameters; payload["expires_at"] = item.expiresAt; break; }
+                        payload["parameters"] = parameters;
+                        if (!item.displayName.empty()) payload["display_name"] = item.displayName;
+                        if (item.confirmationRequired) payload["confirmation_required"] = *item.confirmationRequired;
+                        if (item.followupEnabled) payload["followup_enabled"] = *item.followupEnabled;
+                        payload["expires_at"] = item.expiresAt; break; }
                     case lorkhan::ProtocolEventType::response_complete: {
                         result["type"] = "response.complete";
                         const auto& item = std::get<lorkhan::ResponseCompleteEventPayload>(event.payload);
@@ -1269,7 +1273,7 @@ namespace MWLua
             for (const auto& capability : std::vector<std::string>{ "dialogue.text", "speech.say", "speech.listen", "controls.session",
                 "action.ai.follow", "action.ai.stop", "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
                 "action.combat.start", "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip",
-                "action.item.use", "action.inspect.report", "action.inventory.inspect" })
+                "action.item.use", "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" })
                     result[index++] = capability;
                 return result;
             };

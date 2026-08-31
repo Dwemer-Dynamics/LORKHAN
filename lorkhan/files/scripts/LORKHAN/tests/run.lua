@@ -246,7 +246,9 @@ test('action capability authority expiry exact parameters and limits',function()
  local ok,reason=actions.validate(state,base,authority);eq(ok,nil);eq(reason,'invalid_follow_distance')
  base.parameters.distance=193;ok,reason=actions.validate(state,base,authority);eq(ok,nil);eq(reason,'invalid_follow_distance')
  base.parameters.distance=192.5;ok,reason=actions.validate(state,base,authority);eq(ok,nil);eq(reason,'invalid_follow_distance')
- base.parameters.distance=192;truthy(actions.validate(state,base,authority));truthy(actions.result(state,'a','succeeded',nil,{}));eq(actions.result(state,'a','failed','x',{}),nil)
+ base.parameters.distance=192;base.display_name='Follow';base.confirmation_required=false;base.followup_enabled=true
+ local mapped=actions.validate(state,base,authority);eq(mapped.display_name,'Follow');eq(mapped.confirmation_required,false);eq(mapped.followup_enabled,true)
+ truthy(actions.result(state,'a','succeeded',nil,{}));eq(actions.result(state,'a','failed','x',{}),nil)
  truthy(actions.claimContinuation(state,'a'));eq(actions.claimContinuation(state,'a'),nil)
  for i=2,4 do base.action_id='a'..i truthy(actions.validate(state,base,authority)) end
  base.action_id='a5';ok,reason=actions.validate(state,base,authority);eq(ok,nil);eq(reason,'turn_action_limit')
@@ -420,6 +422,32 @@ test('canonical FIFO gates rolecommands behind terminal dialogue delivery',funct
  truthy(orchestrator.actionResult(s,{result={action_id=actionId}}));truthy(s.responseQueue.unfinished==false)
  local snapshot=require('scripts.LORKHAN.response_queue').snapshot(s.responseQueue)
  eq(snapshot.dispatched,2);eq(snapshot.completed,2);eq(snapshot.pending_dialogue,0);eq(snapshot.pending_actions,0)
+end)
+test('policy confirmation override and one result follow-up cross the ordered lane',function()
+ local b=fake.bridge() local sent={}
+ local s=orchestrator.new(b,nil,function(_,name,payload)table.insert(sent,{name=name,payload=payload})return true end)
+ orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+ truthy(conversation.setTarget(s.conversation,npc))
+ truthy(orchestrator.submitText(s,{message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,
+  installation_id=uuid(60),profile_id=uuid(61),playthrough_id=uuid(62),created_at='2026-07-19T20:00:00Z',
+  platform='windows',content_fingerprint='sha256:'..string.rep('a',64),text='Start combat.',input_key='player:action',
+  language='en-US',speaker=playerId,context={},capabilities={'dialogue.text','action.combat.start',
+  'action.confirmation','action.result-followup'},recent_action_results={},ui_source='lorkhan_text'}))
+ local lineId=uuid(170);local actionId=uuid(171)
+ local intent={schema='lorkhan.action-intent.v1',action_id=actionId,request_id=UUID.request,turn_id=UUID.turn,
+  session_id=UUID.session,generation=1,name='combat.start',display_name='Engage',tier=2,actor=npc,target=playerId,
+  confirmation_required=false,followup_enabled=true,parameters={},expires_at='2026-07-19T21:00:00Z'}
+ local actionEvent=event(2,'action.intent',1,intent);actionEvent.message_id=lineId
+ b.results={responseEvent(1,{actionLine(0,lineId,npc,playerId,'combat.start',{})},1),actionEvent,
+  event(3,'turn.complete',1,{status='complete'})}
+ eq(orchestrator.poll(s),3);eq(#sent,1);eq(sent[1].name,'LORKHAN_ACTOR_ACTION')
+ local result={schema='lorkhan.action-result.v1',message_id=uuid(172),request_id=UUID.request,action_id=actionId,
+  turn_id=UUID.turn,session_id=UUID.session,generation=1,status='succeeded',reason_code='combat_started',
+  observed={target='mudcrab'},completed_at='2026-07-19T20:00:04Z'}
+ truthy(b.submitActionResult(result));truthy(orchestrator.actionResult(s,{result=result}))
+ eq(#b.submitted,2);eq(b.submitted[2].payload.ui_source,'lorkhan_action_followup')
+ local recent=b.submitted[2].payload.recent_action_results;eq(#recent,1);eq(recent[1].action_id,actionId)
+ eq(#s.actionFollowups.pending,0);truthy(s.actionFollowups.seen[actionId])
 end)
 test('halt actions cancels queued rolecommands and reports terminal receipts',function()
  local b=fake.bridge() local sent={}

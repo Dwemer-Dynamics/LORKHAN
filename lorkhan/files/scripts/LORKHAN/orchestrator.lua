@@ -18,7 +18,7 @@ function M.new(bridge,emit,sendActor,manageActor)
         generation=generation,sessionId=nil,registry=identity.Registry(),agents=agentRegistry.new(),
         manageActor=manageActor or function() return nil,'actor_manager_unavailable' end,
         conversation=conversation.new(generation),responseQueue=responseQueue.new(generation,generation),events=nil,
-        attachments={},media={},pendingConfirmations={},
+        attachments={},media={},pendingConfirmations={},actionFollowups={seen={},pending={}},
         activeSpeechMediaId=nil,rechat=nil,rechatSeed=nil,pendingVoice=nil,pendingStt={},openMic=false,openMicRequested=false,
         combatThreats={},combatVerified={},rechatEligibility=nil,
         dialogueMode='Standard',disabled=false,hardHalted=false,agentsSignature=nil}
@@ -102,6 +102,7 @@ function M.lifecycle(state,kind)
     if state.bridge then state.bridge.cancelGeneration(state.generation-1) end
     state.events=state.sessionId and protocol.CursoredEvents(state.sessionId,state.generation) or nil
     state.pendingConfirmations={}
+    state.actionFollowups={seen={},pending={}}
     responseQueue.setFence(state.responseQueue,state.generation,currentRuntimeGeneration(state),kind)
     emitQueue(state)
     state.activeSpeechMediaId=nil
@@ -436,7 +437,9 @@ function M.submitText(state,args)
         if not protocol.isUuid(args[key]) then return nil,'invalid_'..key end
     end
     local isRechat=args.ui_source=='lorkhan_rechat'
-    if not isRechat then
+    local isActionFollowup=args.ui_source=='lorkhan_action_followup'
+    local isContinuation=isRechat or isActionFollowup
+    if not isContinuation then
         state.rechat=nil state.rechatEligibility=nil
         if not responseQueue.idle(state.responseQueue) then cancelResponseLane(state,'superseded_by_player',true) end
     end
@@ -500,20 +503,47 @@ function M.submitText(state,args)
     if not dto then state.conversation.turn=nil return nil,buildReason end
     local submitted,nativeReason=state.bridge.submitTurn(dto)
     if not submitted then state.conversation.turn=nil return nil,nativeReason end
-    if not isRechat then
+    if not isContinuation then
         args.dialogueMode=mode
         args.mood=nil
         state.rechatSeed=util.copy(args)
         state.rechat={chainId=state.bridge.newMessageId and state.bridge.newMessageId() or args.request_id,
             originTurnId=args.turn_id,originLine=args.text,depth=0,lastSpeaker=nil,lastAddressee=nil,
             targetHint=util.copy(state.conversation.target),cancelled=false,requestInFlight=false}
-    elseif state.rechat then
+    elseif isRechat and state.rechat then
         state.rechat.requestInFlight=true
+    elseif isActionFollowup then
+        state.rechat=nil state.rechatEligibility=nil
     end
     state.recentVanillaDialogue={}
     state.emit('LORKHAN_TURN',{status='queued',message_id=args.message_id,request_id=requestId,turn_id=turnId,
         created_at=args.created_at})
     return requestId
+end
+
+-- Submit at most one result-aware continuation per completed action after its response lane is idle.
+local function submitActionFollowup(state)
+    local queue=state.actionFollowups and state.actionFollowups.pending or nil
+    local pending=queue and queue[1] or nil
+    if not pending or not state.rechatSeed or not state.conversation.turn or not state.conversation.turn.terminal
+        or not responseQueue.idle(state.responseQueue) then return false end
+    table.remove(queue,1)
+    local metadata=state.bridge.nextTurnMetadata and state.bridge.nextTurnMetadata() or {}
+    if not protocol.isUuid(metadata.message_id) or not protocol.isUuid(metadata.request_id)
+        or not protocol.isUuid(metadata.turn_id) then return false end
+    local args=util.copy(state.rechatSeed)
+    for key,value in pairs(metadata) do args[key]=value end
+    args.input_key='action-followup:'..pending.result.action_id
+    args.text='Respond briefly to the completed action result. Acknowledge the observed outcome without proposing or performing another action.'
+    args.ui_source='lorkhan_action_followup'
+    args.action_request=nil
+    args.recent_action_results={{action_id=pending.result.action_id,status=pending.result.status,
+        reason_code=pending.result.reason_code,observed=util.copy(pending.result.observed or {}),
+        completed_at=pending.result.completed_at}}
+    local submitted,reason=M.submitText(state,args)
+    if not submitted then print('[LORKHAN] action follow-up rejected: '..tostring(reason)) return false end
+    state.emit('LORKHAN_ACTION_FOLLOWUP',{status='queued',action_id=pending.result.action_id,turn_id=metadata.turn_id})
+    return true
 end
 
 local emitInbound
@@ -583,9 +613,12 @@ local function pumpResponseQueue(state)
             local marked,markReason=responseQueue.markDispatched(state.responseQueue,item)
             if not marked then print('[LORKHAN] action dispatch rejected: '..tostring(markReason)) return end
             emitQueue(state)
-            if command.tier>=2 then
+            local confirmationRequired=command.confirmation_required
+            if confirmationRequired==nil then confirmationRequired=command.tier>=2 end
+            if confirmationRequired then
                 state.pendingConfirmations[command.action_id]=util.copy(command)
                 emitInbound(state,'LORKHAN_ACTION_CONFIRMATION',{action_id=command.action_id,name=command.name,
+                    display_name=command.display_name,
                     actor=util.copy(command.actor),target=util.copy(command.target)})
                 return
             end
@@ -717,6 +750,7 @@ function M.speechStatus(state,event)
     if releaseId and state.bridge and state.bridge.releaseMedia then state.bridge.releaseMedia(releaseId) end
     emitQueue(state)
     pumpResponseQueue(state)
+    submitActionFollowup(state)
     if advance then startPlaybackRechatProbe(state) end
     return true
 end
@@ -812,6 +846,7 @@ function M.poll(state)
         end
     end
     pumpResponseQueue(state)
+    submitActionFollowup(state)
     if responseQueue.consumeRechat(state.responseQueue) then startPlaybackRechatProbe(state) end
     return accepted
 end
@@ -835,9 +870,16 @@ function M.actionResult(state,event)
     local result=event and event.result
     if type(result)~='table' or type(result.action_id)~='string' then return nil,'invalid_action_result' end
     state.pendingConfirmations[result.action_id]=nil
+    local item=responseQueue.head(state.responseQueue)
+    local intent=item and item.kind=='action' and item.intent or nil
     local completed,advance=responseQueue.completeAction(state.responseQueue,result.action_id)
     if not completed then return nil,advance end
+    if intent and intent.followup_enabled==true and not state.actionFollowups.seen[result.action_id] then
+        state.actionFollowups.seen[result.action_id]=true
+        state.actionFollowups.pending[#state.actionFollowups.pending+1]={intent=util.copy(intent),result=util.copy(result)}
+    end
     emitQueue(state) pumpResponseQueue(state)
+    submitActionFollowup(state)
     if advance then submitPlaybackRechat(state) end
     return true
 end
@@ -855,6 +897,7 @@ function M.interrupt(state,reason)
     state.activeSpeechMediaId=nil
     state.rechat=nil state.rechatSeed=nil state.rechatEligibility=nil
     state.pendingConfirmations={}
+    state.actionFollowups={seen={},pending={}}
     state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
     state.hardHalted=false
     emitQueue(state)
@@ -874,6 +917,7 @@ function M.stopDialogue(state,reason)
     state.activeSpeechMediaId=nil
     state.rechat=nil state.rechatSeed=nil state.rechatEligibility=nil
     state.pendingConfirmations={}
+    state.actionFollowups={seen={},pending={}}
     state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
     emitQueue(state)
     state.emit('LORKHAN_DIALOGUE_STOPPED',{generation=state.generation,reason=reason})
@@ -900,6 +944,7 @@ function M.hardHalt(state)
     detachAll(state,'hard_halt')
     state.bridge.halt() conversation.halt(state.conversation)
     state.generation=state.conversation.generation state.hardHalted=true state.pendingConfirmations={}
+    state.actionFollowups={seen={},pending={}}
     responseQueue.setFence(state.responseQueue,state.generation,currentRuntimeGeneration(state),'hard_halt')
     state.activeSpeechMediaId=nil
     state.rechat=nil state.rechatSeed=nil state.rechatEligibility=nil
