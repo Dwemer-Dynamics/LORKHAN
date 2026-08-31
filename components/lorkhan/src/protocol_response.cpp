@@ -1471,6 +1471,78 @@ Result<ControlsResponse> parseControlsResponse(
     return Result<ControlsResponse>::success(std::move(parsed));
 }
 
+Result<DebugCommandResponse> parseDebugCommandResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits)
+{
+    auto object=parseObject(body,headers,"lorkhan.debug-command.v1",limits);
+    if(!object)return Result<DebugCommandResponse>::failure(object.error());
+    if(!hasExactly(object.value(),{"schema","message_id","request_id","session_id","generation","command"}))
+        return invalidSchemaValue<DebugCommandResponse>("debug command response fields mismatch");
+    auto message=requireUuid(object.value(),"message_id");auto request=requireUuid(object.value(),"request_id");
+    auto session=requireUuid(object.value(),"session_id");auto generation=requireUnsigned(object.value(),"generation",kMaximumProtocolInteger,1);
+    if(!message)return invalidSchemaValue<DebugCommandResponse>(message.error().message);
+    if(!request)return invalidSchemaValue<DebugCommandResponse>(request.error().message);
+    if(!session)return invalidSchemaValue<DebugCommandResponse>(session.error().message);
+    if(!generation)return invalidSchemaValue<DebugCommandResponse>(generation.error().message);
+    DebugCommandResponse parsed{MessageId(std::move(message).value()),RequestId(std::move(request).value()),
+        SessionId(std::move(session).value()),Generation(generation.value()),std::nullopt};
+    const auto* commandValue=json::find(object.value(),"command");
+    if(!commandValue)return invalidSchemaValue<DebugCommandResponse>("debug command is missing");
+    if(commandValue->isNull())return Result<DebugCommandResponse>::success(std::move(parsed));
+    const auto* command=commandValue->object();
+    if(!command||!hasExactly(*command,{"command_id","name","parameters","expires_at"}))
+        return invalidSchemaValue<DebugCommandResponse>("debug command fields mismatch");
+    auto id=requireUuid(*command,"command_id");auto name=requireString(*command,"name",1,64);auto expires=requireTimestamp(*command,"expires_at");
+    if(!id)return invalidSchemaValue<DebugCommandResponse>(id.error().message);
+    if(!name)return invalidSchemaValue<DebugCommandResponse>(name.error().message);
+    if(!expires)return invalidSchemaValue<DebugCommandResponse>(expires.error().message);
+    const auto* parametersValue=json::find(*command,"parameters");const auto* parameters=parametersValue?parametersValue->object():nullptr;
+    if(!parameters)return invalidSchemaValue<DebugCommandResponse>("debug parameters must be an object");
+    std::optional<bool> enabled;std::optional<std::string> mode;
+    const bool empty=name.value()=="status.snapshot"||name.value()=="shaders.reload";
+    const bool switchCommand=name.value()=="god_mode.set"||name.value()=="collision.set"||name.value()=="ai.set"
+        ||name.value()=="mwscript.set"||name.value()=="shader_hot_reload.set";
+    if(empty){if(!parameters->empty())return invalidSchemaValue<DebugCommandResponse>("debug command takes no parameters");}
+    else if(switchCommand){if(!hasExactly(*parameters,{"enabled"}))return invalidSchemaValue<DebugCommandResponse>("debug switch fields mismatch");
+        auto value=requireBoolean(*parameters,"enabled");if(!value)return invalidSchemaValue<DebugCommandResponse>(value.error().message);enabled=value.value();}
+    else if(name.value()=="render_mode.toggle"){
+        if(!hasExactly(*parameters,{"mode"}))return invalidSchemaValue<DebugCommandResponse>("render mode fields mismatch");
+        auto value=requireString(*parameters,"mode",1,32);if(!value)return invalidSchemaValue<DebugCommandResponse>(value.error().message);
+        static constexpr std::array<std::string_view,8> modes={"collision","wireframe","pathgrid","water","scene","navmesh","actors_paths","recast_mesh"};
+        if(std::find(modes.begin(),modes.end(),value.value())==modes.end())return invalidSchemaValue<DebugCommandResponse>("unknown render mode");
+        mode=std::move(value).value();
+    }else return invalidSchemaValue<DebugCommandResponse>("unknown debug command");
+    parsed.command=DebugCommandResponse::Command{MessageId(std::move(id).value()),std::move(name).value(),enabled,mode,std::move(expires).value()};
+    return Result<DebugCommandResponse>::success(std::move(parsed));
+}
+
+Result<DebugCommandResultAcceptedResponse> parseDebugCommandResultAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits)
+{
+    auto object=parseObject(body,headers,"lorkhan.debug-command-result.accepted.v1",limits);
+    if(!object)return Result<DebugCommandResultAcceptedResponse>::failure(object.error());
+    if(!hasExactly(object.value(),{"schema","message_id","request_id","command_id","session_id","generation","status","duplicate"}))
+        return invalidSchemaValue<DebugCommandResultAcceptedResponse>("debug command result fields mismatch");
+    auto message=requireUuid(object.value(),"message_id");auto request=requireUuid(object.value(),"request_id");
+    auto command=requireUuid(object.value(),"command_id");auto session=requireUuid(object.value(),"session_id");
+    auto generation=requireUnsigned(object.value(),"generation",kMaximumProtocolInteger,1);auto status=requireString(object.value(),"status",1,16);
+    auto duplicate=requireBoolean(object.value(),"duplicate");
+    if(!message)return invalidSchemaValue<DebugCommandResultAcceptedResponse>(message.error().message);
+    if(!request)return invalidSchemaValue<DebugCommandResultAcceptedResponse>(request.error().message);
+    if(!command)return invalidSchemaValue<DebugCommandResultAcceptedResponse>(command.error().message);
+    if(!session)return invalidSchemaValue<DebugCommandResultAcceptedResponse>(session.error().message);
+    if(!generation)return invalidSchemaValue<DebugCommandResultAcceptedResponse>(generation.error().message);
+    if(!status)return invalidSchemaValue<DebugCommandResultAcceptedResponse>(status.error().message);
+    if(!duplicate)return invalidSchemaValue<DebugCommandResultAcceptedResponse>(duplicate.error().message);
+    if(status.value()!="succeeded"&&status.value()!="failed"&&status.value()!="rejected")
+        return invalidSchemaValue<DebugCommandResultAcceptedResponse>("unknown debug result status");
+    const auto mapped=status.value()=="succeeded"?DebugCommandResultStatus::succeeded
+        :status.value()=="failed"?DebugCommandResultStatus::failed:DebugCommandResultStatus::rejected;
+    return Result<DebugCommandResultAcceptedResponse>::success({MessageId(std::move(message).value()),
+        RequestId(std::move(request).value()),MessageId(std::move(command).value()),SessionId(std::move(session).value()),
+        Generation(generation.value()),mapped,duplicate.value()});
+}
+
 Result<void> validateHealthHttpResponse(
     unsigned status, std::string_view body, const Headers& headers, json::ParseLimits limits)
 {

@@ -1,0 +1,17 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/debug-command-result-accepted.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "command_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "duplicate": {"type": "boolean"},
+    "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
+    "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "schema": {"const": "lorkhan.debug-command-result.accepted.v1", "type": "string"},
+    "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "status": {"enum": ["succeeded", "failed", "rejected"], "type": "string"}
+  },
+  "required": ["schema", "message_id", "request_id", "command_id", "session_id", "generation", "status", "duplicate"],
+  "type": "object"
+}

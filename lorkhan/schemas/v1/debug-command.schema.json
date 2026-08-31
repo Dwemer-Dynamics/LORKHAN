@@ -1,0 +1,40 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "empty_parameters": {"additionalProperties": false, "properties": {}, "type": "object"},
+    "enabled_parameters": {
+      "additionalProperties": false,
+      "properties": {"enabled": {"type": "boolean"}},
+      "required": ["enabled"],
+      "type": "object"
+    },
+    "render_parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {"enum": ["collision", "wireframe", "pathgrid", "water", "scene", "navmesh", "actors_paths", "recast_mesh"], "type": "string"}
+      },
+      "required": ["mode"],
+      "type": "object"
+    },
+    "command": {
+      "oneOf": [
+        {"additionalProperties": false, "properties": {"command_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "expires_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"}, "name": {"const": "status.snapshot", "type": "string"}, "parameters": {"$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/empty_parameters"}}, "required": ["command_id", "name", "parameters", "expires_at"], "type": "object"},
+        {"additionalProperties": false, "properties": {"command_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "expires_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"}, "name": {"enum": ["god_mode.set", "collision.set", "ai.set", "mwscript.set", "shader_hot_reload.set"], "type": "string"}, "parameters": {"$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/enabled_parameters"}}, "required": ["command_id", "name", "parameters", "expires_at"], "type": "object"},
+        {"additionalProperties": false, "properties": {"command_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "expires_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"}, "name": {"const": "render_mode.toggle", "type": "string"}, "parameters": {"$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/render_parameters"}}, "required": ["command_id", "name", "parameters", "expires_at"], "type": "object"},
+        {"additionalProperties": false, "properties": {"command_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "expires_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"}, "name": {"const": "shaders.reload", "type": "string"}, "parameters": {"$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/empty_parameters"}}, "required": ["command_id", "name", "parameters", "expires_at"], "type": "object"}
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "command": {"oneOf": [{"$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/command"}, {"type": "null"}]},
+    "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
+    "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "schema": {"const": "lorkhan.debug-command.v1", "type": "string"},
+    "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+  },
+  "required": ["schema", "message_id", "request_id", "session_id", "generation", "command"],
+  "type": "object"
+}

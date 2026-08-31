@@ -1,0 +1,14 @@
+{
+  "description": "Server acknowledgement of an accepted debug command result",
+  "instance": {
+    "schema": "lorkhan.debug-command-result.accepted.v1",
+    "message_id": "00000000-0000-4000-8000-000000000043",
+    "request_id": "00000000-0000-4000-8000-000000000044",
+    "command_id": "00000000-0000-4000-8000-000000000042",
+    "session_id": "00000000-0000-4000-8000-000000000007",
+    "generation": 7,
+    "status": "succeeded",
+    "duplicate": false
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/debug-command-result-accepted.schema.json"
+}

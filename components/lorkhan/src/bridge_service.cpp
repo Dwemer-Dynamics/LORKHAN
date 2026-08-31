@@ -53,6 +53,8 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         || (request.kind == RequestKind::stt) != std::holds_alternative<SttRequest>(request.payload)
         || (request.kind == RequestKind::controls_query) != std::holds_alternative<ControlsQueryRequest>(request.payload)
         || (request.kind == RequestKind::controls_select) != std::holds_alternative<ControlsSelectRequest>(request.payload)
+        || (request.kind == RequestKind::debug_command_query) != std::holds_alternative<DebugCommandQueryRequest>(request.payload)
+        || (request.kind == RequestKind::debug_command_result) != std::holds_alternative<DebugCommandResultRequest>(request.payload)
         || (request.kind == RequestKind::menu_dialogue_tts) != std::holds_alternative<MenuDialogueTtsRequest>(request.payload)
         || (request.kind == RequestKind::gamedata) != std::holds_alternative<GameDataRequest>(request.payload)
         || (request.kind == RequestKind::media) != std::holds_alternative<MediaPrepareRequest>(request.payload))
@@ -148,6 +150,23 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         auto target = parseProtocolIdentity(controls->serializedTarget);
         if (!target) return Result<void>::failure(target.error());
     }
+    if(const auto* debug=std::get_if<DebugCommandQueryRequest>(&request.payload)){
+        if(!validId(debug->message)||!validId(debug->correlation.request)||!validId(debug->correlation.session)
+            ||debug->correlation.request!=request.id||debug->correlation.session!=request.session
+            ||debug->correlation.generation!=request.generation)
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,"debug-command query correlation is invalid"));
+    }
+    if(const auto* debug=std::get_if<DebugCommandResultRequest>(&request.payload)){
+        if(!validId(debug->message)||!validId(debug->correlation.request)||!validId(debug->correlation.session)
+            ||!validId(debug->command)||debug->correlation.request!=request.id
+            ||debug->correlation.session!=request.session||debug->correlation.generation!=request.generation
+            ||!isCanonicalUtcTimestamp(debug->completedAt)||debug->reasonCode.empty()||debug->reasonCode.size()>128)
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,"debug-command result correlation is invalid"));
+        if(debug->reasonCode.front()<'a'||debug->reasonCode.front()>'z'
+            ||!std::all_of(debug->reasonCode.begin()+1,debug->reasonCode.end(),[](char character){
+                return(character>='a'&&character<='z')||(character>='0'&&character<='9')||character=='_';}))
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,"debug-command reason code is invalid"));
+    }
     if(const auto* menu=std::get_if<MenuDialogueTtsRequest>(&request.payload)){
         if(!validId(menu->message)||!validId(menu->correlation.request)||!validId(menu->correlation.session)
             ||menu->correlation.request!=request.id||menu->correlation.session!=request.session
@@ -185,6 +204,8 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
             return reason;
         return validatePayload(action->serializedObserved, kMaxJsonBytes);
     }
+    if(const auto* debug=std::get_if<DebugCommandResultRequest>(&request.payload))
+        return validatePayload(debug->serializedObserved,16U*1024U);
     if (const auto* stt = std::get_if<SttRequest>(&request.payload)) {
         if (stt->audio.empty() || stt->audio.size() > kMaxSttBytes)
             return Result<void>::failure(makeError(ErrorCode::invalid_argument, "STT body is outside size limit"));

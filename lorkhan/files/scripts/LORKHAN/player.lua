@@ -16,6 +16,7 @@ local self=require('openmw.self')
 local interfacesOk,interfaces=pcall(require,'openmw.interfaces')
 local storageOk,openmwStorage=pcall(require,'openmw.storage')
 local nativeOk,native=pcall(require,'openmw.lorkhan')
+local debugOk,debugApi=pcall(require,'openmw.debug')
 local state=player.new()
 local element
 local statusElement
@@ -60,6 +61,8 @@ local pendingControlPanel
 -- before they can show the player anything new.
 local SERVER_CONTROL_PANELS={models=true,profiles=true,narrator=true}
 local controlsRequestActive=false
+local debugRequestActive=false
+local nextDebugPollAt=0
 local aimCandidate
 local aimScanElapsed=0
 local aimSignature=''
@@ -67,6 +70,7 @@ local settingsRefreshElapsed=0.5
 local SETTINGS_REFRESH_INTERVAL=0.5
 local AIM_SCAN_INTERVAL=0.25
 local AUTO_SCAN_INTERVAL=1.0
+local DEBUG_POLL_INTERVAL=0.25
 if playerInputSettings then
     uiState.setMood(state.ui,playerInputSettings:get('mood') or 'None')
     if state.ui.mood=='Custom' then uiState.setMoodDirection(state.ui,playerInputSettings:get('customMood') or '') end
@@ -368,6 +372,68 @@ local function sessionControls()
     if not nativeOk or not native or not native.sessionControls then return nil end
     local ok,value=pcall(native.sessionControls)
     return ok and value or nil
+end
+
+local function debugSnapshot()
+    return {god_mode=debugApi.isGodMode(),collision_enabled=debugApi.isCollisionEnabled(),
+        ai_enabled=debugApi.isAIEnabled(),mwscript_enabled=debugApi.isMWScriptEnabled()}
+end
+
+-- Apply explicit boolean state through OpenMW's toggle-only debug primitives without accidental inversion.
+local function setDebugBoolean(getter,toggle,enabled)
+    local current=getter()
+    if current~=enabled then toggle() end
+end
+
+local function executeDebugCommand(command)
+    if not debugOk or not debugApi then return 'rejected','debug_api_unavailable',{} end
+    local ok,result=pcall(function()
+        local name=command.name
+        local parameters=command.parameters or {}
+        if name=='status.snapshot' then return debugSnapshot() end
+        if name=='god_mode.set' then setDebugBoolean(debugApi.isGodMode,debugApi.toggleGodMode,parameters.enabled)
+        elseif name=='collision.set' then setDebugBoolean(debugApi.isCollisionEnabled,debugApi.toggleCollision,parameters.enabled)
+        elseif name=='ai.set' then setDebugBoolean(debugApi.isAIEnabled,debugApi.toggleAI,parameters.enabled)
+        elseif name=='mwscript.set' then setDebugBoolean(debugApi.isMWScriptEnabled,debugApi.toggleMWScript,parameters.enabled)
+        elseif name=='shader_hot_reload.set' then debugApi.setShaderHotReloadEnabled(parameters.enabled)
+        elseif name=='shaders.reload' then debugApi.triggerShaderReload()
+        elseif name=='render_mode.toggle' then
+            local modes={collision='CollisionDebug',wireframe='Wireframe',pathgrid='Pathgrid',water='Water',scene='Scene',
+                navmesh='NavMesh',actors_paths='ActorsPaths',recast_mesh='RecastMesh'}
+            local mode=modes[parameters.mode]
+            if not mode or not debugApi.RENDER_MODE[mode] then error('unsupported render mode') end
+            debugApi.toggleRenderMode(debugApi.RENDER_MODE[mode])
+        else return nil end
+        local observed=debugSnapshot()
+        if name=='shader_hot_reload.set' then observed.shader_hot_reload_enabled=parameters.enabled end
+        if name=='shaders.reload' then observed.shaders_reload_requested=true end
+        if name=='render_mode.toggle' then observed.render_mode_toggled=parameters.mode end
+        return observed
+    end)
+    if not ok then return 'failed','execution_failed',{error=tostring(result):sub(1,256)} end
+    if result==nil then return 'rejected','unknown_command',{} end
+    return 'succeeded','command_applied',result
+end
+
+-- Poll and execute the operator queue from onFrame so debug controls remain responsive while menus pause simulation.
+local function pumpDebugCommands()
+    if not nativeOk or not native or not native.requestDebugCommand or not native.pumpDebugCommand
+        or not native.submitDebugCommandResult then return end
+    local now=core and core.getRealTime and core.getRealTime() or 0
+    if not debugRequestActive and now>=nextDebugPollAt then
+        local request=select(1,native.requestDebugCommand())
+        if request then debugRequestActive=true end
+        nextDebugPollAt=now+DEBUG_POLL_INTERVAL
+    end
+    if not debugRequestActive then return end
+    local ok,status=pcall(native.pumpDebugCommand)
+    if not ok or type(status)~='table' then debugRequestActive=false return end
+    if status.pending==true then return end
+    debugRequestActive=false
+    if type(status.command)~='table' then return end
+    local outcome,reason,observed=executeDebugCommand(status.command)
+    local submitted,submitReason=native.submitDebugCommandResult(status.command.command_id,outcome,reason,observed)
+    if not submitted then print('[LORKHAN] debug command result failed: '..tostring(submitReason)) end
 end
 
 local function refreshSessionControls(panel,quiet)
@@ -1314,6 +1380,7 @@ return {
         -- bounded pause-safe pump of the in-flight controls response and nothing else. No gameplay,
         -- settings scan, or event processing belongs here.
         onFrame=function()
+            pumpDebugCommands()
             if not controlsRequestActive or not state.ui.visible
                 or not SERVER_CONTROL_PANELS[state.ui.panel] then return end
             if not nativeOk or not native or not native.pumpSessionControls then

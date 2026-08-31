@@ -552,6 +552,32 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
                 + ",\"target\":" + controls->serializedTarget + "}";
             break;
         }
+        case RequestKind::debug_command_query: {
+            const auto* debug=std::get_if<DebugCommandQueryRequest>(&request.payload);if(!debug)break;
+            wire.method=http::verb::post;wire.target=route("/debug-commands/query");wire.expectedStatus=200;
+            wire.body="{\"schema\":\"lorkhan.debug-command.query.v1\",\"message_id\":"+escapeJson(debug->message.value())
+                +",\"request_id\":"+escapeJson(debug->correlation.request.value())
+                +",\"session_id\":"+escapeJson(debug->correlation.session.value())
+                +",\"generation\":"+std::to_string(debug->correlation.generation.value())+"}";
+            break;
+        }
+        case RequestKind::debug_command_result: {
+            const auto* debug=std::get_if<DebugCommandResultRequest>(&request.payload);if(!debug)break;
+            auto observed=requireJsonObject(debug->serializedObserved,"debug command observed");
+            if(!observed)return Result<WireRequest>::failure(observed.error());
+            const char* status=debug->status==DebugCommandResultStatus::succeeded?"succeeded"
+                :debug->status==DebugCommandResultStatus::failed?"failed":"rejected";
+            wire.method=http::verb::post;wire.target=route("/debug-command-results");wire.expectedStatus=200;
+            wire.idempotencyKey=debug->message.value();
+            wire.body="{\"schema\":\"lorkhan.debug-command-result.v1\",\"message_id\":"+escapeJson(debug->message.value())
+                +",\"request_id\":"+escapeJson(debug->correlation.request.value())
+                +",\"command_id\":"+escapeJson(debug->command.value())
+                +",\"session_id\":"+escapeJson(debug->correlation.session.value())
+                +",\"generation\":"+std::to_string(debug->correlation.generation.value())
+                +",\"status\":"+escapeJson(status)+",\"reason_code\":"+escapeJson(debug->reasonCode)
+                +",\"observed\":"+debug->serializedObserved+",\"completed_at\":"+escapeJson(debug->completedAt)+"}";
+            break;
+        }
         case RequestKind::menu_dialogue_tts: {
             const auto* menu=std::get_if<MenuDialogueTtsRequest>(&request.payload);
             if(!menu)break;
@@ -776,6 +802,25 @@ Result<InboundResult> validateResponse(const OutboundRequest& request, const Wir
                     "controls-select response correlation mismatch"));
             kind = ResponseKind::controls;
             break;
+        }
+        case RequestKind::debug_command_query: {
+            const auto& sent=std::get<DebugCommandQueryRequest>(request.payload);
+            auto parsed=parseDebugCommandResponse(response.body(),headers);
+            if(!parsed)return Result<InboundResult>::failure(parsed.error());
+            if(parsed.value().message!=sent.message||parsed.value().request!=sent.correlation.request
+                ||parsed.value().session!=sent.correlation.session||parsed.value().generation!=sent.correlation.generation)
+                return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,"debug-command response correlation mismatch"));
+            kind=ResponseKind::debug_command;break;
+        }
+        case RequestKind::debug_command_result: {
+            const auto& sent=std::get<DebugCommandResultRequest>(request.payload);
+            auto parsed=parseDebugCommandResultAcceptedResponse(response.body(),headers);
+            if(!parsed)return Result<InboundResult>::failure(parsed.error());
+            if(parsed.value().message!=sent.message||parsed.value().request!=sent.correlation.request
+                ||parsed.value().command!=sent.command||parsed.value().session!=sent.correlation.session
+                ||parsed.value().generation!=sent.correlation.generation||parsed.value().status!=sent.status)
+                return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,"debug-command result correlation mismatch"));
+            kind=ResponseKind::completed;break;
         }
         case RequestKind::menu_dialogue_tts: {
             const auto& sent=std::get<MenuDialogueTtsRequest>(request.payload);

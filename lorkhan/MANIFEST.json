@@ -32,6 +32,11 @@
       "sha256": "ca94a22df3ef7e2546934fa064f8d4b5877e23091b3791f3432eccce447451b1"
     },
     {
+      "bytes": 613,
+      "path": "lorkhan/fixtures/v1/invalid/debug-command-freeform.json",
+      "sha256": "bf50260599e5f50e9a37190e24c284108d991248f6240b10bca0466dfa46b946"
+    },
+    {
       "bytes": 462,
       "path": "lorkhan/fixtures/v1/invalid/events-excluded-autonomy.json",
       "sha256": "47c031a1f714d5d01c1350ab8b7d8bf89d02075cb8bf32666213b44572017e38"
@@ -155,6 +160,26 @@
       "bytes": 3928,
       "path": "lorkhan/fixtures/v1/valid/controls.json",
       "sha256": "7f503bf4f2543384f8c869e2dc05b59308308704a99dd87e3faacf08e258a7b4"
+    },
+    {
+      "bytes": 429,
+      "path": "lorkhan/fixtures/v1/valid/debug-command-query.json",
+      "sha256": "d6e44351aa3f7b12df2d8fb3acada6cbae6f681159a213ac9e9e664905083c79"
+    },
+    {
+      "bytes": 556,
+      "path": "lorkhan/fixtures/v1/valid/debug-command-result-accepted.json",
+      "sha256": "537c903af84595388dd3ad48fbce9c63f63a897e96727813940e9169a890666e"
+    },
+    {
+      "bytes": 640,
+      "path": "lorkhan/fixtures/v1/valid/debug-command-result.json",
+      "sha256": "dba8847efda95ae060493972846db7c9a64d5fd5345e38095c70653d27bc4747"
+    },
+    {
+      "bytes": 633,
+      "path": "lorkhan/fixtures/v1/valid/debug-command.json",
+      "sha256": "b90d21273db0093b7822bdb49ddbcd7170423627e5e949eb2696a40a1460b843"
     },
     {
       "bytes": 602,
@@ -295,6 +320,26 @@
       "bytes": 11091,
       "path": "lorkhan/schemas/v1/controls.schema.json",
       "sha256": "89bd4111aff6a0427c17c03a2e193ab76ddad2ebe6478836b8c79981ec594846"
+    },
+    {
+      "bytes": 771,
+      "path": "lorkhan/schemas/v1/debug-command-query.schema.json",
+      "sha256": "5e0b5dcfffeddcc8cb5523a56b60b338219c3762cd9a47b24e7c12759ff8ec94"
+    },
+    {
+      "bytes": 1042,
+      "path": "lorkhan/schemas/v1/debug-command-result-accepted.schema.json",
+      "sha256": "5ba01a8c62872239adf3a2092e072d4a8d00939501368600f7d29e957409dd0a"
+    },
+    {
+      "bytes": 1878,
+      "path": "lorkhan/schemas/v1/debug-command-result.schema.json",
+      "sha256": "75d1439cb76bd0c643a3f909fa17849dccb22281e8a896d9fe261612c3d88ffe"
+    },
+    {
+      "bytes": 3602,
+      "path": "lorkhan/schemas/v1/debug-command.schema.json",
+      "sha256": "11b95235eecf290855628c74d5925e95aff157b6d6442884389cf69071945ef3"
     },
     {
       "bytes": 1184,

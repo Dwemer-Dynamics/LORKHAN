@@ -1,0 +1,33 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/debug-command-result.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "command_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "completed_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+    "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
+    "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "observed": {
+      "additionalProperties": false,
+      "maxProperties": 8,
+      "properties": {
+        "ai_enabled": {"type": "boolean"},
+        "collision_enabled": {"type": "boolean"},
+        "error": {"maxLength": 256, "type": "string"},
+        "god_mode": {"type": "boolean"},
+        "mwscript_enabled": {"type": "boolean"},
+        "render_mode_toggled": {"enum": ["collision", "wireframe", "pathgrid", "water", "scene", "navmesh", "actors_paths", "recast_mesh"], "type": "string"},
+        "shader_hot_reload_enabled": {"type": "boolean"},
+        "shaders_reload_requested": {"type": "boolean"}
+      },
+      "type": "object"
+    },
+    "reason_code": {"maxLength": 128, "minLength": 1, "pattern": "^[a-z][a-z0-9_]*$", "type": "string"},
+    "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "schema": {"const": "lorkhan.debug-command-result.v1", "type": "string"},
+    "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "status": {"enum": ["succeeded", "failed", "rejected"], "type": "string"}
+  },
+  "required": ["schema", "message_id", "request_id", "command_id", "session_id", "generation", "status", "reason_code", "observed", "completed_at"],
+  "type": "object"
+}

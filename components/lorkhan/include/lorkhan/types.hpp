@@ -183,6 +183,22 @@ struct ControlsQueryRequest {
     std::string serializedTarget;
 };
 
+struct DebugCommandQueryRequest {
+    MessageId message;
+    RequestCorrelation correlation;
+};
+
+enum class DebugCommandResultStatus { succeeded, failed, rejected };
+struct DebugCommandResultRequest {
+    MessageId message;
+    RequestCorrelation correlation;
+    MessageId command;
+    DebugCommandResultStatus status{DebugCommandResultStatus::failed};
+    std::string reasonCode;
+    std::string serializedObserved;
+    std::string completedAt;
+};
+
 enum class SessionControlKind { model_slot, actor_profile, profile_generate, narrator_profile_generate };
 struct ControlsSelectRequest {
     MessageId message;
@@ -235,7 +251,8 @@ struct PreparedMedia {
 
 using RequestPayload = std::variant<HealthRequest, InitRequest, TurnRequest, EventPollRequest,
     InterruptionRequest, ActionResultRequest, SessionEndRequest, SttRequest,
-    DialogueDeliveryResultRequest, ControlsQueryRequest, ControlsSelectRequest, MenuDialogueTtsRequest, GameDataRequest,
+    DialogueDeliveryResultRequest, ControlsQueryRequest, ControlsSelectRequest, DebugCommandQueryRequest,
+    DebugCommandResultRequest, MenuDialogueTtsRequest, GameDataRequest,
     MediaPrepareRequest>;
 
 enum class RequestKind {
@@ -250,12 +267,14 @@ enum class RequestKind {
     stt,
     controls_query,
     controls_select,
+    debug_command_query,
+    debug_command_result,
     menu_dialogue_tts,
     gamedata,
     media,
 };
 
-enum class ResponseKind { accepted, event, completed, failure, cancelled, media_ready, menu_dialogue_ready, status, controls };
+enum class ResponseKind { accepted, event, completed, failure, cancelled, media_ready, menu_dialogue_ready, status, controls, debug_command };
 
 struct OutboundRequest {
     RequestId id;

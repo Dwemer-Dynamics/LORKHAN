@@ -1,0 +1,11 @@
+{
+  "description": "Authenticated poll for the next typed operator debug command",
+  "instance": {
+    "schema": "lorkhan.debug-command.query.v1",
+    "message_id": "00000000-0000-4000-8000-000000000040",
+    "request_id": "00000000-0000-4000-8000-000000000041",
+    "session_id": "00000000-0000-4000-8000-000000000007",
+    "generation": 7
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/debug-command-query.schema.json"
+}

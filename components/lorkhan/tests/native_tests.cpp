@@ -366,6 +366,21 @@ void testAcceptedProtocolResponses()
         R"({"schema":"lorkhan.controls.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"target":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"selected_model_slot_id":"01900000-0000-7000-8000-000000000099","selected_profile_id":null,"narrator_profile_id":null,"effective_settings":{"schema":"lorkhan.effective-settings.v1","change_token":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","profile_id":null,"profile_revision":null,"core_profile_id":"01900000-0000-7000-8000-000000000014","core_profile_revision":1,"settings":{"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"random_events":false,"quest_events":false,"book_events":false},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"routing":{},"source_map":{}},"model_slots":[],"profiles":[]})",
         jsonHeaders));
 
+    auto debugCommand = lorkhan::parseDebugCommandResponse(
+        R"({"schema":"lorkhan.debug-command.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"command":{"command_id":"01900000-0000-7000-8000-000000000007","name":"god_mode.set","parameters":{"enabled":true},"expires_at":"2026-08-31T12:00:30Z"}})",
+        jsonHeaders);
+    CHECK(debugCommand && debugCommand.value().command
+        && debugCommand.value().command->name == "god_mode.set"
+        && debugCommand.value().command->enabled == true);
+    CHECK(!lorkhan::parseDebugCommandResponse(
+        R"({"schema":"lorkhan.debug-command.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"command":{"command_id":"01900000-0000-7000-8000-000000000007","name":"console.execute","parameters":{"text":"tgm"},"expires_at":"2026-08-31T12:00:30Z"}})",
+        jsonHeaders));
+    auto debugAccepted = lorkhan::parseDebugCommandResultAcceptedResponse(
+        R"({"schema":"lorkhan.debug-command-result.accepted.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","command_id":"01900000-0000-7000-8000-000000000007","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"status":"succeeded","duplicate":false})",
+        jsonHeaders);
+    CHECK(debugAccepted && debugAccepted.value().status == lorkhan::DebugCommandResultStatus::succeeded
+        && !debugAccepted.value().duplicate);
+
     auto menuDialogue = lorkhan::parseMenuDialogueTtsReadyResponse(
         R"({"schema":"lorkhan.menu-dialogue-tts.ready.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"actor":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"media":{"media_id":"01900000-0000-7000-8000-000000000013","dialogue_message_id":"01900000-0000-7000-8000-000000000006","sha256":"e12e115acf4552b2568b55e93cbd39394c4ef81c82447faed7738adf06e9ba61","bytes":4,"codec":"ogg","duration_ms":100,"expires_at":"2026-07-18T21:00:00Z"}})",
         jsonHeaders);

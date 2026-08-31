@@ -373,6 +373,31 @@ struct ControlsResponse {
     std::vector<Profile> profiles;
 };
 
+struct DebugCommandResponse {
+    struct Command {
+        MessageId command;
+        std::string name;
+        std::optional<bool> enabled;
+        std::optional<std::string> mode;
+        std::string expiresAt;
+    };
+    MessageId message;
+    RequestId request;
+    SessionId session;
+    Generation generation;
+    std::optional<Command> command;
+};
+
+struct DebugCommandResultAcceptedResponse {
+    MessageId message;
+    RequestId request;
+    MessageId command;
+    SessionId session;
+    Generation generation;
+    DebugCommandResultStatus status{DebugCommandResultStatus::failed};
+    bool duplicate{};
+};
+
 [[nodiscard]] Result<void> parseHealthResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 [[nodiscard]] Result<ProtocolError> parseProtocolErrorResponse(
@@ -398,6 +423,10 @@ struct ControlsResponse {
 [[nodiscard]] Result<SessionEndedResponse> parseSessionEndedResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 [[nodiscard]] Result<ControlsResponse> parseControlsResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<DebugCommandResponse> parseDebugCommandResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<DebugCommandResultAcceptedResponse> parseDebugCommandResultAcceptedResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateHealthHttpResponse(
     unsigned status, std::string_view body, const Headers& headers, json::ParseLimits limits = {});
