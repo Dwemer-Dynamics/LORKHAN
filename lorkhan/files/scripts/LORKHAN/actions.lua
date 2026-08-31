@@ -47,6 +47,15 @@ function M.validate(state, intent, authority)
     if not authority.resolve(intent.actor) then return nil,'actor_inactive' end
     if not identity.validate(intent.target) or not authority.resolve(intent.target) then return nil,'target_inactive' end
     if type(authority.expired)~='function' or authority.expired(intent.expires_at) then return nil,'action_expired' end
+    if intent.display_name~=nil and (type(intent.display_name)~='string' or #intent.display_name<1 or #intent.display_name>128) then
+        return nil,'invalid_action_display_name'
+    end
+    if intent.confirmation_required~=nil and type(intent.confirmation_required)~='boolean' then
+        return nil,'invalid_action_confirmation'
+    end
+    if intent.followup_enabled~=nil and type(intent.followup_enabled)~='boolean' then
+        return nil,'invalid_action_followup'
+    end
     local count=state.byTurn[intent.turn_id] or 0
     if count >= constants.MAX_ACTIONS_PER_TURN then return nil,'turn_action_limit' end
     if type(intent.parameters)~='table' then return nil,'invalid_action_parameters' end
@@ -116,7 +125,8 @@ function M.validate(state, intent, authority)
     state.byTurn[intent.turn_id]=count+1
     return {action_id=intent.action_id, turn_id=intent.turn_id, request_id=intent.request_id,
         generation=intent.generation, actor=util.copy(intent.actor), target=util.copy(intent.target),
-        name=intent.name, parameters=parameters, expires_at=intent.expires_at}
+        name=intent.name,display_name=intent.display_name,confirmation_required=intent.confirmation_required,
+        followup_enabled=intent.followup_enabled,parameters=parameters,expires_at=intent.expires_at}
 end
 
 function M.result(state, actionId, status, reason, observed)

@@ -74,7 +74,8 @@ local function send(name,payload) if core and core.sendGlobalEvent then core.sen
 local CAPABILITIES={'dialogue.text','speech.say','speech.listen','action.ai.follow','action.ai.stop',
     'action.ai.approach','action.ai.wait','action.ai.travel','action.ai.escort','action.ai.face','action.ai.wander',
     'action.combat.start','action.combat.stop','action.inspect.report','action.inventory.inspect',
-    'action.animation.play','action.item.equip','action.item.unequip','action.item.use'}
+    'action.animation.play','action.item.equip','action.item.unequip','action.item.use',
+    'action.confirmation','action.result-followup'}
 
 local function conversationContext(target)
     local started=core and core.getRealTime and core.getRealTime() or nil
@@ -923,7 +924,8 @@ render=function()
             end)}}
     end
     if state.ui.pendingAction then
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Confirm action: '..state.ui.pendingAction.name,textSize=17,
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Confirm action: '..
+            (state.ui.pendingAction.display_name or state.ui.pendingAction.name),textSize=17,
             textColor=util.color.rgb(1.0,0.72,0.2)}}
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Approve',textSize=16,textColor=util.color.rgb(0.45,0.9,0.45)},
             events={mouseClick=adapter.callback(function()

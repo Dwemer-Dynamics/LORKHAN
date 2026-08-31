@@ -134,6 +134,9 @@ struct ActionIntent {
     double destinationY{};
     double destinationZ{};
     std::string destinationCell;
+    std::string displayName;
+    std::optional<bool> confirmationRequired;
+    std::optional<bool> followupEnabled;
     std::string expiresAt;
 };
 

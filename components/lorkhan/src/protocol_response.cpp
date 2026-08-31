@@ -487,7 +487,8 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
 {
     const auto* object = value.object();
     if (!object || !hasExactly(*object,
-            {"schema", "action_id", "turn_id", "name", "tier", "actor", "target", "parameters", "expires_at"}))
+            {"schema", "action_id", "turn_id", "name", "tier", "actor", "target", "parameters", "expires_at"},
+            {"display_name", "confirmation_required", "followup_enabled"}))
         return invalidSchemaValue<ActionIntent>("action intent fields mismatch");
     auto schema = requireString(*object, "schema");
     auto action = requireUuid(*object, "action_id");
@@ -518,6 +519,24 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
             && name.value() != "item.use" && tier.value() != 1))
         return invalidSchemaValue<ActionIntent>("action intent tier mismatch");
     if (!expiresAt) return invalidSchemaValue<ActionIntent>(expiresAt.error().message);
+    std::string displayName;
+    std::optional<bool> confirmationRequired;
+    std::optional<bool> followupEnabled;
+    if (json::find(*object, "display_name")) {
+        auto parsed = requireString(*object, "display_name", 1, 128);
+        if (!parsed) return invalidSchemaValue<ActionIntent>(parsed.error().message);
+        displayName = std::move(parsed).value();
+    }
+    if (json::find(*object, "confirmation_required")) {
+        auto parsed = requireBoolean(*object, "confirmation_required");
+        if (!parsed) return invalidSchemaValue<ActionIntent>(parsed.error().message);
+        confirmationRequired = parsed.value();
+    }
+    if (json::find(*object, "followup_enabled")) {
+        auto parsed = requireBoolean(*object, "followup_enabled");
+        if (!parsed) return invalidSchemaValue<ActionIntent>(parsed.error().message);
+        followupEnabled = parsed.value();
+    }
 
     const auto* actorValue = json::find(*object, "actor");
     const auto* targetValue = json::find(*object, "target");
@@ -643,7 +662,7 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
         TurnId(std::move(turn).value()), std::move(actor).value(), std::move(target).value(),
         intentKind, followDistance, wanderDistance, wanderDurationSeconds, std::move(stringParameter),
         std::move(secondaryStringParameter),destinationX,destinationY,destinationZ,std::move(destinationCell),
-        std::move(expiresAt).value()});
+        std::move(displayName), confirmationRequired, followupEnabled, std::move(expiresAt).value()});
 }
 
 Result<ClientSettings> parseClientSettings(const json::Value& value)
