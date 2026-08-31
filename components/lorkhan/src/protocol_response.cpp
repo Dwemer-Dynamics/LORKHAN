@@ -1369,7 +1369,8 @@ Result<ControlsResponse> parseControlsResponse(
     auto object=parseObject(body,headers,"lorkhan.controls.v1",limits);
     if(!object)return Result<ControlsResponse>::failure(object.error());
     if(!hasExactly(object.value(),{"schema","message_id","request_id","session_id","generation","target",
-            "selected_model_slot_id","selected_profile_id","narrator_profile_id","effective_settings","model_slots","profiles"}))
+            "selected_model_slot_key","resolved_model_slot_key","selected_profile_id","narrator_profile_id",
+            "effective_settings","model_slots","profiles"}))
         return invalidSchemaValue<ControlsResponse>("controls response fields mismatch");
     auto message=requireUuid(object.value(),"message_id");auto request=requireUuid(object.value(),"request_id");
     auto session=requireUuid(object.value(),"session_id");auto generation=requireUnsigned(object.value(),"generation");
@@ -1379,6 +1380,7 @@ Result<ControlsResponse> parseControlsResponse(
     if(!generation)return invalidSchemaValue<ControlsResponse>(generation.error().message);
     const auto* targetValue=json::find(object.value(),"target");auto target=parseIdentity(*targetValue);
     if(!target)return invalidSchemaValue<ControlsResponse>(target.error().message);
+    const auto validSlotKey=[](std::string_view key){return key=="standard"||key=="fast"||key=="powerful"||key=="experimental";};
     const auto nullableUuid=[&object](std::string_view key)->Result<std::optional<std::string>>{
         const auto* value=json::find(object.value(),key);
         if(!value)return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" is missing");
@@ -1387,38 +1389,69 @@ Result<ControlsResponse> parseControlsResponse(
             return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" must be null or a canonical UUID");
         return Result<std::optional<std::string>>::success(*value->string());
     };
-    auto selectedModel=nullableUuid("selected_model_slot_id");auto selectedProfile=nullableUuid("selected_profile_id");
+    auto selectedModel=requireString(object.value(),"selected_model_slot_key");
+    if(!selectedModel||!validSlotKey(selectedModel.value()))return invalidSchemaValue<ControlsResponse>("selected model slot mismatch");
+    const auto* resolvedValue=json::find(object.value(),"resolved_model_slot_key");
+    if(!resolvedValue)return invalidSchemaValue<ControlsResponse>("resolved model slot is missing");
+    std::optional<std::string> resolvedModel;
+    if(!resolvedValue->isNull()){
+        if(!resolvedValue->string()||!validSlotKey(*resolvedValue->string()))
+            return invalidSchemaValue<ControlsResponse>("resolved model slot mismatch");
+        resolvedModel=*resolvedValue->string();
+    }
+    auto selectedProfile=nullableUuid("selected_profile_id");
     auto narratorProfile=nullableUuid("narrator_profile_id");
-    if(!selectedModel)return invalidSchemaValue<ControlsResponse>(selectedModel.error().message);
     if(!selectedProfile)return invalidSchemaValue<ControlsResponse>(selectedProfile.error().message);
     if(!narratorProfile)return invalidSchemaValue<ControlsResponse>(narratorProfile.error().message);
     const auto* effectiveValue=json::find(object.value(),"effective_settings");auto effective=parseEffectiveSettings(*effectiveValue);
     if(!effective)return invalidSchemaValue<ControlsResponse>(effective.error().message);
     const auto* slotsValue=json::find(object.value(),"model_slots");const auto* slots=slotsValue?slotsValue->array():nullptr;
     const auto* profilesValue=json::find(object.value(),"profiles");const auto* profiles=profilesValue?profilesValue->array():nullptr;
-    if(!slots||slots->size()>32)return invalidSchemaValue<ControlsResponse>("model slots must be an array of at most 32 items");
+    if(!slots||slots->size()!=4)return invalidSchemaValue<ControlsResponse>("model slots must contain exactly four items");
     if(!profiles||profiles->size()>100)return invalidSchemaValue<ControlsResponse>("profiles must be an array of at most 100 items");
     ControlsResponse parsed{MessageId(std::move(message).value()),RequestId(std::move(request).value()),
         SessionId(std::move(session).value()),Generation(generation.value()),std::move(target).value(),
-        std::move(selectedModel).value(),std::move(selectedProfile).value(),std::move(narratorProfile).value(),
+        std::move(selectedModel).value(),std::move(resolvedModel),std::move(selectedProfile).value(),std::move(narratorProfile).value(),
         std::move(effective).value(),{}, {}};
-    std::set<std::string> unique;
-    for(const auto& value:*slots){const auto* row=value.object();
-        if(!row||!hasExactly(*row,{"configuration_id","name","revision","driver","model"}))
+    const std::array<std::pair<std::string_view,std::string_view>,4> expectedSlots{{
+        {"standard","Standard"},{"fast","Fast"},{"powerful","Powerful"},{"experimental","Experimental"}}};
+    for(std::size_t index=0;index<slots->size();++index){const auto* row=(*slots)[index].object();
+        if(!row||!hasExactly(*row,{"key","label","available","configuration_id","configuration_name","revision","driver","model"}))
             return invalidSchemaValue<ControlsResponse>("model slot fields mismatch");
-        auto id=requireUuid(*row,"configuration_id");auto name=requireString(*row,"name",1,128);
-        auto revision=requireUnsigned(*row,"revision",kMaximumProtocolInteger,1);auto driver=requireString(*row,"driver");
-        auto model=requireString(*row,"model",1,256);
-        if(!id)return invalidSchemaValue<ControlsResponse>(id.error().message);
-        if(!name)return invalidSchemaValue<ControlsResponse>(name.error().message);
-        if(!revision)return invalidSchemaValue<ControlsResponse>(revision.error().message);
-        if(!driver||(driver.value()!="configured"&&driver.value()!="mock"))
-            return invalidSchemaValue<ControlsResponse>("model slot driver mismatch");
-        if(!model)return invalidSchemaValue<ControlsResponse>(model.error().message);
-        if(!unique.insert(id.value()).second)return invalidSchemaValue<ControlsResponse>("duplicate model slot");
-        parsed.modelSlots.push_back({std::move(id).value(),std::move(name).value(),revision.value(),
-            std::move(driver).value(),std::move(model).value()});}
-    unique.clear();
+        auto key=requireString(*row,"key");auto label=requireString(*row,"label",1,32);auto available=requireBoolean(*row,"available");
+        if(!key||!label||!available||key.value()!=expectedSlots[index].first||label.value()!=expectedSlots[index].second)
+            return invalidSchemaValue<ControlsResponse>("model slot order or label mismatch");
+        const auto nullableString=[row](std::string_view field,std::size_t maximum)->Result<std::optional<std::string>>{
+            const auto* value=json::find(*row,field);if(!value)return invalidSchemaValue<std::optional<std::string>>(std::string(field)+" is missing");
+            if(value->isNull())return Result<std::optional<std::string>>::success(std::nullopt);
+            if(!value->string()||value->string()->empty()||value->string()->size()>maximum)
+                return invalidSchemaValue<std::optional<std::string>>(std::string(field)+" is invalid");
+            return Result<std::optional<std::string>>::success(*value->string());};
+        const auto nullableRowUuid=[row](std::string_view field)->Result<std::optional<std::string>>{
+            const auto* value=json::find(*row,field);if(!value)return invalidSchemaValue<std::optional<std::string>>(std::string(field)+" is missing");
+            if(value->isNull())return Result<std::optional<std::string>>::success(std::nullopt);
+            if(!value->string()||!isCanonicalUuid(*value->string()))
+                return invalidSchemaValue<std::optional<std::string>>(std::string(field)+" must be null or a canonical UUID");
+            return Result<std::optional<std::string>>::success(*value->string());};
+        const auto nullableRevision=[row](std::string_view field)->Result<std::optional<std::uint64_t>>{
+            const auto* value=json::find(*row,field);if(!value)return invalidSchemaValue<std::optional<std::uint64_t>>(std::string(field)+" is missing");
+            if(value->isNull())return Result<std::optional<std::uint64_t>>::success(std::nullopt);
+            auto revision=requireUnsigned(*row,field,kMaximumProtocolInteger,1);if(!revision)
+                return invalidSchemaValue<std::optional<std::uint64_t>>(revision.error().message);
+            return Result<std::optional<std::uint64_t>>::success(revision.value());};
+        auto id=nullableRowUuid("configuration_id");auto name=nullableString("configuration_name",128);
+        auto revision=nullableRevision("revision");auto driver=nullableString("driver",32);auto model=nullableString("model",256);
+        if(!id||!name||!revision||!driver||!model)return invalidSchemaValue<ControlsResponse>("model slot connector fields mismatch");
+        const bool complete=id.value().has_value()&&name.value().has_value()&&revision.value().has_value()
+            &&driver.value().has_value()&&model.value().has_value();
+        const bool empty=!id.value().has_value()&&!name.value().has_value()&&!revision.value().has_value()
+            &&!driver.value().has_value()&&!model.value().has_value();
+        if((available.value()&&!complete)||(!available.value()&&!empty)
+            ||(driver.value()&&*driver.value()!="configured"&&*driver.value()!="mock"))
+            return invalidSchemaValue<ControlsResponse>("model slot availability mismatch");
+        parsed.modelSlots.push_back({std::move(key).value(),std::move(label).value(),available.value(),
+            std::move(id).value(),std::move(name).value(),std::move(revision).value(),std::move(driver).value(),std::move(model).value()});}
+    std::set<std::string> unique;
     for(const auto& value:*profiles){const auto* row=value.object();
         if(!row||!hasExactly(*row,{"profile_id","name","revision"}))
             return invalidSchemaValue<ControlsResponse>("profile fields mismatch");
@@ -1429,9 +1462,9 @@ Result<ControlsResponse> parseControlsResponse(
         if(!revision)return invalidSchemaValue<ControlsResponse>(revision.error().message);
         if(!unique.insert(id.value()).second)return invalidSchemaValue<ControlsResponse>("duplicate profile");
         parsed.profiles.push_back({std::move(id).value(),std::move(name).value(),revision.value()});}
-    if(parsed.selectedModelSlotId&&!std::any_of(parsed.modelSlots.begin(),parsed.modelSlots.end(),
-        [&parsed](const ControlsResponse::ModelSlot& slot){return slot.configurationId==*parsed.selectedModelSlotId;}))
-        return invalidSchemaValue<ControlsResponse>("selected model slot is absent from the list");
+    if(parsed.resolvedModelSlotKey&&!std::any_of(parsed.modelSlots.begin(),parsed.modelSlots.end(),
+        [&parsed](const ControlsResponse::ModelSlot& slot){return slot.key==*parsed.resolvedModelSlotKey&&slot.available;}))
+        return invalidSchemaValue<ControlsResponse>("resolved model slot is unavailable");
     if(parsed.selectedProfileId&&!std::any_of(parsed.profiles.begin(),parsed.profiles.end(),
         [&parsed](const ControlsResponse::Profile& profile){return profile.profileId==*parsed.selectedProfileId;}))
         return invalidSchemaValue<ControlsResponse>("selected profile is absent from the list");

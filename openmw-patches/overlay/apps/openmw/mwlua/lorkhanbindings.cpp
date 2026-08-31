@@ -651,13 +651,18 @@ namespace MWLua
                         :kind=="profile_generate"?lorkhan::SessionControlKind::profile_generate
                         :kind=="narrator_profile_generate"?lorkhan::SessionControlKind::narrator_profile_generate
                         :throw std::runtime_error("invalid_session_control_kind");
-                    if(selection&& !lorkhan::isCanonicalUuid(*selection))
+                    const bool semanticModel= mapped==lorkhan::SessionControlKind::model_slot;
+                    if(semanticModel&&(!selection||(*selection!="standard"&&*selection!="fast"
+                        &&*selection!="powerful"&&*selection!="experimental")))
+                        throw std::runtime_error("invalid_session_control_selection");
+                    if(!semanticModel&&selection&&!lorkhan::isCanonicalUuid(*selection))
                         throw std::runtime_error("invalid_session_control_selection");
                     const lorkhan::RequestId request(uuid());const lorkhan::MessageId message(uuid());
                     lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),
                         lorkhan::RequestKind::controls_select,lorkhan::ControlsSelectRequest{message,
                             {request,*m_session,m_service->generation()},utcNow(),mapped,
-                            selection?std::optional<std::string>(*selection):std::nullopt,toJson(sol::make_object(lua,target))}};
+                            semanticModel?std::nullopt:(selection?std::optional<std::string>(*selection):std::nullopt),
+                            semanticModel?std::optional<std::string>(*selection):std::nullopt,toJson(sol::make_object(lua,target))}};
                     auto accepted=m_service->enqueue(std::move(outbound));
                     if(!accepted)return failure(lua,accepted.error().message);
                     m_controlsRequest=request;
@@ -671,7 +676,8 @@ namespace MWLua
                 if(!m_controls)return sol::make_object(lua,sol::nil);
                 sol::table result(lua,sol::create),slots(lua,sol::create),profiles(lua,sol::create);
                 result["target"]=identityTable(lua,m_controls->target);
-                if(m_controls->selectedModelSlotId)result["selected_model_slot_id"]=*m_controls->selectedModelSlotId;
+                result["selected_model_slot_key"]=m_controls->selectedModelSlotKey;
+                if(m_controls->resolvedModelSlotKey)result["resolved_model_slot_key"]=*m_controls->resolvedModelSlotKey;
                 if(m_controls->selectedProfileId)result["selected_profile_id"]=*m_controls->selectedProfileId;
                 if(m_controls->narratorProfileId)result["narrator_profile_id"]=*m_controls->narratorProfileId;
                 const auto& snapshot=m_controls->effectiveSettings;
@@ -702,8 +708,11 @@ namespace MWLua
                 effective["settings"]=settings;effective["routing"]=routing;effective["source_map"]=sources;
                 result["effective_settings"]=effective;
                 for(std::size_t index=0;index<m_controls->modelSlots.size();++index){const auto& slot=m_controls->modelSlots[index];
-                    sol::table row(lua,sol::create);row["configuration_id"]=slot.configurationId;row["name"]=slot.name;
-                    row["revision"]=slot.revision;row["driver"]=slot.driver;row["model"]=slot.model;slots[index+1]=row;}
+                    sol::table row(lua,sol::create);row["key"]=slot.key;row["label"]=slot.label;row["available"]=slot.available;
+                    if(slot.configurationId)row["configuration_id"]=*slot.configurationId;
+                    if(slot.configurationName)row["configuration_name"]=*slot.configurationName;
+                    if(slot.revision)row["revision"]=*slot.revision;if(slot.driver)row["driver"]=*slot.driver;
+                    if(slot.model)row["model"]=*slot.model;slots[index+1]=row;}
                 for(std::size_t index=0;index<m_controls->profiles.size();++index){const auto& profile=m_controls->profiles[index];
                     sol::table row(lua,sol::create);row["profile_id"]=profile.profileId;row["name"]=profile.name;
                     row["revision"]=profile.revision;profiles[index+1]=row;}
@@ -1132,7 +1141,7 @@ namespace MWLua
             { return { "dialogue.text", "speech.say", "speech.listen", "controls.session", "action.ai.follow", "action.ai.stop",
                 "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
-                "action.inspect.report", "action.inventory.inspect" }; }
+                "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" }; }
 
             static sol::table eventTable(sol::state_view lua, const lorkhan::ProtocolEvent& event)
             {
@@ -1275,7 +1284,7 @@ namespace MWLua
             for (const auto& capability : std::vector<std::string>{ "dialogue.text", "speech.say", "speech.listen", "controls.session",
                 "action.ai.follow", "action.ai.stop", "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
                 "action.combat.start", "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip",
-                "action.item.use", "action.inspect.report", "action.inventory.inspect" })
+                "action.item.use", "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" })
                     result[index++] = capability;
                 return result;
             };

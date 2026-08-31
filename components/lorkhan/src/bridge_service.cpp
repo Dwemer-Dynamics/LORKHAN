@@ -133,10 +133,15 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         if (!target) return Result<void>::failure(target.error());
     }
     if (const auto* controls = std::get_if<ControlsSelectRequest>(&request.payload)) {
+        const bool modelSlot = controls->kind == SessionControlKind::model_slot;
+        const bool validModelKey = controls->selectionKey && (*controls->selectionKey == "standard"
+            || *controls->selectionKey == "fast" || *controls->selectionKey == "powerful"
+            || *controls->selectionKey == "experimental");
         if (!validId(controls->message) || !validId(controls->correlation.request)
             || !validId(controls->correlation.session) || controls->correlation.request != request.id
             || controls->correlation.session != request.session || controls->correlation.generation != request.generation
-            || (controls->selectionId && !isCanonicalUuid(*controls->selectionId))
+            || (modelSlot ? (controls->selectionId || !validModelKey)
+                          : (controls->selectionKey || (controls->selectionId && !isCanonicalUuid(*controls->selectionId))))
             || !isCanonicalUtcTimestamp(controls->createdAt))
             return Result<void>::failure(makeError(ErrorCode::invalid_argument,
                 "controls-select correlation or selection is invalid"));

@@ -16,8 +16,14 @@
         {"type": "null"}
       ]
     },
+    "selection_key": {
+      "oneOf": [
+        {"enum": ["standard", "fast", "powerful", "experimental"], "type": "string"},
+        {"type": "null"}
+      ]
+    },
     "target": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"}
   },
-  "required": ["schema", "message_id", "request_id", "session_id", "generation", "created_at", "kind", "selection_id", "target"],
+  "required": ["schema", "message_id", "request_id", "session_id", "generation", "created_at", "kind", "selection_id", "selection_key", "target"],
   "type": "object"
 }

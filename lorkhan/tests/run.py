@@ -219,6 +219,18 @@ check("focused selectors and targeted NPC tools replace the master dashboard", a
     "state.ui.panel=='actor-tools'", "state.ui.panel=='profile-menu'", "state.ui.panel=='modes'",
     "refreshSessionControls('models')", "Targeted NPC Tools", "Actor actions..."])
       and "state.ui.panel=='master'" not in player_script)
+check("LLM model panel offers only the four semantic slots with async selection state", all(
+    fragment in player_script for fragment in [
+        "state.ui.panel=='models' then", "selector.buildModelSlots", "uiState.settleModelSlot(state.ui,controls)",
+        "uiState.modelSlotView(controls,state.ui.modelSlotPending)", "uiState.modelSlotBusy(state.ui)",
+        "native.selectSessionControl('model_slot',key,state.ui.target)"])
+      and all(fragment not in player_script for fragment in ["Server default", "selected_model_slot_id"])
+      and all(fragment in text(SCRIPTS / "ui" / "selector.lua") for fragment in [
+        "function M.buildModelSlots", "row('LLM Model',20", "row('Refresh choices',16"])
+      and all(fragment in text(SCRIPTS / "ui" / "state.lua") for fragment in [
+        "local MODEL_SLOTS={{key='standard',label='Standard'},{key='fast',label='Fast'},",
+        "{key='powerful',label='Powerful'},{key='experimental',label='Experimental'}}",
+        "llm_randomizer_enabled==true", "function M.modelSlotView", "function M.settleModelSlot"]))
 check("dynamic profile selector exposes server-validated narrator generation", all(fragment in player_script for fragment in [
     "label='Narrator'", "controls.narrator_profile_id",
     "native.selectSessionControl('narrator_profile_generate'", "preserves voice routing and enablement."]))

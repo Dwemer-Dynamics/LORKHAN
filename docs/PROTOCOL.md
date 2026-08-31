@@ -91,8 +91,8 @@ version/API plus the ordered content list and file identity metadata, never prop
 | `POST /sessions` | `lorkhan.session.init.v1` | accepted session/capabilities/config revision |
 | `DELETE /sessions/{id}` | no body; UUID `Idempotency-Key` | `lorkhan.session.ended.v1` |
 | `POST /turns` | `lorkhan.turn.v1` | accepted request + first event cursor |
-| `POST /controls/query` | `lorkhan.controls.query.v1` | safe server-owned model slots, NPC profiles, narrator ID, and target-effective settings snapshot |
-| `POST /controls/select` | `lorkhan.controls.select.v1` | idempotent session model/profile selection or revision-safe NPC/narrator generation |
+| `POST /controls/query` | `lorkhan.controls.query.v1` | four semantic profile model slots, NPC profiles, narrator ID, and target-effective settings snapshot |
+| `POST /controls/select` | `lorkhan.controls.select.v1` | idempotent installation model preference, session profile selection, or revision-safe NPC/narrator generation |
 | `POST /stt` | `lorkhan.stt.request.v1` metadata headers plus a binary WAV body | `lorkhan.stt.accepted.v1`; durable work later emits `stt.transcript` or `stt.failed`. |
 | `POST /menu-dialogue-tts` | `lorkhan.menu-dialogue-tts.v1` | `lorkhan.menu-dialogue-tts.ready.v1` with one actor-owned, short-lived media descriptor |
 | `GET /events` | session/cursor/wait | `lorkhan.events.v1` |
@@ -146,8 +146,11 @@ native parser variants, Lua handlers, server catalog rows, and protocol fixtures
 frozen-catalog disposition is recorded in `docs/evidence/openmw-action-parity-audit.md`.
 
 In-game controls never accept provider endpoints, API keys, or executable configuration. Model choices
-are revisioned server-owned slots: a `configured` slot may override only the model while retaining the
-server process endpoint and credential environment; a `mock` slot remains deterministic. Roleplay
+are the fixed semantic keys Standard, Fast, Powerful, and Experimental. The selected installation
+preference resolves through the active target profile, while Random LLM takes precedence and an empty
+selected slot falls back to the first configured profile slot. Returned connector details are display-only;
+a `configured` connector retains its server-owned endpoint and credential environment, while a `mock`
+connector remains deterministic. Roleplay
 NPC profiles bind to one stable actor identity within the active installation/playthrough; player and narrator
 profiles are excluded from that binding list. The installation narrator ID permits only the server-validated,
 revision-safe narrator-generation operation. The chosen

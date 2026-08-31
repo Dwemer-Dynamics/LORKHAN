@@ -376,12 +376,37 @@ local function refreshSessionControls(panel,quiet)
     end
 end
 
+-- The controls snapshot only describes the actor it was requested for, so every panel that reads it
+-- confirms the target first instead of presenting another NPC's choices.
+local function targetedControls()
+    local controls=sessionControls()
+    if controls and state.ui.target and identity.same(controls.target,state.ui.target) then return controls end
+    return nil
+end
+
 local function selectSessionControl(kind,selection)
     if not state.ui.target or not nativeOk or not native or not native.selectSessionControl then
         state.ui.status='session controls unavailable' render() return
     end
     local request,error=native.selectSessionControl(kind,selection,state.ui.target)
     state.ui.status=request and 'control update queued' or tostring(error or 'control update failed')
+    render()
+end
+
+-- One semantic model slot write, and only from a player click. The clicked slot stays marked until
+-- the next controls snapshot settles, so a duplicate click cannot queue a second write.
+local function selectModelSlot(key)
+    if uiState.modelSlotBusy(state.ui) then return end
+    if not state.ui.target or not nativeOk or not native or not native.selectSessionControl then
+        state.ui.status='session controls unavailable' render() return
+    end
+    local request,error=native.selectSessionControl('model_slot',key,state.ui.target)
+    if request then
+        uiState.beginModelSlot(state.ui,key)
+        state.ui.status='selecting '..key..' model'
+    else
+        state.ui.status=tostring(error or 'model slot update failed')
+    end
     render()
 end
 
@@ -855,26 +880,30 @@ render=function()
             {label='Narrator',onSelect=adapter.callback(function() refreshSessionControls('narrator') end)},
         },onBack=adapter.callback(function() state.ui.panel=uiState.backRoute(state.ui).panel render() end),
         onClose=adapter.callback(function() state.ui.visible=false leaveUiMode() render() end)})
-    elseif state.ui.panel=='models' or state.ui.panel=='profiles' or state.ui.panel=='narrator' then
+    elseif state.ui.panel=='models' then
+        -- Four semantic slots, one state line, and no connector enumeration. The panel is read-only
+        -- until the player clicks a slot, so opening it never writes a selection.
+        local controls=targetedControls()
+        uiState.settleModelSlot(state.ui,controls)
+        local select={}
+        for _,slot in ipairs(uiState.MODEL_SLOTS) do
+            select[slot.key]=adapter.callback(function() selectModelSlot(slot.key) end)
+        end
+        transcript=selector.buildModelSlots({ui=openmwUi,util=util,select=select,
+            view=uiState.modelSlotView(controls,state.ui.modelSlotPending),
+            onRefresh=adapter.callback(function() refreshSessionControls('models') end),
+            backLabel=uiState.backRoute(state.ui).label,
+            onBack=adapter.callback(function()
+                state.ui.panel=uiState.backRoute(state.ui).panel render()
+            end)})
+    elseif state.ui.panel=='profiles' or state.ui.panel=='narrator' then
         local controls=sessionControls()
-        local modelPanel=state.ui.panel=='models'
         local narratorPanel=state.ui.panel=='narrator'
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=modelPanel and 'LLM Model Slot' or (narratorPanel and 'Narrator Profile' or 'NPC Roleplay Profile'),textSize=20,
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=narratorPanel and 'Narrator Profile' or 'NPC Roleplay Profile',textSize=20,
             textColor=util.color.rgb(0.95,0.9,0.82)}}
         if not controls or not identity.same(controls.target,state.ui.target) then
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Loading server-owned choices...',textSize=16,
                 textColor=util.color.rgb(0.72,0.68,0.62)}}
-        elseif modelPanel then
-            local defaultActive=not controls.selected_model_slot_id and ' [active]' or ''
-            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Server default'..defaultActive,textSize=18,
-                textColor=not controls.selected_model_slot_id and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(1.0,0.58,0.18)},
-                events={mouseClick=adapter.callback(function() selectSessionControl('model_slot',nil) end)}}
-            for _,slot in ipairs(controls.model_slots or {}) do
-                local active=controls.selected_model_slot_id==slot.configuration_id and ' [active]' or ''
-                transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=slot.name..active..'  |  '..slot.model,textSize=17,
-                    textColor=active~='' and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(1.0,0.58,0.18)},
-                    events={mouseClick=adapter.callback(function() selectSessionControl('model_slot',slot.configuration_id) end)}}
-            end
         elseif narratorPanel then
             if controls.narrator_profile_id then
                 transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Generate narrator profile with AI',textSize=18,
@@ -1295,7 +1324,8 @@ return {
                 local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
                 local controls=sessionControls()
                 applySettings(session,controls)
-                local signature=controls and table.concat({tostring(controls.selected_model_slot_id),tostring(controls.selected_profile_id),
+                local signature=controls and table.concat({tostring(controls.selected_model_slot_key),
+                    tostring(controls.resolved_model_slot_key),tostring(controls.selected_profile_id),
                     tostring(controls.effective_settings and controls.effective_settings.change_token),
                     tostring(#(controls.model_slots or {})),tostring(#(controls.profiles or {})),tostring(controls.pending)},'|') or ''
                 if signature~=controlsSignature then controlsSignature=signature

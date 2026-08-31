@@ -66,10 +66,13 @@ stock OpenMW executable.
    also accepts `|` for one Whisper turn, `||` for one Close turn, and `!!` for one Shout turn without
    changing the selected mode. `Mood and delivery...` applies an optional saved mood cue to typed and
    spoken turns; None and an empty custom cue keep ordinary chat unchanged.
-9. The `LLM model` hotkey lists only revisioned choices created on LORKHANserver; `Server default`
-   clears the per-session override. Dynamic Profiles > Targeted NPC assigns a server profile to the
-   currently confirmed actor for this playthrough; `Playthrough default` clears that actor binding.
-   Neither panel accepts an endpoint, API key, model name, profile text, or other free-form configuration.
+9. Interact > `LLM Model` always presents Standard, Fast, Powerful, and Experimental. The selected
+   semantic slot is saved for the installation and resolves through the currently effective profile;
+   Standard is the default. An unconfigured slot is disabled and falls back to the first configured
+   profile slot, while Random LLM disables manual selection and keeps choosing on the server. Dynamic
+   Profiles > Targeted NPC assigns a server profile to the currently confirmed actor for this playthrough;
+   `Playthrough default` clears that actor binding. Neither panel accepts an endpoint, API key, model name,
+   profile text, or other free-form configuration.
 
 ## What to verify in game
 
