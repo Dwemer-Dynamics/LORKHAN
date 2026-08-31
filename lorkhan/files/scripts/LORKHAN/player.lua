@@ -56,6 +56,10 @@ local pendingTextSubmit=false
 local awaitingTextQueue=false
 local pendingHistory
 local pendingControlPanel
+-- Panels whose contents are owned by the server, so an in-flight controls request has to settle
+-- before they can show the player anything new.
+local SERVER_CONTROL_PANELS={models=true,profiles=true,narrator=true}
+local controlsRequestActive=false
 local aimCandidate
 local aimScanElapsed=0
 local aimSignature=''
@@ -353,6 +357,13 @@ local function submitText()
     return true
 end
 
+-- One in-flight controls request at a time already, so a single flag is enough to know whether the
+-- pause-safe pump has anything to settle.
+local function noteControlsRequest(request,error)
+    if request then controlsRequestActive=true end
+    return request,error
+end
+
 local function sessionControls()
     if not nativeOk or not native or not native.sessionControls then return nil end
     local ok,value=pcall(native.sessionControls)
@@ -365,7 +376,7 @@ local function refreshSessionControls(panel,quiet)
         if not quiet then state.ui.status='session controls unavailable' render() end
         return
     end
-    local request,error=native.requestSessionControls(state.ui.target)
+    local request,error=noteControlsRequest(native.requestSessionControls(state.ui.target))
     if not quiet then
         if not request then state.ui.status=tostring(error or 'session controls unavailable') else state.ui.status='loading controls' end
         if panel then state.ui.panel=panel end
@@ -385,7 +396,7 @@ local function selectSessionControl(kind,selection)
     if not state.ui.target or not nativeOk or not native or not native.selectSessionControl then
         state.ui.status='session controls unavailable' render() return
     end
-    local request,error=native.selectSessionControl(kind,selection,state.ui.target)
+    local request,error=noteControlsRequest(native.selectSessionControl(kind,selection,state.ui.target))
     state.ui.status=request and 'control update queued' or tostring(error or 'control update failed')
     render()
 end
@@ -397,7 +408,7 @@ local function selectModelSlot(key)
     if not state.ui.target or not nativeOk or not native or not native.selectSessionControl then
         state.ui.status='session controls unavailable' render() return
     end
-    local request,error=native.selectSessionControl('model_slot',key,state.ui.target)
+    local request,error=noteControlsRequest(native.selectSessionControl('model_slot',key,state.ui.target))
     if request then
         uiState.beginModelSlot(state.ui,key)
         state.ui.status='selecting '..key..' model'
@@ -418,7 +429,7 @@ local function generateSelectedProfile()
     if not nativeOk or not native or not native.selectSessionControl then
         state.ui.status='profile generation unavailable' render() return
     end
-    local request,error=native.selectSessionControl('profile_generate',controls.selected_profile_id,state.ui.target)
+    local request,error=noteControlsRequest(native.selectSessionControl('profile_generate',controls.selected_profile_id,state.ui.target))
     state.ui.status=request and 'profile generation queued' or tostring(error or 'profile generation failed')
     render()
 end
@@ -434,7 +445,7 @@ local function generateNarratorProfile()
     if not nativeOk or not native or not native.selectSessionControl then
         state.ui.status='narrator generation unavailable' render() return
     end
-    local request,error=native.selectSessionControl('narrator_profile_generate',controls.narrator_profile_id,state.ui.target)
+    local request,error=noteControlsRequest(native.selectSessionControl('narrator_profile_generate',controls.narrator_profile_id,state.ui.target))
     state.ui.status=request and 'narrator generation queued' or tostring(error or 'narrator generation failed')
     render()
 end
@@ -1297,6 +1308,25 @@ return {
             if inputOk and isConfiguredPushToTalkKey(event) then
                 handlePushToTalk(false,'configured_key')
             end
+        end,
+        -- The Interact overlay owns Interface UI mode and pauses simulation, so onUpdate stops running
+        -- while a server-owned control panel is open. onFrame still runs every frame, so it does one
+        -- bounded pause-safe pump of the in-flight controls response and nothing else. No gameplay,
+        -- settings scan, or event processing belongs here.
+        onFrame=function()
+            if not controlsRequestActive or not state.ui.visible
+                or not SERVER_CONTROL_PANELS[state.ui.panel] then return end
+            if not nativeOk or not native or not native.pumpSessionControls then
+                controlsRequestActive=false return
+            end
+            local ok,status=pcall(native.pumpSessionControls)
+            if not ok or type(status)~='table' then controlsRequestActive=false return end
+            if status.pending==true then return end
+            controlsRequestActive=false
+            if status.error then state.ui.status=tostring(status.error) end
+            -- Rerendering is what settles the panel: the models branch feeds the returned snapshot to
+            -- uiState.settleModelSlot, which clears the pending mark and shows the selected slot.
+            render()
         end,
         onUpdate=function(dt)
             if narratorSpeech and not adapter.isSpeechActive() then reportNarrator('played','playback_completed') end

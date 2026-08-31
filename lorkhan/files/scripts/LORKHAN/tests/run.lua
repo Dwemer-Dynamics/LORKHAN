@@ -926,6 +926,20 @@ test('LLM model panel keeps four semantic slots with async fallback and randomiz
   resolved_model_slot_key='standard',pending=false,model_slots=long,
   effective_settings={routing={llm_randomizer_enabled=false}}},nil)
  truthy(#clipped.rows[2].detail<=38);eq(clipped.rows[2].detail:sub(-3),'...')
+ -- the Interact overlay pauses simulation, so the paused-frame pump is what settles a selection.
+ -- It stays gated on a visible server-owned panel with a request in flight, and carries no gameplay,
+ -- settings, or event-lane work that belongs to onUpdate.
+ local playerSource=io.open(root..'/scripts/LORKHAN/player.lua')
+ local playerBody=playerSource:read('*a');playerSource:close()
+ local frameBody=assert(playerBody:match('\n        onFrame=function%(%)(.-)\n        end,\n'))
+ truthy(frameBody:find('controlsRequestActive',1,true))
+ truthy(frameBody:find('SERVER_CONTROL_PANELS[state.ui.panel]',1,true))
+ truthy(frameBody:find('native.pumpSessionControls',1,true))
+ truthy(frameBody:find('render()',1,true))
+ for _,forbidden in ipairs({'settingsRefreshElapsed','aimScanElapsed','autoScanElapsed',
+  'flushCapturedDialogue','pollResults','send('}) do
+  eq(frameBody:find(forbidden,1,true),nil)
+ end
 end)
 test('OpenMW settings page registers controls and seeds conflict-free defaults once',function()
  local data={OMWInputBindings={},LORKHANInputDefaults={}}

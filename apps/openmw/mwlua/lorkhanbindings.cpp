@@ -634,7 +634,7 @@ namespace MWLua
                             {request,*m_session,m_service->generation()},toJson(sol::make_object(lua,target))}};
                     auto accepted=m_service->enqueue(std::move(outbound));
                     if(!accepted)return failure(lua,accepted.error().message);
-                    m_controlsRequest=request;
+                    m_controlsRequest=request;m_controlsError.clear();
                     return success(lua,request.value());
                 }
                 catch(const std::exception& error){return failure(lua,error.what());}
@@ -665,7 +665,7 @@ namespace MWLua
                             semanticModel?std::optional<std::string>(*selection):std::nullopt,toJson(sol::make_object(lua,target))}};
                     auto accepted=m_service->enqueue(std::move(outbound));
                     if(!accepted)return failure(lua,accepted.error().message);
-                    m_controlsRequest=request;
+                    m_controlsRequest=request;m_controlsError.clear();
                     return success(lua,request.value());
                 }
                 catch(const std::exception& error){return failure(lua,error.what());}
@@ -937,12 +937,65 @@ namespace MWLua
                 catch (const std::exception& error) { return failure(lua, error.what()); }
             }
 
+            // One settlement path for every controls response. Success, a typed failure, a payload that
+            // does not parse, and an unexpected response kind all clear the matching request and leave a
+            // readable error behind, so a panel can never be stranded waiting on an answered request.
+            bool settleControlsResult(const lorkhan::InboundResult& result)
+            {
+                if (!m_controlsRequest || result.request != *m_controlsRequest) return false;
+                m_controlsRequest.reset();
+                if (result.kind == lorkhan::ResponseKind::controls)
+                {
+                    auto parsed = lorkhan::parseControlsResponse(result.payload, jsonHeaders());
+                    if (parsed) { m_controls = std::move(parsed).value(); m_controlsError.clear(); }
+                    else m_controlsError = parsed.error().message;
+                }
+                else if (result.kind == lorkhan::ResponseKind::failure)
+                    m_controlsError = result.failure ? result.failure->message : "transport_failure";
+                else
+                    m_controlsError = "unexpected_controls_response";
+                return true;
+            }
+
+            // The Interact overlay owns Interface UI mode and pauses simulation, so the GLOBAL Lua lane
+            // that drives poll stops running while a server-owned controls panel is open. Player onFrame
+            // keeps running every frame, so this settles only the in-flight controls response. Every
+            // other drained result is deferred, never consumed here, and replayed by poll, so the
+            // authoritative lane still receives dialogue, speech, STT, action, failure, and event cursor
+            // results exactly once and in arrival order.
+            sol::table pumpSessionControls(sol::state_view lua)
+            {
+                sol::table status(lua, sol::create);
+                bool settled = false;
+                // Refusing to drain unless the bounded deferred queue can hold a whole batch keeps this
+                // pump from ever having to discard a result it is not allowed to consume.
+                if (m_service && m_controlsRequest
+                    && m_deferredResults.size() + kControlsPumpBatch <= kDeferredResultCapacity)
+                {
+                    for (auto& result : m_service->poll(kControlsPumpBatch))
+                    {
+                        if (settleControlsResult(result)) { ++m_resultsSeen; settled = true; continue; }
+                        m_deferredResults.push_back(std::move(result));
+                    }
+                }
+                status["settled"] = settled;
+                status["pending"] = m_controlsRequest.has_value();
+                if (!m_controlsError.empty()) status["error"] = m_controlsError;
+                return status;
+            }
+
             sol::table poll(sol::state_view lua, std::size_t maximum)
             {
                 sol::table output(lua, sol::create);
                 if (!m_service) return output;
                 std::size_t outIndex = 1;
-                for (auto& result : m_service->poll(std::min<std::size_t>(maximum, 128)))
+                // Results the pause-safe pump had to drain are replayed ahead of newly drained ones so
+                // the global lane keeps their arrival order and still processes each of them once.
+                std::vector<lorkhan::InboundResult> results;
+                results.swap(m_deferredResults);
+                for (auto& drained : m_service->poll(std::min<std::size_t>(maximum, 128)))
+                    results.push_back(std::move(drained));
+                for (auto& result : results)
                 {
                     ++m_resultsSeen;
                     if (result.kind == lorkhan::ResponseKind::failure)
@@ -980,7 +1033,7 @@ namespace MWLua
                             if (m_session)
                                 m_status = "ready";
                         }
-                        if(m_controlsRequest&&result.request==*m_controlsRequest)m_controlsRequest.reset();
+                        settleControlsResult(result);
                         if (!m_session)
                             m_status = "error";
                         else if (!mediaFailure)
@@ -1042,12 +1095,9 @@ namespace MWLua
                             break;
                         }
                     }
-                    else if(m_controlsRequest&&result.request==*m_controlsRequest
-                        &&result.kind==lorkhan::ResponseKind::controls)
+                    else
                     {
-                        auto parsed=lorkhan::parseControlsResponse(result.payload,jsonHeaders());
-                        if(parsed)m_controls=std::move(parsed).value();
-                        m_controlsRequest.reset();
+                        settleControlsResult(result);
                     }
                 }
                 schedulePoll();
@@ -1060,7 +1110,8 @@ namespace MWLua
                 auto result = m_service->cancelGeneration(lorkhan::Generation(generation));
                 if (!result) return false;
                 cancelMenuDialogueTts();
-                m_session.reset(); m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();beginSession();
+                m_session.reset(); m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();
+                m_deferredResults.clear();m_controlsError.clear();beginSession();
                 m_status = "connecting";
                 return true;
             }
@@ -1259,6 +1310,10 @@ namespace MWLua
             std::optional<lorkhan::RequestId> m_pollRequest;
             std::optional<lorkhan::RequestId> m_controlsRequest;
             std::optional<lorkhan::ControlsResponse> m_controls;
+            std::string m_controlsError;
+            static constexpr std::size_t kControlsPumpBatch = 8;
+            static constexpr std::size_t kDeferredResultCapacity = lorkhan::kInboundCapacity;
+            std::vector<lorkhan::InboundResult> m_deferredResults;
             std::uint64_t m_cursor{};
             std::chrono::steady_clock::time_point m_nextPoll{};
             std::map<std::string, MediaState> m_media;
@@ -1310,6 +1365,7 @@ namespace MWLua
                 return client().selectControl(lua,kind,std::move(selection),std::move(target));
             };
             api["sessionControls"] = [lua] { return client().sessionControls(lua); };
+            api["pumpSessionControls"] = [lua] { return client().pumpSessionControls(lua); };
             api["voiceCaptureSupported"] = [] { return lorkhan::VoiceCaptureService::instance().supported(); };
             api["startVoiceCapture"] = [lua](sol::optional<bool> automatic,sol::optional<int> threshold,
                 sol::optional<int> delay,sol::optional<int> deviceId) {

@@ -231,6 +231,21 @@ check("LLM model panel offers only the four semantic slots with async selection 
         "local MODEL_SLOTS={{key='standard',label='Standard'},{key='fast',label='Fast'},",
         "{key='powerful',label='Powerful'},{key='experimental',label='Experimental'}}",
         "llm_randomizer_enabled==true", "function M.modelSlotView", "function M.settleModelSlot"]))
+check("paused control panels settle from a player frame without stealing the global result lane", all(
+    fragment in player_script for fragment in [
+        "local SERVER_CONTROL_PANELS={models=true,profiles=true,narrator=true}",
+        "onFrame=function()", "if not controlsRequestActive or not state.ui.visible",
+        "not SERVER_CONTROL_PANELS[state.ui.panel] then return end",
+        "local ok,status=pcall(native.pumpSessionControls)", "if status.pending==true then return end",
+        "noteControlsRequest(native.selectSessionControl('model_slot',key,state.ui.target))"])
+      and all(fragment in binding for binding in [native_binding, native_overlay] for fragment in [
+        'api["pumpSessionControls"]', "bool settleControlsResult(const lorkhan::InboundResult& result)",
+        "m_deferredResults.size() + kControlsPumpBatch <= kDeferredResultCapacity",
+        "m_deferredResults.push_back(std::move(result));", "results.swap(m_deferredResults);"])
+      # the duplicated inline controls branch is gone, so success, typed failure, parse failure, and an
+      # unexpected response kind all clear the pending request through the one shared handler
+      and all("&&result.kind==lorkhan::ResponseKind::controls" not in binding
+              for binding in [native_binding, native_overlay]))
 check("dynamic profile selector exposes server-validated narrator generation", all(fragment in player_script for fragment in [
     "label='Narrator'", "controls.narrator_profile_id",
     "native.selectSessionControl('narrator_profile_generate'", "preserves voice routing and enablement."]))
