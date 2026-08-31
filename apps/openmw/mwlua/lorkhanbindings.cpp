@@ -1041,8 +1041,11 @@ namespace MWLua
                 if(!m_debugError.empty())status["error"]=m_debugError;
                 if(m_debugCommand){sol::table command(lua,sol::create),parameters(lua,sol::create);
                     command["command_id"]=m_debugCommand->command.value();command["name"]=m_debugCommand->name;
-                    command["expires_at"]=m_debugCommand->expiresAt;if(m_debugCommand->enabled)parameters["enabled"]=*m_debugCommand->enabled;
-                    if(m_debugCommand->mode)parameters["mode"]=*m_debugCommand->mode;command["parameters"]=parameters;status["command"]=command;
+                    command["expires_at"]=m_debugCommand->expiresAt;
+                    for(const auto& [key,value]:m_debugCommand->parameters){
+                        std::visit([&](const auto& parameter){parameters[key]=parameter;},value);
+                    }
+                    command["parameters"]=parameters;status["command"]=command;
                     m_debugCommand.reset();}
                 return status;
             }

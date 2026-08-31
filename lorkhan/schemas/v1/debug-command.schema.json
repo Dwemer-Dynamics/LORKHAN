@@ -1,40 +1,749 @@
 {
-  "$id": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json",
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
-    "empty_parameters": {"additionalProperties": false, "properties": {}, "type": "object"},
+    "advance_time_parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "maximum": 8760,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "type": "object"
+    },
+    "attribute_parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "attribute": {
+          "enum": [
+            "strength",
+            "intelligence",
+            "willpower",
+            "agility",
+            "speed",
+            "endurance",
+            "personality",
+            "luck"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "maximum": 1000,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "attribute",
+        "value"
+      ],
+      "type": "object"
+    },
+    "bounty_parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "maximum": 1000000000,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "type": "object"
+    },
+    "command": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "expires_at": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+            },
+            "name": {
+              "enum": [
+                "status.snapshot",
+                "shaders.reload",
+                "player.vitals.restore",
+                "target.actor.kill",
+                "target.actor.restore",
+                "target.teleport.to_player"
+              ],
+              "type": "string"
+            },
+            "parameters": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/empty_parameters"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "parameters",
+            "expires_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "expires_at": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+            },
+            "name": {
+              "enum": [
+                "god_mode.set",
+                "collision.set",
+                "ai.set",
+                "mwscript.set",
+                "shader_hot_reload.set"
+              ],
+              "type": "string"
+            },
+            "parameters": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/enabled_parameters"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "parameters",
+            "expires_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "expires_at": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+            },
+            "name": {
+              "const": "render_mode.toggle",
+              "type": "string"
+            },
+            "parameters": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/render_parameters"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "parameters",
+            "expires_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "expires_at": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+            },
+            "name": {
+              "enum": [
+                "player.inventory.add",
+                "player.inventory.remove"
+              ],
+              "type": "string"
+            },
+            "parameters": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/inventory_parameters"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "parameters",
+            "expires_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "expires_at": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+            },
+            "name": {
+              "enum": [
+                "player.spell.add",
+                "player.spell.remove"
+              ],
+              "type": "string"
+            },
+            "parameters": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/record_parameters"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "parameters",
+            "expires_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "expires_at": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+            },
+            "name": {
+              "const": "player.stat.set",
+              "type": "string"
+            },
+            "parameters": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/stat_parameters"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "parameters",
+            "expires_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "expires_at": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+            },
+            "name": {
+              "const": "player.attribute.set",
+              "type": "string"
+            },
+            "parameters": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/attribute_parameters"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "parameters",
+            "expires_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "expires_at": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+            },
+            "name": {
+              "const": "player.skill.set",
+              "type": "string"
+            },
+            "parameters": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/skill_parameters"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "parameters",
+            "expires_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "expires_at": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+            },
+            "name": {
+              "const": "player.level.set",
+              "type": "string"
+            },
+            "parameters": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/level_parameters"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "parameters",
+            "expires_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "expires_at": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+            },
+            "name": {
+              "const": "player.bounty.set",
+              "type": "string"
+            },
+            "parameters": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/bounty_parameters"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "parameters",
+            "expires_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "expires_at": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+            },
+            "name": {
+              "enum": [
+                "player.scale.set",
+                "target.scale.set"
+              ],
+              "type": "string"
+            },
+            "parameters": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/scale_parameters"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "parameters",
+            "expires_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "expires_at": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+            },
+            "name": {
+              "const": "world.timescale.set",
+              "type": "string"
+            },
+            "parameters": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/timescale_parameters"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "parameters",
+            "expires_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "expires_at": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+            },
+            "name": {
+              "const": "world.time.advance",
+              "type": "string"
+            },
+            "parameters": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/advance_time_parameters"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "parameters",
+            "expires_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "expires_at": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+            },
+            "name": {
+              "const": "player.teleport",
+              "type": "string"
+            },
+            "parameters": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/teleport_parameters"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "parameters",
+            "expires_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "expires_at": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+            },
+            "name": {
+              "const": "world.weather.set",
+              "type": "string"
+            },
+            "parameters": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/weather_parameters"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "parameters",
+            "expires_at"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "empty_parameters": {
+      "additionalProperties": false,
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
     "enabled_parameters": {
       "additionalProperties": false,
-      "properties": {"enabled": {"type": "boolean"}},
-      "required": ["enabled"],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "type": "object"
+    },
+    "inventory_parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "record_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "record_id",
+        "count"
+      ],
+      "type": "object"
+    },
+    "level_parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "type": "object"
+    },
+    "record_parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "record_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "record_id"
+      ],
       "type": "object"
     },
     "render_parameters": {
       "additionalProperties": false,
       "properties": {
-        "mode": {"enum": ["collision", "wireframe", "pathgrid", "water", "scene", "navmesh", "actors_paths", "recast_mesh"], "type": "string"}
+        "mode": {
+          "enum": [
+            "collision",
+            "wireframe",
+            "pathgrid",
+            "water",
+            "scene",
+            "navmesh",
+            "actors_paths",
+            "recast_mesh"
+          ],
+          "type": "string"
+        }
       },
-      "required": ["mode"],
+      "required": [
+        "mode"
+      ],
       "type": "object"
     },
-    "command": {
-      "oneOf": [
-        {"additionalProperties": false, "properties": {"command_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "expires_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"}, "name": {"const": "status.snapshot", "type": "string"}, "parameters": {"$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/empty_parameters"}}, "required": ["command_id", "name", "parameters", "expires_at"], "type": "object"},
-        {"additionalProperties": false, "properties": {"command_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "expires_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"}, "name": {"enum": ["god_mode.set", "collision.set", "ai.set", "mwscript.set", "shader_hot_reload.set"], "type": "string"}, "parameters": {"$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/enabled_parameters"}}, "required": ["command_id", "name", "parameters", "expires_at"], "type": "object"},
-        {"additionalProperties": false, "properties": {"command_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "expires_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"}, "name": {"const": "render_mode.toggle", "type": "string"}, "parameters": {"$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/render_parameters"}}, "required": ["command_id", "name", "parameters", "expires_at"], "type": "object"},
-        {"additionalProperties": false, "properties": {"command_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}, "expires_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"}, "name": {"const": "shaders.reload", "type": "string"}, "parameters": {"$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/empty_parameters"}}, "required": ["command_id", "name", "parameters", "expires_at"], "type": "object"}
-      ]
+    "scale_parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "maximum": 100,
+          "minimum": 0.01,
+          "type": "number"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "type": "object"
+    },
+    "skill_parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "skill": {
+          "enum": [
+            "block",
+            "armorer",
+            "mediumarmor",
+            "heavyarmor",
+            "bluntweapon",
+            "longblade",
+            "axe",
+            "spear",
+            "athletics",
+            "enchant",
+            "destruction",
+            "alteration",
+            "illusion",
+            "conjuration",
+            "mysticism",
+            "restoration",
+            "alchemy",
+            "unarmored",
+            "security",
+            "sneak",
+            "acrobatics",
+            "lightarmor",
+            "shortblade",
+            "marksman",
+            "mercantile",
+            "speechcraft",
+            "handtohand"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "maximum": 1000,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "skill",
+        "value"
+      ],
+      "type": "object"
+    },
+    "stat_parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "stat": {
+          "enum": [
+            "health",
+            "magicka",
+            "fatigue"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "stat",
+        "value"
+      ],
+      "type": "object"
+    },
+    "teleport_parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "cell": {
+          "maxLength": 300,
+          "minLength": 1,
+          "type": "string"
+        },
+        "x": {
+          "maximum": 100000000,
+          "minimum": -100000000,
+          "type": "number"
+        },
+        "y": {
+          "maximum": 100000000,
+          "minimum": -100000000,
+          "type": "number"
+        },
+        "z": {
+          "maximum": 100000000,
+          "minimum": -100000000,
+          "type": "number"
+        }
+      },
+      "required": [
+        "cell",
+        "x",
+        "y",
+        "z"
+      ],
+      "type": "object"
+    },
+    "timescale_parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "maximum": 10000,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "type": "object"
+    },
+    "weather_parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "region_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "weather": {
+          "enum": [
+            "clear",
+            "cloudy",
+            "foggy",
+            "overcast",
+            "rain",
+            "thunderstorm",
+            "ashstorm",
+            "blight",
+            "snow",
+            "blizzard"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "region_id",
+        "weather"
+      ],
+      "type": "object"
     }
   },
+  "$id": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
-    "command": {"oneOf": [{"$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/command"}, {"type": "null"}]},
-    "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
-    "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "schema": {"const": "lorkhan.debug-command.v1", "type": "string"},
-    "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+    "command": {
+      "oneOf": [
+        {
+          "$ref": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json#/$defs/command"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "generation": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+    },
+    "message_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "request_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "schema": {
+      "const": "lorkhan.debug-command.v1",
+      "type": "string"
+    },
+    "session_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    }
   },
-  "required": ["schema", "message_id", "request_id", "session_id", "generation", "command"],
+  "required": [
+    "schema",
+    "message_id",
+    "request_id",
+    "session_id",
+    "generation",
+    "command"
+  ],
   "type": "object"
 }

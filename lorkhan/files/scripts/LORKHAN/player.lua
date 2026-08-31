@@ -63,6 +63,7 @@ local SERVER_CONTROL_PANELS={models=true,profiles=true,narrator=true}
 local controlsRequestActive=false
 local debugRequestActive=false
 local nextDebugPollAt=0
+local pendingGlobalDebugCommand
 local aimCandidate
 local aimScanElapsed=0
 local aimSignature=''
@@ -71,6 +72,14 @@ local SETTINGS_REFRESH_INTERVAL=0.5
 local AIM_SCAN_INTERVAL=0.25
 local AUTO_SCAN_INTERVAL=1.0
 local DEBUG_POLL_INTERVAL=0.25
+local GLOBAL_DEBUG_COMMANDS={
+    ['player.inventory.add']=true,['player.inventory.remove']=true,
+    ['player.spell.add']=true,['player.spell.remove']=true,['player.vitals.restore']=true,
+    ['player.stat.set']=true,['player.attribute.set']=true,['player.skill.set']=true,
+    ['player.level.set']=true,['player.bounty.set']=true,['player.teleport']=true,['player.scale.set']=true,
+    ['world.time.advance']=true,['world.timescale.set']=true,['world.weather.set']=true,
+    ['target.actor.kill']=true,['target.actor.restore']=true,['target.teleport.to_player']=true,['target.scale.set']=true,
+}
 if playerInputSettings then
     uiState.setMood(state.ui,playerInputSettings:get('mood') or 'None')
     if state.ui.mood=='Custom' then uiState.setMoodDirection(state.ui,playerInputSettings:get('customMood') or '') end
@@ -415,11 +424,23 @@ local function executeDebugCommand(command)
     return 'succeeded','command_applied',result
 end
 
+local function submitDebugResult(command,status,reason,observed)
+    local submitted,submitReason=native.submitDebugCommandResult(command.command_id,status,reason,observed or {})
+    if not submitted then print('[LORKHAN] debug command result failed: '..tostring(submitReason)) end
+end
+
 -- Poll and execute the operator queue from onFrame so debug controls remain responsive while menus pause simulation.
 local function pumpDebugCommands()
     if not nativeOk or not native or not native.requestDebugCommand or not native.pumpDebugCommand
         or not native.submitDebugCommandResult then return end
     local now=core and core.getRealTime and core.getRealTime() or 0
+    if pendingGlobalDebugCommand then
+        if now-pendingGlobalDebugCommand.started_at>25 then
+            submitDebugResult(pendingGlobalDebugCommand.command,'failed','global_command_timeout',{})
+            pendingGlobalDebugCommand=nil
+        end
+        return
+    end
     if not debugRequestActive and now>=nextDebugPollAt then
         local request=select(1,native.requestDebugCommand())
         if request then debugRequestActive=true end
@@ -431,9 +452,13 @@ local function pumpDebugCommands()
     if status.pending==true then return end
     debugRequestActive=false
     if type(status.command)~='table' then return end
+    if GLOBAL_DEBUG_COMMANDS[status.command.name] then
+        pendingGlobalDebugCommand={command=status.command,started_at=now}
+        send('LORKHAN_DEBUG_COMMAND',{command=status.command})
+        return
+    end
     local outcome,reason,observed=executeDebugCommand(status.command)
-    local submitted,submitReason=native.submitDebugCommandResult(status.command.command_id,outcome,reason,observed)
-    if not submitted then print('[LORKHAN] debug command result failed: '..tostring(submitReason)) end
+    submitDebugResult(status.command,outcome,reason,observed)
 end
 
 local function refreshSessionControls(panel,quiet)
@@ -1439,6 +1464,13 @@ return {
         end,
     },
     eventHandlers={
+        LORKHAN_DEBUG_COMMAND_RESULT=function(event)
+            if not pendingGlobalDebugCommand or type(event)~='table'
+                or event.command_id~=pendingGlobalDebugCommand.command.command_id then return end
+            submitDebugResult(pendingGlobalDebugCommand.command,event.status or 'failed',
+                event.reason_code or 'global_command_failed',event.observed or {})
+            pendingGlobalDebugCommand=nil
+        end,
         DialogueResponse=function(event)
             local response=adapter.dialogueResponse(event)
             if response then

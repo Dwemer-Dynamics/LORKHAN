@@ -162,6 +162,11 @@
       "sha256": "7f503bf4f2543384f8c869e2dc05b59308308704a99dd87e3faacf08e258a7b4"
     },
     {
+      "bytes": 674,
+      "path": "lorkhan/fixtures/v1/valid/debug-command-inventory-add.json",
+      "sha256": "782ff43754c0233e5b4ea69764f20576c1c6965a36df13b945043b2b460d9c91"
+    },
+    {
       "bytes": 429,
       "path": "lorkhan/fixtures/v1/valid/debug-command-query.json",
       "sha256": "d6e44351aa3f7b12df2d8fb3acada6cbae6f681159a213ac9e9e664905083c79"
@@ -337,9 +342,9 @@
       "sha256": "75d1439cb76bd0c643a3f909fa17849dccb22281e8a896d9fe261612c3d88ffe"
     },
     {
-      "bytes": 3602,
+      "bytes": 20778,
       "path": "lorkhan/schemas/v1/debug-command.schema.json",
-      "sha256": "11b95235eecf290855628c74d5925e95aff157b6d6442884389cf69071945ef3"
+      "sha256": "5025823a480fc69bcec6a167f786be27f8cb00be2555dde7c2d9e3a399b946a1"
     },
     {
       "bytes": 1184,

@@ -371,7 +371,13 @@ void testAcceptedProtocolResponses()
         jsonHeaders);
     CHECK(debugCommand && debugCommand.value().command
         && debugCommand.value().command->name == "god_mode.set"
-        && debugCommand.value().command->enabled == true);
+        && std::get<bool>(debugCommand.value().command->parameters.at("enabled")) == true);
+    auto inventoryDebugCommand = lorkhan::parseDebugCommandResponse(
+        R"({"schema":"lorkhan.debug-command.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"command":{"command_id":"01900000-0000-7000-8000-000000000007","name":"player.inventory.add","parameters":{"record_id":"fur_colovian_helm","count":1},"expires_at":"2026-08-31T12:00:30Z"}})",
+        jsonHeaders);
+    CHECK(inventoryDebugCommand && inventoryDebugCommand.value().command
+        && std::get<std::string>(inventoryDebugCommand.value().command->parameters.at("record_id")) == "fur_colovian_helm"
+        && std::get<std::int64_t>(inventoryDebugCommand.value().command->parameters.at("count")) == 1);
     CHECK(!lorkhan::parseDebugCommandResponse(
         R"({"schema":"lorkhan.debug-command.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"command":{"command_id":"01900000-0000-7000-8000-000000000007","name":"console.execute","parameters":{"text":"tgm"},"expires_at":"2026-08-31T12:00:30Z"}})",
         jsonHeaders));

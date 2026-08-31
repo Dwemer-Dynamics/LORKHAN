@@ -1498,21 +1498,106 @@ Result<DebugCommandResponse> parseDebugCommandResponse(
     if(!expires)return invalidSchemaValue<DebugCommandResponse>(expires.error().message);
     const auto* parametersValue=json::find(*command,"parameters");const auto* parameters=parametersValue?parametersValue->object():nullptr;
     if(!parameters)return invalidSchemaValue<DebugCommandResponse>("debug parameters must be an object");
-    std::optional<bool> enabled;std::optional<std::string> mode;
-    const bool empty=name.value()=="status.snapshot"||name.value()=="shaders.reload";
+    std::map<std::string,DebugCommandResponse::Parameter,std::less<>> parsedParameters;
+    const auto addString=[&](std::string_view key,std::size_t maximum)->Result<void>{
+        auto value=requireString(*parameters,key,1,maximum);
+        if(!value)return invalidSchema(value.error().message);
+        if(value.value().find_first_of("/\\\r\n\t")!=std::string::npos)
+            return invalidSchemaValue<void>("unsafe debug string parameter");
+        parsedParameters.emplace(std::string(key),std::move(value).value());
+        return Result<void>::success();
+    };
+    const auto addUnsigned=[&](std::string_view key,std::uint64_t minimum,std::uint64_t maximum)->Result<void>{
+        auto value=requireUnsigned(*parameters,key,maximum,minimum);
+        if(!value)return invalidSchema(value.error().message);
+        parsedParameters.emplace(std::string(key),static_cast<std::int64_t>(value.value()));
+        return Result<void>::success();
+    };
+    const auto addNumber=[&](std::string_view key,double minimum,double maximum)->Result<void>{
+        auto value=requireNumber(*parameters,key,minimum,maximum);
+        if(!value)return invalidSchema(value.error().message);
+        parsedParameters.emplace(std::string(key),value.value());
+        return Result<void>::success();
+    };
+    const bool empty=name.value()=="status.snapshot"||name.value()=="shaders.reload"
+        ||name.value()=="player.vitals.restore"||name.value()=="target.actor.kill"
+        ||name.value()=="target.actor.restore"||name.value()=="target.teleport.to_player";
     const bool switchCommand=name.value()=="god_mode.set"||name.value()=="collision.set"||name.value()=="ai.set"
         ||name.value()=="mwscript.set"||name.value()=="shader_hot_reload.set";
     if(empty){if(!parameters->empty())return invalidSchemaValue<DebugCommandResponse>("debug command takes no parameters");}
     else if(switchCommand){if(!hasExactly(*parameters,{"enabled"}))return invalidSchemaValue<DebugCommandResponse>("debug switch fields mismatch");
-        auto value=requireBoolean(*parameters,"enabled");if(!value)return invalidSchemaValue<DebugCommandResponse>(value.error().message);enabled=value.value();}
+        auto value=requireBoolean(*parameters,"enabled");if(!value)return invalidSchemaValue<DebugCommandResponse>(value.error().message);}
     else if(name.value()=="render_mode.toggle"){
         if(!hasExactly(*parameters,{"mode"}))return invalidSchemaValue<DebugCommandResponse>("render mode fields mismatch");
         auto value=requireString(*parameters,"mode",1,32);if(!value)return invalidSchemaValue<DebugCommandResponse>(value.error().message);
         static constexpr std::array<std::string_view,8> modes={"collision","wireframe","pathgrid","water","scene","navmesh","actors_paths","recast_mesh"};
         if(std::find(modes.begin(),modes.end(),value.value())==modes.end())return invalidSchemaValue<DebugCommandResponse>("unknown render mode");
-        mode=std::move(value).value();
+        parsedParameters.emplace("mode",std::move(value).value());
+    }else if(name.value()=="player.inventory.add"||name.value()=="player.inventory.remove"){
+        if(!hasExactly(*parameters,{"record_id","count"}))return invalidSchemaValue<DebugCommandResponse>("inventory debug fields mismatch");
+        auto record=addString("record_id",256);auto count=addUnsigned("count",1,10000);
+        if(!record)return invalidSchemaValue<DebugCommandResponse>(record.error().message);
+        if(!count)return invalidSchemaValue<DebugCommandResponse>(count.error().message);
+    }else if(name.value()=="player.spell.add"||name.value()=="player.spell.remove"){
+        if(!hasExactly(*parameters,{"record_id"}))return invalidSchemaValue<DebugCommandResponse>("spell debug fields mismatch");
+        auto record=addString("record_id",256);if(!record)return invalidSchemaValue<DebugCommandResponse>(record.error().message);
+    }else if(name.value()=="player.stat.set"){
+        if(!hasExactly(*parameters,{"stat","value"}))return invalidSchemaValue<DebugCommandResponse>("stat debug fields mismatch");
+        auto stat=addString("stat",16);auto value=addNumber("value",0,1000000);
+        if(!stat)return invalidSchemaValue<DebugCommandResponse>(stat.error().message);
+        const auto& selected=std::get<std::string>(parsedParameters.at("stat"));
+        static constexpr std::array<std::string_view,3> names={"health","magicka","fatigue"};
+        if(std::find(names.begin(),names.end(),selected)==names.end())return invalidSchemaValue<DebugCommandResponse>("unknown dynamic stat");
+        if(!value)return invalidSchemaValue<DebugCommandResponse>(value.error().message);
+    }else if(name.value()=="player.attribute.set"){
+        if(!hasExactly(*parameters,{"attribute","value"}))return invalidSchemaValue<DebugCommandResponse>("attribute debug fields mismatch");
+        auto attribute=addString("attribute",32);auto value=addNumber("value",0,1000);
+        if(!attribute)return invalidSchemaValue<DebugCommandResponse>(attribute.error().message);
+        const auto& selected=std::get<std::string>(parsedParameters.at("attribute"));
+        static constexpr std::array<std::string_view,8> names={"strength","intelligence","willpower","agility","speed","endurance","personality","luck"};
+        if(std::find(names.begin(),names.end(),selected)==names.end())return invalidSchemaValue<DebugCommandResponse>("unknown attribute");
+        if(!value)return invalidSchemaValue<DebugCommandResponse>(value.error().message);
+    }else if(name.value()=="player.skill.set"){
+        if(!hasExactly(*parameters,{"skill","value"}))return invalidSchemaValue<DebugCommandResponse>("skill debug fields mismatch");
+        auto skill=addString("skill",32);auto value=addNumber("value",0,1000);
+        if(!skill)return invalidSchemaValue<DebugCommandResponse>(skill.error().message);
+        const auto& selected=std::get<std::string>(parsedParameters.at("skill"));
+        static constexpr std::array<std::string_view,27> names={"block","armorer","mediumarmor","heavyarmor","bluntweapon","longblade","axe","spear","athletics","enchant","destruction","alteration","illusion","conjuration","mysticism","restoration","alchemy","unarmored","security","sneak","acrobatics","lightarmor","shortblade","marksman","mercantile","speechcraft","handtohand"};
+        if(std::find(names.begin(),names.end(),selected)==names.end())return invalidSchemaValue<DebugCommandResponse>("unknown skill");
+        if(!value)return invalidSchemaValue<DebugCommandResponse>(value.error().message);
+    }else if(name.value()=="player.level.set"||name.value()=="player.bounty.set"){
+        if(!hasExactly(*parameters,{"value"}))return invalidSchemaValue<DebugCommandResponse>("integer debug fields mismatch");
+        auto value=addUnsigned("value",name.value()=="player.level.set"?1:0,name.value()=="player.level.set"?1000:1000000000);
+        if(!value)return invalidSchemaValue<DebugCommandResponse>(value.error().message);
+    }else if(name.value()=="player.scale.set"||name.value()=="target.scale.set"||name.value()=="world.timescale.set"||name.value()=="world.time.advance"){
+        if(!hasExactly(*parameters,{"value"}))return invalidSchemaValue<DebugCommandResponse>("numeric debug fields mismatch");
+        double minimum=0;double maximum=10000;
+        if(name.value()=="player.scale.set"||name.value()=="target.scale.set"){minimum=0.01;maximum=100;}
+        else if(name.value()=="world.time.advance")maximum=8760;
+        auto value=addNumber("value",minimum,maximum);if(!value)return invalidSchemaValue<DebugCommandResponse>(value.error().message);
+    }else if(name.value()=="player.teleport"){
+        if(!hasExactly(*parameters,{"cell","x","y","z"}))return invalidSchemaValue<DebugCommandResponse>("teleport debug fields mismatch");
+        auto cell=addString("cell",300);auto x=addNumber("x",-100000000,100000000);
+        auto y=addNumber("y",-100000000,100000000);auto z=addNumber("z",-100000000,100000000);
+        if(!cell)return invalidSchemaValue<DebugCommandResponse>(cell.error().message);
+        if(!x)return invalidSchemaValue<DebugCommandResponse>(x.error().message);
+        if(!y)return invalidSchemaValue<DebugCommandResponse>(y.error().message);
+        if(!z)return invalidSchemaValue<DebugCommandResponse>(z.error().message);
+    }else if(name.value()=="world.weather.set"){
+        if(!hasExactly(*parameters,{"region_id","weather"}))return invalidSchemaValue<DebugCommandResponse>("weather debug fields mismatch");
+        auto region=addString("region_id",128);auto weather=addString("weather",32);
+        if(!region)return invalidSchemaValue<DebugCommandResponse>(region.error().message);
+        if(!weather)return invalidSchemaValue<DebugCommandResponse>(weather.error().message);
+        const auto& selected=std::get<std::string>(parsedParameters.at("weather"));
+        static constexpr std::array<std::string_view,10> names={"clear","cloudy","foggy","overcast","rain","thunderstorm","ashstorm","blight","snow","blizzard"};
+        if(std::find(names.begin(),names.end(),selected)==names.end())return invalidSchemaValue<DebugCommandResponse>("unknown weather");
     }else return invalidSchemaValue<DebugCommandResponse>("unknown debug command");
-    parsed.command=DebugCommandResponse::Command{MessageId(std::move(id).value()),std::move(name).value(),enabled,mode,std::move(expires).value()};
+    if(switchCommand){
+        auto value=requireBoolean(*parameters,"enabled");
+        parsedParameters.emplace("enabled",value.value());
+    }
+    parsed.command=DebugCommandResponse::Command{MessageId(std::move(id).value()),std::move(name).value(),
+        std::move(parsedParameters),std::move(expires).value()};
     return Result<DebugCommandResponse>::success(std::move(parsed));
 }
 

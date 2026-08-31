@@ -7,6 +7,7 @@
 #include "lorkhan/validation.hpp"
 
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -374,11 +375,11 @@ struct ControlsResponse {
 };
 
 struct DebugCommandResponse {
+    using Parameter = std::variant<bool, std::int64_t, double, std::string>;
     struct Command {
         MessageId command;
         std::string name;
-        std::optional<bool> enabled;
-        std::optional<std::string> mode;
+        std::map<std::string, Parameter, std::less<>> parameters;
         std::string expiresAt;
     };
     MessageId message;
