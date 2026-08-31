@@ -306,7 +306,9 @@ check("mod-manager launcher starts the private LORKHAN runtime before OpenMW", a
 check("client deployment refreshes every tracked OpenMW overlay before compiling", all(fragment in deploy_script for fragment in [
     "function Sync-OpenMwOverlay", "git -C $repoRoot ls-files -- 'openmw-patches/overlay'",
     "Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256", "[IO.File]::SetLastWriteTimeUtc($targetPath",
-    "Sync-OpenMwOverlay -Destination $EngineSource"]))
+    "Sync-OpenMwOverlay -Destination $EngineSource", "function Sync-LorkhanComponent",
+    "Invoke-RobocopyMirror -Source $source -Destination $target",
+    "Sync-LorkhanComponent -Destination $EngineSource"]))
 check("deploy installs the LORKHAN profile manager instead of the limited launcher wrapper", all(fragment in deploy_script for fragment in [
     "scripts\\tools\\manage-openmw-profile.ps1", "Manage-LORKHAN-Profile.ps1", "-ProfileName Compatibility",
     "extracting it into its own Mods\\Mod Name folder"]))

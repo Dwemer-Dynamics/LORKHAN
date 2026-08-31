@@ -187,6 +187,19 @@ function Sync-OpenMwOverlay {
     }
 }
 
+# Refresh the maintained native bridge sources embedded in the pinned OpenMW build tree.
+function Sync-LorkhanComponent {
+    param([Parameter(Mandatory)][string]$Destination)
+
+    $source = Join-Path $repoRoot 'components\lorkhan'
+    $target = Join-Path $Destination 'components\lorkhan'
+    Invoke-RobocopyMirror -Source $source -Destination $target
+    $now = [DateTime]::UtcNow
+    Get-ChildItem -LiteralPath $target -Recurse -File | ForEach-Object {
+        [IO.File]::SetLastWriteTimeUtc($_.FullName, $now)
+    }
+}
+
 function Write-Utf8NoBom {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Content)
     [IO.File]::WriteAllText($Path, $Content, [Text.UTF8Encoding]::new($false))
@@ -418,6 +431,7 @@ try {
                 throw "Expected OpenMW pin $expectedEnginePin, found $engineHead"
             }
             Sync-OpenMwOverlay -Destination $EngineSource
+            Sync-LorkhanComponent -Destination $EngineSource
             if (-not $SkipBuild) {
                 $cmake = Get-CMakeExecutable
                 foreach ($target in @('openmw', 'openmw-launcher')) {
