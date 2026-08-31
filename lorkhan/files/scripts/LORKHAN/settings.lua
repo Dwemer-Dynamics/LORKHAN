@@ -27,6 +27,8 @@ if nativeOk and native.voiceCaptureDevices then
     if called and type(devices)=='table' and #devices>1 then recordingDeviceMax=#devices-2 end
 end
 
+-- Bindings the Hotkeys list no longer shows still resolve here: their triggers stay registered so
+-- already-saved user bindings keep working, and the controls themselves live in the Interact menu.
 local bindings = {
     talk = 'LORKHAN_Talk_Binding',
     pushToTalk = 'LORKHAN_PushToTalk_Binding',
@@ -57,6 +59,8 @@ trigger('LORKHAN_OpenMicMute','OpenMicMute_name','OpenMicMute_description')
 trigger('LORKHAN_ManualActivate','ManualActivate_name','ManualActivate_description')
 trigger('LORKHAN_ActionsMenu','ActorTools_name','ActorTools_description')
 trigger('LORKHAN_MasterMenu','ActorTools_name','ActorTools_description')
+-- Legacy triggers for controls that moved into Interact. Registered, but intentionally absent from
+-- the visible Hotkeys list so Interact is the single discoverable entry point.
 trigger('LORKHAN_ToggleMode','ModeMenu_name','ModeMenu_description')
 trigger('LORKHAN_ModelMenu','ModelMenu_name','ModelMenu_description')
 trigger('LORKHAN_ProfileMenu','ProfileMenu_name','ProfileMenu_description')
@@ -93,18 +97,8 @@ I.Settings.registerGroup({
             name='ManualActivate_name',description='ManualActivate_description',argument={type='trigger',key='LORKHAN_ManualActivate'}},
         {key='ActorToolsBinding',renderer='inputBinding',default=bindings.actorTools,
             name='ActorTools_name',description='ActorTools_description',argument={type='trigger',key='LORKHAN_ActionsMenu'}},
-        {key='ModeMenuBinding',renderer='inputBinding',default=bindings.modeMenu,
-            name='ModeMenu_name',description='ModeMenu_description',argument={type='trigger',key='LORKHAN_ToggleMode'}},
-        {key='ModelMenuBinding',renderer='inputBinding',default=bindings.modelMenu,
-            name='ModelMenu_name',description='ModelMenu_description',argument={type='trigger',key='LORKHAN_ModelMenu'}},
-        {key='ProfileMenuBinding',renderer='inputBinding',default=bindings.profileMenu,
-            name='ProfileMenu_name',description='ProfileMenu_description',argument={type='trigger',key='LORKHAN_ProfileMenu'}},
-        {key='StatusHudBinding',renderer='inputBinding',default=bindings.statusHud,
-            name='StatusHud_name',description='StatusHud_description',argument={type='trigger',key='LORKHAN_StatusHud'}},
-        {key='HistoryBinding',renderer='inputBinding',default=bindings.history,
-            name='History_name',description='History_description',argument={type='trigger',key='LORKHAN_History'}},
-        {key='DiagnosticsBinding',renderer='inputBinding',default=bindings.diagnostics,
-            name='Diagnostics_name',description='Diagnostics_description',argument={type='trigger',key='LORKHAN_Diagnostics'}},
+        -- Dialogue mode, LLM model, dynamic profiles, context history, status HUD, and diagnostics
+        -- are reached from the Interact menu, so they are deliberately not listed here.
     },
 })
 

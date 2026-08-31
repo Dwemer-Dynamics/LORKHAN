@@ -772,18 +772,49 @@ test('player mood and typed prefixes stay separate from the saved dialogue mode'
   end
  end
  truthy(uiState.setMood(s,'None'));eq(s.moodDirection,'');eq(uiState.moodSelection(s),nil)
+ -- panels shared by Interact and Targeted NPC Tools return to whichever menu opened them
+ eq(s.panelOrigin,'actor-tools');eq(uiState.backRoute(s).panel,'actor-tools')
+ eq(uiState.backRoute(s).label,'Targeted NPC Tools')
+ eq(uiState.setPanel(s,'diagnostics','conversation'),'diagnostics');eq(s.panelOrigin,'conversation')
+ eq(uiState.backRoute(s).panel,'conversation');eq(uiState.backRoute(s).label,'Back to conversation')
+ uiState.setPanel(s,'history') -- an origin-less panel change keeps the route the player arrived by
+ eq(s.panel,'history');eq(uiState.backRoute(s).panel,'conversation')
+ uiState.setPanel(s,'profile-menu','nowhere');eq(s.panelOrigin,'conversation')
+ uiState.setPanel(s,'modes','actor-tools');eq(uiState.backRoute(s).panel,'actor-tools')
 end)
 test('focused UI builders keep chat selectors tools and notifications independent',function()
  local ui={TYPE={Text='text',Image='image',TextEdit='edit',Container='container'},content=function(value)return value end}
  local util={vector2=function(x,y)return{x=x,y=y}end,color={rgb=function(r,g,b)return{r=r,g=g,b=b}end}}
  local chatbox=require('scripts.LORKHAN.ui.chatbox')
  local uiState=require('scripts.LORKHAN.ui.state')
- local chat=chatbox.build({ui=ui,util=util,target='Fargoth',text='',shortcuts=uiState.SHORTCUTS,
-  onTextChanged=function()end,onKeyPress=function()end,onSend=function()end,onClose=function()end})
+ -- every Interact entry gets its own callback so a mis-wired row cannot pass unnoticed
+ local clicked
+ local menuContext={ui=ui,util=util,target='Fargoth',text='',shortcuts=uiState.SHORTCUTS,
+  onTextChanged=function()end,onKeyPress=function()end,onSend=function()end,onClose=function()end}
+ for _,entry in ipairs(chatbox.MENU) do
+  menuContext[entry.callback]=function() clicked=entry.key end
+ end
+ local chat=chatbox.build(menuContext)
  eq(chat[1].props.text,'Chat with Fargoth');eq(chat[#chat-1].props.text,'Send');eq(chat[#chat].props.text,'Close')
  eq(chat[2].props.text,'Mood: None  |  Mode: Standard')
  eq(chat[4].props.text,'One-turn prefixes: || Close, !! Shout, | Whisper.')
- eq(chat[#chat-2].props.text,'Mood and delivery...')
+ -- the moved controls sit between the send hint and Send, in one compact clickable list
+ local MENU_FIRST=6
+ eq(#chatbox.MENU,7);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
+ local expected={'mood','modes','model','profiles','history','statusHud','diagnostics'}
+ for index,entry in ipairs(chatbox.MENU) do
+  eq(entry.key,expected[index])
+  local row=chat[MENU_FIRST+index-1]
+  eq(row.props.text,entry.key=='statusHud' and 'Status HUD: off' or entry.label)
+  clicked=nil;row.events.mouseClick();eq(clicked,entry.key)
+ end
+ eq(chat[MENU_FIRST].props.text,'Mood and delivery...')
+ -- the status HUD entry reports the state it will leave behind, and toggles rather than navigates
+ local hudShown=chatbox.build({ui=ui,util=util,target='Fargoth',text='',shortcuts=uiState.SHORTCUTS,
+  statusHudVisible=true,onTextChanged=function()end,onKeyPress=function()end,
+  onSend=function()end,onClose=function()end})
+ eq(hudShown[MENU_FIRST+5].props.text,'Status HUD: on')
+ eq(chatbox.statusHudLabel(true),'Status HUD: on');eq(chatbox.statusHudLabel(false),'Status HUD: off')
  local prefixed=chatbox.build({ui=ui,util=util,target='Fargoth',text='|| stay close',
   mood='Custom: hushed',mode='Standard',turnMode='Close',turnPrefix='||',shortcuts=uiState.SHORTCUTS,
   onTextChanged=function()end,onKeyPress=function()end,onSend=function()end,onClose=function()end})
@@ -839,7 +870,7 @@ package.preload['openmw.lorkhan']=function() return {
  package.loaded['scripts.LORKHAN.settings']=nil
  local settingsEntry=require('scripts.LORKHAN.settings')
  eq(next(settingsEntry),nil)
- eq(registered.pages[1].key,'LORKHAN');eq(#registered.groups,6);eq(registered.groups[1].page,'LORKHAN');eq(#registered.groups[1].settings,14)
+ eq(registered.pages[1].key,'LORKHAN');eq(#registered.groups,6);eq(registered.groups[1].page,'LORKHAN');eq(#registered.groups[1].settings,8)
  for _,setting in ipairs(registered.groups[1].settings) do truthy(setting.name);truthy(setting.description) end
  truthy(registered.triggers.LORKHAN_Talk);truthy(registered.triggers.LORKHAN_Halt)
  truthy(registered.triggers.LORKHAN_StopDialogue);truthy(registered.triggers.LORKHAN_ManualActivate)
@@ -852,10 +883,17 @@ package.preload['openmw.lorkhan']=function() return {
  local function setting(group,key)
   for _,candidate in ipairs(group.settings) do if candidate.key==key then return candidate end end
  end
- truthy(setting(registered.groups[1],'StopDialogueBinding'));truthy(setting(registered.groups[1],'StatusHudBinding'))
- truthy(setting(registered.groups[1],'HistoryBinding'));truthy(setting(registered.groups[1],'DiagnosticsBinding'))
+ truthy(setting(registered.groups[1],'StopDialogueBinding'));truthy(setting(registered.groups[1],'TalkBinding'))
+ truthy(setting(registered.groups[1],'HaltBinding'));truthy(setting(registered.groups[1],'ManualActivateBinding'))
+ truthy(setting(registered.groups[1],'ActorToolsBinding'))
  truthy(setting(registered.groups[1],'PushToTalkBinding'));truthy(setting(registered.groups[1],'OpenMicBinding'))
  truthy(setting(registered.groups[1],'OpenMicMuteBinding'))
+ -- the six moved controls leave the visible Hotkeys list so Interact is the one discoverable entry
+ for _,key in ipairs({'ModeMenuBinding','ModelMenuBinding','ProfileMenuBinding','StatusHudBinding',
+  'HistoryBinding','DiagnosticsBinding'}) do eq(setting(registered.groups[1],key),nil) end
+ -- their triggers stay registered so bindings users already saved keep working
+ for _,key in ipairs({'LORKHAN_ToggleMode','LORKHAN_ModelMenu','LORKHAN_ProfileMenu','LORKHAN_StatusHud',
+  'LORKHAN_History','LORKHAN_Diagnostics'}) do truthy(registered.triggers[key]) end
  eq(registered.groups[2].key,'SettingsLORKHANAutoActivate');eq(setting(registered.groups[2],'enabled').default,true)
  eq(setting(registered.groups[2],'interiorDistance').default,1200);eq(setting(registered.groups[2],'exteriorDistance').default,2400)
  eq(setting(registered.groups[2],'interiorHearingDistance').default,500)

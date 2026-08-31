@@ -442,6 +442,34 @@ local function setMood(mood)
     return true
 end
 
+-- Panels the Interact menu opens for the aimed actor still need a resolved target, exactly as the
+-- legacy hotkeys did through openPanel.
+local TARGETED_PANELS={models=true,profiles=true,['profile-menu']=true}
+local function openFromConversation(panel)
+    if TARGETED_PANELS[panel] and not state.ui.target then chooseTarget(2048,true) end
+    uiState.setPanel(state.ui,panel,'conversation')
+end
+
+-- One status HUD toggle shared by the legacy hotkey and the Interact entry, so the saved setting,
+-- the HUD strip, and the menu label can never disagree.
+local function toggleStatusHud()
+    state.ui.statusHudVisible=not state.ui.statusHudVisible
+    if presentationSettings then presentationSettings:set('showStatusHud',state.ui.statusHudVisible) end
+    state.ui.status='status HUD '..(state.ui.statusHudVisible and 'on' or 'off')
+    render()
+    return state.ui.statusHudVisible
+end
+
+-- One back row for every panel that Interact and Targeted NPC Tools both reach, so the label and
+-- the destination always describe the menu the player actually came from.
+local function backRow()
+    local route=uiState.backRoute(state.ui)
+    return {type=openmwUi.TYPE.Text,props={text=route.label,textSize=16,
+        textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
+            state.ui.panel=route.panel render()
+        end)}}
+end
+
 local function actionContext(actionTarget)
     local snapshot=conversationContext(state.ui.target)
     snapshot.dialogueMode=state.ui.mode
@@ -546,7 +574,16 @@ render=function()
                     pendingTextSubmit=false state.ui.visible=false leaveUiMode() render()
                 end
             end),
-            onSelectMood=adapter.callback(function() state.ui.panel='moods' render() end),
+            statusHudVisible=state.ui.statusHudVisible,
+            onSelectMood=adapter.callback(function() openFromConversation('moods') render() end),
+            onSelectModes=adapter.callback(function() openFromConversation('modes') render() end),
+            onSelectModel=adapter.callback(function()
+                openFromConversation('models') refreshSessionControls('models')
+            end),
+            onSelectProfiles=adapter.callback(function() openFromConversation('profile-menu') render() end),
+            onSelectHistory=adapter.callback(function() openFromConversation('history') render() end),
+            onToggleStatusHud=adapter.callback(toggleStatusHud),
+            onSelectDiagnostics=adapter.callback(function() openFromConversation('diagnostics') render() end),
             onSend=adapter.callback(submitText),
             onClose=adapter.callback(function() pendingTextSubmit=false state.ui.visible=false leaveUiMode() render() end)})
     elseif state.ui.panel=='nearby-profiles' then
@@ -590,7 +627,7 @@ render=function()
                 state.ui.panel='profile-menu' render()
             end)}}
     elseif state.ui.panel=='history' then
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Conversation History',textSize=20,
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Context History',textSize=20,
             textColor=util.color.rgb(0.95,0.9,0.82)}}
         if #state.ui.transcript==0 then
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='No LORKHAN dialogue in this session yet.',
@@ -623,10 +660,7 @@ render=function()
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Page '..state.ui.historyPage..' / '..pages,
                 textSize=13,textColor=util.color.rgb(0.72,0.68,0.62)}}
         end
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
-            textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
-                state.ui.panel='actor-tools' render()
-            end)}}
+        transcript[#transcript+1]=backRow()
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Close',textSize=16,
             textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
                 state.ui.visible=false leaveUiMode() render()
@@ -696,10 +730,7 @@ render=function()
         transcript[#transcript+1]={type=openmwUi.TYPE.TextEdit,props={text=copyText,textSize=14,
             size=util.vector2(720,52),multiline=true,wordWrap=true,readOnly=true,autoSize=false,
             textColor=util.color.rgb(0.92,0.82,0.68)}}
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
-            textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
-                state.ui.panel='actor-tools' render()
-            end)}}
+        transcript[#transcript+1]=backRow()
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Close',textSize=16,
             textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
                 state.ui.visible=false leaveUiMode() render()
@@ -795,7 +826,7 @@ render=function()
             link('Back',function() state.ui.actionView='root' state.ui.actionPage=1 render() end)
         end
         link('Conversation',function() state.ui.panel='conversation' render() end)
-        link('Targeted NPC Tools',function() state.ui.panel='actor-tools' render() end)
+        link('Targeted NPC Tools',function() uiState.setPanel(state.ui,'actor-tools','actor-tools') render() end)
         link('Close',function() state.ui.visible=false leaveUiMode() render() end)
     elseif state.ui.panel=='actor-tools' then
         transcript=actorTools.build({ui=openmwUi,util=util,target=displayName(state.ui.target),options={
@@ -804,7 +835,9 @@ render=function()
                 send('LORKHAN_AUDIENCE_REQUEST',{maxDistance=2048})
                 state.ui.status='adding aimed NPC to conversation' render()
             end)},
-            {label='Dynamic profiles...',onSelect=adapter.callback(function() state.ui.panel='profile-menu' render() end)},
+            {label='Dynamic profiles...',onSelect=adapter.callback(function()
+                uiState.setPanel(state.ui,'profile-menu','actor-tools') render()
+            end)},
             {label='Actor actions...',onSelect=adapter.callback(function()
                 state.ui.panel='actions' state.ui.actionView='root' state.ui.actionPage=1 render()
             end)},
@@ -820,7 +853,7 @@ render=function()
             {label='Targeted NPC',onSelect=adapter.callback(function() refreshSessionControls('profiles') end)},
             {label='Nearby AI NPCs',onSelect=adapter.callback(function() state.ui.panel='nearby-profiles' render() end)},
             {label='Narrator',onSelect=adapter.callback(function() refreshSessionControls('narrator') end)},
-        },onBack=adapter.callback(function() state.ui.panel='actor-tools' render() end),
+        },onBack=adapter.callback(function() state.ui.panel=uiState.backRoute(state.ui).panel render() end),
         onClose=adapter.callback(function() state.ui.visible=false leaveUiMode() render() end)})
     elseif state.ui.panel=='models' or state.ui.panel=='profiles' or state.ui.panel=='narrator' then
         local controls=sessionControls()
@@ -872,8 +905,7 @@ render=function()
         end
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Refresh choices',textSize=16,
             textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function() refreshSessionControls(state.ui.panel) end)}}
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
-            textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function() state.ui.panel='actor-tools' render() end)}}
+        transcript[#transcript+1]=backRow()
     elseif state.ui.panel=='moods' then
         local moods={}
         for _,mood in ipairs(uiState.MOODS) do
@@ -914,10 +946,7 @@ render=function()
         for _,row in ipairs(chatbox.buildShortcutHelp({ui=openmwUi,util=util,shortcuts=uiState.SHORTCUTS})) do
             transcript[#transcript+1]=row
         end
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
-            textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
-                state.ui.panel='actor-tools' render()
-            end)}}
+        transcript[#transcript+1]=backRow()
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Close',textSize=16,
             textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
                 state.ui.visible=false leaveUiMode() render()
@@ -938,7 +967,7 @@ render=function()
                 state.ui.pendingAction=nil render()
             end)}}
     end
-    local panelSizes={conversation={560,250},['actor-tools']={540,360},['profile-menu']={520,300},
+    local panelSizes={conversation={560,400},['actor-tools']={540,360},['profile-menu']={520,300},
         modes={540,480},moods={520,470},models={580,420},profiles={580,420},narrator={580,330},
         ['nearby-profiles']={680,460},history={760,620},diagnostics={760,620}}
     local panelSize=panelSizes[state.ui.panel] or {680,460}
@@ -1068,7 +1097,8 @@ end
 
 local function openPanel(panel)
     if not controlsAllowed() and not ownsUiMode then return end
-    state.ui.panel=panel state.ui.visible=true
+    -- Saved hotkeys still open these panels directly, so they keep the Targeted NPC Tools back route.
+    uiState.setPanel(state.ui,panel,'actor-tools') state.ui.visible=true
     if panel=='actions' then state.ui.actionView='root' state.ui.actionPage=1 end
     if (panel=='actions' or panel=='conversation' or panel=='actor-tools' or panel=='models'
         or panel=='profiles' or panel=='profile-menu') and not state.ui.target then chooseTarget(2048) end
@@ -1208,9 +1238,7 @@ if inputOk then
     input.registerTriggerHandler('LORKHAN_ProfileMenu',adapter.callback(function() togglePanel('profile-menu') end))
     input.registerTriggerHandler('LORKHAN_StatusHud',adapter.callback(function()
         if not controlsAllowed() then return end
-        state.ui.statusHudVisible=not state.ui.statusHudVisible
-        if presentationSettings then presentationSettings:set('showStatusHud',state.ui.statusHudVisible) end
-        render()
+        toggleStatusHud()
     end))
     input.registerTriggerHandler('LORKHAN_History',adapter.callback(function() togglePanel('history') end))
     input.registerTriggerHandler('LORKHAN_Diagnostics',adapter.callback(function() togglePanel('diagnostics') end))

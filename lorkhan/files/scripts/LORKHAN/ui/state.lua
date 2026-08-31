@@ -14,15 +14,24 @@ local MOODS={'None','Happy','Sad','Angry','Annoyed','Scared','Surprised','Confus
 local MOOD_DIRECTION_LIMIT=playerInput.CUSTOM_LIMIT
 local MOOD_SUMMARY_LIMIT=34
 
+-- Panels that Interact and Targeted NPC Tools both reach remember which menu opened them, so the
+-- back row returns to the menu the player actually used instead of a fixed destination.
+local BACK_ROUTES={
+    conversation={panel='conversation',label='Back to conversation'},
+    ['actor-tools']={panel='actor-tools',label='Targeted NPC Tools'},
+}
+local DEFAULT_ORIGIN='actor-tools'
+
 M.MODES=MODES
 M.SHORTCUTS=SHORTCUTS
 M.MOODS=MOODS
 M.MOOD_DIRECTION_LIMIT=MOOD_DIRECTION_LIMIT
+M.BACK_ROUTES=BACK_ROUTES
 
 function M.new(policy)
     return {visible=false, status='offline', target=nil, audience={}, nearby={}, agents={}, input='', transcript={}, subtitle=nil,
         diagnostics=nil, lastCorrelation=nil, mode='Standard',panel='conversation',actionView='root',actionPage=1,actionSlot=nil,
-        historyPage=1,
+        historyPage=1,panelOrigin=DEFAULT_ORIGIN,
         mood='None',moodDirection='',
         -- turnMode/turnPrefix stay nil until a typed prefix is previewed; they never replace `mode`.
         pendingTargetAction=nil,
@@ -116,6 +125,18 @@ function M.moodSelection(state)
         return {kind='custom',custom=direction}
     end
     return {kind=state.mood:lower()}
+end
+
+-- Switch panels and record the menu the player came from. An unknown origin keeps the previous
+-- one so an incidental panel change can never strand the player without a back route.
+function M.setPanel(state,panel,origin)
+    if origin and BACK_ROUTES[origin] then state.panelOrigin=origin end
+    state.panel=panel
+    return state.panel
+end
+
+function M.backRoute(state)
+    return BACK_ROUTES[state.panelOrigin] or BACK_ROUTES[DEFAULT_ORIGIN]
 end
 
 function M.toggle(state) state.visible = not state.visible return state.visible end

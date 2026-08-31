@@ -352,7 +352,7 @@ LORKHAN Compatibility Mod Manager, enable the folder and its content files,
 set their order, then save. The manager backs up the profile before changes.
 Use Manage-LORKHAN-Mods.cmd for OpenMW engine and general launcher settings.
 
-F6 opens typed conversation. F7 stops current LORKHAN work. F8 opens Actor Actions.
+F6 opens Interact. F7 stops current LORKHAN work. F8 opens Actor Actions.
 The Master Menu is linked inside the conversation and action panels.
 Rebind all LORKHAN inputs under Options > Scripts > LORKHAN.
 "@
