@@ -64,7 +64,7 @@ stock OpenMW executable.
    The `Dialogue mode` hotkey opens routing choices: Standard adds normal spatial hearing, Close uses only
    the explicit group, Whisper uses the primary target only, and Shout doubles spatial hearing. Typed chat
    also accepts `|` for one Whisper turn, `||` for one Close turn, and `!!` for one Shout turn without
-   changing the selected mode. `Mood and delivery...` applies an optional saved mood cue to typed and
+   changing the selected mode. `Mood` applies an optional saved mood cue to typed and
    spoken turns; None and an empty custom cue keep ordinary chat unchanged.
 9. Interact > `LLM Model` always presents Standard, Fast, Powerful, and Experimental. The selected
    semantic slot is saved for the installation and resolves through the currently effective profile;

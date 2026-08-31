@@ -808,7 +808,7 @@ test('focused UI builders keep chat selectors tools and notifications independen
   eq(row.props.text,entry.key=='statusHud' and 'Status HUD: off' or entry.label)
   clicked=nil;row.events.mouseClick();eq(clicked,entry.key)
  end
- eq(chat[MENU_FIRST].props.text,'Mood and delivery...')
+ eq(chat[MENU_FIRST].props.text,'Mood')
  -- the status HUD entry reports the state it will leave behind, and toggles rather than navigates
  local hudShown=chatbox.build({ui=ui,util=util,target='Fargoth',text='',shortcuts=uiState.SHORTCUTS,
   statusHudVisible=true,onTextChanged=function()end,onKeyPress=function()end,
