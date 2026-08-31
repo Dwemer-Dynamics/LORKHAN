@@ -1205,6 +1205,8 @@ namespace MWLua
                         if (!item.displayName.empty()) payload["display_name"] = item.displayName;
                         if (item.confirmationRequired) payload["confirmation_required"] = *item.confirmationRequired;
                         if (item.followupEnabled) payload["followup_enabled"] = *item.followupEnabled;
+                        if (item.followupActionsAllowed) payload["followup_actions_allowed"] = *item.followupActionsAllowed;
+                        if (item.followupDepth) payload["followup_depth"] = *item.followupDepth;
                         payload["expires_at"] = item.expiresAt; break; }
                     case lorkhan::ProtocolEventType::response_complete: {
                         result["type"] = "response.complete";

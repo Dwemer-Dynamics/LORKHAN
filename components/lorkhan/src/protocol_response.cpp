@@ -488,7 +488,7 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     const auto* object = value.object();
     if (!object || !hasExactly(*object,
             {"schema", "action_id", "turn_id", "name", "tier", "actor", "target", "parameters", "expires_at"},
-            {"display_name", "confirmation_required", "followup_enabled"}))
+            {"display_name", "confirmation_required", "followup_enabled", "followup_actions_allowed", "followup_depth"}))
         return invalidSchemaValue<ActionIntent>("action intent fields mismatch");
     auto schema = requireString(*object, "schema");
     auto action = requireUuid(*object, "action_id");
@@ -522,6 +522,8 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     std::string displayName;
     std::optional<bool> confirmationRequired;
     std::optional<bool> followupEnabled;
+    std::optional<bool> followupActionsAllowed;
+    std::optional<std::uint32_t> followupDepth;
     if (json::find(*object, "display_name")) {
         auto parsed = requireString(*object, "display_name", 1, 128);
         if (!parsed) return invalidSchemaValue<ActionIntent>(parsed.error().message);
@@ -536,6 +538,16 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
         auto parsed = requireBoolean(*object, "followup_enabled");
         if (!parsed) return invalidSchemaValue<ActionIntent>(parsed.error().message);
         followupEnabled = parsed.value();
+    }
+    if (json::find(*object, "followup_actions_allowed")) {
+        auto parsed = requireBoolean(*object, "followup_actions_allowed");
+        if (!parsed) return invalidSchemaValue<ActionIntent>(parsed.error().message);
+        followupActionsAllowed = parsed.value();
+    }
+    if (json::find(*object, "followup_depth")) {
+        auto parsed = requireUnsigned(*object, "followup_depth", 1, 0);
+        if (!parsed) return invalidSchemaValue<ActionIntent>(parsed.error().message);
+        followupDepth = static_cast<std::uint32_t>(parsed.value());
     }
 
     const auto* actorValue = json::find(*object, "actor");
@@ -662,7 +674,8 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
         TurnId(std::move(turn).value()), std::move(actor).value(), std::move(target).value(),
         intentKind, followDistance, wanderDistance, wanderDurationSeconds, std::move(stringParameter),
         std::move(secondaryStringParameter),destinationX,destinationY,destinationZ,std::move(destinationCell),
-        std::move(displayName), confirmationRequired, followupEnabled, std::move(expiresAt).value()});
+        std::move(displayName), confirmationRequired, followupEnabled, followupActionsAllowed, followupDepth,
+        std::move(expiresAt).value()});
 }
 
 Result<ClientSettings> parseClientSettings(const json::Value& value)

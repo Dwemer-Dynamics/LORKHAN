@@ -137,6 +137,8 @@ struct ActionIntent {
     std::string displayName;
     std::optional<bool> confirmationRequired;
     std::optional<bool> followupEnabled;
+    std::optional<bool> followupActionsAllowed;
+    std::optional<std::uint32_t> followupDepth;
     std::string expiresAt;
 };
 

@@ -127,9 +127,9 @@
       "sha256": "cf485277846f2afd573ea41a417906a14955df716db156e50c785b9efc801a0b"
     },
     {
-      "bytes": 900,
+      "bytes": 955,
       "path": "lorkhan/fixtures/v1/valid/action-intent.json",
-      "sha256": "77821be9a68b60edd7836de3390e6a3d56b2d316e8cf6ec61e0e751e9c314576"
+      "sha256": "de887d6f3e8b04db09c15b68739313edd54f619827a500065b8f5222e2198b3c"
     },
     {
       "bytes": 531,
@@ -257,9 +257,9 @@
       "sha256": "ed9a6501ff7e95631f777ac770f87313f2b717f816f60a1cc87eccb544ee8473"
     },
     {
-      "bytes": 21259,
+      "bytes": 23371,
       "path": "lorkhan/schemas/v1/action-intent.schema.json",
-      "sha256": "6ac7a575d8497d2796e2c544cb7b4153c4fb34e25d5e67b77aca83168abf5848"
+      "sha256": "49c4e89d1eca53dc1182574e2c96855a164c29159b8945b3874b9ba194d3645b"
     },
     {
       "bytes": 1157,
