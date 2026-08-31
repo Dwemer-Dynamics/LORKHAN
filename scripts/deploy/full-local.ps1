@@ -179,7 +179,11 @@ function Sync-OpenMwOverlay {
             throw "OpenMW overlay path escapes the pinned worktree: $trackedFile"
         }
         New-Item -ItemType Directory -Force -Path (Split-Path $targetPath -Parent) | Out-Null
+        if ((Test-Path -LiteralPath $targetPath -PathType Leaf) -and
+            (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash -eq
+            (Get-FileHash -LiteralPath $targetPath -Algorithm SHA256).Hash) { continue }
         Copy-Item -LiteralPath $sourcePath -Destination $targetPath -Force
+        [IO.File]::SetLastWriteTimeUtc($targetPath, [DateTime]::UtcNow)
     }
 }
 
