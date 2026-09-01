@@ -267,6 +267,13 @@ class FoundationTests(unittest.TestCase):
             dialogue_event_patch,
         )
 
+    def test_typed_player_tts_uses_the_bounded_speech_lane(self):
+        player = (ROOT / "lorkhan/files/scripts/LORKHAN/player.lua").read_text(encoding="utf-8")
+        self.assertIn("startPlayerSpeech(speaker,parsed.text)", player)
+        self.assertIn("native.requestMenuDialogueTts(actor,text)", player)
+        self.assertIn("adapter.playSpeech(status.media_id,'',volume)", player)
+        self.assertIn("if action=='LORKHAN_Halt' then stopPlayerSpeech() end", player)
+
     def test_offline_cache_miss(self):
         result = self.command(sys.executable, str(BOOTSTRAP), "bootstrap", "--cache-dir", str(self.temp / "none"),
                               "--source-dir", str(self.temp / "source"), "--manifest", str(self.temp / "run.json"), check=False)

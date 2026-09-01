@@ -33,6 +33,7 @@ local contextCollectionSamples={}
 local speechActors={}
 local narratorSpeech
 local menuDialogueSpeech
+local playerSpeech
 local pendingCapturedDialogue={}
 local capturedDialogueSeen={}
 local capturedDialogueFlushElapsed=0
@@ -138,7 +139,7 @@ local function audienceNames()
     for _,actor in ipairs(state.ui.audience or {}) do names[#names+1]=displayName(actor) end
     return #names>0 and table.concat(names,', ') or 'None'
 end
-local function speechActive() return next(speechActors)~=nil end
+local function speechActive() return next(speechActors)~=nil or playerSpeech~=nil end
 local function nativeValue(name,fallback)
     if not nativeOk or not native or type(native[name])~='function' then return fallback end
     local ok,value=pcall(native[name])
@@ -166,6 +167,52 @@ end
 local function stopNarrator(reason)
     if not narratorSpeech then return end
     adapter.stopSpeech();reportNarrator('interrupted',reason or 'client_interrupted')
+end
+
+-- Keep typed player speech asynchronous so submitting a turn never waits for synthesis or playback.
+local function stopPlayerSpeech()
+    local current=playerSpeech
+    if not current then return end
+    if current.state=='playing' then adapter.stopSpeech() end
+    if current.request_id and nativeOk and native and native.cancelMenuDialogueTts then
+        pcall(native.cancelMenuDialogueTts,current.request_id)
+    end
+    playerSpeech=nil
+end
+
+local function startPlayerSpeech(actor,text)
+    stopPlayerSpeech()
+    stopNarrator('player_speech_started')
+    if not nativeOk or not native or not native.requestMenuDialogueTts then return end
+    local request,reason=native.requestMenuDialogueTts(actor,text)
+    if request then playerSpeech={request_id=request,state='requesting'}
+    elseif reason~='provider_unavailable' then print('[LORKHAN] player TTS rejected: '..tostring(reason)) end
+end
+
+local function updatePlayerSpeech()
+    local current=playerSpeech
+    if not current then return end
+    if current.state=='playing' then
+        if not adapter.isSpeechActive() then stopPlayerSpeech() end
+        return
+    end
+    if not nativeOk or not native or not native.menuDialogueTtsStatus then stopPlayerSpeech() return end
+    local status=native.menuDialogueTtsStatus(current.request_id)
+    if not status then stopPlayerSpeech() return end
+    if status.state=='failed' then
+        if status.reason~='provider_unavailable' then
+            print('[LORKHAN] player TTS failed: '..tostring(status.reason or 'unavailable'))
+        end
+        stopPlayerSpeech()
+        return
+    end
+    current.state=status.state
+    if status.state=='ready' and status.media_id then
+        local volume=tonumber(soundSettings and soundSettings:get('ttsVolumeBoost')) or 3
+        local ok,reason=adapter.playSpeech(status.media_id,'',volume)
+        if ok then current.state='playing'
+        else print('[LORKHAN] player TTS playback failed: '..tostring(reason or 'playback_failed'));stopPlayerSpeech() end
+    end
 end
 
 local function dialogueMenuOpen()
@@ -357,6 +404,7 @@ local function submitText()
     local context=conversationContext(state.ui.target)
     local effectiveMode=parsed.mode or state.ui.mode
     context.dialogueMode=effectiveMode
+    startPlayerSpeech(speaker,parsed.text)
     send('LORKHAN_SUBMIT_TEXT',{text=parsed.text,language='en-US',speaker=speaker,dialogueMode=effectiveMode,
         mood=uiState.moodSelection(state.ui),
         context=context,capabilities=CAPABILITIES,
@@ -1342,6 +1390,7 @@ if inputOk then
     end))
     input.registerTriggerHandler('LORKHAN_Halt',adapter.callback(function()
         state.ui.pendingTargetAction=nil
+        stopPlayerSpeech()
         player.onAction(state,'LORKHAN_Halt',send) state.ui.status='stopped' render()
     end))
     input.registerTriggerHandler('LORKHAN_ManualActivate',adapter.callback(manualActivate))
@@ -1381,7 +1430,10 @@ end
 
 return {
     engineHandlers={
-        onInputAction=function(action) return player.onAction(state,action,send) end,
+        onInputAction=function(action)
+            if action=='LORKHAN_Halt' then stopPlayerSpeech() end
+            return player.onAction(state,action,send)
+        end,
         onKeyPress=function(event)
             if inputOk and state.ui.visible and state.ui.panel=='conversation' and event
                 and (event.code==input.KEY.Enter or event.code==input.KEY.NP_Enter) then
@@ -1406,6 +1458,7 @@ return {
         -- settings scan, or event processing belongs here.
         onFrame=function()
             pumpDebugCommands()
+            updatePlayerSpeech()
             if not controlsRequestActive or not state.ui.visible
                 or not SERVER_CONTROL_PANELS[state.ui.panel] then return end
             if not nativeOk or not native or not native.pumpSessionControls then
@@ -1422,6 +1475,7 @@ return {
         end,
         onUpdate=function(dt)
             if narratorSpeech and not adapter.isSpeechActive() then reportNarrator('played','playback_completed') end
+            updatePlayerSpeech()
             updateMenuDialogueSpeech()
             flushCapturedDialogue(dt)
             local elapsed=tonumber(dt) or 0
@@ -1494,6 +1548,7 @@ return {
             updateMenuDialogueSpeech()
         end,
         LORKHAN_NARRATOR_SPEAK=function(command)
+            stopPlayerSpeech()
             stopNarrator('speech_replaced')
             local ok,reason=adapter.playSpeech(command.media_id,command.subtitle,command.tts_volume_boost)
             if ok then narratorSpeech=command
@@ -1501,6 +1556,7 @@ return {
             else narratorSpeech=command reportNarrator('failed',reason or 'playback_failed') end
         end,
         LORKHAN_NARRATOR_SUBTITLE=function(command)
+            stopPlayerSpeech()
             stopNarrator('subtitle_replaced') narratorSpeech=command
             local ok,reason=adapter.showSubtitle(command.subtitle)
             reportNarrator(ok and 'played' or 'failed',ok and 'subtitle_displayed' or (reason or 'subtitle_unavailable'))
@@ -1531,6 +1587,7 @@ return {
             else
                 state.ui.status='message failed: '..tostring(event.reason or 'unknown')
                 turnActive=false
+                stopPlayerSpeech()
                 pendingHistory=nil
                 print('[LORKHAN] text message rejected: '..tostring(event.reason or 'unknown'))
             end
@@ -1567,6 +1624,7 @@ return {
                 and (turnActive or voiceRecording or openMicEnabled or speechActive()) then
                 send('LORKHAN_STOP_DIALOGUE_REQUEST',{})
                 voiceRecording=false;openMicEnabled=false;openMicMuted=false;pttHeld=false;turnActive=false
+                stopPlayerSpeech()
                 speechActors={}
                 state.ui.status='dialogue stopped for combat'
                 render()
