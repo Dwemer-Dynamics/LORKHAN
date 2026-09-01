@@ -764,14 +764,32 @@ emitInbound=function(state,name,payload)
     return ok
 end
 
+-- Convert a correlated HTTP failure into a local terminal turn so the next input is not stranded.
+local function applyTransportFailure(state,event)
+    local turn=state.conversation.turn
+    if not turn or turn.terminal or event.request_id~=turn.requestId then return false end
+    turn.terminal=true turn.status='failed' turn.reason=event.reason or 'transport_failure'
+    if state.rechat then state.rechat.cancelled=true state.rechat.requestInFlight=false end
+    local failed={type='turn.failed',request_id=turn.requestId,turn_id=turn.turnId,
+        session_id=state.sessionId,generation=state.generation,
+        payload={status='failed',code=turn.reason}}
+    emitInbound(state,'LORKHAN_EVENT',failed)
+    print('[LORKHAN] response turn terminal: transport.failure '..tostring(turn.turnId))
+    return true
+end
+
 function M.poll(state)
     if state.disabled or state.hardHalted then return 0 end
     local results=state.bridge.pollResults(constants.MAX_INBOUND_RESULTS) or {}
     local accepted=0
     for index=1,math.min(#results,constants.MAX_INBOUND_RESULTS) do
         local event=results[index]
-        local ok,reason=state.events:accept(event)
-        if ok then
+        if event.type=='transport.failure' then
+            if applyTransportFailure(state,event) then accepted=accepted+1
+            else print('[LORKHAN] transport failure dropped: '..tostring(event.request_id)) end
+        else
+            local ok,reason=state.events:accept(event)
+            if ok then
             if reason=='cursor_resynced' then
                 print('[LORKHAN] response cursor recovered at sequence '..tostring(event.sequence)
                     ..' ('..tostring(event.type)..')')
@@ -841,9 +859,10 @@ function M.poll(state)
                 emitInbound(state,'LORKHAN_DROP',{reason=applyReason})
             end
             end
-        elseif reason~='duplicate_event' and reason~='stale_generation' and reason~='stale_session' then
-            print('[LORKHAN] response event rejected: '..tostring(reason)..' at sequence '..tostring(event.sequence))
-            emitInbound(state,'LORKHAN_RESYNC',{reason=reason,cursor=state.events:cursor()})
+            elseif reason~='duplicate_event' and reason~='stale_generation' and reason~='stale_session' then
+                print('[LORKHAN] response event rejected: '..tostring(reason)..' at sequence '..tostring(event.sequence))
+                emitInbound(state,'LORKHAN_RESYNC',{reason=reason,cursor=state.events:cursor()})
+            end
         end
     end
     pumpResponseQueue(state)

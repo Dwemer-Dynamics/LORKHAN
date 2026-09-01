@@ -181,7 +181,8 @@ end
 
 -- Validate the actor snapshot that materializes a profile after successful automatic activation.
 function M.actorProfile(args)
-    if type(args)~='table' or not identity.validate(args.actor) or args.actor.kind~='npc' then
+    if type(args)~='table' or not identity.validate(args.actor)
+        or (args.actor.kind~='npc' and args.actor.kind~='creature') then
         return nil,'invalid_actor_profile'
     end
     if type(args.race)~='string' or #args.race<1 or #args.race>128

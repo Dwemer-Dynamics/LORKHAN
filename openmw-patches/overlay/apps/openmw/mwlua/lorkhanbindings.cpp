@@ -592,12 +592,15 @@ namespace MWLua
                     for (std::size_t index = 1; index <= capabilities.size(); ++index)
                         runtime.capabilities.push_back(capabilities.get<std::string>(index));
                     const std::string payload = toJson(dto.get<sol::object>("payload"));
+                    const std::string requestId=ids.request.value();
+                    const std::string turnId=ids.turn.value();
                     lorkhan::OutboundRequest request{ ids.request, ids.session, ids.generation, lorkhan::RequestKind::turn,
                         lorkhan::TurnRequest{ std::move(ids), lorkhan::Generation(dto.get<std::uint64_t>("runtime_generation")),
                             std::move(runtime), dto.get<std::string>("content_fingerprint"),
                             dto.get<std::string>("created_at"), payload } };
                     auto accepted = m_service->enqueue(std::move(request));
                     if (!accepted) return failure(lua, accepted.error().message);
+                    m_turnRequests.emplace(requestId,turnId);
                     return success(lua, accepted.value().value());
                 }
                 catch (const std::exception& error) { return failure(lua, error.what()); }
@@ -1087,6 +1090,15 @@ namespace MWLua
                     if (settleDebugResult(result)) continue;
                     if (result.kind == lorkhan::ResponseKind::failure)
                     {
+                        const auto failedTurn=m_turnRequests.find(result.request.value());
+                        if(failedTurn!=m_turnRequests.end()){
+                            sol::table failureEvent(lua,sol::create);
+                            failureEvent["type"]="transport.failure";
+                            failureEvent["request_id"]=result.request.value();
+                            failureEvent["turn_id"]=failedTurn->second;
+                            failureEvent["reason"]=result.failure?result.failure->message:"transport_failure";
+                            output[outIndex++]=failureEvent;m_turnRequests.erase(failedTurn);
+                        }
                         const bool pollFailure = m_pollRequest && result.request == *m_pollRequest;
                         bool menuFailure=false;
                         for(auto& [unused,dialogue]:m_menuDialogues){
@@ -1186,6 +1198,7 @@ namespace MWLua
                     {
                         settleControlsResult(result);
                     }
+                    if(result.kind!=lorkhan::ResponseKind::failure)m_turnRequests.erase(result.request.value());
                 }
                 schedulePoll();
                 return output;
@@ -1198,7 +1211,7 @@ namespace MWLua
                 if (!result) return false;
                 cancelMenuDialogueTts();
                 m_session.reset(); m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();
-                m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_controlsError.clear();m_debugError.clear();beginSession();
+                m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_turnRequests.clear();m_controlsError.clear();m_debugError.clear();beginSession();
                 m_status = "connecting";
                 return true;
             }
@@ -1207,6 +1220,7 @@ namespace MWLua
             {
                 lorkhan::VoiceCaptureService::instance().halt();
                 if (m_service) m_service->halt();
+                m_turnRequests.clear();
                 m_status = "halted";
             }
 
@@ -1404,6 +1418,7 @@ namespace MWLua
             static constexpr std::size_t kControlsPumpBatch = 8;
             static constexpr std::size_t kDeferredResultCapacity = lorkhan::kInboundCapacity;
             std::vector<lorkhan::InboundResult> m_deferredResults;
+            std::map<std::string,std::string> m_turnRequests;
             std::uint64_t m_cursor{};
             std::chrono::steady_clock::time_point m_nextPoll{};
             std::map<std::string, MediaState> m_media;
