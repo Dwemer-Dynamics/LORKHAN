@@ -27,9 +27,9 @@ The repos should be sibling directories under the intentionally non-Git `~/Proje
 mkdir -p ~/Projects
 cd ~/Projects
 gh repo clone RANGROO/LORKHAN
-gh repo clone RANGROO/LORKHANserver
+gh repo clone RANGROO/LorkhanServer
 git -C LORKHAN remote -v
-git -C LORKHANserver remote -v
+git -C LorkhanServer remote -v
 ```
 
 If the existing local clones are current and clean, use them instead of cloning again. Never nest
@@ -65,7 +65,7 @@ Paste exactly:
 
 > Read `CLAUDEX-TASK.md` completely, then read every client and sibling-server document it requires.
 > Execute the assignment end to end using the approved Azure GPT-5.6 Sol deployment. The sibling is
-> `../LORKHANserver`. First prove the post-SYNTH start gate and record the final SYNTH/Synthserver
+> `../LorkhanServer`. First prove the post-SYNTH start gate and record the final SYNTH/Synthserver
 > SHAs. Use the documented parent/child ownership, keep worktrees and files disjoint, commit coherent
 > checkpoints locally, and continue until the task's stop condition is true. Do not push, publish,
 > release, deploy, expose a service, use live provider billing, modify reference repositories, or
@@ -106,8 +106,8 @@ Periodically check from a second read-only terminal:
 ```bash
 git -C ~/Projects/LORKHAN status --short
 git -C ~/Projects/LORKHAN log --oneline -8
-git -C ~/Projects/LORKHANserver status --short
-git -C ~/Projects/LORKHANserver log --oneline -8
+git -C ~/Projects/LorkhanServer status --short
+git -C ~/Projects/LorkhanServer log --oneline -8
 ```
 
 Ask the parent for a short status only when needed: current gate, last green command, next incomplete

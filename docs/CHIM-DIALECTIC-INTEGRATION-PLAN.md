@@ -2,7 +2,7 @@
 
 Status: finalized long-running implementation plan, audited and user-confirmed 2026-08-09.
 
-This is the execution contract for bringing LORKHAN and LORKHANserver to the applicable CHIM/HerikaServer and Dialectic/DialecticServer product shape. It replaces feature-by-feature invention with direct, documented reuse of the established systems.
+This is the execution contract for bringing LORKHAN and LorkhanServer to the applicable CHIM/HerikaServer and Dialectic/DialecticServer product shape. It replaces feature-by-feature invention with direct, documented reuse of the established systems.
 
 ## 1. Fixed scope
 
@@ -29,7 +29,7 @@ Rechat is not autonomy in this plan. It is a bounded continuation of a player-st
 
 ## 1.1 Confirmed execution decisions
 
-- Consolidate all existing parity, UI, rechat, prompt, eventlog, STT, and planning commits into the two existing draft PRs. Fast-forward LORKHAN's `codex/full-dialectic-parity` PR branch from `codex/stt-parity`, and LORKHANserver's `codex/herika-ui-core-port` PR branch from `codex/stt-parity`, then continue implementation in isolated worktrees from those consolidated heads.
+- Consolidate all existing parity, UI, rechat, prompt, eventlog, STT, and planning commits into the two existing draft PRs. Fast-forward LORKHAN's `codex/full-dialectic-parity` PR branch from `codex/stt-parity`, and LorkhanServer's `codex/herika-ui-core-port` PR branch from `codex/stt-parity`, then continue implementation in isolated worktrees from those consolidated heads.
 - Keep both PRs draft and targeted at `main`. Consolidation does not authorize merging either PR into `main`.
 - Freeze the six audited reference commits below for this implementation. Perform one explicit upstream parity refresh after the frozen plan is complete; do not chase moving upstream branches during the work.
 - Keep typed PostgreSQL source tables authoritative while copying the applicable HerikaServer/DialecticServer public table names, column order, types, defaults, indexes, views, and UI formatting as exact compatibility projections/adapters.
@@ -52,7 +52,7 @@ Rechat is not autonomy in this plan. It is a bounded continuation of a player-st
 Audited references:
 
 - LORKHAN checkpoint: `eee848c00bb48536c67de97ab953760e7c67da76`
-- LORKHANserver checkpoint: `554befb6d167d2d6deb436662de858503853a584`
+- LorkhanServer checkpoint: `554befb6d167d2d6deb436662de858503853a584`
 - CHIM `origin/unstable`: `005df4c1fda5ff195dc14a674fe71b11542be4df`
 - HerikaServer `origin/unstable`: `c973f5c8fde2d01cb8211be3d5f96d1783663da4`
 - Dialectic `origin/unstable`: `5cd2817a6733acbe25ca21bdfb716ed64617f5f8`
@@ -157,7 +157,7 @@ Adapt `conversation.lua` and `orchestrator.lua` to this model. Remove overlappin
 
 ## 7. Database cutover
 
-Use the LORKHANserver plan for the full table map. The client-visible rules are:
+Use the LorkhanServer plan for the full table map. The client-visible rules are:
 
 - typed source tables remain the write authority;
 - CHIM/Herika names are projections or transactional adapters over those source rows;
@@ -223,7 +223,7 @@ Each section must have a recorded typed source, ordering index, inclusion reason
    - one Windows 2022 x64 Release native job for the standalone bridge/core build and CTest;
    - no macOS, Linux native compiler matrix, sanitizer matrix, duplicate packaging workflow, or definition-only jobs.
 3. Fix the Ubuntu PowerShell/path validator or replace it with one portable entrypoint rather than preserving redundant workflow plumbing.
-4. Add one LORKHANserver Ubuntu workflow covering PHP lint, protocol parity, the existing test suite, disposable PostgreSQL migrations/integration, durable workers, and management HTTP flows.
+4. Add one LorkhanServer Ubuntu workflow covering PHP lint, protocol parity, the existing test suite, disposable PostgreSQL migrations/integration, durable workers, and management HTTP flows.
 5. Refresh stale evidence ledgers so implemented behavior is not still marked `PLANNED` and no row claims unperformed in-game proof.
 
 ### P1 - Canonical schema and data model
@@ -289,7 +289,7 @@ Manual gameplay is a post-goal verification step, not a blocker for completing t
 
 ## 11. Recommended implementation slices
 
-Keep each slice paired across LORKHAN and LORKHANserver:
+Keep each slice paired across LORKHAN and LorkhanServer:
 
 1. CI and evidence-ledger repair.
 2. Schema/table inventory and excluded-feature quarantine.

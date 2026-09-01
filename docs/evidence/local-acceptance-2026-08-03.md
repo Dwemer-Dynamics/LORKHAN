@@ -12,7 +12,7 @@ Server source commit: `40ebe0e59be36c13d1a8e115f4432c2fd4d9097c` on `codex/herik
 | Windows x64 Release product build | PASS - OpenMW 0.51.0 at pinned revision `f4bec41444` |
 | Local client deployment | PASS - `C:\Modlists\LORKHAN`; source and deployed `openmw.exe` SHA-256 both `63892e2445fd1ea651e2b00a806a7f0431c0468a49df38b8d8691ac041d8aaed` |
 | Lua deployment | PASS - source and deployed `player.lua` SHA-256 both `997778ec2617dd99865d57a9904f38085fcebe5abef7507fa7d534f082244188` |
-| Server deployment and health | PASS - `/var/www/html/LORKHANserver`, `lorkhan.health.v1`, Apache running, worker loop and PHP worker use the active tree |
+| Server deployment and health | PASS - `/var/www/html/LorkhanServer`, `lorkhan.health.v1`, Apache running, worker loop and PHP worker use the active tree |
 | Browser visual acceptance | PASS at 1280x720 desktop and true 390x844 mobile emulation for the principal hubs and page families; Config and Control embedded documents have no horizontal overflow |
 
 The local Windows product build and deployment are proven. No unmodified OpenMW control build,

@@ -148,7 +148,7 @@ check("history and diagnostics bindings open their named panels", all(fragment i
 check("diagnostics use configured server and native bridge state", all(fragment in player_lua for fragment in [
     "nativeValue('serverBaseUrl',nil)", "'/ui/home.php'", "'Server connection: '",
     "'Session ID: '", "'Bridge queue: '", "nativeValue('lastError','none')",
-]) and 'http://127.0.0.1:7514/LORKHANserver/manage' not in player_lua)
+]) and 'http://127.0.0.1:7514/LorkhanServer/manage' not in player_lua)
 check("status HUD exposes connection request speech and target state", all(fragment in player_lua for fragment in [
     "'  |  Request: '", "'  |  Speech: '", "'  |  Target: '", "nativeValue('status','unavailable')"]))
 check("history exposes bounded ordered timestamped request state", all(fragment in player_lua for fragment in [

@@ -26,7 +26,7 @@ CHIM/Dialectic-style systems have two physical sides:
   serves media and exposes a browser management UI. Workers perform slower derived tasks.
 
 LORKHAN keeps this separation. OpenMW replaces Bethesda executable/extender/Papyrus integration;
-LORKHANserver replaces game-specific Fallout/Skyrim semantics while preserving mature server product
+LorkhanServer replaces game-specific Fallout/Skyrim semantics while preserving mature server product
 outcomes. Provider keys and database access never cross into the game runtime.
 
 ## Reference setup sequence
@@ -98,7 +98,7 @@ Reference servers typically combine:
 - current game context and active action-result state;
 - provider/model configuration and safety/size limits.
 
-LORKHANserver retains those systems and translates the domain to Morrowind/TES3/OpenMW. The client
+LorkhanServer retains those systems and translates the domain to Morrowind/TES3/OpenMW. The client
 never assembles provider prompts, stores provider keys or decides a model's authority. The server does
 not invent engine success: it requests a typed action and waits for LORKHAN's observed result.
 
@@ -172,12 +172,12 @@ Skyrim/Fallout content package or Bethesda asset into LORKHAN.
 | Actor animation/voice/AI | CUSTOM actor Lua + engine | Preserve using self/event APIs and voice path. |
 | Game context collectors | GLOBAL Lua | Semantic TES3/OpenMW rewrite. |
 | FNV/Skyrim IDs/offsets/ABI | None | Exclude. Use RecordId/RefNum/content/cell identity. |
-| Event/prompt/provider pipeline | LORKHANserver | Import final Synthserver architecture, translate semantics. |
-| Profiles/memory/relationship/knowledge | LORKHANserver | Preserve and migrate. |
+| Event/prompt/provider pipeline | LorkhanServer | Import final Synthserver architecture, translate semantics. |
+| Profiles/memory/relationship/knowledge | LorkhanServer | Preserve and migrate. |
 | Narrator/diary/playback-gated rechat | Both | Preserve manual narrative behavior and action-free continuation with current-game safety in Lua. |
 | Boredom/greetings/combat barks/Background Life/ITT | None | Exclude; no scheduler, capability, worker, or model trigger. |
 | Model actions | Server policy + Lua execution | Preserve typed intent/result; new allowlist. |
-| Management UI/workers/backups | LORKHANserver | Preserve and rebrand/translate. |
+| Management UI/workers/backups | LorkhanServer | Preserve and rebrand/translate. |
 | ESP/ESM content | Deferred addon | Exclude from core; original records only after gate. |
 
 ## Required end-to-end LORKHAN flows
@@ -243,7 +243,7 @@ At the pinned OpenMW tag, begin with:
 - `apps/openmw/CMakeLists.txt`, root `CMakeLists.txt`, `CI/before_script.msvc.sh` and `.gitlab-ci.yml`
   for target/dependencies/MSVC 2022 patterns;
 - `docs/source/reference/lua-scripting/` for API revision 129 contracts;
-- sibling LORKHANserver reference/migration documents for server paths and tests.
+- sibling LorkhanServer reference/migration documents for server paths and tests.
 
 Inspect the final SYNTH repositories only after their start gate, then pin exact paths/SHAs in the
 evidence map. Do not retain Fallout names as aliases merely to make an import compile.

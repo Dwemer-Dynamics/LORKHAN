@@ -3,7 +3,7 @@
 Checkpoint date: 2026-07-20.
 
 The complete client work through implementation head `1c1eaf188f39dae7c292fc2af41f7675e58ac056`
-is preserved on `main`. Continue against the private `RANGROO/LORKHANserver` repository's `main`
+is preserved on `main`. Continue against the private `RANGROO/LorkhanServer` repository's `main`
 branch. The older foundation-only wording in `README.md` is not the complete current state; use
 `docs/evidence/completion-ledger.md` and the code on `main` when assessing what exists.
 
@@ -26,7 +26,7 @@ validation behavior meaningful.
 
 ## Resume on another machine
 
-Clone `LORKHAN` and `LORKHANserver` beside each other, use `main` in both, and start with:
+Clone `LORKHAN` and `LorkhanServer` beside each other, use `main` in both, and start with:
 
 ```bash
 python3 scripts/evidence/validate.py

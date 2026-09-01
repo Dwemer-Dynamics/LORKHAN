@@ -4,7 +4,7 @@ The canonical LORKHAN v1 bytes are under `lorkhan/schemas/v1` and `lorkhan/fixtu
 
 ## Independent decision revision
 
-The original planning lock deferred server-owned response details until an authoritative server existed. On 2026-07-19 the sibling LORKHANserver independently implemented the no-game PostgreSQL vertical slice. This batch deliberately revises that deferral only for the concrete shapes emitted by that implementation: session acceptance, turn acceptance, events, interruption acceptance, action-result acceptance, and session end. The revision is evidenced by byte-identical dual-repository schemas/fixtures, authoritative Draft 2020-12 fixture validation, captured server-response validation, typed C++ parsing, Lua mapping checks, and the disposable-PostgreSQL cross-repository harness. It does not authorize broader product semantics.
+The original planning lock deferred server-owned response details until an authoritative server existed. On 2026-07-19 the sibling LorkhanServer independently implemented the no-game PostgreSQL vertical slice. This batch deliberately revises that deferral only for the concrete shapes emitted by that implementation: session acceptance, turn acceptance, events, interruption acceptance, action-result acceptance, and session end. The revision is evidenced by byte-identical dual-repository schemas/fixtures, authoritative Draft 2020-12 fixture validation, captured server-response validation, typed C++ parsing, Lua mapping checks, and the disposable-PostgreSQL cross-repository harness. It does not authorize broader product semantics.
 
 Run locally:
 
@@ -12,7 +12,7 @@ Run locally:
 python3 scripts/protocol/generate_manifest.py --check
 python3 scripts/protocol/validate.py --require-jsonschema
 python3 -m unittest discover -s lorkhan/tests -v
-# sibling LORKHANserver:
+# sibling LorkhanServer:
 scripts/verify-protocol-parity.sh
 scripts/test/cross-repo-integration.sh
 ```

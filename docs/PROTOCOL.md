@@ -1,11 +1,11 @@
 # LORKHAN protocol v1
 
-This document and `LORKHANserver/docs/PROTOCOL.md` must remain semantically identical. Canonical
+This document and `LorkhanServer/docs/PROTOCOL.md` must remain semantically identical. Canonical
 JSON Schemas and fixtures live in both repos and CI compares their SHA-256 manifest.
 
 ## Transport
 
-- Base: `http://127.0.0.1:7514/LORKHANserver/api/v1` through the DwemerDistro Launcher proxy by default; Apache listens on WSL port `8090`.
+- Base: `http://127.0.0.1:7514/LorkhanServer/api/v1` through the DwemerDistro Launcher proxy by default; Apache listens on WSL port `8090`.
 - Authentication uses `hmac-sha256-v1` request MACs. Fixed native headers carry installation ID, canonical UTC timestamp, unique random nonce, body SHA-256 and signature over algorithm/method/canonical target/content type/body digest/installation/timestamp/nonce. The 256-bit pairing MAC key is never transmitted routinely. Server persistence binds it to one installation, accepts active or bounded-overlap keys, rejects revoked keys, enforces clock skew and database nonce uniqueness, and covers JSON, event, session and media routes. Plaintext loopback still does not provide payload confidentiality against privileged local software; TLS is not claimed without server support.
 - Requests and ordinary responses: `application/json; charset=utf-8`.
 - STT uses bounded native WAV capture, authenticated binary upload, durable transcription, and fenced transcript events.

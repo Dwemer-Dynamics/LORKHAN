@@ -43,7 +43,7 @@ constexpr const char* kMessage = "01900000-0000-7000-8000-000000000006";
 constexpr const char* kAction = "01900000-0000-7000-8000-000000000007";
 constexpr const char* kRequest = "01900000-0000-7000-8000-000000000008";
 constexpr const char* kEndRequest = "01900000-0000-7000-8000-000000000009";
-constexpr std::string_view kBasePath = "/LORKHANserver/api/v1";
+constexpr std::string_view kBasePath = "/LorkhanServer/api/v1";
 
 struct CapturedRequest {
     http::verb method{};
@@ -947,7 +947,7 @@ int main(int argc, char** argv)
                 "ended session remained usable"))
             return EXIT_FAILURE;
 
-        std::cout << "real LORKHANserver full transport acceptance passed\n";
+        std::cout << "real LorkhanServer full transport acceptance passed\n";
         return EXIT_SUCCESS;
     }
 

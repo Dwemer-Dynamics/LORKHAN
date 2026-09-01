@@ -2,13 +2,13 @@
 
 ## What is already deployed
 
-- LORKHANserver runs in WSL on port 8090 with PostgreSQL, Apache, migrations, a private pairing key,
+- LorkhanServer runs in WSL on port 8090 with PostgreSQL, Apache, migrations, a private pairing key,
   and the deterministic mock LLM/TTS providers.
 - The private client configuration is at `C:\Modlists\LORKHAN\Config\lorkhan-client.conf`. The
   pairing key is never printed by the setup script.
 - The OpenMW Lua data package is deployed under `C:\Modlists\LORKHAN\Data`.
 - The exact-pinned Windows x64 engine is deployed under `C:\Modlists\LORKHAN\OpenMW`.
-- The active local server source is mirrored to `/var/www/html/LORKHANserver`, matching the stable
+- The active local server source is mirrored to `/var/www/html/LorkhanServer`, matching the stable
   local deployment layout used by HerikaServer and DialecticServer.
 
 ## Full local deploy
@@ -19,7 +19,7 @@ Run the client repository's deploy entrypoint from PowerShell:
 powershell -ExecutionPolicy Bypass -File .\scripts\deploy\full-local.ps1
 ```
 
-It deploys LORKHANserver to WSL, builds the pinned LORKHAN OpenMW targets, mirrors the engine and Lua
+It deploys LorkhanServer to WSL, builds the pinned LORKHAN OpenMW targets, mirrors the engine and Lua
 payload into `C:\Modlists\LORKHAN`, preserves the local client IDs/media cache, refreshes the private
 pairing configuration, updates the LORKHAN OpenMW profile, and recreates the desktop shortcuts.
 
@@ -38,7 +38,7 @@ stock OpenMW executable.
 3. Enable `LORKHAN.omwscripts` in the OpenMW launcher content list.
 4. Set `LORKHAN_CLIENT_CONFIG` to the absolute `C:\Modlists\LORKHAN\Config\lorkhan-client.conf` path before launching the
    patched OpenMW executable.
-5. Start DwemerDistro Launcher and confirm `/LORKHANserver/api/v1/health` at `http://127.0.0.1:7514` works from Windows. The launcher refreshes the route to WSL port 8090 when the WSL address changes. If WSL localhost
+5. Start DwemerDistro Launcher and confirm `/LorkhanServer/api/v1/health` at `http://127.0.0.1:7514` works from Windows. The launcher refreshes the route to WSL port 8090 when the WSL address changes. If WSL localhost
    forwarding is disabled, run `scripts/deploy/enable-wsl-loopback.ps1` from an elevated PowerShell
    window. The native client intentionally rejects non-loopback server URLs.
 6. In game, center the crosshair on an NPC and press F6. LORKHAN selects that NPC automatically and

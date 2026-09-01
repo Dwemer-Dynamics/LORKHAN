@@ -37,7 +37,7 @@ Blocking dependency: finish each predecessor's non-game stop condition, fix the 
 3. Passing evidence tied to those exact SHAs for all predecessor non-game rows, including Windows client builds and WSL/PostgreSQL/cross-repository contract lanes.
 4. Audited source licenses/provenance at those exact SHAs.
 
-Until all four exist, LORKHANserver may receive independently authored scaffolding, but importing or semantically copying Synthserver source is prohibited by the start gate.
+Until all four exist, LorkhanServer may receive independently authored scaffolding, but importing or semantically copying Synthserver source is prohibited by the start gate.
 
 ## Plaintext loopback confidentiality limitation
 
