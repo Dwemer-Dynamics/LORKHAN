@@ -5,6 +5,7 @@ local core=adapter.event()
 local interfacesOk,interfaces=pcall(require,'openmw.interfaces')
 local typesOk,types=pcall(require,'openmw.types')
 local worldOk,world=pcall(require,'openmw.world')
+local worldUtilOk,worldUtil=pcall(require,'openmw.util')
 local state
 local pendingPlayerEvents={}
 local bridgeStatus
@@ -174,6 +175,113 @@ local function selectCandidate(candidate,source)
     emit('LORKHAN_TARGET_REJECTED',{reason=reason})
 end
 
+local function inventoryCount(inventory,recordId)
+    local total=0
+    for _,item in ipairs(inventory:getAll()) do
+        if item.recordId==recordId then total=total+(tonumber(item.count) or 1) end
+    end
+    return total
+end
+
+-- Execute only the typed operator commands negotiated by the native bridge; command text is never evaluated.
+local function executeGlobalDebugCommand(command)
+    if type(command)~='table' or type(command.name)~='string' then return 'rejected','invalid_command',{} end
+    if not worldOk or not world or not typesOk or not types then return 'rejected','world_api_unavailable',{} end
+    local player=currentPlayer()
+    if not player then return 'failed','player_unavailable',{} end
+    local parameters=type(command.parameters)=='table' and command.parameters or {}
+    local ok,result=pcall(function()
+        local name=command.name
+        local actorType=types.Actor
+        if name=='player.inventory.add' then
+            local inventory=actorType.inventory(player)
+            world.createObject(parameters.record_id,parameters.count):moveInto(inventory)
+            return {record_id=parameters.record_id,count=inventoryCount(inventory,parameters.record_id)}
+        elseif name=='player.inventory.remove' then
+            local inventory=actorType.inventory(player)
+            local remaining=parameters.count
+            for _,item in ipairs(inventory:getAll()) do
+                if item.recordId==parameters.record_id and remaining>0 then
+                    local removed=math.min(remaining,tonumber(item.count) or 1)
+                    item:remove(removed);remaining=remaining-removed
+                end
+            end
+            if remaining>0 then return {rejected=true,reason='insufficient_item_count',
+                observed={record_id=parameters.record_id,count=inventoryCount(inventory,parameters.record_id)}} end
+            return {record_id=parameters.record_id,count=inventoryCount(inventory,parameters.record_id)}
+        elseif name=='player.spell.add' or name=='player.spell.remove' then
+            local spells=actorType.spells(player)
+            if name=='player.spell.add' then spells:add(parameters.record_id) else spells:remove(parameters.record_id) end
+            return {record_id=parameters.record_id,operation=name}
+        elseif name=='player.vitals.restore' then
+            local observed={}
+            for _,statName in ipairs({'health','magicka','fatigue'}) do
+                local stat=actorType.stats.dynamic[statName](player);stat.current=stat.base;observed[statName]=stat.base
+            end
+            return observed
+        elseif name=='player.stat.set' then
+            local stat=actorType.stats.dynamic[parameters.stat](player);stat.current=parameters.value
+            return {stat=parameters.stat,current=parameters.value,base=stat.base}
+        elseif name=='player.attribute.set' then
+            local stat=actorType.stats.attributes[parameters.attribute](player);stat.base=parameters.value
+            return {attribute=parameters.attribute,base=parameters.value}
+        elseif name=='player.skill.set' then
+            local stat=types.NPC.stats.skills[parameters.skill](player);stat.base=parameters.value
+            return {skill=parameters.skill,base=parameters.value}
+        elseif name=='player.level.set' then
+            local stat=actorType.stats.level(player);stat.current=parameters.value
+            return {level=parameters.value}
+        elseif name=='player.bounty.set' then
+            types.Player.setCrimeLevel(player,parameters.value);return {bounty=types.Player.getCrimeLevel(player)}
+        elseif name=='player.scale.set' then
+            player:setScale(parameters.value);return {scale=parameters.value}
+        elseif name=='player.teleport' then
+            if not worldUtilOk or not worldUtil then error('vector_api_unavailable') end
+            player:teleport(parameters.cell,worldUtil.vector3(parameters.x,parameters.y,parameters.z),{onGround=true})
+            return {cell=parameters.cell,x=parameters.x,y=parameters.y,z=parameters.z}
+        elseif name=='world.time.advance' then
+            world.advanceTime(parameters.value);return {hours_advanced=parameters.value}
+        elseif name=='world.timescale.set' then
+            world.setGameTimeScale(parameters.value);return {timescale=world.getGameTimeScale()}
+        elseif name=='world.weather.set' then
+            local weather=core.weather and core.weather.records[parameters.weather]
+            if not weather then return {rejected=true,reason='weather_record_not_found',observed={}} end
+            core.weather.changeWeather(parameters.region_id,weather)
+            return {region_id=parameters.region_id,weather=weather.recordId or parameters.weather}
+        elseif name=='target.actor.kill' or name=='target.actor.restore' or name=='target.scale.set'
+            or name=='target.teleport.to_player' then
+            local target=state.conversation.target and state.registry:resolve(state.conversation.target)
+            if not target then return {rejected=true,reason='target_required',observed={}} end
+            if name=='target.actor.kill' then
+                actorType.stats.dynamic.health(target).current=0;return {target=target.recordId,health=0}
+            elseif name=='target.actor.restore' then
+                local observed={target=target.recordId}
+                for _,statName in ipairs({'health','magicka','fatigue'}) do
+                    local stat=actorType.stats.dynamic[statName](target);stat.current=stat.base;observed[statName]=stat.base
+                end
+                return observed
+            elseif name=='target.scale.set' then
+                target:setScale(parameters.value);return {target=target.recordId,scale=parameters.value}
+            else
+                target:teleport(player.cell,player.position,{onGround=true})
+                return {target=target.recordId,cell=player.cell and player.cell.name or ''}
+            end
+        end
+        return nil
+    end)
+    if not ok then return 'failed','execution_failed',{error=tostring(result):sub(1,256)} end
+    if result==nil then return 'rejected','unknown_command',{} end
+    if result.rejected then return 'rejected',result.reason,result.observed or {} end
+    return 'succeeded','command_applied',result
+end
+
+local function handleGlobalDebugCommand(event)
+    local command=event and event.command
+    local status,reason,observed=executeGlobalDebugCommand(command)
+    emit('LORKHAN_DEBUG_COMMAND_RESULT',{command_id=command and command.command_id,status=status,
+        reason_code=reason,observed=observed})
+end
+
 return {
     engineHandlers={
         onNewGame=function()
@@ -235,6 +343,7 @@ return {
         end,
     },
     eventHandlers={
+        LORKHAN_DEBUG_COMMAND=handleGlobalDebugCommand,
         LORKHAN_SESSION=function(event) orchestrator.configureSession(state,event.session_id) end,
         LORKHAN_TARGET_REQUEST=function(event) emit('LORKHAN_PLAYER_RESOLVE_TARGET',{maxDistance=event.maxDistance}) end,
         LORKHAN_AUDIENCE_REQUEST=function(event) emit('LORKHAN_PLAYER_RESOLVE_AUDIENCE',{maxDistance=event.maxDistance}) end,

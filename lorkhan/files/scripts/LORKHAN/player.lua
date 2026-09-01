@@ -16,6 +16,7 @@ local self=require('openmw.self')
 local interfacesOk,interfaces=pcall(require,'openmw.interfaces')
 local storageOk,openmwStorage=pcall(require,'openmw.storage')
 local nativeOk,native=pcall(require,'openmw.lorkhan')
+local debugOk,debugApi=pcall(require,'openmw.debug')
 local state=player.new()
 local element
 local statusElement
@@ -32,9 +33,13 @@ local contextCollectionSamples={}
 local speechActors={}
 local narratorSpeech
 local menuDialogueSpeech
+local playerSpeech
 local pendingCapturedDialogue={}
 local capturedDialogueSeen={}
 local capturedDialogueFlushElapsed=0
+local pendingActorProfiles={}
+local pendingActorProfileKeys={}
+local actorProfileFlushElapsed=0
 local ownsUiMode=false
 local controlsSignature
 local responseQueueSnapshot={}
@@ -60,6 +65,9 @@ local pendingControlPanel
 -- before they can show the player anything new.
 local SERVER_CONTROL_PANELS={models=true,profiles=true,narrator=true}
 local controlsRequestActive=false
+local debugRequestActive=false
+local nextDebugPollAt=0
+local pendingGlobalDebugCommand
 local aimCandidate
 local aimScanElapsed=0
 local aimSignature=''
@@ -67,6 +75,15 @@ local settingsRefreshElapsed=0.5
 local SETTINGS_REFRESH_INTERVAL=0.5
 local AIM_SCAN_INTERVAL=0.25
 local AUTO_SCAN_INTERVAL=1.0
+local DEBUG_POLL_INTERVAL=0.25
+local GLOBAL_DEBUG_COMMANDS={
+    ['player.inventory.add']=true,['player.inventory.remove']=true,
+    ['player.spell.add']=true,['player.spell.remove']=true,['player.vitals.restore']=true,
+    ['player.stat.set']=true,['player.attribute.set']=true,['player.skill.set']=true,
+    ['player.level.set']=true,['player.bounty.set']=true,['player.teleport']=true,['player.scale.set']=true,
+    ['world.time.advance']=true,['world.timescale.set']=true,['world.weather.set']=true,
+    ['target.actor.kill']=true,['target.actor.restore']=true,['target.teleport.to_player']=true,['target.scale.set']=true,
+}
 if playerInputSettings then
     uiState.setMood(state.ui,playerInputSettings:get('mood') or 'None')
     if state.ui.mood=='Custom' then uiState.setMoodDirection(state.ui,playerInputSettings:get('customMood') or '') end
@@ -125,7 +142,7 @@ local function audienceNames()
     for _,actor in ipairs(state.ui.audience or {}) do names[#names+1]=displayName(actor) end
     return #names>0 and table.concat(names,', ') or 'None'
 end
-local function speechActive() return next(speechActors)~=nil end
+local function speechActive() return next(speechActors)~=nil or playerSpeech~=nil end
 local function nativeValue(name,fallback)
     if not nativeOk or not native or type(native[name])~='function' then return fallback end
     local ok,value=pcall(native[name])
@@ -153,6 +170,53 @@ end
 local function stopNarrator(reason)
     if not narratorSpeech then return end
     adapter.stopSpeech();reportNarrator('interrupted',reason or 'client_interrupted')
+end
+
+-- Keep typed player speech asynchronous so submitting a turn never waits for synthesis or playback.
+local function stopPlayerSpeech()
+    local current=playerSpeech
+    if not current then return end
+    if current.state=='playing' then adapter.stopSpeech() end
+    if current.request_id and nativeOk and native and native.cancelMenuDialogueTts then
+        pcall(native.cancelMenuDialogueTts,current.request_id)
+    end
+    playerSpeech=nil
+end
+
+local function startPlayerSpeech(actor,text)
+    stopPlayerSpeech()
+    stopNarrator('player_speech_started')
+    if not nativeOk or not native or not native.requestMenuDialogueTts then return end
+    local request,reason=native.requestMenuDialogueTts(actor,text)
+    -- Carry the already-validated typed text so playback shows the player's own subtitle.
+    if request then playerSpeech={request_id=request,state='requesting',subtitle=type(text)=='string' and text or ''}
+    elseif reason~='provider_unavailable' then print('[LORKHAN] player TTS rejected: '..tostring(reason)) end
+end
+
+local function updatePlayerSpeech()
+    local current=playerSpeech
+    if not current then return end
+    if current.state=='playing' then
+        if not adapter.isSpeechActive() then stopPlayerSpeech() end
+        return
+    end
+    if not nativeOk or not native or not native.menuDialogueTtsStatus then stopPlayerSpeech() return end
+    local status=native.menuDialogueTtsStatus(current.request_id)
+    if not status then stopPlayerSpeech() return end
+    if status.state=='failed' then
+        if status.reason~='provider_unavailable' then
+            print('[LORKHAN] player TTS failed: '..tostring(status.reason or 'unavailable'))
+        end
+        stopPlayerSpeech()
+        return
+    end
+    current.state=status.state
+    if status.state=='ready' and status.media_id then
+        local volume=tonumber(soundSettings and soundSettings:get('ttsVolumeBoost')) or 3
+        local ok,reason=adapter.playSpeech(status.media_id,current.subtitle or '',volume)
+        if ok then current.state='playing'
+        else print('[LORKHAN] player TTS playback failed: '..tostring(reason or 'playback_failed'));stopPlayerSpeech() end
+    end
 end
 
 local function dialogueMenuOpen()
@@ -262,6 +326,61 @@ local function flushCapturedDialogue(dt)
     end
 end
 
+-- Queue one newly auto-managed NPC until the authenticated native bridge can persist its profile.
+local function submitAutoActorProfile(event)
+    local actor=type(event)=='table' and event.actor or nil
+    local key=actor and identity.key(actor) or nil
+    if not key or pendingActorProfileKeys[key] then return end
+    local snapshot,reason=adapter.actorProfile(actor)
+    if not snapshot then
+        print('[LORKHAN] auto-activated profile snapshot unavailable: '..tostring(reason))
+        return
+    end
+    local payload
+    payload,reason=protocol.actorProfile(snapshot)
+    if not payload then
+        print('[LORKHAN] auto-activated profile rejected: '..tostring(reason))
+        return
+    end
+    local request,submitReason
+    if nativeOk and native and native.submitActorProfile then
+        request,submitReason=native.submitActorProfile(payload)
+    else submitReason='bridge_not_ready' end
+    if request then return end
+    if #pendingActorProfiles>=32 then
+        pendingActorProfileKeys[pendingActorProfiles[1].key]=nil
+        table.remove(pendingActorProfiles,1)
+    end
+    pendingActorProfileKeys[key]=true
+    pendingActorProfiles[#pendingActorProfiles+1]={key=key,payload=payload,attempts=0}
+    if submitReason~='bridge_not_ready' then
+        print('[LORKHAN] auto-activated profile queued: '..tostring(submitReason))
+    end
+end
+
+local function flushActorProfiles(dt)
+    if #pendingActorProfiles==0 then return end
+    actorProfileFlushElapsed=actorProfileFlushElapsed+(tonumber(dt) or 0)
+    if actorProfileFlushElapsed<0.1 then return end
+    actorProfileFlushElapsed=0
+    local item=pendingActorProfiles[1]
+    local request,reason
+    if nativeOk and native and native.submitActorProfile then
+        request,reason=native.submitActorProfile(item.payload)
+    else reason='bridge_not_ready' end
+    if request then
+        pendingActorProfileKeys[item.key]=nil
+        table.remove(pendingActorProfiles,1)
+        return
+    end
+    item.attempts=item.attempts+1
+    if item.attempts>=20 and reason~='bridge_not_ready' then
+        print('[LORKHAN] auto-activated profile failed: '..tostring(reason))
+        pendingActorProfileKeys[item.key]=nil
+        table.remove(pendingActorProfiles,1)
+    end
+end
+
 local function updateMenuDialogueSpeech()
     if not menuDialogueSpeech then return end
     local menuOpen=dialogueMenuOpen()
@@ -344,6 +463,7 @@ local function submitText()
     local context=conversationContext(state.ui.target)
     local effectiveMode=parsed.mode or state.ui.mode
     context.dialogueMode=effectiveMode
+    startPlayerSpeech(speaker,parsed.text)
     send('LORKHAN_SUBMIT_TEXT',{text=parsed.text,language='en-US',speaker=speaker,dialogueMode=effectiveMode,
         mood=uiState.moodSelection(state.ui),
         context=context,capabilities=CAPABILITIES,
@@ -368,6 +488,84 @@ local function sessionControls()
     if not nativeOk or not native or not native.sessionControls then return nil end
     local ok,value=pcall(native.sessionControls)
     return ok and value or nil
+end
+
+local function debugSnapshot()
+    return {god_mode=debugApi.isGodMode(),collision_enabled=debugApi.isCollisionEnabled(),
+        ai_enabled=debugApi.isAIEnabled(),mwscript_enabled=debugApi.isMWScriptEnabled()}
+end
+
+-- Apply explicit boolean state through OpenMW's toggle-only debug primitives without accidental inversion.
+local function setDebugBoolean(getter,toggle,enabled)
+    local current=getter()
+    if current~=enabled then toggle() end
+end
+
+local function executeDebugCommand(command)
+    if not debugOk or not debugApi then return 'rejected','debug_api_unavailable',{} end
+    local ok,result=pcall(function()
+        local name=command.name
+        local parameters=command.parameters or {}
+        if name=='status.snapshot' then return debugSnapshot() end
+        if name=='god_mode.set' then setDebugBoolean(debugApi.isGodMode,debugApi.toggleGodMode,parameters.enabled)
+        elseif name=='collision.set' then setDebugBoolean(debugApi.isCollisionEnabled,debugApi.toggleCollision,parameters.enabled)
+        elseif name=='ai.set' then setDebugBoolean(debugApi.isAIEnabled,debugApi.toggleAI,parameters.enabled)
+        elseif name=='mwscript.set' then setDebugBoolean(debugApi.isMWScriptEnabled,debugApi.toggleMWScript,parameters.enabled)
+        elseif name=='shader_hot_reload.set' then debugApi.setShaderHotReloadEnabled(parameters.enabled)
+        elseif name=='shaders.reload' then debugApi.triggerShaderReload()
+        elseif name=='render_mode.toggle' then
+            local modes={collision='CollisionDebug',wireframe='Wireframe',pathgrid='Pathgrid',water='Water',scene='Scene',
+                navmesh='NavMesh',actors_paths='ActorsPaths',recast_mesh='RecastMesh'}
+            local mode=modes[parameters.mode]
+            if not mode or not debugApi.RENDER_MODE[mode] then error('unsupported render mode') end
+            debugApi.toggleRenderMode(debugApi.RENDER_MODE[mode])
+        else return nil end
+        local observed=debugSnapshot()
+        if name=='shader_hot_reload.set' then observed.shader_hot_reload_enabled=parameters.enabled end
+        if name=='shaders.reload' then observed.shaders_reload_requested=true end
+        if name=='render_mode.toggle' then observed.render_mode_toggled=parameters.mode end
+        return observed
+    end)
+    if not ok then return 'failed','execution_failed',{error=tostring(result):sub(1,256)} end
+    if result==nil then return 'rejected','unknown_command',{} end
+    return 'succeeded','command_applied',result
+end
+
+local function submitDebugResult(command,status,reason,observed)
+    local submitted,submitReason=native.submitDebugCommandResult(command.command_id,status,reason,observed or {})
+    if not submitted then print('[LORKHAN] debug command result failed: '..tostring(submitReason)) end
+end
+
+-- Poll and execute the operator queue from onFrame so debug controls remain responsive while menus pause simulation.
+local function pumpDebugCommands()
+    if not nativeOk or not native or not native.requestDebugCommand or not native.pumpDebugCommand
+        or not native.submitDebugCommandResult then return end
+    local now=core and core.getRealTime and core.getRealTime() or 0
+    if pendingGlobalDebugCommand then
+        if now-pendingGlobalDebugCommand.started_at>25 then
+            submitDebugResult(pendingGlobalDebugCommand.command,'failed','global_command_timeout',{})
+            pendingGlobalDebugCommand=nil
+        end
+        return
+    end
+    if not debugRequestActive and now>=nextDebugPollAt then
+        local request=select(1,native.requestDebugCommand())
+        if request then debugRequestActive=true end
+        nextDebugPollAt=now+DEBUG_POLL_INTERVAL
+    end
+    if not debugRequestActive then return end
+    local ok,status=pcall(native.pumpDebugCommand)
+    if not ok or type(status)~='table' then debugRequestActive=false return end
+    if status.pending==true then return end
+    debugRequestActive=false
+    if type(status.command)~='table' then return end
+    if GLOBAL_DEBUG_COMMANDS[status.command.name] then
+        pendingGlobalDebugCommand={command=status.command,started_at=now}
+        send('LORKHAN_DEBUG_COMMAND',{command=status.command})
+        return
+    end
+    local outcome,reason,observed=executeDebugCommand(status.command)
+    submitDebugResult(status.command,outcome,reason,observed)
 end
 
 local function refreshSessionControls(panel,quiet)
@@ -1251,6 +1449,7 @@ if inputOk then
     end))
     input.registerTriggerHandler('LORKHAN_Halt',adapter.callback(function()
         state.ui.pendingTargetAction=nil
+        stopPlayerSpeech()
         player.onAction(state,'LORKHAN_Halt',send) state.ui.status='stopped' render()
     end))
     input.registerTriggerHandler('LORKHAN_ManualActivate',adapter.callback(manualActivate))
@@ -1290,7 +1489,10 @@ end
 
 return {
     engineHandlers={
-        onInputAction=function(action) return player.onAction(state,action,send) end,
+        onInputAction=function(action)
+            if action=='LORKHAN_Halt' then stopPlayerSpeech() end
+            return player.onAction(state,action,send)
+        end,
         onKeyPress=function(event)
             if inputOk and state.ui.visible and state.ui.panel=='conversation' and event
                 and (event.code==input.KEY.Enter or event.code==input.KEY.NP_Enter) then
@@ -1314,6 +1516,8 @@ return {
         -- bounded pause-safe pump of the in-flight controls response and nothing else. No gameplay,
         -- settings scan, or event processing belongs here.
         onFrame=function()
+            pumpDebugCommands()
+            updatePlayerSpeech()
             if not controlsRequestActive or not state.ui.visible
                 or not SERVER_CONTROL_PANELS[state.ui.panel] then return end
             if not nativeOk or not native or not native.pumpSessionControls then
@@ -1330,8 +1534,10 @@ return {
         end,
         onUpdate=function(dt)
             if narratorSpeech and not adapter.isSpeechActive() then reportNarrator('played','playback_completed') end
+            updatePlayerSpeech()
             updateMenuDialogueSpeech()
             flushCapturedDialogue(dt)
+            flushActorProfiles(dt)
             local elapsed=tonumber(dt) or 0
             settingsRefreshElapsed=settingsRefreshElapsed+elapsed
             if settingsRefreshElapsed>=SETTINGS_REFRESH_INTERVAL then
@@ -1372,6 +1578,13 @@ return {
         end,
     },
     eventHandlers={
+        LORKHAN_DEBUG_COMMAND_RESULT=function(event)
+            if not pendingGlobalDebugCommand or type(event)~='table'
+                or event.command_id~=pendingGlobalDebugCommand.command.command_id then return end
+            submitDebugResult(pendingGlobalDebugCommand.command,event.status or 'failed',
+                event.reason_code or 'global_command_failed',event.observed or {})
+            pendingGlobalDebugCommand=nil
+        end,
         DialogueResponse=function(event)
             local response=adapter.dialogueResponse(event)
             if response then
@@ -1380,6 +1593,7 @@ return {
                 startMenuDialogueSpeech(response)
             end
         end,
+        LORKHAN_AUTO_ACTIVATED=submitAutoActorProfile,
         LORKHAN_MENU_DIALOGUE_SPEECH_STATUS=function(event)
             if not menuDialogueSpeech or not event then return end
             local sentence=menuDialogueSpeech.sentences[menuDialogueSpeech.index]
@@ -1395,6 +1609,7 @@ return {
             updateMenuDialogueSpeech()
         end,
         LORKHAN_NARRATOR_SPEAK=function(command)
+            stopPlayerSpeech()
             stopNarrator('speech_replaced')
             local ok,reason=adapter.playSpeech(command.media_id,command.subtitle,command.tts_volume_boost)
             if ok then narratorSpeech=command
@@ -1402,6 +1617,7 @@ return {
             else narratorSpeech=command reportNarrator('failed',reason or 'playback_failed') end
         end,
         LORKHAN_NARRATOR_SUBTITLE=function(command)
+            stopPlayerSpeech()
             stopNarrator('subtitle_replaced') narratorSpeech=command
             local ok,reason=adapter.showSubtitle(command.subtitle)
             reportNarrator(ok and 'played' or 'failed',ok and 'subtitle_displayed' or (reason or 'subtitle_unavailable'))
@@ -1432,6 +1648,7 @@ return {
             else
                 state.ui.status='message failed: '..tostring(event.reason or 'unknown')
                 turnActive=false
+                stopPlayerSpeech()
                 pendingHistory=nil
                 print('[LORKHAN] text message rejected: '..tostring(event.reason or 'unknown'))
             end
@@ -1468,6 +1685,7 @@ return {
                 and (turnActive or voiceRecording or openMicEnabled or speechActive()) then
                 send('LORKHAN_STOP_DIALOGUE_REQUEST',{})
                 voiceRecording=false;openMicEnabled=false;openMicMuted=false;pttHeld=false;turnActive=false
+                stopPlayerSpeech()
                 speechActors={}
                 state.ui.status='dialogue stopped for combat'
                 render()

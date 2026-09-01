@@ -592,19 +592,23 @@ namespace MWLua
                     for (std::size_t index = 1; index <= capabilities.size(); ++index)
                         runtime.capabilities.push_back(capabilities.get<std::string>(index));
                     const std::string payload = toJson(dto.get<sol::object>("payload"));
+                    const std::string requestId=ids.request.value();
+                    const std::string turnId=ids.turn.value();
                     lorkhan::OutboundRequest request{ ids.request, ids.session, ids.generation, lorkhan::RequestKind::turn,
                         lorkhan::TurnRequest{ std::move(ids), lorkhan::Generation(dto.get<std::uint64_t>("runtime_generation")),
                             std::move(runtime), dto.get<std::string>("content_fingerprint"),
                             dto.get<std::string>("created_at"), payload } };
                     auto accepted = m_service->enqueue(std::move(request));
                     if (!accepted) return failure(lua, accepted.error().message);
+                    m_turnRequests.emplace(requestId,turnId);
                     return success(lua, accepted.value().value());
                 }
                 catch (const std::exception& error) { return failure(lua, error.what()); }
             }
 
-            // Persist one bounded vanilla dialogue observation without exposing a generic transport primitive.
-            std::tuple<sol::object, sol::object> submitCapturedDialogue(sol::state_view lua, sol::table payload)
+            // Submit one schema-owned game observation without exposing a generic Lua transport primitive.
+            std::tuple<sol::object, sol::object> submitGameData(
+                sol::state_view lua, lorkhan::GameDataType type, sol::table payload)
             {
                 if (!ready()) return failure(lua, "bridge_not_ready");
                 try
@@ -614,12 +618,22 @@ namespace MWLua
                     lorkhan::OutboundRequest outbound{request, *m_session, m_service->generation(),
                         lorkhan::RequestKind::gamedata,
                         lorkhan::GameDataRequest{m_config->installation, m_config->playthrough, request,
-                            m_service->generation(), utcNow(), serialized}};
+                            m_service->generation(), utcNow(), type, serialized}};
                     auto accepted = m_service->enqueue(std::move(outbound));
                     if (!accepted) return failure(lua, accepted.error().message);
                     return success(lua, request.value());
                 }
                 catch (const std::exception& error) { return failure(lua, error.what()); }
+            }
+
+            std::tuple<sol::object, sol::object> submitCapturedDialogue(sol::state_view lua, sol::table payload)
+            {
+                return submitGameData(lua, lorkhan::GameDataType::captured_dialogue, std::move(payload));
+            }
+
+            std::tuple<sol::object, sol::object> submitActorProfile(sol::state_view lua, sol::table payload)
+            {
+                return submitGameData(lua, lorkhan::GameDataType::actor_profile, std::move(payload));
             }
 
             std::tuple<sol::object, sol::object> requestControls(sol::state_view lua, sol::table target)
@@ -669,6 +683,39 @@ namespace MWLua
                     return success(lua,request.value());
                 }
                 catch(const std::exception& error){return failure(lua,error.what());}
+            }
+
+            std::tuple<sol::object,sol::object> requestDebugCommand(sol::state_view lua)
+            {
+                if(!ready())return failure(lua,"bridge_not_ready");
+                if(m_debugRequest)return failure(lua,"debug_request_pending");
+                try{
+                    const lorkhan::RequestId request(uuid());const lorkhan::MessageId message(uuid());
+                    lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),
+                        lorkhan::RequestKind::debug_command_query,lorkhan::DebugCommandQueryRequest{message,
+                            {request,*m_session,m_service->generation()}}};
+                    auto accepted=m_service->enqueue(std::move(outbound));if(!accepted)return failure(lua,accepted.error().message);
+                    m_debugRequest=request;m_debugCommand.reset();m_debugError.clear();return success(lua,request.value());
+                }catch(const std::exception& error){return failure(lua,error.what());}
+            }
+
+            std::tuple<sol::object,sol::object> submitDebugCommandResult(sol::state_view lua,const std::string& commandId,
+                const std::string& status,const std::string& reason,sol::table observed)
+            {
+                if(!ready())return failure(lua,"bridge_not_ready");
+                try{
+                    const auto mapped=status=="succeeded"?lorkhan::DebugCommandResultStatus::succeeded
+                        :status=="failed"?lorkhan::DebugCommandResultStatus::failed
+                        :status=="rejected"?lorkhan::DebugCommandResultStatus::rejected
+                        :throw std::runtime_error("invalid_debug_result_status");
+                    const lorkhan::RequestId request(uuid());const lorkhan::MessageId message(uuid());
+                    lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),
+                        lorkhan::RequestKind::debug_command_result,lorkhan::DebugCommandResultRequest{message,
+                            {request,*m_session,m_service->generation()},lorkhan::MessageId(commandId),mapped,reason,
+                            toJson(sol::make_object(lua,observed)),utcNow()}};
+                    auto accepted=m_service->enqueue(std::move(outbound));if(!accepted)return failure(lua,accepted.error().message);
+                    return success(lua,request.value());
+                }catch(const std::exception& error){return failure(lua,error.what());}
             }
 
             sol::object sessionControls(sol::state_view lua) const
@@ -957,6 +1004,25 @@ namespace MWLua
                 return true;
             }
 
+            // Settle debug queries in whichever native response lane drains them first.
+            bool settleDebugResult(const lorkhan::InboundResult& result)
+            {
+                if (!m_debugRequest || result.request != *m_debugRequest) return false;
+                m_debugRequest.reset();
+                m_debugCommand.reset();
+                if (result.kind == lorkhan::ResponseKind::debug_command)
+                {
+                    auto parsed = lorkhan::parseDebugCommandResponse(result.payload, jsonHeaders());
+                    if (parsed) { m_debugCommand = std::move(parsed).value().command; m_debugError.clear(); }
+                    else m_debugError = parsed.error().message;
+                }
+                else if (result.kind == lorkhan::ResponseKind::failure)
+                    m_debugError = result.failure ? result.failure->message : "transport_failure";
+                else
+                    m_debugError = "unexpected_debug_response";
+                return true;
+            }
+
             // The Interact overlay owns Interface UI mode and pauses simulation, so the GLOBAL Lua lane
             // that drives poll stops running while a server-owned controls panel is open. Player onFrame
             // keeps running every frame, so this settles only the in-flight controls response. Every
@@ -984,6 +1050,29 @@ namespace MWLua
                 return status;
             }
 
+            // Drain only the current debug query while paused; every unrelated bridge result is replayed by poll().
+            sol::table pumpDebugCommand(sol::state_view lua)
+            {
+                sol::table status(lua,sol::create);bool settled=false;
+                if(m_service&&m_debugRequest&&m_deferredResults.size()+kControlsPumpBatch<=kDeferredResultCapacity){
+                    for(auto& result:m_service->poll(kControlsPumpBatch)){
+                        if(settleDebugResult(result)){++m_resultsSeen;settled=true;continue;}
+                        m_deferredResults.push_back(std::move(result));
+                    }
+                }
+                status["settled"]=settled;status["pending"]=m_debugRequest.has_value();
+                if(!m_debugError.empty())status["error"]=m_debugError;
+                if(m_debugCommand){sol::table command(lua,sol::create),parameters(lua,sol::create);
+                    command["command_id"]=m_debugCommand->command.value();command["name"]=m_debugCommand->name;
+                    command["expires_at"]=m_debugCommand->expiresAt;
+                    for(const auto& [key,value]:m_debugCommand->parameters){
+                        std::visit([&](const auto& parameter){parameters[key]=parameter;},value);
+                    }
+                    command["parameters"]=parameters;status["command"]=command;
+                    m_debugCommand.reset();}
+                return status;
+            }
+
             sol::table poll(sol::state_view lua, std::size_t maximum)
             {
                 sol::table output(lua, sol::create);
@@ -998,8 +1087,18 @@ namespace MWLua
                 for (auto& result : results)
                 {
                     ++m_resultsSeen;
+                    if (settleDebugResult(result)) continue;
                     if (result.kind == lorkhan::ResponseKind::failure)
                     {
+                        const auto failedTurn=m_turnRequests.find(result.request.value());
+                        if(failedTurn!=m_turnRequests.end()){
+                            sol::table failureEvent(lua,sol::create);
+                            failureEvent["type"]="transport.failure";
+                            failureEvent["request_id"]=result.request.value();
+                            failureEvent["turn_id"]=failedTurn->second;
+                            failureEvent["reason"]=result.failure?result.failure->message:"transport_failure";
+                            output[outIndex++]=failureEvent;m_turnRequests.erase(failedTurn);
+                        }
                         const bool pollFailure = m_pollRequest && result.request == *m_pollRequest;
                         bool menuFailure=false;
                         for(auto& [unused,dialogue]:m_menuDialogues){
@@ -1099,6 +1198,7 @@ namespace MWLua
                     {
                         settleControlsResult(result);
                     }
+                    if(result.kind!=lorkhan::ResponseKind::failure)m_turnRequests.erase(result.request.value());
                 }
                 schedulePoll();
                 return output;
@@ -1111,7 +1211,7 @@ namespace MWLua
                 if (!result) return false;
                 cancelMenuDialogueTts();
                 m_session.reset(); m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();
-                m_deferredResults.clear();m_controlsError.clear();beginSession();
+                m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_turnRequests.clear();m_controlsError.clear();m_debugError.clear();beginSession();
                 m_status = "connecting";
                 return true;
             }
@@ -1120,6 +1220,7 @@ namespace MWLua
             {
                 lorkhan::VoiceCaptureService::instance().halt();
                 if (m_service) m_service->halt();
+                m_turnRequests.clear();
                 m_status = "halted";
             }
 
@@ -1189,7 +1290,7 @@ namespace MWLua
             }
 
             static std::vector<std::string> capabilities()
-            { return { "dialogue.text", "speech.say", "speech.listen", "controls.session", "action.ai.follow", "action.ai.stop",
+            { return { "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "action.ai.follow", "action.ai.stop",
                 "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
                 "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" }; }
@@ -1311,9 +1412,13 @@ namespace MWLua
             std::optional<lorkhan::RequestId> m_controlsRequest;
             std::optional<lorkhan::ControlsResponse> m_controls;
             std::string m_controlsError;
+            std::optional<lorkhan::RequestId> m_debugRequest;
+            std::optional<lorkhan::DebugCommandResponse::Command> m_debugCommand;
+            std::string m_debugError;
             static constexpr std::size_t kControlsPumpBatch = 8;
             static constexpr std::size_t kDeferredResultCapacity = lorkhan::kInboundCapacity;
             std::vector<lorkhan::InboundResult> m_deferredResults;
+            std::map<std::string,std::string> m_turnRequests;
             std::uint64_t m_cursor{};
             std::chrono::steady_clock::time_point m_nextPoll{};
             std::map<std::string, MediaState> m_media;
@@ -1360,12 +1465,20 @@ namespace MWLua
             api["submitCapturedDialogue"] = [lua](sol::table payload) {
                 return client().submitCapturedDialogue(lua, std::move(payload));
             };
+            api["submitActorProfile"] = [lua](sol::table payload) {
+                return client().submitActorProfile(lua, std::move(payload));
+            };
             api["requestSessionControls"] = [lua](sol::table target) { return client().requestControls(lua,std::move(target)); };
             api["selectSessionControl"] = [lua](const std::string& kind,sol::optional<std::string> selection,sol::table target) {
                 return client().selectControl(lua,kind,std::move(selection),std::move(target));
             };
             api["sessionControls"] = [lua] { return client().sessionControls(lua); };
             api["pumpSessionControls"] = [lua] { return client().pumpSessionControls(lua); };
+            api["requestDebugCommand"] = [lua] { return client().requestDebugCommand(lua); };
+            api["pumpDebugCommand"] = [lua] { return client().pumpDebugCommand(lua); };
+            api["submitDebugCommandResult"] = [lua](const std::string& commandId,const std::string& status,
+                const std::string& reason,sol::table observed) {
+                return client().submitDebugCommandResult(lua,commandId,status,reason,std::move(observed)); };
             api["voiceCaptureSupported"] = [] { return lorkhan::VoiceCaptureService::instance().supported(); };
             api["startVoiceCapture"] = [lua](sol::optional<bool> automatic,sol::optional<int> threshold,
                 sol::optional<int> delay,sol::optional<int> deviceId) {

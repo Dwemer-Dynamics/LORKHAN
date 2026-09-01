@@ -1,0 +1,19 @@
+{
+  "description": "Reject an untyped free-form console command",
+  "instance": {
+    "schema": "lorkhan.debug-command.v1",
+    "message_id": "00000000-0000-4000-8000-000000000040",
+    "request_id": "00000000-0000-4000-8000-000000000041",
+    "session_id": "00000000-0000-4000-8000-000000000007",
+    "generation": 7,
+    "command": {
+      "command_id": "00000000-0000-4000-8000-000000000042",
+      "name": "console.execute",
+      "parameters": {
+        "text": "tgm"
+      },
+      "expires_at": "2026-08-31T12:00:30Z"
+    }
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/debug-command.schema.json"
+}

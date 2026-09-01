@@ -7,6 +7,7 @@
 #include "lorkhan/validation.hpp"
 
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -373,6 +374,31 @@ struct ControlsResponse {
     std::vector<Profile> profiles;
 };
 
+struct DebugCommandResponse {
+    using Parameter = std::variant<bool, std::int64_t, double, std::string>;
+    struct Command {
+        MessageId command;
+        std::string name;
+        std::map<std::string, Parameter, std::less<>> parameters;
+        std::string expiresAt;
+    };
+    MessageId message;
+    RequestId request;
+    SessionId session;
+    Generation generation;
+    std::optional<Command> command;
+};
+
+struct DebugCommandResultAcceptedResponse {
+    MessageId message;
+    RequestId request;
+    MessageId command;
+    SessionId session;
+    Generation generation;
+    DebugCommandResultStatus status{DebugCommandResultStatus::failed};
+    bool duplicate{};
+};
+
 [[nodiscard]] Result<void> parseHealthResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 [[nodiscard]] Result<ProtocolError> parseProtocolErrorResponse(
@@ -398,6 +424,10 @@ struct ControlsResponse {
 [[nodiscard]] Result<SessionEndedResponse> parseSessionEndedResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 [[nodiscard]] Result<ControlsResponse> parseControlsResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<DebugCommandResponse> parseDebugCommandResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<DebugCommandResultAcceptedResponse> parseDebugCommandResultAcceptedResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateHealthHttpResponse(
     unsigned status, std::string_view body, const Headers& headers, json::ParseLimits limits = {});

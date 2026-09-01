@@ -8,7 +8,7 @@
     "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
     "schema": {"const": "lorkhan.gamedata.accepted.v1", "type": "string"},
     "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "type": {"const": "captured_dialogue", "type": "string"}
+    "type": {"enum": ["actor_profile", "captured_dialogue"], "type": "string"}
   },
   "required": ["schema", "request_id", "session_id", "generation", "type", "duplicate"],
   "type": "object"

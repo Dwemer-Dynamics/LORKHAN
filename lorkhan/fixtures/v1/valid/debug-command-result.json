@@ -1,0 +1,18 @@
+{
+  "description": "Terminal result for an executed operator debug command",
+  "instance": {
+    "schema": "lorkhan.debug-command-result.v1",
+    "message_id": "00000000-0000-4000-8000-000000000043",
+    "request_id": "00000000-0000-4000-8000-000000000044",
+    "command_id": "00000000-0000-4000-8000-000000000042",
+    "session_id": "00000000-0000-4000-8000-000000000007",
+    "generation": 7,
+    "status": "succeeded",
+    "reason_code": "command_applied",
+    "observed": {
+      "god_mode": true
+    },
+    "completed_at": "2026-08-31T12:00:01Z"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/debug-command-result.schema.json"
+}

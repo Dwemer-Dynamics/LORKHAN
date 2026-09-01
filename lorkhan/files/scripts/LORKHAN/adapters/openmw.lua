@@ -517,6 +517,37 @@ local function actorState(actor, player, modules)
     return state
 end
 
+-- Capture bounded actor metadata used to seed a server profile when auto-activation succeeds.
+function M.actorProfile(actorIdentity, modules)
+    modules=modules or loaded()
+    local actor,reason=M.resolve(actorIdentity,modules)
+    local npc=modules.types and modules.types.NPC
+    local creature=modules.types and modules.types.Creature
+    local actorType=modules.types and modules.types.Actor
+    local isNpc=actor and npc and safe(npc.objectIsInstance,actor)
+    local isCreature=actor and creature and safe(creature.objectIsInstance,actor)
+    if not isNpc and not isCreature then return nil,reason or 'actor_profile_unavailable' end
+    local record=isNpc and safe(npc.record,actor) or safe(creature.record,actor)
+    if not record then return nil,'actor_record_unavailable' end
+    local levelStat=actorType and actorType.stats and actorType.stats.level and safe(actorType.stats.level,actor)
+    local level=math.max(1,math.min(255,math.floor(tonumber(levelStat and levelStat.current) or 1)))
+    local disposition=isNpc and math.max(0,math.min(100,
+        math.floor(tonumber(safe(npc.getDisposition,actor,modules.self)) or 0))) or 0
+    local factionIds,seen={},{}
+    for _,faction in ipairs(isNpc and factions(actor,modules) or {}) do
+        local id=type(faction.id)=='string' and faction.id:sub(1,256) or nil
+        if id and id~='' and not seen[id] then
+            seen[id]=true factionIds[#factionIds+1]=id
+            if #factionIds>=32 then break end
+        end
+    end
+    local race=isNpc and type(record.race)=='string' and record.race:sub(1,128) or 'Creature'
+    local class=isNpc and type(record.class)=='string' and record.class:sub(1,128) or ''
+    return {actor=actorIdentity,race=race~='' and race or 'Unknown',class=class,
+        gender=isCreature and 'none' or record.isMale==true and 'male' or record.isMale==false and 'female' or 'unknown',
+        level=level,disposition=disposition,factions=factionIds}
+end
+
 local function nearbyObjects(maxDistance, modules)
     local result={}
     if not modules.nearby or not modules.self then return result end

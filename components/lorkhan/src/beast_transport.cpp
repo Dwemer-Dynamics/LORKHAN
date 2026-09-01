@@ -37,6 +37,15 @@
 namespace lorkhan {
 namespace {
 
+std::string_view gameDataTypeName(GameDataType type)
+{
+    switch (type) {
+        case GameDataType::captured_dialogue: return "captured_dialogue";
+        case GameDataType::actor_profile: return "actor_profile";
+    }
+    return {};
+}
+
 namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace http = beast::http;
@@ -552,6 +561,32 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
                 + ",\"target\":" + controls->serializedTarget + "}";
             break;
         }
+        case RequestKind::debug_command_query: {
+            const auto* debug=std::get_if<DebugCommandQueryRequest>(&request.payload);if(!debug)break;
+            wire.method=http::verb::post;wire.target=route("/debug-commands/query");wire.expectedStatus=200;
+            wire.body="{\"schema\":\"lorkhan.debug-command.query.v1\",\"message_id\":"+escapeJson(debug->message.value())
+                +",\"request_id\":"+escapeJson(debug->correlation.request.value())
+                +",\"session_id\":"+escapeJson(debug->correlation.session.value())
+                +",\"generation\":"+std::to_string(debug->correlation.generation.value())+"}";
+            break;
+        }
+        case RequestKind::debug_command_result: {
+            const auto* debug=std::get_if<DebugCommandResultRequest>(&request.payload);if(!debug)break;
+            auto observed=requireJsonObject(debug->serializedObserved,"debug command observed");
+            if(!observed)return Result<WireRequest>::failure(observed.error());
+            const char* status=debug->status==DebugCommandResultStatus::succeeded?"succeeded"
+                :debug->status==DebugCommandResultStatus::failed?"failed":"rejected";
+            wire.method=http::verb::post;wire.target=route("/debug-command-results");wire.expectedStatus=200;
+            wire.idempotencyKey=debug->message.value();
+            wire.body="{\"schema\":\"lorkhan.debug-command-result.v1\",\"message_id\":"+escapeJson(debug->message.value())
+                +",\"request_id\":"+escapeJson(debug->correlation.request.value())
+                +",\"command_id\":"+escapeJson(debug->command.value())
+                +",\"session_id\":"+escapeJson(debug->correlation.session.value())
+                +",\"generation\":"+std::to_string(debug->correlation.generation.value())
+                +",\"status\":"+escapeJson(status)+",\"reason_code\":"+escapeJson(debug->reasonCode)
+                +",\"observed\":"+debug->serializedObserved+",\"completed_at\":"+escapeJson(debug->completedAt)+"}";
+            break;
+        }
         case RequestKind::menu_dialogue_tts: {
             const auto* menu=std::get_if<MenuDialogueTtsRequest>(&request.payload);
             if(!menu)break;
@@ -570,7 +605,10 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
         case RequestKind::gamedata: {
             const auto* gamedata = std::get_if<GameDataRequest>(&request.payload);
             if (!gamedata) break;
-            auto payload = requireJsonObject(gamedata->serializedPayload, "captured dialogue payload");
+            const auto type = gameDataTypeName(gamedata->type);
+            if (type.empty())
+                return Result<WireRequest>::failure(makeError(ErrorCode::invalid_argument, "unsupported game-data type"));
+            auto payload = requireJsonObject(gamedata->serializedPayload, "game-data payload");
             if (!payload) return Result<WireRequest>::failure(payload.error());
             wire.method = http::verb::post;
             wire.target = route("/gamedata");
@@ -583,7 +621,7 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
                 + escapeJson(gamedata->request.value()) + ",\"generation\":"
                 + std::to_string(request.generation.value()) + ",\"runtime_generation\":"
                 + std::to_string(gamedata->runtimeGeneration.value()) + ",\"observed_at\":"
-                + escapeJson(gamedata->observedAt) + ",\"game\":\"tes3\",\"type\":\"captured_dialogue\",\"payload\":"
+                + escapeJson(gamedata->observedAt) + ",\"game\":\"tes3\",\"type\":" + escapeJson(type) + ",\"payload\":"
                 + gamedata->serializedPayload + "}";
             break;
         }
@@ -777,6 +815,25 @@ Result<InboundResult> validateResponse(const OutboundRequest& request, const Wir
             kind = ResponseKind::controls;
             break;
         }
+        case RequestKind::debug_command_query: {
+            const auto& sent=std::get<DebugCommandQueryRequest>(request.payload);
+            auto parsed=parseDebugCommandResponse(response.body(),headers);
+            if(!parsed)return Result<InboundResult>::failure(parsed.error());
+            if(parsed.value().message!=sent.message||parsed.value().request!=sent.correlation.request
+                ||parsed.value().session!=sent.correlation.session||parsed.value().generation!=sent.correlation.generation)
+                return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,"debug-command response correlation mismatch"));
+            kind=ResponseKind::debug_command;break;
+        }
+        case RequestKind::debug_command_result: {
+            const auto& sent=std::get<DebugCommandResultRequest>(request.payload);
+            auto parsed=parseDebugCommandResultAcceptedResponse(response.body(),headers);
+            if(!parsed)return Result<InboundResult>::failure(parsed.error());
+            if(parsed.value().message!=sent.message||parsed.value().request!=sent.correlation.request
+                ||parsed.value().command!=sent.command||parsed.value().session!=sent.correlation.session
+                ||parsed.value().generation!=sent.correlation.generation||parsed.value().status!=sent.status)
+                return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,"debug-command result correlation mismatch"));
+            kind=ResponseKind::completed;break;
+        }
         case RequestKind::menu_dialogue_tts: {
             const auto& sent=std::get<MenuDialogueTtsRequest>(request.payload);
             auto parsed=parseMenuDialogueTtsReadyResponse(response.body(),headers);
@@ -794,7 +851,7 @@ Result<InboundResult> validateResponse(const OutboundRequest& request, const Wir
             auto parsed = parseGameDataAcceptedResponse(response.body(), headers);
             if (!parsed) return Result<InboundResult>::failure(parsed.error());
             if (parsed.value().request != sent.request || parsed.value().session != request.session
-                || parsed.value().generation != request.generation || parsed.value().type != "captured_dialogue")
+                || parsed.value().generation != request.generation || parsed.value().type != gameDataTypeName(sent.type))
                 return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
                     "game-data response correlation mismatch"));
             break;
