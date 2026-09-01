@@ -337,9 +337,9 @@
       "sha256": "5ba01a8c62872239adf3a2092e072d4a8d00939501368600f7d29e957409dd0a"
     },
     {
-      "bytes": 1878,
+      "bytes": 3420,
       "path": "lorkhan/schemas/v1/debug-command-result.schema.json",
-      "sha256": "75d1439cb76bd0c643a3f909fa17849dccb22281e8a896d9fe261612c3d88ffe"
+      "sha256": "b147be4a82a99fb9f463034d86a7b8a93fd9fc8ed5bed9a7791e21b497e9ae46"
     },
     {
       "bytes": 20778,
