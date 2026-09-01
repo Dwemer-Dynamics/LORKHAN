@@ -128,7 +128,7 @@ test('final response advances rechat after its streamed sentence already played'
  eq(responseQueue.consumeRechat(q),true);eq(responseQueue.consumeRechat(q),false)
 end)
 
-test('target settings preserve local presentation and enforce both safety gates',function()
+test('target settings preserve local presentation actions and target preferences',function()
  local function localSettings()
   return {autoActivate={addHostile=true,addCreatures=true},behavior={actionsEnabled=true},
    presentation={showStatusHud=false,transcriptRows=12,ttsVolumeBoost=4}}
@@ -158,8 +158,8 @@ test('target settings preserve local presentation and enforce both safety gates'
  eq(settings.autoActivate.addCreatures,false)
  for _,safety in ipairs({{}, {actions_enabled=false,allow_hostile=false,allow_creatures=false}}) do
   settings=localSettings();player.applyTargetSettings(settings,{safety=safety})
-  eq(settings.behavior.actionsEnabled,false);eq(settings.autoActivate.addHostile,false)
-  eq(settings.autoActivate.addCreatures,false);eq(settings.behavior.rechat,false)
+  eq(settings.behavior.actionsEnabled,true);eq(settings.autoActivate.addHostile,true)
+  eq(settings.autoActivate.addCreatures,true);eq(settings.behavior.rechat,false)
  end
 end)
 test('conversation history retains correlation metadata and terminal request state',function()

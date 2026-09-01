@@ -2,16 +2,11 @@ local ui=require('scripts.LORKHAN.ui.state')
 local targeting=require('scripts.LORKHAN.targeting')
 local M={}
 function M.new() return {ui=ui.new(),action='LORKHAN_Talk',haltAction='LORKHAN_Halt'} end
--- Apply the selected target's policy without replacing local presentation or enabling excluded automation.
+-- Apply server-owned target behavior without replacing local presentation, action, or targeting preferences.
 function M.applyTargetSettings(settings,targetSettings)
     targetSettings=targetSettings or {}
-    local safety=targetSettings.safety or {}
     local remote=targetSettings.behavior or {}
-    local auto=settings.autoActivate
     local behavior=settings.behavior
-    auto.addHostile=auto.addHostile==true and safety.allow_hostile==true
-    auto.addCreatures=auto.addCreatures==true and safety.allow_creatures==true
-    behavior.actionsEnabled=behavior.actionsEnabled==true and safety.actions_enabled==true
     behavior.rechat=remote.rechat==true
     behavior.rechatMaxDepth=remote.rechat_max_depth or 2
     behavior.rechatProbabilityPercent=remote.rechat_probability_percent or 50
