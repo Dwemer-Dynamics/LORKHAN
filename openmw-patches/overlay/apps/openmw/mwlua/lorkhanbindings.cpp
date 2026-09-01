@@ -990,6 +990,25 @@ namespace MWLua
                 return true;
             }
 
+            // Settle debug queries in whichever native response lane drains them first.
+            bool settleDebugResult(const lorkhan::InboundResult& result)
+            {
+                if (!m_debugRequest || result.request != *m_debugRequest) return false;
+                m_debugRequest.reset();
+                m_debugCommand.reset();
+                if (result.kind == lorkhan::ResponseKind::debug_command)
+                {
+                    auto parsed = lorkhan::parseDebugCommandResponse(result.payload, jsonHeaders());
+                    if (parsed) { m_debugCommand = std::move(parsed).value().command; m_debugError.clear(); }
+                    else m_debugError = parsed.error().message;
+                }
+                else if (result.kind == lorkhan::ResponseKind::failure)
+                    m_debugError = result.failure ? result.failure->message : "transport_failure";
+                else
+                    m_debugError = "unexpected_debug_response";
+                return true;
+            }
+
             // The Interact overlay owns Interface UI mode and pauses simulation, so the GLOBAL Lua lane
             // that drives poll stops running while a server-owned controls panel is open. Player onFrame
             // keeps running every frame, so this settles only the in-flight controls response. Every
@@ -1023,17 +1042,7 @@ namespace MWLua
                 sol::table status(lua,sol::create);bool settled=false;
                 if(m_service&&m_debugRequest&&m_deferredResults.size()+kControlsPumpBatch<=kDeferredResultCapacity){
                     for(auto& result:m_service->poll(kControlsPumpBatch)){
-                        if(result.request==*m_debugRequest){
-                            ++m_resultsSeen;settled=true;m_debugRequest.reset();m_debugCommand.reset();
-                            if(result.kind==lorkhan::ResponseKind::debug_command){
-                                auto parsed=lorkhan::parseDebugCommandResponse(result.payload,jsonHeaders());
-                                if(parsed){m_debugCommand=std::move(parsed).value().command;m_debugError.clear();}
-                                else m_debugError=parsed.error().message;
-                            }else if(result.kind==lorkhan::ResponseKind::failure)
-                                m_debugError=result.failure?result.failure->message:"transport_failure";
-                            else m_debugError="unexpected_debug_response";
-                            continue;
-                        }
+                        if(settleDebugResult(result)){++m_resultsSeen;settled=true;continue;}
                         m_deferredResults.push_back(std::move(result));
                     }
                 }
@@ -1064,6 +1073,7 @@ namespace MWLua
                 for (auto& result : results)
                 {
                     ++m_resultsSeen;
+                    if (settleDebugResult(result)) continue;
                     if (result.kind == lorkhan::ResponseKind::failure)
                     {
                         const bool pollFailure = m_pollRequest && result.request == *m_pollRequest;
