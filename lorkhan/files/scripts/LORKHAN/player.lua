@@ -7,7 +7,6 @@ local chatbox=require('scripts.LORKHAN.ui.chatbox')
 local uiState=require('scripts.LORKHAN.ui.state')
 local selector=require('scripts.LORKHAN.ui.selector')
 local actorTools=require('scripts.LORKHAN.ui.actor_tools')
-local notifications=require('scripts.LORKHAN.ui.notifications')
 local support=require('scripts.LORKHAN.util')
 local core=adapter.event()
 local inputOk,input=pcall(require,'openmw.input')
@@ -18,8 +17,6 @@ local interfacesOk,interfaces=pcall(require,'openmw.interfaces')
 local storageOk,openmwStorage=pcall(require,'openmw.storage')
 local nativeOk,native=pcall(require,'openmw.lorkhan')
 local state=player.new()
-local notification=notifications.new()
-local lastNotificationStatus
 local element
 local statusElement
 local voiceRecording=false
@@ -59,6 +56,10 @@ local pendingTextSubmit=false
 local awaitingTextQueue=false
 local pendingHistory
 local pendingControlPanel
+-- Panels whose contents are owned by the server, so an in-flight controls request has to settle
+-- before they can show the player anything new.
+local SERVER_CONTROL_PANELS={models=true,profiles=true,narrator=true}
+local controlsRequestActive=false
 local aimCandidate
 local aimScanElapsed=0
 local aimSignature=''
@@ -356,6 +357,13 @@ local function submitText()
     return true
 end
 
+-- One in-flight controls request at a time already, so a single flag is enough to know whether the
+-- pause-safe pump has anything to settle.
+local function noteControlsRequest(request,error)
+    if request then controlsRequestActive=true end
+    return request,error
+end
+
 local function sessionControls()
     if not nativeOk or not native or not native.sessionControls then return nil end
     local ok,value=pcall(native.sessionControls)
@@ -368,7 +376,7 @@ local function refreshSessionControls(panel,quiet)
         if not quiet then state.ui.status='session controls unavailable' render() end
         return
     end
-    local request,error=native.requestSessionControls(state.ui.target)
+    local request,error=noteControlsRequest(native.requestSessionControls(state.ui.target))
     if not quiet then
         if not request then state.ui.status=tostring(error or 'session controls unavailable') else state.ui.status='loading controls' end
         if panel then state.ui.panel=panel end
@@ -376,12 +384,37 @@ local function refreshSessionControls(panel,quiet)
     end
 end
 
+-- The controls snapshot only describes the actor it was requested for, so every panel that reads it
+-- confirms the target first instead of presenting another NPC's choices.
+local function targetedControls()
+    local controls=sessionControls()
+    if controls and state.ui.target and identity.same(controls.target,state.ui.target) then return controls end
+    return nil
+end
+
 local function selectSessionControl(kind,selection)
     if not state.ui.target or not nativeOk or not native or not native.selectSessionControl then
         state.ui.status='session controls unavailable' render() return
     end
-    local request,error=native.selectSessionControl(kind,selection,state.ui.target)
+    local request,error=noteControlsRequest(native.selectSessionControl(kind,selection,state.ui.target))
     state.ui.status=request and 'control update queued' or tostring(error or 'control update failed')
+    render()
+end
+
+-- One semantic model slot write, and only from a player click. The clicked slot stays marked until
+-- the next controls snapshot settles, so a duplicate click cannot queue a second write.
+local function selectModelSlot(key)
+    if uiState.modelSlotBusy(state.ui) then return end
+    if not state.ui.target or not nativeOk or not native or not native.selectSessionControl then
+        state.ui.status='session controls unavailable' render() return
+    end
+    local request,error=noteControlsRequest(native.selectSessionControl('model_slot',key,state.ui.target))
+    if request then
+        uiState.beginModelSlot(state.ui,key)
+        state.ui.status='selecting '..key..' model'
+    else
+        state.ui.status=tostring(error or 'model slot update failed')
+    end
     render()
 end
 
@@ -396,7 +429,7 @@ local function generateSelectedProfile()
     if not nativeOk or not native or not native.selectSessionControl then
         state.ui.status='profile generation unavailable' render() return
     end
-    local request,error=native.selectSessionControl('profile_generate',controls.selected_profile_id,state.ui.target)
+    local request,error=noteControlsRequest(native.selectSessionControl('profile_generate',controls.selected_profile_id,state.ui.target))
     state.ui.status=request and 'profile generation queued' or tostring(error or 'profile generation failed')
     render()
 end
@@ -412,7 +445,7 @@ local function generateNarratorProfile()
     if not nativeOk or not native or not native.selectSessionControl then
         state.ui.status='narrator generation unavailable' render() return
     end
-    local request,error=native.selectSessionControl('narrator_profile_generate',controls.narrator_profile_id,state.ui.target)
+    local request,error=noteControlsRequest(native.selectSessionControl('narrator_profile_generate',controls.narrator_profile_id,state.ui.target))
     state.ui.status=request and 'narrator generation queued' or tostring(error or 'narrator generation failed')
     render()
 end
@@ -440,6 +473,34 @@ local function setMood(mood)
     state.ui.status='mood: '..uiState.moodLabel(state.ui)
     render()
     return true
+end
+
+-- Panels the Interact menu opens for the aimed actor still need a resolved target, exactly as the
+-- legacy hotkeys did through openPanel.
+local TARGETED_PANELS={models=true,profiles=true,['profile-menu']=true}
+local function openFromConversation(panel)
+    if TARGETED_PANELS[panel] and not state.ui.target then chooseTarget(2048,true) end
+    uiState.setPanel(state.ui,panel,'conversation')
+end
+
+-- One status HUD toggle shared by the legacy hotkey and the Interact entry, so the saved setting,
+-- the HUD strip, and the menu label can never disagree.
+local function toggleStatusHud()
+    state.ui.statusHudVisible=not state.ui.statusHudVisible
+    if presentationSettings then presentationSettings:set('showStatusHud',state.ui.statusHudVisible) end
+    state.ui.status='status HUD '..(state.ui.statusHudVisible and 'on' or 'off')
+    render()
+    return state.ui.statusHudVisible
+end
+
+-- One back row for every panel that Interact and Targeted NPC Tools both reach, so the label and
+-- the destination always describe the menu the player actually came from.
+local function backRow()
+    local route=uiState.backRoute(state.ui)
+    return {type=openmwUi.TYPE.Text,props={text=route.label,textSize=16,
+        textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
+            state.ui.panel=route.panel render()
+        end)}}
 end
 
 local function actionContext(actionTarget)
@@ -493,21 +554,15 @@ local function beginDestinationTarget(label,name,tier)
 end
 
 local function renderStatusHud()
-    local statusVisible=notifications.active(notification)
-    if state.ui.visible or not uiOk or not utilOk
-        or not state.ui.statusHudVisible and not statusVisible then
+    -- The top-left HUD is strictly opt-in: with the Status HUD toggle off nothing is drawn here.
+    if state.ui.visible or not uiOk or not utilOk or not state.ui.statusHudVisible then
         if statusElement then statusElement:destroy() statusElement=nil end
         return
     end
-    local text
-    if state.ui.statusHudVisible then
-        text='LORKHAN  |  Connection: '..tostring(nativeValue('status','unavailable'))..
-            '  |  Request: '..(turnActive and 'active' or 'idle')..
-            '  |  Speech: '..(speechActive() and 'speaking' or 'idle')..
-            '  |  Target: '..actorLabel(state.ui.target)..'  |  '..state.ui.mode
-    else
-        text='LORKHAN  |  '..tostring(notification.text or state.ui.status)
-    end
+    local text='LORKHAN  |  Connection: '..tostring(nativeValue('status','unavailable'))..
+        '  |  Request: '..(turnActive and 'active' or 'idle')..
+        '  |  Speech: '..(speechActive() and 'speaking' or 'idle')..
+        '  |  Target: '..actorLabel(state.ui.target)..'  |  '..state.ui.mode
     local width=520
     local height=42
     local layout={layer='HUD',type=openmwUi.TYPE.Container,
@@ -520,10 +575,6 @@ local function renderStatusHud()
     else statusElement=openmwUi.create(layout) end
 end
 render=function()
-    if state.ui.status~=lastNotificationStatus then
-        lastNotificationStatus=state.ui.status
-        notifications.show(notification,tostring(state.ui.status),4)
-    end
     renderStatusHud()
     if not state.ui.visible or not uiOk or not utilOk then
         if element then element:destroy() element=nil end
@@ -546,7 +597,16 @@ render=function()
                     pendingTextSubmit=false state.ui.visible=false leaveUiMode() render()
                 end
             end),
-            onSelectMood=adapter.callback(function() state.ui.panel='moods' render() end),
+            statusHudVisible=state.ui.statusHudVisible,
+            onSelectMood=adapter.callback(function() openFromConversation('moods') render() end),
+            onSelectModes=adapter.callback(function() openFromConversation('modes') render() end),
+            onSelectModel=adapter.callback(function()
+                openFromConversation('models') refreshSessionControls('models')
+            end),
+            onSelectProfiles=adapter.callback(function() openFromConversation('profile-menu') render() end),
+            onSelectHistory=adapter.callback(function() openFromConversation('history') render() end),
+            onToggleStatusHud=adapter.callback(toggleStatusHud),
+            onSelectDiagnostics=adapter.callback(function() openFromConversation('diagnostics') render() end),
             onSend=adapter.callback(submitText),
             onClose=adapter.callback(function() pendingTextSubmit=false state.ui.visible=false leaveUiMode() render() end)})
     elseif state.ui.panel=='nearby-profiles' then
@@ -590,7 +650,7 @@ render=function()
                 state.ui.panel='profile-menu' render()
             end)}}
     elseif state.ui.panel=='history' then
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Conversation History',textSize=20,
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Context History',textSize=20,
             textColor=util.color.rgb(0.95,0.9,0.82)}}
         if #state.ui.transcript==0 then
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='No LORKHAN dialogue in this session yet.',
@@ -623,10 +683,7 @@ render=function()
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Page '..state.ui.historyPage..' / '..pages,
                 textSize=13,textColor=util.color.rgb(0.72,0.68,0.62)}}
         end
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
-            textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
-                state.ui.panel='actor-tools' render()
-            end)}}
+        transcript[#transcript+1]=backRow()
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Close',textSize=16,
             textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
                 state.ui.visible=false leaveUiMode() render()
@@ -696,10 +753,7 @@ render=function()
         transcript[#transcript+1]={type=openmwUi.TYPE.TextEdit,props={text=copyText,textSize=14,
             size=util.vector2(720,52),multiline=true,wordWrap=true,readOnly=true,autoSize=false,
             textColor=util.color.rgb(0.92,0.82,0.68)}}
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
-            textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
-                state.ui.panel='actor-tools' render()
-            end)}}
+        transcript[#transcript+1]=backRow()
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Close',textSize=16,
             textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
                 state.ui.visible=false leaveUiMode() render()
@@ -795,7 +849,7 @@ render=function()
             link('Back',function() state.ui.actionView='root' state.ui.actionPage=1 render() end)
         end
         link('Conversation',function() state.ui.panel='conversation' render() end)
-        link('Targeted NPC Tools',function() state.ui.panel='actor-tools' render() end)
+        link('Targeted NPC Tools',function() uiState.setPanel(state.ui,'actor-tools','actor-tools') render() end)
         link('Close',function() state.ui.visible=false leaveUiMode() render() end)
     elseif state.ui.panel=='actor-tools' then
         transcript=actorTools.build({ui=openmwUi,util=util,target=displayName(state.ui.target),options={
@@ -804,7 +858,9 @@ render=function()
                 send('LORKHAN_AUDIENCE_REQUEST',{maxDistance=2048})
                 state.ui.status='adding aimed NPC to conversation' render()
             end)},
-            {label='Dynamic profiles...',onSelect=adapter.callback(function() state.ui.panel='profile-menu' render() end)},
+            {label='Dynamic profiles...',onSelect=adapter.callback(function()
+                uiState.setPanel(state.ui,'profile-menu','actor-tools') render()
+            end)},
             {label='Actor actions...',onSelect=adapter.callback(function()
                 state.ui.panel='actions' state.ui.actionView='root' state.ui.actionPage=1 render()
             end)},
@@ -820,28 +876,32 @@ render=function()
             {label='Targeted NPC',onSelect=adapter.callback(function() refreshSessionControls('profiles') end)},
             {label='Nearby AI NPCs',onSelect=adapter.callback(function() state.ui.panel='nearby-profiles' render() end)},
             {label='Narrator',onSelect=adapter.callback(function() refreshSessionControls('narrator') end)},
-        },onBack=adapter.callback(function() state.ui.panel='actor-tools' render() end),
+        },onBack=adapter.callback(function() state.ui.panel=uiState.backRoute(state.ui).panel render() end),
         onClose=adapter.callback(function() state.ui.visible=false leaveUiMode() render() end)})
-    elseif state.ui.panel=='models' or state.ui.panel=='profiles' or state.ui.panel=='narrator' then
+    elseif state.ui.panel=='models' then
+        -- Four semantic slots, one state line, and no connector enumeration. The panel is read-only
+        -- until the player clicks a slot, so opening it never writes a selection.
+        local controls=targetedControls()
+        uiState.settleModelSlot(state.ui,controls)
+        local select={}
+        for _,slot in ipairs(uiState.MODEL_SLOTS) do
+            select[slot.key]=adapter.callback(function() selectModelSlot(slot.key) end)
+        end
+        transcript=selector.buildModelSlots({ui=openmwUi,util=util,select=select,
+            view=uiState.modelSlotView(controls,state.ui.modelSlotPending),
+            onRefresh=adapter.callback(function() refreshSessionControls('models') end),
+            backLabel=uiState.backRoute(state.ui).label,
+            onBack=adapter.callback(function()
+                state.ui.panel=uiState.backRoute(state.ui).panel render()
+            end)})
+    elseif state.ui.panel=='profiles' or state.ui.panel=='narrator' then
         local controls=sessionControls()
-        local modelPanel=state.ui.panel=='models'
         local narratorPanel=state.ui.panel=='narrator'
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=modelPanel and 'LLM Model Slot' or (narratorPanel and 'Narrator Profile' or 'NPC Roleplay Profile'),textSize=20,
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=narratorPanel and 'Narrator Profile' or 'NPC Roleplay Profile',textSize=20,
             textColor=util.color.rgb(0.95,0.9,0.82)}}
         if not controls or not identity.same(controls.target,state.ui.target) then
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Loading server-owned choices...',textSize=16,
                 textColor=util.color.rgb(0.72,0.68,0.62)}}
-        elseif modelPanel then
-            local defaultActive=not controls.selected_model_slot_id and ' [active]' or ''
-            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Server default'..defaultActive,textSize=18,
-                textColor=not controls.selected_model_slot_id and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(1.0,0.58,0.18)},
-                events={mouseClick=adapter.callback(function() selectSessionControl('model_slot',nil) end)}}
-            for _,slot in ipairs(controls.model_slots or {}) do
-                local active=controls.selected_model_slot_id==slot.configuration_id and ' [active]' or ''
-                transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=slot.name..active..'  |  '..slot.model,textSize=17,
-                    textColor=active~='' and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(1.0,0.58,0.18)},
-                    events={mouseClick=adapter.callback(function() selectSessionControl('model_slot',slot.configuration_id) end)}}
-            end
         elseif narratorPanel then
             if controls.narrator_profile_id then
                 transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Generate narrator profile with AI',textSize=18,
@@ -872,8 +932,7 @@ render=function()
         end
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Refresh choices',textSize=16,
             textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function() refreshSessionControls(state.ui.panel) end)}}
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
-            textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function() state.ui.panel='actor-tools' render() end)}}
+        transcript[#transcript+1]=backRow()
     elseif state.ui.panel=='moods' then
         local moods={}
         for _,mood in ipairs(uiState.MOODS) do
@@ -914,10 +973,7 @@ render=function()
         for _,row in ipairs(chatbox.buildShortcutHelp({ui=openmwUi,util=util,shortcuts=uiState.SHORTCUTS})) do
             transcript[#transcript+1]=row
         end
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Targeted NPC Tools',textSize=16,
-            textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
-                state.ui.panel='actor-tools' render()
-            end)}}
+        transcript[#transcript+1]=backRow()
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Close',textSize=16,
             textColor=util.color.rgb(0.82,0.78,0.72)},events={mouseClick=adapter.callback(function()
                 state.ui.visible=false leaveUiMode() render()
@@ -938,7 +994,7 @@ render=function()
                 state.ui.pendingAction=nil render()
             end)}}
     end
-    local panelSizes={conversation={560,250},['actor-tools']={540,360},['profile-menu']={520,300},
+    local panelSizes={conversation={560,400},['actor-tools']={540,360},['profile-menu']={520,300},
         modes={540,480},moods={520,470},models={580,420},profiles={580,420},narrator={580,330},
         ['nearby-profiles']={680,460},history={760,620},diagnostics={760,620}}
     local panelSize=panelSizes[state.ui.panel] or {680,460}
@@ -1068,7 +1124,8 @@ end
 
 local function openPanel(panel)
     if not controlsAllowed() and not ownsUiMode then return end
-    state.ui.panel=panel state.ui.visible=true
+    -- Saved hotkeys still open these panels directly, so they keep the Targeted NPC Tools back route.
+    uiState.setPanel(state.ui,panel,'actor-tools') state.ui.visible=true
     if panel=='actions' then state.ui.actionView='root' state.ui.actionPage=1 end
     if (panel=='actions' or panel=='conversation' or panel=='actor-tools' or panel=='models'
         or panel=='profiles' or panel=='profile-menu') and not state.ui.target then chooseTarget(2048) end
@@ -1208,9 +1265,7 @@ if inputOk then
     input.registerTriggerHandler('LORKHAN_ProfileMenu',adapter.callback(function() togglePanel('profile-menu') end))
     input.registerTriggerHandler('LORKHAN_StatusHud',adapter.callback(function()
         if not controlsAllowed() then return end
-        state.ui.statusHudVisible=not state.ui.statusHudVisible
-        if presentationSettings then presentationSettings:set('showStatusHud',state.ui.statusHudVisible) end
-        render()
+        toggleStatusHud()
     end))
     input.registerTriggerHandler('LORKHAN_History',adapter.callback(function() togglePanel('history') end))
     input.registerTriggerHandler('LORKHAN_Diagnostics',adapter.callback(function() togglePanel('diagnostics') end))
@@ -1254,12 +1309,29 @@ return {
                 handlePushToTalk(false,'configured_key')
             end
         end,
+        -- The Interact overlay owns Interface UI mode and pauses simulation, so onUpdate stops running
+        -- while a server-owned control panel is open. onFrame still runs every frame, so it does one
+        -- bounded pause-safe pump of the in-flight controls response and nothing else. No gameplay,
+        -- settings scan, or event processing belongs here.
+        onFrame=function()
+            if not controlsRequestActive or not state.ui.visible
+                or not SERVER_CONTROL_PANELS[state.ui.panel] then return end
+            if not nativeOk or not native or not native.pumpSessionControls then
+                controlsRequestActive=false return
+            end
+            local ok,status=pcall(native.pumpSessionControls)
+            if not ok or type(status)~='table' then controlsRequestActive=false return end
+            if status.pending==true then return end
+            controlsRequestActive=false
+            if status.error then state.ui.status=tostring(status.error) end
+            -- Rerendering is what settles the panel: the models branch feeds the returned snapshot to
+            -- uiState.settleModelSlot, which clears the pending mark and shows the selected slot.
+            render()
+        end,
         onUpdate=function(dt)
             if narratorSpeech and not adapter.isSpeechActive() then reportNarrator('played','playback_completed') end
             updateMenuDialogueSpeech()
             flushCapturedDialogue(dt)
-            local statusChanged=notifications.update(notification,dt)
-            if statusChanged then renderStatusHud() end
             local elapsed=tonumber(dt) or 0
             settingsRefreshElapsed=settingsRefreshElapsed+elapsed
             if settingsRefreshElapsed>=SETTINGS_REFRESH_INTERVAL then
@@ -1267,7 +1339,8 @@ return {
                 local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
                 local controls=sessionControls()
                 applySettings(session,controls)
-                local signature=controls and table.concat({tostring(controls.selected_model_slot_id),tostring(controls.selected_profile_id),
+                local signature=controls and table.concat({tostring(controls.selected_model_slot_key),
+                    tostring(controls.resolved_model_slot_key),tostring(controls.selected_profile_id),
                     tostring(controls.effective_settings and controls.effective_settings.change_token),
                     tostring(#(controls.model_slots or {})),tostring(#(controls.profiles or {})),tostring(controls.pending)},'|') or ''
                 if signature~=controlsSignature then controlsSignature=signature

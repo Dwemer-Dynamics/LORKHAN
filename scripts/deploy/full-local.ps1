@@ -179,7 +179,11 @@ function Sync-OpenMwOverlay {
             throw "OpenMW overlay path escapes the pinned worktree: $trackedFile"
         }
         New-Item -ItemType Directory -Force -Path (Split-Path $targetPath -Parent) | Out-Null
+        if ((Test-Path -LiteralPath $targetPath -PathType Leaf) -and
+            (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash -eq
+            (Get-FileHash -LiteralPath $targetPath -Algorithm SHA256).Hash) { continue }
         Copy-Item -LiteralPath $sourcePath -Destination $targetPath -Force
+        [IO.File]::SetLastWriteTimeUtc($targetPath, [DateTime]::UtcNow)
     }
 }
 
@@ -352,7 +356,7 @@ LORKHAN Compatibility Mod Manager, enable the folder and its content files,
 set their order, then save. The manager backs up the profile before changes.
 Use Manage-LORKHAN-Mods.cmd for OpenMW engine and general launcher settings.
 
-F6 opens typed conversation. F7 stops current LORKHAN work. F8 opens Actor Actions.
+F6 opens Interact. F7 stops current LORKHAN work. F8 opens Actor Actions.
 The Master Menu is linked inside the conversation and action panels.
 Rebind all LORKHAN inputs under Options > Scripts > LORKHAN.
 "@
@@ -416,6 +420,8 @@ try {
             Sync-OpenMwOverlay -Destination $EngineSource
             if (-not $SkipBuild) {
                 $cmake = Get-CMakeExecutable
+                & $cmake -S $EngineSource -B $BuildRoot "-DLORKHAN_SOURCE_ROOT=$repoRoot"
+                if ($LASTEXITCODE -ne 0) { throw "OpenMW configuration failed with exit code $LASTEXITCODE." }
                 foreach ($target in @('openmw', 'openmw-launcher')) {
                     & $cmake --build $BuildRoot --config $Configuration --target $target
                     if ($LASTEXITCODE -ne 0) { throw "OpenMW target '$target' failed with exit code $LASTEXITCODE." }

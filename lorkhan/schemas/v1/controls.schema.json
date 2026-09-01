@@ -14,6 +14,13 @@
         {"type": "null"}
       ]
     },
+    "modelSlotKey": {"enum": ["standard", "fast", "powerful", "experimental"], "type": "string"},
+    "nullableModelSlotKey": {
+      "oneOf": [
+        {"$ref": "https://lorkhan.invalid/schemas/v1/controls.schema.json#/$defs/modelSlotKey"},
+        {"type": "null"}
+      ]
+    },
     "routingUuidOrEmpty": {
       "oneOf": [
         {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
@@ -137,23 +144,28 @@
     "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
     "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
     "target": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"},
-    "selected_model_slot_id": {"$ref": "https://lorkhan.invalid/schemas/v1/controls.schema.json#/$defs/nullableUuid"},
+    "selected_model_slot_key": {"$ref": "https://lorkhan.invalid/schemas/v1/controls.schema.json#/$defs/modelSlotKey"},
+    "resolved_model_slot_key": {"$ref": "https://lorkhan.invalid/schemas/v1/controls.schema.json#/$defs/nullableModelSlotKey"},
     "selected_profile_id": {"$ref": "https://lorkhan.invalid/schemas/v1/controls.schema.json#/$defs/nullableUuid"},
     "narrator_profile_id": {"$ref": "https://lorkhan.invalid/schemas/v1/controls.schema.json#/$defs/nullableUuid"},
     "effective_settings": {"$ref": "https://lorkhan.invalid/schemas/v1/controls.schema.json#/$defs/effectiveSettings"},
     "model_slots": {
       "type": "array",
-      "maxItems": 32,
+      "minItems": 4,
+      "maxItems": 4,
       "items": {
         "additionalProperties": false,
         "properties": {
-          "configuration_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-          "name": {"type": "string", "minLength": 1, "maxLength": 128},
-          "revision": {"type": "integer", "minimum": 1},
-          "driver": {"enum": ["configured", "mock"], "type": "string"},
-          "model": {"type": "string", "minLength": 1, "maxLength": 256}
+          "key": {"$ref": "https://lorkhan.invalid/schemas/v1/controls.schema.json#/$defs/modelSlotKey"},
+          "label": {"enum": ["Standard", "Fast", "Powerful", "Experimental"], "type": "string"},
+          "available": {"type": "boolean"},
+          "configuration_id": {"$ref": "https://lorkhan.invalid/schemas/v1/controls.schema.json#/$defs/nullableUuid"},
+          "configuration_name": {"oneOf": [{"type": "string", "minLength": 1, "maxLength": 128}, {"type": "null"}]},
+          "revision": {"$ref": "https://lorkhan.invalid/schemas/v1/controls.schema.json#/$defs/nullableRevision"},
+          "driver": {"oneOf": [{"enum": ["configured", "mock"], "type": "string"}, {"type": "null"}]},
+          "model": {"oneOf": [{"type": "string", "minLength": 1, "maxLength": 256}, {"type": "null"}]}
         },
-        "required": ["configuration_id", "name", "revision", "driver", "model"],
+        "required": ["key", "label", "available", "configuration_id", "configuration_name", "revision", "driver", "model"],
         "type": "object"
       }
     },
@@ -172,6 +184,6 @@
       }
     }
   },
-  "required": ["schema", "message_id", "request_id", "session_id", "generation", "target", "selected_model_slot_id", "selected_profile_id", "narrator_profile_id", "effective_settings", "model_slots", "profiles"],
+  "required": ["schema", "message_id", "request_id", "session_id", "generation", "target", "selected_model_slot_key", "resolved_model_slot_key", "selected_profile_id", "narrator_profile_id", "effective_settings", "model_slots", "profiles"],
   "type": "object"
 }

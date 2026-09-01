@@ -329,11 +329,14 @@ struct SessionEndedResponse {
 
 struct ControlsResponse {
     struct ModelSlot {
-        std::string configurationId;
-        std::string name;
-        std::uint64_t revision{};
-        std::string driver;
-        std::string model;
+        std::string key;
+        std::string label;
+        bool available{};
+        std::optional<std::string> configurationId;
+        std::optional<std::string> configurationName;
+        std::optional<std::uint64_t> revision;
+        std::optional<std::string> driver;
+        std::optional<std::string> model;
     };
     struct Profile {
         std::string profileId;
@@ -361,7 +364,8 @@ struct ControlsResponse {
     SessionId session;
     Generation generation;
     ProtocolIdentity target;
-    std::optional<std::string> selectedModelSlotId;
+    std::string selectedModelSlotKey;
+    std::optional<std::string> resolvedModelSlotKey;
     std::optional<std::string> selectedProfileId;
     std::optional<std::string> narratorProfileId;
     EffectiveSettings effectiveSettings;

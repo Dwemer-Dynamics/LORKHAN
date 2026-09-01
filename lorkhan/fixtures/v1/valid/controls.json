@@ -14,7 +14,8 @@
       "cell": {"kind": "interior", "name": "Seyda Neen, Census and Excise Office"},
       "display_name": "Fargoth"
     },
-    "selected_model_slot_id": "10000000-0000-4000-8000-000000000406",
+    "selected_model_slot_key": "standard",
+    "resolved_model_slot_key": "standard",
     "selected_profile_id": null,
     "narrator_profile_id": "10000000-0000-4000-8000-000000000408",
     "effective_settings": {
@@ -49,13 +50,21 @@
         "routing.llm_configuration_id": "core_profile"
       }
     },
-    "model_slots": [{
-      "configuration_id": "10000000-0000-4000-8000-000000000406",
-      "name": "Dialogue",
-      "revision": 1,
-      "driver": "configured",
-      "model": "gpt-5-mini"
-    }],
+    "model_slots": [
+      {
+        "key": "standard",
+        "label": "Standard",
+        "available": true,
+        "configuration_id": "10000000-0000-4000-8000-000000000406",
+        "configuration_name": "Dialogue",
+        "revision": 1,
+        "driver": "configured",
+        "model": "gpt-5-mini"
+      },
+      {"key": "fast", "label": "Fast", "available": false, "configuration_id": null, "configuration_name": null, "revision": null, "driver": null, "model": null},
+      {"key": "powerful", "label": "Powerful", "available": false, "configuration_id": null, "configuration_name": null, "revision": null, "driver": null, "model": null},
+      {"key": "experimental", "label": "Experimental", "available": false, "configuration_id": null, "configuration_name": null, "revision": null, "driver": null, "model": null}
+    ],
     "profiles": [{
       "profile_id": "10000000-0000-4000-8000-000000000407",
       "name": "Fargoth",

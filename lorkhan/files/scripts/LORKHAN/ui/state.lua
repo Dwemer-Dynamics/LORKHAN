@@ -13,16 +13,38 @@ local MOODS={'None','Happy','Sad','Angry','Annoyed','Scared','Surprised','Confus
     'Playful','Flirty','Custom'}
 local MOOD_DIRECTION_LIMIT=playerInput.CUSTOM_LIMIT
 local MOOD_SUMMARY_LIMIT=34
+-- Semantic LLM model slots. The keys, the order, and the fallback labels are fixed, so the model
+-- panel keeps one shape whatever the server reports, Standard is what the player sees before any
+-- snapshot arrives, and no raw connector row can ever be enumerated into the menu.
+local MODEL_SLOTS={{key='standard',label='Standard'},{key='fast',label='Fast'},
+    {key='powerful',label='Powerful'},{key='experimental',label='Experimental'}}
+local DEFAULT_MODEL_SLOT='standard'
+local MODEL_SLOT_LABELS={}
+for _,slot in ipairs(MODEL_SLOTS) do MODEL_SLOT_LABELS[slot.key]=slot.label end
+-- A server connector name can be far longer than a menu row, so the detail is clipped instead of
+-- widening the panel or wrapping a slot onto a second line.
+local MODEL_SLOT_DETAIL_LIMIT=38
+
+-- Panels that Interact and Targeted NPC Tools both reach remember which menu opened them, so the
+-- back row returns to the menu the player actually used instead of a fixed destination.
+local BACK_ROUTES={
+    conversation={panel='conversation',label='Back to conversation'},
+    ['actor-tools']={panel='actor-tools',label='Targeted NPC Tools'},
+}
+local DEFAULT_ORIGIN='actor-tools'
 
 M.MODES=MODES
 M.SHORTCUTS=SHORTCUTS
 M.MOODS=MOODS
 M.MOOD_DIRECTION_LIMIT=MOOD_DIRECTION_LIMIT
+M.MODEL_SLOTS=MODEL_SLOTS
+M.DEFAULT_MODEL_SLOT=DEFAULT_MODEL_SLOT
+M.BACK_ROUTES=BACK_ROUTES
 
 function M.new(policy)
     return {visible=false, status='offline', target=nil, audience={}, nearby={}, agents={}, input='', transcript={}, subtitle=nil,
         diagnostics=nil, lastCorrelation=nil, mode='Standard',panel='conversation',actionView='root',actionPage=1,actionSlot=nil,
-        historyPage=1,
+        historyPage=1,panelOrigin=DEFAULT_ORIGIN,
         mood='None',moodDirection='',
         -- turnMode/turnPrefix stay nil until a typed prefix is previewed; they never replace `mode`.
         pendingTargetAction=nil,
@@ -116,6 +138,133 @@ function M.moodSelection(state)
         return {kind='custom',custom=direction}
     end
     return {kind=state.mood:lower()}
+end
+
+-- Semantic slot rows keyed for lookup. A row the client does not know is ignored, so a newer
+-- server can never grow a fifth row under the virtual cursor.
+local function modelSlotRows(controls)
+    local rows={}
+    if type(controls)~='table' or type(controls.model_slots)~='table' then return rows end
+    for _,slot in ipairs(controls.model_slots) do
+        if type(slot)=='table' and MODEL_SLOT_LABELS[slot.key] then rows[slot.key]=slot end
+    end
+    return rows
+end
+
+local function modelSlotKey(value)
+    return MODEL_SLOT_LABELS[value] and value or nil
+end
+
+-- Random routing is a server setting. The panel only reports it and stops writing while it is on.
+function M.modelRandomizerEnabled(controls)
+    local routing=type(controls)=='table' and type(controls.effective_settings)=='table'
+        and controls.effective_settings.routing or nil
+    return type(routing)=='table' and routing.llm_randomizer_enabled==true
+end
+
+-- One compact connector line. `driver` only separates a real connector from the mock one, so the
+-- connector name and the model carry the detail and the row stays a single line.
+local function modelSlotDetail(slot)
+    local connector,model=trim(slot.configuration_name),trim(slot.model)
+    local detail
+    if connector~='' and model~='' then detail=connector..' / '..model
+    elseif model~='' then detail=model
+    elseif connector~='' then detail=connector end
+    if detail and trim(slot.driver)=='mock' then detail=detail..' (mock)' end
+    if not detail then return nil end
+    local shortened=clip(detail,MODEL_SLOT_DETAIL_LIMIT-3)
+    if shortened~=detail then return shortened..'...' end
+    return detail
+end
+
+-- One short state line so the four choices never have to explain themselves with extra rows.
+local function modelSlotMessage(view)
+    if not view.loaded then return 'Loading server-owned choices...' end
+    if view.randomized then
+        return 'Random LLM is on, so the server picks a model every turn and these choices are disabled.'
+    end
+    if view.pending then return 'Selecting '..MODEL_SLOT_LABELS[view.pending]..'...' end
+    if view.busy then return 'Refreshing choices...' end
+    local selected=MODEL_SLOT_LABELS[view.selected]
+    if view.resolved==view.selected then return 'Active: '..selected..'.' end
+    if not view.resolved then
+        return 'Selected '..selected..' has no configured model and the server resolved none.'
+    end
+    local resolved=MODEL_SLOT_LABELS[view.resolved]
+    if view.selectedAvailable then return 'Selected '..selected..' is not active, so '..resolved..' is.' end
+    return 'Selected '..selected..' is not configured, so '..resolved..' is active.'
+end
+
+-- Pure presentation for the LLM Model panel. `controls` is a snapshot already confirmed to describe
+-- this panel's target and `pending` is the one slot the player is waiting on. Reading is all this
+-- does: opening or redrawing the panel never selects a slot.
+function M.modelSlotView(controls,pending)
+    local slots=modelSlotRows(controls)
+    local view={rows={},loaded=next(slots)~=nil,pending=modelSlotKey(pending),
+        randomized=M.modelRandomizerEnabled(controls)}
+    view.busy=view.pending~=nil or (type(controls)=='table' and controls.pending==true)
+    view.selected=view.loaded and modelSlotKey(controls.selected_model_slot_key) or DEFAULT_MODEL_SLOT
+    view.resolved=view.loaded and modelSlotKey(controls.resolved_model_slot_key) or nil
+    view.refreshable=not view.busy
+    for _,entry in ipairs(MODEL_SLOTS) do
+        local slot=slots[entry.key]
+        local available=slot~=nil and slot.available~=false
+        local label=slot and trim(slot.label)~='' and trim(slot.label) or entry.label
+        local detail
+        if not view.loaded then detail=nil
+        elseif not available then detail='not configured'
+        else detail=modelSlotDetail(slot) end
+        -- The selected slot and the slot the server actually resolved are annotated separately, so a
+        -- fallback is visible on its own row without the panel growing one.
+        local isSelected=view.loaded and entry.key==view.selected
+        local isResolved=view.loaded and entry.key==view.resolved
+        if isSelected then view.selectedAvailable=available end
+        local mark,suffix
+        if view.pending==entry.key then mark,suffix='selecting','  [selecting...]'
+        elseif not view.loaded then mark,suffix='loading',''
+        elseif isSelected and isResolved then mark,suffix='active','  [active]'
+        elseif isSelected then mark,suffix='selected','  [selected]'
+        elseif isResolved then mark,suffix='fallback','  [active fallback]'
+        elseif not available then mark,suffix='unavailable',''
+        else mark,suffix='ready','' end
+        view.rows[#view.rows+1]={key=entry.key,label=label,mark=mark,detail=detail,
+            clickable=view.loaded and available and not view.randomized and not view.busy,
+            text=label..suffix..(detail and ('  |  '..detail) or '')}
+    end
+    view.message=modelSlotMessage(view)
+    return view
+end
+
+function M.modelSlotBusy(state) return state.modelSlotPending~=nil end
+
+-- One player-started selection at a time. The clicked slot stays marked until the snapshot it will
+-- change stops being in flight, so a second click cannot queue a duplicate write.
+function M.beginModelSlot(state,key)
+    if state.modelSlotPending or not modelSlotKey(key) then return false end
+    state.modelSlotPending=key
+    return true
+end
+
+-- Settling on a lost or mismatched snapshot as well keeps a target change from stranding the panel
+-- with every choice and the refresh row disabled.
+function M.settleModelSlot(state,controls)
+    if not state.modelSlotPending then return false end
+    if type(controls)=='table' and controls.pending==true
+        and controls.selected_model_slot_key~=state.modelSlotPending then return false end
+    state.modelSlotPending=nil
+    return true
+end
+
+-- Switch panels and record the menu the player came from. An unknown origin keeps the previous
+-- one so an incidental panel change can never strand the player without a back route.
+function M.setPanel(state,panel,origin)
+    if origin and BACK_ROUTES[origin] then state.panelOrigin=origin end
+    state.panel=panel
+    return state.panel
+end
+
+function M.backRoute(state)
+    return BACK_ROUTES[state.panelOrigin] or BACK_ROUTES[DEFAULT_ORIGIN]
 end
 
 function M.toggle(state) state.visible = not state.visible return state.visible end

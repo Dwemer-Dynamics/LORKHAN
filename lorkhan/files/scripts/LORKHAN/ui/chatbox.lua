@@ -42,7 +42,24 @@ local function shortcutSummary(shortcuts)
     return 'One-turn prefixes: '..table.concat(parts,', ')..'.'
 end
 
--- Build the focused typed-chat rows without owning targeting or protocol state.
+-- Every LORKHAN control the player can reach from Interact, in one compact list. Each entry names
+-- the callback the panel owner supplies, so labels and routes stay described in one place.
+-- The order and count are fixed: a live prefix preview must only rewrite text on existing widgets.
+local MENU={
+    {key='mood',label='Mood',callback='onSelectMood'},
+    {key='modes',label='Dialogue mode...',callback='onSelectModes'},
+    {key='model',label='LLM model...',callback='onSelectModel'},
+    {key='profiles',label='Dynamic profiles...',callback='onSelectProfiles'},
+    {key='history',label='Context history...',callback='onSelectHistory'},
+    {key='statusHud',label='Status HUD',callback='onToggleStatusHud'},
+    {key='diagnostics',label='Diagnostics...',callback='onSelectDiagnostics'},
+}
+M.MENU=MENU
+
+-- The status HUD is a toggle rather than a panel, so its row carries its own on/off state.
+function M.statusHudLabel(visible) return 'Status HUD: '..(visible and 'on' or 'off') end
+
+-- Build the focused Interact rows without owning targeting or protocol state.
 -- The row structure is constant so a live prefix preview only rewrites text on an existing widget.
 function M.build(context)
     local ui,util=context.ui,context.util
@@ -63,7 +80,14 @@ function M.build(context)
             'Type a prefix to change one turn without changing your saved mode.',13,'detail')
     end
     rows[#rows+1]=text(ui,util,'Press Enter or select Send',14,'detail')
-    rows[#rows+1]=text(ui,util,'Mood and delivery...',16,'action',{mouseClick=context.onSelectMood})
+    for _,entry in ipairs(MENU) do
+        if entry.key=='statusHud' then
+            rows[#rows+1]=text(ui,util,M.statusHudLabel(context.statusHudVisible),15,
+                context.statusHudVisible and 'active' or 'action',{mouseClick=context[entry.callback]})
+        else
+            rows[#rows+1]=text(ui,util,entry.label,15,'action',{mouseClick=context[entry.callback]})
+        end
+    end
     rows[#rows+1]=text(ui,util,'Send',18,'action',{mouseClick=context.onSend})
     rows[#rows+1]=text(ui,util,'Close',16,'quiet',{mouseClick=context.onClose})
     return rows

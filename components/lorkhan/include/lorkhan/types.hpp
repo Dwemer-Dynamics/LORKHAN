@@ -190,6 +190,7 @@ struct ControlsSelectRequest {
     std::string createdAt;
     SessionControlKind kind{SessionControlKind::model_slot};
     std::optional<std::string> selectionId;
+    std::optional<std::string> selectionKey;
     std::string serializedTarget;
 };
 

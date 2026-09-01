@@ -95,12 +95,13 @@ check("vanilla Activate not consumed", "return false -- built-in Activate" in te
 settings = text(SCRIPTS / "settings.lua")
 settings_l10n = text(FILES / "l10n" / "LORKHAN" / "en.yaml")
 player_script = text(SCRIPTS / "player.lua")
-check("OpenMW Scripts page exposes all applicable focused hotkeys", settings.count("renderer='inputBinding'") == 14
+check("OpenMW Scripts page exposes Interact and focused gameplay hotkeys", settings.count("renderer='inputBinding'") == 8
       and all(fragment in settings for fragment in ["I.Settings.registerPage", "key='LORKHAN_Talk'",
-          "key='LORKHAN_StopDialogue'", "key='LORKHAN_ManualActivate'", "key='LORKHAN_ToggleMode'",
-          "key='LORKHAN_ModelMenu'", "key='LORKHAN_ProfileMenu'", "key='LORKHAN_Halt'",
-          "key='LORKHAN_ActionsMenu'", "key='LORKHAN_StatusHud'", "key='LORKHAN_History'",
-          "key='LORKHAN_Diagnostics'", "key='LORKHAN_OpenMic'", "key='LORKHAN_OpenMicMute'"]))
+          "key='LORKHAN_StopDialogue'", "key='LORKHAN_ManualActivate'", "key='LORKHAN_Halt'",
+          "key='LORKHAN_ActionsMenu'", "key='LORKHAN_OpenMic'", "key='LORKHAN_OpenMicMute'"])
+      and all("trigger('" + key + "'" in settings for key in [
+          "LORKHAN_ToggleMode", "LORKHAN_ModelMenu", "LORKHAN_ProfileMenu", "LORKHAN_StatusHud",
+          "LORKHAN_History", "LORKHAN_Diagnostics"]))
 check("legacy master menu remains hidden while typed voice controls are registered",
       "trigger('LORKHAN_MasterMenu'" in settings
       and "trigger('LORKHAN_OpenMic'" in settings
@@ -178,19 +179,16 @@ check("conflict-free F6 and F7 defaults seed only once", all(fragment in setting
       and "input.KEY.F8" not in settings and "input.KEY.F9" not in settings)
 check("OpenMW settings rows have required localization metadata", all(fragment in settings for fragment in [
     "name='Talk_name',description='Talk_description'", "name='Halt_name',description='Halt_description'",
-    "name='ModeMenu_name',description='ModeMenu_description'",
     "name='ActorTools_name',description='ActorTools_description'"]))
 compact_hotkey_order = ["key='TalkBinding'", "key='PushToTalkBinding'", "key='OpenMicBinding'",
                         "key='OpenMicMuteBinding'", "key='StopDialogueBinding'", "key='HaltBinding'",
-                        "key='ManualActivateBinding'", "key='ActorToolsBinding'", "key='ModeMenuBinding'",
-                        "key='ModelMenuBinding'", "key='ProfileMenuBinding'", "key='StatusHudBinding'",
-                        "key='HistoryBinding'", "key='DiagnosticsBinding'"]
+                        "key='ManualActivateBinding'", "key='ActorToolsBinding'"]
 check("OpenMW settings follow the compact conversation-first menu order",
       all(item in settings for item in compact_hotkey_order)
       and [settings.index(item) for item in compact_hotkey_order]
           == sorted(settings.index(item) for item in compact_hotkey_order))
 check("OpenMW settings use compact labels and visible numeric units", all(fragment in settings_l10n for fragment in [
-    "Talk_name: Typed Chat", "PushToTalk_name: Voice Chat",
+    "Talk_name: Interact", "PushToTalk_name: Voice Chat",
     "BehaviorGroup_name: Conversation & Microphone", "ToolsGroup_name: Display",
     "InteriorDistance_name: Interior Auto Activate Distance (units)",
     "OpenMicEndDelay_name: Open Microphone End Delay (ms)",
@@ -221,6 +219,33 @@ check("focused selectors and targeted NPC tools replace the master dashboard", a
     "state.ui.panel=='actor-tools'", "state.ui.panel=='profile-menu'", "state.ui.panel=='modes'",
     "refreshSessionControls('models')", "Targeted NPC Tools", "Actor actions..."])
       and "state.ui.panel=='master'" not in player_script)
+check("LLM model panel offers only the four semantic slots with async selection state", all(
+    fragment in player_script for fragment in [
+        "state.ui.panel=='models' then", "selector.buildModelSlots", "uiState.settleModelSlot(state.ui,controls)",
+        "uiState.modelSlotView(controls,state.ui.modelSlotPending)", "uiState.modelSlotBusy(state.ui)",
+        "native.selectSessionControl('model_slot',key,state.ui.target)"])
+      and all(fragment not in player_script for fragment in ["Server default", "selected_model_slot_id"])
+      and all(fragment in text(SCRIPTS / "ui" / "selector.lua") for fragment in [
+        "function M.buildModelSlots", "row('LLM Model',20", "row('Refresh choices',16"])
+      and all(fragment in text(SCRIPTS / "ui" / "state.lua") for fragment in [
+        "local MODEL_SLOTS={{key='standard',label='Standard'},{key='fast',label='Fast'},",
+        "{key='powerful',label='Powerful'},{key='experimental',label='Experimental'}}",
+        "llm_randomizer_enabled==true", "function M.modelSlotView", "function M.settleModelSlot"]))
+check("paused control panels settle from a player frame without stealing the global result lane", all(
+    fragment in player_script for fragment in [
+        "local SERVER_CONTROL_PANELS={models=true,profiles=true,narrator=true}",
+        "onFrame=function()", "if not controlsRequestActive or not state.ui.visible",
+        "not SERVER_CONTROL_PANELS[state.ui.panel] then return end",
+        "local ok,status=pcall(native.pumpSessionControls)", "if status.pending==true then return end",
+        "noteControlsRequest(native.selectSessionControl('model_slot',key,state.ui.target))"])
+      and all(fragment in binding for binding in [native_binding, native_overlay] for fragment in [
+        'api["pumpSessionControls"]', "bool settleControlsResult(const lorkhan::InboundResult& result)",
+        "m_deferredResults.size() + kControlsPumpBatch <= kDeferredResultCapacity",
+        "m_deferredResults.push_back(std::move(result));", "results.swap(m_deferredResults);"])
+      # the duplicated inline controls branch is gone, so success, typed failure, parse failure, and an
+      # unexpected response kind all clear the pending request through the one shared handler
+      and all("&&result.kind==lorkhan::ResponseKind::controls" not in binding
+              for binding in [native_binding, native_overlay]))
 check("dynamic profile selector exposes server-validated narrator generation", all(fragment in player_script for fragment in [
     "label='Narrator'", "controls.narrator_profile_id",
     "native.selectSessionControl('narrator_profile_generate'", "preserves voice routing and enablement."]))
@@ -295,7 +320,9 @@ check("mod-manager launcher starts the private LORKHAN runtime before OpenMW", a
     "Manage-LORKHAN-Mods.cmd", "service lorkhanserver-worker start", "LORKHAN_CLIENT_CONFIG=%~dp0Config\\lorkhan-client.conf"]))
 check("client deployment refreshes every tracked OpenMW overlay before compiling", all(fragment in deploy_script for fragment in [
     "function Sync-OpenMwOverlay", "git -C $repoRoot ls-files -- 'openmw-patches/overlay'",
-    "Sync-OpenMwOverlay -Destination $EngineSource"]))
+    "Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256", "[IO.File]::SetLastWriteTimeUtc($targetPath",
+    "Sync-OpenMwOverlay -Destination $EngineSource",
+    '"-DLORKHAN_SOURCE_ROOT=$repoRoot"']))
 check("deploy installs the LORKHAN profile manager instead of the limited launcher wrapper", all(fragment in deploy_script for fragment in [
     "scripts\\tools\\manage-openmw-profile.ps1", "Manage-LORKHAN-Profile.ps1", "-ProfileName Compatibility",
     "extracting it into its own Mods\\Mod Name folder"]))

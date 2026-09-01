@@ -4,8 +4,8 @@ HotkeysGroup_name: Hotkeys
 HotkeysGroup_description: Select a binding, clear it, then press a keyboard, mouse, or controller button to assign it.
 ControlsGroup_name: Hotkeys
 ControlsGroup_description: Focused gameplay controls. Click a binding to clear it, then press a keyboard, mouse, or controller button to assign it.
-Talk_name: Typed Chat
-Talk_description: Target the actor under the crosshair and open typed chat; click the input box, type, and press Enter to send.
+Talk_name: Interact
+Talk_description: Target the actor under the crosshair and open the Interact menu; type and press Enter to send, or select dialogue mode, LLM model, dynamic profiles, context history, status HUD, or diagnostics.
 StopDialogue_name: Stop Dialogue
 StopDialogue_description: Cancel the active response and speech without disabling LORKHAN or stopping unrelated NPC behavior.
 Halt_name: Halt All Activity
@@ -27,17 +27,17 @@ MasterMenu_description: Legacy binding retained for compatibility; opens Targete
 ToggleMode_name: Cycle LORKHAN dialogue mode
 ToggleMode_description: Open the Standard, Whisper, Close, and Shout conversation routing selector.
 ModeMenu_name: Toggle Modes
-ModeMenu_description: Open the compact Standard, Whisper, Close, and Shout mode selector.
+ModeMenu_description: Legacy binding retained for compatibility; the mode selector is in the Interact menu.
 ModelMenu_name: Toggle LLM Model
-ModelMenu_description: Open the compact server-owned LLM model selector for the current target.
+ModelMenu_description: Legacy binding retained for compatibility; the server-owned LLM model selector is in the Interact menu.
 ProfileMenu_name: Dynamic Profile Menu
-ProfileMenu_description: Choose targeted NPC, nearby AI NPC, or narrator profile management.
+ProfileMenu_description: Legacy binding retained for compatibility; targeted NPC, nearby AI NPC, and narrator profile management are in the Interact menu.
 StatusHud_name: Status HUD
-StatusHud_description: Show or hide the compact target, mode, voice, and server status display.
-History_name: Conversation History
-History_description: Open or close the recent LORKHAN conversation history panel.
+StatusHud_description: Legacy binding retained for compatibility; the compact target, mode, voice, and server status display is toggled from the Interact menu.
+History_name: Context History
+History_description: Legacy binding retained for compatibility; the recent LORKHAN conversation history panel is in the Interact menu.
 Diagnostics_name: Diagnostics
-Diagnostics_description: Open or close the safe in-game LORKHAN status and diagnostics panel.
+Diagnostics_description: Legacy binding retained for compatibility; the safe in-game LORKHAN status and diagnostics panel is in the Interact menu.
 AutoActivateGroup_name: Auto Activate
 AutoActivateGroup_description: Automatically manage nearby eligible NPCs using bounded active-cell scans.
 AutoActivateEnabled_name: Enable Auto Activate

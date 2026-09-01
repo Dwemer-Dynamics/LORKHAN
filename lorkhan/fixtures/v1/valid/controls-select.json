@@ -8,7 +8,8 @@
     "generation": 7,
     "created_at": "2026-08-01T12:00:00Z",
     "kind": "model_slot",
-    "selection_id": "10000000-0000-4000-8000-000000000406",
+    "selection_id": null,
+    "selection_key": "fast",
     "target": {
       "kind": "npc",
       "record_id": "fargoth",

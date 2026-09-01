@@ -548,6 +548,7 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
                     : controls->kind == SessionControlKind::actor_profile ? "actor_profile"
                     : controls->kind == SessionControlKind::profile_generate ? "profile_generate" : "narrator_profile_generate")
                 + ",\"selection_id\":" + (controls->selectionId ? escapeJson(*controls->selectionId) : "null")
+                + ",\"selection_key\":" + (controls->selectionKey ? escapeJson(*controls->selectionKey) : "null")
                 + ",\"target\":" + controls->serializedTarget + "}";
             break;
         }

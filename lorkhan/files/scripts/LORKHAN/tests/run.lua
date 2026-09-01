@@ -772,18 +772,54 @@ test('player mood and typed prefixes stay separate from the saved dialogue mode'
   end
  end
  truthy(uiState.setMood(s,'None'));eq(s.moodDirection,'');eq(uiState.moodSelection(s),nil)
+ -- panels shared by Interact and Targeted NPC Tools return to whichever menu opened them
+ eq(s.panelOrigin,'actor-tools');eq(uiState.backRoute(s).panel,'actor-tools')
+ eq(uiState.backRoute(s).label,'Targeted NPC Tools')
+ eq(uiState.setPanel(s,'diagnostics','conversation'),'diagnostics');eq(s.panelOrigin,'conversation')
+ eq(uiState.backRoute(s).panel,'conversation');eq(uiState.backRoute(s).label,'Back to conversation')
+ uiState.setPanel(s,'history') -- an origin-less panel change keeps the route the player arrived by
+ eq(s.panel,'history');eq(uiState.backRoute(s).panel,'conversation')
+ uiState.setPanel(s,'profile-menu','nowhere');eq(s.panelOrigin,'conversation')
+ uiState.setPanel(s,'modes','actor-tools');eq(uiState.backRoute(s).panel,'actor-tools')
 end)
 test('focused UI builders keep chat selectors tools and notifications independent',function()
  local ui={TYPE={Text='text',Image='image',TextEdit='edit',Container='container'},content=function(value)return value end}
  local util={vector2=function(x,y)return{x=x,y=y}end,color={rgb=function(r,g,b)return{r=r,g=g,b=b}end}}
  local chatbox=require('scripts.LORKHAN.ui.chatbox')
  local uiState=require('scripts.LORKHAN.ui.state')
- local chat=chatbox.build({ui=ui,util=util,target='Fargoth',text='',shortcuts=uiState.SHORTCUTS,
-  onTextChanged=function()end,onKeyPress=function()end,onSend=function()end,onClose=function()end})
+ -- every Interact entry gets its own callback so a mis-wired row cannot pass unnoticed
+ local clicked
+ local menuContext={ui=ui,util=util,target='Fargoth',text='',shortcuts=uiState.SHORTCUTS,
+  onTextChanged=function()end,onKeyPress=function()end,onSend=function()end,onClose=function()end}
+ for _,entry in ipairs(chatbox.MENU) do
+  menuContext[entry.callback]=function() clicked=entry.key end
+ end
+ local chat=chatbox.build(menuContext)
  eq(chat[1].props.text,'Chat with Fargoth');eq(chat[#chat-1].props.text,'Send');eq(chat[#chat].props.text,'Close')
  eq(chat[2].props.text,'Mood: None  |  Mode: Standard')
  eq(chat[4].props.text,'One-turn prefixes: || Close, !! Shout, | Whisper.')
- eq(chat[#chat-2].props.text,'Mood and delivery...')
+ -- the moved controls sit between the send hint and Send, in one compact clickable list
+ local MENU_FIRST=6
+ eq(#chatbox.MENU,7);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
+ local expected={'mood','modes','model','profiles','history','statusHud','diagnostics'}
+ for index,entry in ipairs(chatbox.MENU) do
+  eq(entry.key,expected[index])
+  local row=chat[MENU_FIRST+index-1]
+  eq(row.props.text,entry.key=='statusHud' and 'Status HUD: off' or entry.label)
+  clicked=nil;row.events.mouseClick();eq(clicked,entry.key)
+ end
+ eq(chat[MENU_FIRST].props.text,'Mood')
+ -- the status HUD entry reports the state it will leave behind, and toggles rather than navigates
+ local hudShown=chatbox.build({ui=ui,util=util,target='Fargoth',text='',shortcuts=uiState.SHORTCUTS,
+  statusHudVisible=true,onTextChanged=function()end,onKeyPress=function()end,
+  onSend=function()end,onClose=function()end})
+ eq(hudShown[MENU_FIRST+5].props.text,'Status HUD: on')
+ eq(chatbox.statusHudLabel(true),'Status HUD: on');eq(chatbox.statusHudLabel(false),'Status HUD: off')
+ -- the top-left HUD draws only while statusHudVisible is set, so no transient status leaks when it is off
+ local hudSource=io.open(root..'/scripts/LORKHAN/player.lua')
+ local hudBody=assert(hudSource:read('*a'):match('local function renderStatusHud%(%)(.-)\nend\n'));hudSource:close()
+ truthy(hudBody:find('or not state.ui.statusHudVisible then',1,true))
+ eq(hudBody:find('notification',1,true),nil)
  local prefixed=chatbox.build({ui=ui,util=util,target='Fargoth',text='|| stay close',
   mood='Custom: hushed',mode='Standard',turnMode='Close',turnPrefix='||',shortcuts=uiState.SHORTCUTS,
   onTextChanged=function()end,onKeyPress=function()end,onSend=function()end,onClose=function()end})
@@ -809,6 +845,101 @@ test('focused UI builders keep chat selectors tools and notifications independen
  local notifications=require('scripts.LORKHAN.ui.notifications');local notice=notifications.new()
  truthy(notifications.show(notice,'queued',1));truthy(notifications.active(notice))
  eq(notifications.update(notice,0.5),false);eq(notifications.update(notice,0.5),true);eq(notifications.active(notice),false)
+end)
+test('LLM model panel keeps four semantic slots with async fallback and randomizer state',function()
+ local ui={TYPE={Text='text',Image='image',TextEdit='edit',Container='container'},content=function(value)return value end}
+ local util={vector2=function(x,y)return{x=x,y=y}end,color={rgb=function(r,g,b)return{r=r,g=g,b=b}end}}
+ local uiState=require('scripts.LORKHAN.ui.state')
+ local selector=require('scripts.LORKHAN.ui.selector')
+ -- exactly the four fixed contract rows, in contract order
+ local function slots(unavailable)
+  local rows={}
+  for _,entry in ipairs(uiState.MODEL_SLOTS) do
+   local available=not (unavailable and unavailable[entry.key])
+   rows[#rows+1]={key=entry.key,label=entry.label,available=available,
+    configuration_id=available and uuid(200) or nil,configuration_name=available and 'Local' or nil,
+    revision=available and 2 or nil,driver=available and 'configured' or nil,
+    model=available and ('model-'..entry.key) or nil}
+  end
+  return rows
+ end
+ local function controls(selected,resolved,options)
+  options=options or {}
+  return {target=npc,selected_model_slot_key=selected,resolved_model_slot_key=resolved,
+   pending=options.pending==true,model_slots=slots(options.unavailable),
+   effective_settings={routing={llm_randomizer_enabled=options.randomized==true}}}
+ end
+ local function panel(view,select)
+  return selector.buildModelSlots({ui=ui,util=util,view=view,select=select,
+   onRefresh=function()end,backLabel='Back to conversation',onBack=function()end})
+ end
+ -- before any snapshot the panel is Standard-first, read-only, and already in its final shape
+ local loading=uiState.modelSlotView(nil,nil)
+ eq(loading.selected,'standard');eq(loading.loaded,false);eq(#loading.rows,4)
+ local rows=panel(loading,{standard=function()end})
+ eq(#rows,8);eq(rows[1].props.text,'LLM Model');eq(rows[2].props.text,'Loading server-owned choices...')
+ eq(rows[3].props.text,'Standard');eq(rows[4].props.text,'Fast');eq(rows[5].props.text,'Powerful')
+ eq(rows[6].props.text,'Experimental')
+ for index=3,6 do eq(rows[index].events,nil) end -- opening the panel can never write a selection
+ eq(rows[7].props.text,'Refresh choices');truthy(rows[7].events.mouseClick)
+ eq(rows[8].props.text,'Back to conversation');truthy(rows[8].events.mouseClick)
+ -- a loaded snapshot marks the active slot and carries one compact connector and model line per row
+ local ready=uiState.modelSlotView(controls('standard','standard'),nil)
+ eq(ready.rows[1].text,'Standard  [active]  |  Local / model-standard')
+ eq(ready.rows[2].text,'Fast  |  Local / model-fast')
+ eq(ready.message,'Active: Standard.');eq(ready.refreshable,true)
+ local clicked
+ local readyRows=panel(ready,{fast=function() clicked='fast' end})
+ readyRows[4].events.mouseClick();eq(clicked,'fast')
+ -- an unavailable slot reads as not configured, keeps no click event, and still shows the fallback
+ local fallback=uiState.modelSlotView(controls('experimental','standard',{unavailable={experimental=true}}),nil)
+ eq(fallback.rows[4].text,'Experimental  [selected]  |  not configured')
+ eq(fallback.rows[4].clickable,false)
+ eq(fallback.rows[1].text,'Standard  [active fallback]  |  Local / model-standard')
+ eq(fallback.message,'Selected Experimental is not configured, so Standard is active.')
+ local fallbackRows=panel(fallback,{experimental=function() clicked='experimental' end})
+ eq(#fallbackRows,8);eq(fallbackRows[6].events,nil)
+ -- one in-flight selection at a time, and every choice plus refresh stops accepting clicks
+ local s=uiState.new({})
+ truthy(uiState.beginModelSlot(s,'powerful'));eq(uiState.modelSlotBusy(s),true)
+ eq(uiState.beginModelSlot(s,'fast'),false);eq(s.modelSlotPending,'powerful')
+ local waiting=uiState.modelSlotView(controls('standard','standard',{pending=true}),s.modelSlotPending)
+ eq(waiting.rows[3].text,'Powerful  [selecting...]  |  Local / model-powerful')
+ eq(waiting.message,'Selecting Powerful...');eq(waiting.refreshable,false)
+ local waitingRows=panel(waiting,{standard=function()end,fast=function()end,
+  powerful=function()end,experimental=function()end})
+ eq(#waitingRows,8)
+ for index=3,7 do eq(waitingRows[index].events,nil) end
+ truthy(waitingRows[8].events.mouseClick) -- back routing stays reachable while a write is in flight
+ -- the wait settles only once the snapshot it will change stops being in flight
+ eq(uiState.settleModelSlot(s,controls('standard','standard',{pending=true})),false)
+ truthy(uiState.settleModelSlot(s,controls('powerful','powerful')));eq(s.modelSlotPending,nil)
+ -- random routing disables all four choices and says why, without changing the row count
+ local randomized=uiState.modelSlotView(controls('fast','fast',{randomized=true}),nil)
+ eq(randomized.message,'Random LLM is on, so the server picks a model every turn and these choices are disabled.')
+ for _,row in ipairs(randomized.rows) do eq(row.clickable,false) end
+ local randomRows=panel(randomized,{fast=function() clicked='randomized' end})
+ eq(#randomRows,8);eq(randomRows[4].events,nil);truthy(randomRows[7].events.mouseClick)
+ -- a long connector name is clipped instead of widening the row
+ local long=slots();long[2].configuration_name='A very long local connector configuration name'
+ local clipped=uiState.modelSlotView({target=npc,selected_model_slot_key='standard',
+  resolved_model_slot_key='standard',pending=false,model_slots=long,
+  effective_settings={routing={llm_randomizer_enabled=false}}},nil)
+ truthy(#clipped.rows[2].detail<=38);eq(clipped.rows[2].detail:sub(-3),'...')
+ -- the Interact overlay pauses simulation, so the paused-frame pump is what settles a selection.
+ -- It stays gated on a visible server-owned panel with a request in flight, and carries no gameplay,
+ -- settings, or event-lane work that belongs to onUpdate.
+ local playerSource=io.open(root..'/scripts/LORKHAN/player.lua')
+ local playerBody=playerSource:read('*a');playerSource:close()
+ local frameBody=assert(playerBody:match('\n        onFrame=function%(%)(.-)\n        end,\n'))
+ truthy(frameBody:find('controlsRequestActive',1,true))
+ truthy(frameBody:find('SERVER_CONTROL_PANELS[state.ui.panel]',1,true))
+ truthy(frameBody:find('native.pumpSessionControls',1,true))
+ truthy(frameBody:find('render()',1,true))
+ for _,forbidden in ipairs({'settingsRefreshElapsed','aimScanElapsed','autoScanElapsed',
+  'flushCapturedDialogue','pollResults','send('}) do
+  eq(frameBody:find(forbidden,1,true),nil)
+ end
 end)
 test('OpenMW settings page registers controls and seeds conflict-free defaults once',function()
  local data={OMWInputBindings={},LORKHANInputDefaults={}}
@@ -839,7 +970,7 @@ package.preload['openmw.lorkhan']=function() return {
  package.loaded['scripts.LORKHAN.settings']=nil
  local settingsEntry=require('scripts.LORKHAN.settings')
  eq(next(settingsEntry),nil)
- eq(registered.pages[1].key,'LORKHAN');eq(#registered.groups,6);eq(registered.groups[1].page,'LORKHAN');eq(#registered.groups[1].settings,14)
+ eq(registered.pages[1].key,'LORKHAN');eq(#registered.groups,6);eq(registered.groups[1].page,'LORKHAN');eq(#registered.groups[1].settings,8)
  for _,setting in ipairs(registered.groups[1].settings) do truthy(setting.name);truthy(setting.description) end
  truthy(registered.triggers.LORKHAN_Talk);truthy(registered.triggers.LORKHAN_Halt)
  truthy(registered.triggers.LORKHAN_StopDialogue);truthy(registered.triggers.LORKHAN_ManualActivate)
@@ -852,10 +983,17 @@ package.preload['openmw.lorkhan']=function() return {
  local function setting(group,key)
   for _,candidate in ipairs(group.settings) do if candidate.key==key then return candidate end end
  end
- truthy(setting(registered.groups[1],'StopDialogueBinding'));truthy(setting(registered.groups[1],'StatusHudBinding'))
- truthy(setting(registered.groups[1],'HistoryBinding'));truthy(setting(registered.groups[1],'DiagnosticsBinding'))
+ truthy(setting(registered.groups[1],'StopDialogueBinding'));truthy(setting(registered.groups[1],'TalkBinding'))
+ truthy(setting(registered.groups[1],'HaltBinding'));truthy(setting(registered.groups[1],'ManualActivateBinding'))
+ truthy(setting(registered.groups[1],'ActorToolsBinding'))
  truthy(setting(registered.groups[1],'PushToTalkBinding'));truthy(setting(registered.groups[1],'OpenMicBinding'))
  truthy(setting(registered.groups[1],'OpenMicMuteBinding'))
+ -- the six moved controls leave the visible Hotkeys list so Interact is the one discoverable entry
+ for _,key in ipairs({'ModeMenuBinding','ModelMenuBinding','ProfileMenuBinding','StatusHudBinding',
+  'HistoryBinding','DiagnosticsBinding'}) do eq(setting(registered.groups[1],key),nil) end
+ -- their triggers stay registered so bindings users already saved keep working
+ for _,key in ipairs({'LORKHAN_ToggleMode','LORKHAN_ModelMenu','LORKHAN_ProfileMenu','LORKHAN_StatusHud',
+  'LORKHAN_History','LORKHAN_Diagnostics'}) do truthy(registered.triggers[key]) end
  eq(registered.groups[2].key,'SettingsLORKHANAutoActivate');eq(setting(registered.groups[2],'enabled').default,true)
  eq(setting(registered.groups[2],'interiorDistance').default,1200);eq(setting(registered.groups[2],'exteriorDistance').default,2400)
  eq(setting(registered.groups[2],'interiorHearingDistance').default,500)
