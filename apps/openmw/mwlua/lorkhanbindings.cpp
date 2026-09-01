@@ -603,8 +603,9 @@ namespace MWLua
                 catch (const std::exception& error) { return failure(lua, error.what()); }
             }
 
-            // Persist one bounded vanilla dialogue observation without exposing a generic transport primitive.
-            std::tuple<sol::object, sol::object> submitCapturedDialogue(sol::state_view lua, sol::table payload)
+            // Submit one schema-owned game observation without exposing a generic Lua transport primitive.
+            std::tuple<sol::object, sol::object> submitGameData(
+                sol::state_view lua, lorkhan::GameDataType type, sol::table payload)
             {
                 if (!ready()) return failure(lua, "bridge_not_ready");
                 try
@@ -614,12 +615,22 @@ namespace MWLua
                     lorkhan::OutboundRequest outbound{request, *m_session, m_service->generation(),
                         lorkhan::RequestKind::gamedata,
                         lorkhan::GameDataRequest{m_config->installation, m_config->playthrough, request,
-                            m_service->generation(), utcNow(), serialized}};
+                            m_service->generation(), utcNow(), type, serialized}};
                     auto accepted = m_service->enqueue(std::move(outbound));
                     if (!accepted) return failure(lua, accepted.error().message);
                     return success(lua, request.value());
                 }
                 catch (const std::exception& error) { return failure(lua, error.what()); }
+            }
+
+            std::tuple<sol::object, sol::object> submitCapturedDialogue(sol::state_view lua, sol::table payload)
+            {
+                return submitGameData(lua, lorkhan::GameDataType::captured_dialogue, std::move(payload));
+            }
+
+            std::tuple<sol::object, sol::object> submitActorProfile(sol::state_view lua, sol::table payload)
+            {
+                return submitGameData(lua, lorkhan::GameDataType::actor_profile, std::move(payload));
             }
 
             std::tuple<sol::object, sol::object> requestControls(sol::state_view lua, sol::table target)
@@ -1438,6 +1449,9 @@ namespace MWLua
             api["submitTurn"] = [lua](sol::table dto) { return client().submitTurn(lua, std::move(dto)); };
             api["submitCapturedDialogue"] = [lua](sol::table payload) {
                 return client().submitCapturedDialogue(lua, std::move(payload));
+            };
+            api["submitActorProfile"] = [lua](sol::table payload) {
+                return client().submitActorProfile(lua, std::move(payload));
             };
             api["requestSessionControls"] = [lua](sol::table target) { return client().requestControls(lua,std::move(target)); };
             api["selectSessionControl"] = [lua](const std::string& kind,sol::optional<std::string> selection,sol::table target) {

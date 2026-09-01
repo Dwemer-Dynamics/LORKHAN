@@ -37,6 +37,15 @@
 namespace lorkhan {
 namespace {
 
+std::string_view gameDataTypeName(GameDataType type)
+{
+    switch (type) {
+        case GameDataType::captured_dialogue: return "captured_dialogue";
+        case GameDataType::actor_profile: return "actor_profile";
+    }
+    return {};
+}
+
 namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace http = beast::http;
@@ -596,7 +605,10 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
         case RequestKind::gamedata: {
             const auto* gamedata = std::get_if<GameDataRequest>(&request.payload);
             if (!gamedata) break;
-            auto payload = requireJsonObject(gamedata->serializedPayload, "captured dialogue payload");
+            const auto type = gameDataTypeName(gamedata->type);
+            if (type.empty())
+                return Result<WireRequest>::failure(makeError(ErrorCode::invalid_argument, "unsupported game-data type"));
+            auto payload = requireJsonObject(gamedata->serializedPayload, "game-data payload");
             if (!payload) return Result<WireRequest>::failure(payload.error());
             wire.method = http::verb::post;
             wire.target = route("/gamedata");
@@ -609,7 +621,7 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
                 + escapeJson(gamedata->request.value()) + ",\"generation\":"
                 + std::to_string(request.generation.value()) + ",\"runtime_generation\":"
                 + std::to_string(gamedata->runtimeGeneration.value()) + ",\"observed_at\":"
-                + escapeJson(gamedata->observedAt) + ",\"game\":\"tes3\",\"type\":\"captured_dialogue\",\"payload\":"
+                + escapeJson(gamedata->observedAt) + ",\"game\":\"tes3\",\"type\":" + escapeJson(type) + ",\"payload\":"
                 + gamedata->serializedPayload + "}";
             break;
         }
@@ -839,7 +851,7 @@ Result<InboundResult> validateResponse(const OutboundRequest& request, const Wir
             auto parsed = parseGameDataAcceptedResponse(response.body(), headers);
             if (!parsed) return Result<InboundResult>::failure(parsed.error());
             if (parsed.value().request != sent.request || parsed.value().session != request.session
-                || parsed.value().generation != request.generation || parsed.value().type != "captured_dialogue")
+                || parsed.value().generation != request.generation || parsed.value().type != gameDataTypeName(sent.type))
                 return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
                     "game-data response correlation mismatch"));
             break;

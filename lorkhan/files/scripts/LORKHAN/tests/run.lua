@@ -223,6 +223,17 @@ test('captured vanilla dialogue preserves CHIM background and menu classificatio
   audience={enemy,enemy},text='No.',topic=''})
  eq(invalid,nil);eq(invalidReason,'duplicate_dialogue_audience')
 end)
+test('auto-activated NPC profile snapshots are bounded and closed',function()
+ local snapshot,reason=protocol.actorProfile({actor=npc,race='Wood Elf',class='Commoner',gender='male',
+  level=1,disposition=50,factions={'fighters guild'}})
+ assert(snapshot,reason);eq(snapshot.actor.record_id,'fargoth');eq(snapshot.gender,'male');eq(snapshot.factions[1],'fighters guild')
+ local invalid,invalidReason=protocol.actorProfile({actor=enemy,race='Mudcrab',class='',gender='none',
+  level=1,disposition=0,factions={}})
+ eq(invalid,nil);eq(invalidReason,'invalid_actor_profile')
+ invalid,invalidReason=protocol.actorProfile({actor=npc,race='Wood Elf',class='Commoner',gender='male',
+  level=1,disposition=50,factions={'fighters guild','fighters guild'}})
+ eq(invalid,nil);eq(invalidReason,'invalid_actor_profile')
+end)
 test('identity registry refuses substitution and ambiguity',function()
  local r=identity.Registry() local one={} truthy(r:activate(npc,one)); eq(r:activate(npc,{}),nil)
  local clone=fake.identity('npc','fargoth',9);eq(r:resolve(clone),nil);eq(r:resolve(npc),one)
@@ -572,8 +583,11 @@ test('typed player action request remains inside the strict turn envelope',funct
  eq(dto,nil);eq(reason,'invalid_action_request')
 end)
 test('managed agents activate in bounded batches and manual pins survive distance cleanup',function()
- local b=fake.bridge() local managed=0 local detached=0 local agentEvents=0
- local s=orchestrator.new(b,function(name)if name=='LORKHAN_AGENTS'then agentEvents=agentEvents+1 end end,
+ local b=fake.bridge() local managed=0 local detached=0 local agentEvents=0 local profileEvents=0
+ local s=orchestrator.new(b,function(name,payload)
+   if name=='LORKHAN_AGENTS'then agentEvents=agentEvents+1
+   elseif name=='LORKHAN_AUTO_ACTIVATED'then profileEvents=profileEvents+1;truthy(payload.actor.kind=='npc') end
+  end,
   function(_,name)if name=='LORKHAN_ACTOR_DETACH'then detached=detached+1 end return true end,
   function()managed=managed+1 return true end)
  local candidates={}
@@ -582,9 +596,9 @@ test('managed agents activate in bounded batches and manual pins survive distanc
   orchestrator.activate(s,actorId,{})
   candidates[i]={identity=actorId,distance=i*10,maxDistance=1200,dead=false,hostile=false,available=true}
  end
- eq(orchestrator.scanAgents(s,candidates),6);eq(#agentRegistry.snapshot(s.agents),6);eq(agentEvents,1)
- eq(orchestrator.scanAgents(s,candidates),2);eq(managed,8);eq(agentEvents,2)
- eq(orchestrator.scanAgents(s,candidates),0);eq(agentEvents,2)
+ eq(orchestrator.scanAgents(s,candidates),6);eq(#agentRegistry.snapshot(s.agents),6);eq(agentEvents,1);eq(profileEvents,6)
+ eq(orchestrator.scanAgents(s,candidates),2);eq(managed,8);eq(agentEvents,2);eq(profileEvents,8)
+ eq(orchestrator.scanAgents(s,candidates),0);eq(agentEvents,2);eq(profileEvents,8)
  local actor,status=orchestrator.manageCandidate(s,candidates[1],'manual');truthy(actor);eq(status,'upgraded')
  eq(agentEvents,3)
  for _=1,4 do orchestrator.scanAgents(s,{}) end
@@ -1139,7 +1153,10 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
     types={Player={objectIsInstance=function(o)return o==playerTarget end},NPC={objectIsInstance=function(o)return o==object or o==playerTarget end,
      record=function(o)return{name=o==playerTarget and 'RANGROO' or 'Fargoth',race=o==object and 'wood elf' or 'dark elf',
       class='commoner',isMale=true,isEssential=false,primaryFaction=o==object and 'hlaalu' or ''}end,
-     isWerewolf=function()return false end},Creature={objectIsInstance=function()return false end},Actor={
+     isWerewolf=function()return false end,getDisposition=function()return 67 end,
+     getFactions=function()return{'hlaalu'}end,getFactionRank=function()return 2 end,
+     getFactionReputation=function()return 4 end},Creature={objectIsInstance=function()return false end},Actor={
+     stats={level=function()return{current=5}end},
      isDead=function()return false end,inventory=function()return inventorySource end,EQUIPMENT_SLOT={CarriedRight=1},
      getEquipment=function()return{[1]={recordId='iron_dagger',type=itemType,count=1}}end},Lockable={
      objectIsInstance=function(o)return o==lockedDoor end,isLocked=function()return true end,getLockLevel=function()return 35 end,
@@ -1153,6 +1170,8 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
        players={playerTarget},items={ownedItem},doors={lockedDoor},getObjectByFormId=function()return object end}}
  local mapped=openmwAdapter.identity(object,modules);eq(mapped.kind,'npc');eq(mapped.refnum.index,112)
  eq(mapped.refnum.content_file,1);eq(mapped.content_file,'Test.esp');eq(mapped.display_name,'Fargoth')
+ local actorProfile=openmwAdapter.actorProfile(mapped,modules);eq(actorProfile.race,'wood elf');eq(actorProfile.class,'commoner')
+ eq(actorProfile.gender,'male');eq(actorProfile.level,5);eq(actorProfile.disposition,67);eq(actorProfile.factions[1],'hlaalu')
  local mappedPlayer=openmwAdapter.identity(playerTarget,modules);eq(mappedPlayer.kind,'player');eq(mappedPlayer.refnum.index,0)
  eq(mappedPlayer.refnum.content_file,0);eq(mappedPlayer.content_file,'Morrowind.esm');eq(mappedPlayer.display_name,'RANGROO')
  local response=openmwAdapter.dialogueResponse({actor=object,type='topic',recordId='vivec',infoId='vivec-info',

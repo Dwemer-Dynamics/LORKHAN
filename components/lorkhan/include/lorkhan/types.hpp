@@ -218,13 +218,16 @@ struct MenuDialogueTtsRequest {
     std::string text;
 };
 
+enum class GameDataType { captured_dialogue, actor_profile };
+
 struct GameDataRequest {
     InstallationId installation;
     PlaythroughId playthrough;
     RequestId request;
     Generation runtimeGeneration;
     std::string observedAt;
-    // A strict schema-owned captured_dialogue JSON object.
+    GameDataType type;
+    // A strict schema-owned JSON object for the selected game-data type.
     std::string serializedPayload;
 };
 

@@ -231,6 +231,7 @@ function M.scanAgents(state,candidates)
                 local actor,status=M.manageCandidate(state,candidate,'auto',true)
                 if actor and status=='activated' then
                     added=added+1
+                    if actor.kind=='npc' then state.emit('LORKHAN_AUTO_ACTIVATED',{actor=util.copy(actor)}) end
                 end
             end
         end

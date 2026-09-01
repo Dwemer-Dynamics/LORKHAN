@@ -179,6 +179,31 @@ function M.capturedDialogue(args)
         audience=util.arrayCopy(args.audience),text=args.text,topic=args.topic,game_time=args.game_time}
 end
 
+-- Validate the actor snapshot that materializes a profile after successful automatic activation.
+function M.actorProfile(args)
+    if type(args)~='table' or not identity.validate(args.actor) or args.actor.kind~='npc' then
+        return nil,'invalid_actor_profile'
+    end
+    if type(args.race)~='string' or #args.race<1 or #args.race>128
+        or type(args.class)~='string' or #args.class>128
+        or not ({female=true,male=true,none=true,unknown=true})[args.gender]
+        or type(args.level)~='number' or args.level%1~=0 or args.level<1 or args.level>255
+        or type(args.disposition)~='number' or args.disposition%1~=0
+        or args.disposition<0 or args.disposition>100
+        or type(args.factions)~='table' or #args.factions>32 then
+        return nil,'invalid_actor_profile'
+    end
+    local factions,seen={},{}
+    for _,faction in ipairs(args.factions) do
+        if type(faction)~='string' or #faction<1 or #faction>256 or seen[faction] then
+            return nil,'invalid_actor_profile'
+        end
+        seen[faction]=true factions[#factions+1]=faction
+    end
+    return {actor=util.copy(args.actor),race=args.race,class=args.class,gender=args.gender,
+        level=args.level,disposition=args.disposition,factions=factions}
+end
+
 -- pollResults returns native-validated internal DTOs, not canonical wire envelopes.
 function M.validatePolledEvent(event)
     if type(event)~='table' then return nil,'event_not_table' end

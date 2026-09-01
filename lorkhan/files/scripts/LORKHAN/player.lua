@@ -37,6 +37,9 @@ local playerSpeech
 local pendingCapturedDialogue={}
 local capturedDialogueSeen={}
 local capturedDialogueFlushElapsed=0
+local pendingActorProfiles={}
+local pendingActorProfileKeys={}
+local actorProfileFlushElapsed=0
 local ownsUiMode=false
 local controlsSignature
 local responseQueueSnapshot={}
@@ -319,6 +322,61 @@ local function flushCapturedDialogue(dt)
     if item.attempts>=20 and reason~='bridge_not_ready' then
         print('[LORKHAN] vanilla dialogue capture failed: '..tostring(reason))
         table.remove(pendingCapturedDialogue,1)
+    end
+end
+
+-- Queue one newly auto-managed NPC until the authenticated native bridge can persist its profile.
+local function submitAutoActorProfile(event)
+    local actor=type(event)=='table' and event.actor or nil
+    local key=actor and identity.key(actor) or nil
+    if not key or pendingActorProfileKeys[key] then return end
+    local snapshot,reason=adapter.actorProfile(actor)
+    if not snapshot then
+        print('[LORKHAN] auto-activated profile snapshot unavailable: '..tostring(reason))
+        return
+    end
+    local payload
+    payload,reason=protocol.actorProfile(snapshot)
+    if not payload then
+        print('[LORKHAN] auto-activated profile rejected: '..tostring(reason))
+        return
+    end
+    local request,submitReason
+    if nativeOk and native and native.submitActorProfile then
+        request,submitReason=native.submitActorProfile(payload)
+    else submitReason='bridge_not_ready' end
+    if request then return end
+    if #pendingActorProfiles>=32 then
+        pendingActorProfileKeys[pendingActorProfiles[1].key]=nil
+        table.remove(pendingActorProfiles,1)
+    end
+    pendingActorProfileKeys[key]=true
+    pendingActorProfiles[#pendingActorProfiles+1]={key=key,payload=payload,attempts=0}
+    if submitReason~='bridge_not_ready' then
+        print('[LORKHAN] auto-activated profile queued: '..tostring(submitReason))
+    end
+end
+
+local function flushActorProfiles(dt)
+    if #pendingActorProfiles==0 then return end
+    actorProfileFlushElapsed=actorProfileFlushElapsed+(tonumber(dt) or 0)
+    if actorProfileFlushElapsed<0.1 then return end
+    actorProfileFlushElapsed=0
+    local item=pendingActorProfiles[1]
+    local request,reason
+    if nativeOk and native and native.submitActorProfile then
+        request,reason=native.submitActorProfile(item.payload)
+    else reason='bridge_not_ready' end
+    if request then
+        pendingActorProfileKeys[item.key]=nil
+        table.remove(pendingActorProfiles,1)
+        return
+    end
+    item.attempts=item.attempts+1
+    if item.attempts>=20 and reason~='bridge_not_ready' then
+        print('[LORKHAN] auto-activated profile failed: '..tostring(reason))
+        pendingActorProfileKeys[item.key]=nil
+        table.remove(pendingActorProfiles,1)
     end
 end
 
@@ -1478,6 +1536,7 @@ return {
             updatePlayerSpeech()
             updateMenuDialogueSpeech()
             flushCapturedDialogue(dt)
+            flushActorProfiles(dt)
             local elapsed=tonumber(dt) or 0
             settingsRefreshElapsed=settingsRefreshElapsed+elapsed
             if settingsRefreshElapsed>=SETTINGS_REFRESH_INTERVAL then
@@ -1533,6 +1592,7 @@ return {
                 startMenuDialogueSpeech(response)
             end
         end,
+        LORKHAN_AUTO_ACTIVATED=submitAutoActorProfile,
         LORKHAN_MENU_DIALOGUE_SPEECH_STATUS=function(event)
             if not menuDialogueSpeech or not event then return end
             local sentence=menuDialogueSpeech.sentences[menuDialogueSpeech.index]
