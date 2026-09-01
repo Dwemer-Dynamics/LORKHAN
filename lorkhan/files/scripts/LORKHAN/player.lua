@@ -188,7 +188,8 @@ local function startPlayerSpeech(actor,text)
     stopNarrator('player_speech_started')
     if not nativeOk or not native or not native.requestMenuDialogueTts then return end
     local request,reason=native.requestMenuDialogueTts(actor,text)
-    if request then playerSpeech={request_id=request,state='requesting'}
+    -- Carry the already-validated typed text so playback shows the player's own subtitle.
+    if request then playerSpeech={request_id=request,state='requesting',subtitle=type(text)=='string' and text or ''}
     elseif reason~='provider_unavailable' then print('[LORKHAN] player TTS rejected: '..tostring(reason)) end
 end
 
@@ -212,7 +213,7 @@ local function updatePlayerSpeech()
     current.state=status.state
     if status.state=='ready' and status.media_id then
         local volume=tonumber(soundSettings and soundSettings:get('ttsVolumeBoost')) or 3
-        local ok,reason=adapter.playSpeech(status.media_id,'',volume)
+        local ok,reason=adapter.playSpeech(status.media_id,current.subtitle or '',volume)
         if ok then current.state='playing'
         else print('[LORKHAN] player TTS playback failed: '..tostring(reason or 'playback_failed'));stopPlayerSpeech() end
     end
