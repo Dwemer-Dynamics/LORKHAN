@@ -8,7 +8,7 @@ private repository does not remove distribution obligations once binaries are sh
 
 The Lua mod is distributed with the runtime under a GPLv3-compatible license selected in the first
 implementation provenance commit. Server licensing is inherited only after auditing the final
-Synthserver and every imported DialecticServer/HerikaServer file; original LORKHANserver code uses a
+Synthserver and every imported DialecticServer/HerikaServer file; original LorkhanServer code uses a
 compatible declared license. Unknown provenance blocks release, not implementation of an original
 replacement.
 

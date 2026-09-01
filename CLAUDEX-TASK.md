@@ -3,7 +3,7 @@
 ## Objective
 
 Implement LORKHAN as a side-by-side OpenMW 0.51.0 distribution plus Lua mod that preserves every
-applicable CHIM/Dialectic/SYNTH behavior, communicates with sibling `RANGROO/LORKHANserver`, and
+applicable CHIM/Dialectic/SYNTH behavior, communicates with sibling `RANGROO/LorkhanServer`, and
 produces deterministic Windows x64 packages with focused supported-platform CI. Do not weaken
 OpenMW's Lua sandbox and do not require a proprietary content addon for the first complete product.
 
@@ -17,7 +17,7 @@ explicitly unverified until the user runs the supplied checklist.
 Do not begin source import until `RANGROO/SYNTH` and `RANGROO/Synthserver` have completed their
 documented non-game stop conditions. Record their final SHAs in `docs/evidence/source-pins.md`.
 
-- Working repositories: `RANGROO/LORKHAN` and sibling `RANGROO/LORKHANserver`.
+- Working repositories: `RANGROO/LORKHAN` and sibling `RANGROO/LorkhanServer`.
 - Engine: `OpenMW/openmw` tag `openmw-0.51.0`, commit
   `f4bec41444214a7903bebd178389ca22ca13f646`, Lua API revision 129, GPLv3.
 - Server seed: the final tested `RANGROO/Synthserver` main SHA after SYNTH completion.
@@ -41,7 +41,7 @@ Read, in order:
 4. `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md`, and the sibling protocol document.
 5. `docs/FEATURE-PARITY-MATRIX.md`, `docs/OPENMW-TOOLCHAIN.md`,
    `docs/COMPATIBILITY-PLAN.md`, and `docs/PACKAGING-AND-LICENSE.md`.
-6. Every sibling `LORKHANserver/docs/*.md` document.
+6. Every sibling `LorkhanServer/docs/*.md` document.
 
 The decisions in those documents are closed. A discovered engine fact may require a documented
 change proposal and failing evidence, but it is not permission to silently redesign the boundary.
@@ -54,7 +54,7 @@ Use one Sol parent and at most four non-overlapping children:
    transport, configuration, cancellation, media staging, C++ tests, patch manifest.
 2. **Lua/gameplay owner:** `.omwscripts`, global/player/CUSTOM scripts, UI, input, targeting,
    snapshots, actions, save/load, Lua tests.
-3. **Server owner:** sibling LORKHANserver migration, protocol, schema, providers, UI, workers, PHP
+3. **Server owner:** sibling LorkhanServer migration, protocol, schema, providers, UI, workers, PHP
    tests. It may not edit client protocol fixtures directly.
 4. **Verifier/critic:** read-only parity, sandbox, threading, GPL/provenance, package, compatibility,
    and evidence audit until given isolated test/fixture ownership.
@@ -134,7 +134,7 @@ files. Do not spend agents repeating the same repository scan.
 
 ## Boundaries
 
-- Work only in LORKHAN, sibling LORKHANserver, and isolated temporary worktrees.
+- Work only in LORKHAN, sibling LorkhanServer, and isolated temporary worktrees.
 - Pushes to the two existing draft PR branches and the final local deployment are authorized by the
   active goal. Do not merge, release, publish, change GitHub settings, or modify reference repos.
 - Do not put source, secrets, saves, game data, provider payloads, or personal data outside the

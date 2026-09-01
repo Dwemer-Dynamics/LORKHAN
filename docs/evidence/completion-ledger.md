@@ -38,7 +38,7 @@ implementation commits. The full OpenMW x64 Release product and launcher were bu
 `C:\Modlists\LORKHAN`; the built/deployed SHA-256 values match (`openmw.exe`
 `1E3CB477477429B9686DFDC2B5FEF4F64F73B9DA648D7A7DFED01B1E1FC17289`, launcher
 `3CE0096D9C6E283C2319FA69A2BE8DE72A5BADA50F608B381789EAB34C385431`). All 26 deployed tracked
-data files matched source and 57 cached WAV files survived deployment. LORKHANserver upgraded the
+data files matched source and 57 cached WAV files survived deployment. LorkhanServer upgraded the
 preserved local lineage through migration 046 after a validated private backup, passed its 171-relation/
 1,565-column schema hash, restarted Apache and the durable worker, returned typed health, and matched the
 pushed server tree with zero rsync differences. Browser checks covered the principal Config, Roleplay,

@@ -2,7 +2,7 @@
 
 LORKHAN is the OpenMW/Morrowind client for a CHIM- and Dialectic-style AI character system. It
 combines a narrowly scoped OpenMW engine integration with an ordinary OpenMW Lua mod, and talks to
-the separate `RANGROO/LORKHANserver` backend over authenticated loopback HTTP.
+the separate `RANGROO/LorkhanServer` backend over authenticated loopback HTTP.
 
 ## Status
 

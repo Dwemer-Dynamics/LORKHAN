@@ -236,7 +236,7 @@ class FoundationTests(unittest.TestCase):
         self.assertIn('api["serverBaseUrl"]', patch_bindings)
         self.assertIn('result["created_at"] = event.createdAt', native_bindings)
         self.assertIn('result["created_at"] = event.createdAt', patch_bindings)
-        self.assertNotIn("http://127.0.0.1:7514/LORKHANserver/manage", player)
+        self.assertNotIn("http://127.0.0.1:7514/LorkhanServer/manage", player)
 
     def test_menu_dialogue_speech_is_owned_by_the_actor_local_script(self):
         script_root = ROOT / "lorkhan/files/scripts/LORKHAN"

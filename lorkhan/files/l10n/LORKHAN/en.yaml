@@ -11,7 +11,7 @@ StopDialogue_description: Cancel the active response and speech without disablin
 Halt_name: Halt All Activity
 Halt_description: Recoverably cancel current dialogue, generated speech, microphone capture, and LORKHAN-owned actor actions.
 PushToTalk_name: Voice Chat
-PushToTalk_description: Hold to record your microphone, transcribe it through the LORKHAN server, and send the transcript to the selected NPC group.
+PushToTalk_description: Hold to record your microphone, transcribe it through the LorkhanServer, and send the transcript to the selected NPC group.
 OpenMic_name: Open Microphone
 OpenMic_description: Opt in to voice-activated recording for the selected NPC group; toggle again to stop immediately.
 OpenMicMute_name: Mute Open Microphone

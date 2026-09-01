@@ -82,7 +82,7 @@ pwsh ./scripts/audit/package.ps1 ./dist/<artifact>.zip
 ./scripts/build/unix.sh --control
 ./scripts/build/unix.sh
 ./scripts/test/unix.sh
-./scripts/audit/protocol-parity.sh ../LORKHANserver
+./scripts/audit/protocol-parity.sh ../LorkhanServer
 ```
 
 Scripts must be non-interactive, stop on failure, print tool/source pins, accept an isolated build
@@ -94,7 +94,7 @@ directory, avoid user game/profile directories by default, and write a machine-r
 2. Pure C++ bridge tests with fake clocks/socket server and hostile fixtures.
 3. Lua pure-module tests using a strict OpenMW API fake.
 4. In-engine Lua test content using freely authored fixtures only.
-5. Cross-repository fake LORKHANserver E2E.
+5. Cross-repository fake LorkhanServer E2E.
 6. Package/provenance/license/secret/proprietary-signature/reproducibility audits.
 7. Windows in-game acceptance using user-supplied data outside the repo/CI.
 

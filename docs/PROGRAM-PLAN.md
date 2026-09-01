@@ -9,7 +9,7 @@ private repositories:
 
 - `LORKHAN`: a pinned, side-by-side OpenMW runtime, minimal native bridge, Lua gameplay/UI mod,
   tests, patches, source packaging, and installer.
-- `LORKHANserver`: the final Synthserver architecture adapted to TES3/OpenMW identity, context,
+- `LorkhanServer`: the final Synthserver architecture adapted to TES3/OpenMW identity, context,
   actions, setup, UI, persistence, and provider flows.
 
 The first useful vertical slice is: launch an LORKHAN profile, select an NPC, open the LORKHAN
@@ -40,7 +40,7 @@ is a deterministic gate, not an open design question.
 
 | ID | Decision |
 | --- | --- |
-| D01 | Repositories are `RANGROO/LORKHAN` and `RANGROO/LORKHANserver`, both private during development. |
+| D01 | Repositories are `RANGROO/LORKHAN` and `RANGROO/LorkhanServer`, both private during development. |
 | D02 | LORKHAN begins only after SYNTH and Synthserver meet their non-game stop conditions. |
 | D03 | Runtime pin is OpenMW 0.51.0 commit `f4bec...f646`, Lua API revision 129. No floating `stable`/`latest`. |
 | D04 | The product is a side-by-side LORKHAN-branded OpenMW build plus `.omwscripts`; stock OpenMW is never overwritten. |
@@ -85,7 +85,7 @@ provider credentials) have deterministic intake steps and do not change architec
 flowchart LR
   G["OpenMW 0.51 game state"] --> L["LORKHAN Lua global/player/actor scripts"]
   L -->|"typed DTO only"| B["openmw.lorkhan native package"]
-  B -->|"bounded loopback HTTP"| A["LORKHANserver Apache/PHP"]
+  B -->|"bounded loopback HTTP"| A["LorkhanServer Apache/PHP"]
   A --> D["PostgreSQL + pgvector"]
   A --> P["LLM/STT/TTS connectors"]
   A --> U["Management UI + workers"]

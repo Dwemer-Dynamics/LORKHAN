@@ -13,7 +13,7 @@ Set-StrictMode -Version Latest
 # Pull the existing local-only server credential into a private client config without printing it.
 $pairingKey = (& wsl -d $Distro -u root -- cat /etc/lorkhanserver/client-pairing-key 2>$null).Trim()
 if ($LASTEXITCODE -ne 0 -or $pairingKey -notmatch '^[A-Za-z0-9_-]{43}$') {
-    throw 'The deployed LORKHANserver pairing key is unavailable or malformed.'
+    throw 'The deployed LorkhanServer pairing key is unavailable or malformed.'
 }
 
 $outputPath = [IO.Path]::GetFullPath($Output)
@@ -51,7 +51,7 @@ if ($contentFingerprint -notmatch '^sha256:[0-9a-f]{64}$') {
     $contentFingerprint = 'sha256:0000000000000000000000000000000000000000000000000000000000000000'
 }
 $lines = @(
-    "base_url=http://127.0.0.1:$ProxyPort/LORKHANserver/api/v1",
+    "base_url=http://127.0.0.1:$ProxyPort/LorkhanServer/api/v1",
     "pairing_key=$pairingKey",
     "installation_id=$installationId",
     "profile_id=$profileId",

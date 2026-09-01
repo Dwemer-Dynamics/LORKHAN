@@ -350,9 +350,9 @@ function Start-LorkhanServices {
     }
     & wsl.exe -d DwemerAI4Skyrim3 -u root -- bash -lc 'service postgresql start >/dev/null; service apache2 start >/dev/null; service lorkhanserver-worker start >/dev/null'
     if ($LASTEXITCODE -ne 0) { throw 'The LORKHAN WSL services could not be started.' }
-$healthUri = 'http://127.0.0.1:7514/' + 'LORKHANserver/api/v1/health'
+$healthUri = 'http://127.0.0.1:7514/' + 'LorkhanServer/api/v1/health'
     $health = Invoke-RestMethod -Uri $healthUri -TimeoutSec 5
-    if ($health.schema -ne 'lorkhan.health.v1') { throw 'LORKHANserver returned an unexpected health response.' }
+    if ($health.schema -ne 'lorkhan.health.v1') { throw 'LorkhanServer returned an unexpected health response.' }
     $env:LORKHAN_CLIENT_CONFIG = $clientConfigPath
 }
 

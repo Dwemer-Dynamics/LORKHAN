@@ -138,7 +138,7 @@ inert throughout that checklist.
 ## Acceptance sequence
 
 1. Keep Lua, native, protocol, PHP, PostgreSQL integration and client/server parity checks green.
-2. Deploy the exact worktree into `C:\Modlists\LORKHAN` and `/var/www/html/LORKHANserver`; verify
+2. Deploy the exact worktree into `C:\Modlists\LORKHAN` and `/var/www/html/LorkhanServer`; verify
    representative hashes, Apache, worker and health.
 3. Run the post-goal minimal GOTY checklist: target Fargoth and one additional race/sex voice; send
    UTF-8 typed input; use push-to-talk and bounded open mic; add a two-NPC group; verify normal Morrowind

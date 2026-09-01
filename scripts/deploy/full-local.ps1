@@ -20,7 +20,7 @@ Set-StrictMode -Version Latest
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $monorepoRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot '..'))
-$serverRoot = Join-Path $monorepoRoot 'LORKHANserver'
+$serverRoot = Join-Path $monorepoRoot 'LorkhanServer'
 if (-not $EngineSource) { $EngineSource = Join-Path $repoRoot '.work\openmw-edited' }
 if (-not $BuildRoot) { $BuildRoot = Join-Path $EngineSource 'MSVC2022_64' }
 $EngineSource = [IO.Path]::GetFullPath($EngineSource)
@@ -299,8 +299,8 @@ if (-not (Test-Path -LiteralPath $clientConfig -PathType Leaf)) { throw "The pri
 
 & wsl.exe -d DwemerAI4Skyrim3 -u root -- bash -lc 'service postgresql start >/dev/null; service apache2 start >/dev/null; service lorkhanserver-worker start >/dev/null'
 if ($LASTEXITCODE -ne 0) { throw 'The LORKHAN WSL services could not be started.' }
-$health = Invoke-RestMethod -Uri 'http://127.0.0.1:@LORKHAN_HTTP_PORT@/LORKHANserver/api/v1/health' -TimeoutSec 5
-if ($health.schema -ne 'lorkhan.health.v1') { throw 'LORKHANserver returned an unexpected health response.' }
+$health = Invoke-RestMethod -Uri 'http://127.0.0.1:@LORKHAN_HTTP_PORT@/LorkhanServer/api/v1/health' -TimeoutSec 5
+if ($health.schema -ne 'lorkhan.health.v1') { throw 'LorkhanServer returned an unexpected health response.' }
 $env:LORKHAN_CLIENT_CONFIG = $clientConfig
 $process = Start-Process -FilePath $engine -WorkingDirectory (Split-Path $engine -Parent) -Wait -PassThru
 if ($process.ExitCode -ne 0) { throw "LORKHAN OpenMW exited with code $($process.ExitCode)." }
@@ -330,8 +330,8 @@ foreach ($requiredMod in $requiredMods) {
 
 & wsl.exe -d DwemerAI4Skyrim3 -u root -- bash -lc 'service postgresql start >/dev/null; service apache2 start >/dev/null; service lorkhanserver-worker start >/dev/null'
 if ($LASTEXITCODE -ne 0) { throw 'The LORKHAN WSL services could not be started.' }
-$health = Invoke-RestMethod -Uri 'http://127.0.0.1:@LORKHAN_HTTP_PORT@/LORKHANserver/api/v1/health' -TimeoutSec 5
-if ($health.schema -ne 'lorkhan.health.v1') { throw 'LORKHANserver returned an unexpected health response.' }
+$health = Invoke-RestMethod -Uri 'http://127.0.0.1:@LORKHAN_HTTP_PORT@/LorkhanServer/api/v1/health' -TimeoutSec 5
+if ($health.schema -ne 'lorkhan.health.v1') { throw 'LorkhanServer returned an unexpected health response.' }
 $env:LORKHAN_CLIENT_CONFIG = $clientConfig
 $process = Start-Process -FilePath $engine -ArgumentList @('--config', ('"' + $profile + '"')) -WorkingDirectory (Split-Path $engine -Parent) -Wait -PassThru
 if ($process.ExitCode -ne 0) { throw "LORKHAN OpenMW exited with code $($process.ExitCode)." }
@@ -349,7 +349,7 @@ Play: Play-LORKHAN.cmd
 Play with the recommended compatibility mods: Play-LORKHAN-Compatibility.cmd
 Manage OpenMW content: Manage-LORKHAN-Mods.cmd
 Manage compatibility mods and native OpenMW content: Manage-LORKHAN-Compatibility-Mods.cmd
-Management UI: http://127.0.0.1:$HttpPort/LORKHANserver/manage
+Management UI: http://127.0.0.1:$HttpPort/LorkhanServer/manage
 
 Install a mod by extracting it into its own Mods\Mod Name folder. Open the
 LORKHAN Compatibility Mod Manager, enable the folder and its content files,
@@ -395,17 +395,17 @@ function Invoke-Stage {
 
 try {
     if (-not $SkipServer) {
-        Invoke-Stage -Name 'Stage 1 - LORKHANserver to WSL' -Action {
+        Invoke-Stage -Name 'Stage 1 - LorkhanServer to WSL' -Action {
             $serverDeploy = Join-Path $serverRoot 'scripts\deploy-local-wsl.sh'
             if (-not (Test-Path -LiteralPath $serverDeploy -PathType Leaf)) { throw "Server deploy script not found: $serverDeploy" }
             $serverDeployWsl = Convert-ToWslPath -WindowsPath $serverDeploy
             $serverRootWsl = Convert-ToWslPath -WindowsPath $serverRoot
             & wsl.exe -d $Distro -u root -- env "LORKHAN_HTTP_PORT=$ServerPort" bash $serverDeployWsl $serverRootWsl
-            if ($LASTEXITCODE -ne 0) { throw "LORKHANserver WSL deploy failed with exit code $LASTEXITCODE." }
+            if ($LASTEXITCODE -ne 0) { throw "LorkhanServer WSL deploy failed with exit code $LASTEXITCODE." }
 
             $gameDataRoot = Find-MorrowindDataRoot
             $gameDataWsl = Convert-ToWslPath -WindowsPath $gameDataRoot
-            & wsl.exe -d $Distro -u root -- env LORKHAN_CONFIG=/etc/lorkhanserver/server.php php /var/www/html/LORKHANserver/scripts/import-morrowind-voices.php $gameDataWsl
+            & wsl.exe -d $Distro -u root -- env LORKHAN_CONFIG=/etc/lorkhanserver/server.php php /var/www/html/LorkhanServer/scripts/import-morrowind-voices.php $gameDataWsl
             if ($LASTEXITCODE -ne 0) { throw "Morrowind voice catalog import failed with exit code $LASTEXITCODE." }
         }
     }

@@ -36,7 +36,7 @@
 
 ## Quality and proof
 
-- Add focused C++ and Lua tests alongside each subsystem, plus a fake LORKHANserver contract test.
+- Add focused C++ and Lua tests alongside each subsystem, plus a fake LorkhanServer contract test.
 - Run existing relevant OpenMW tests after every upstream-file change.
 - Keep protocol fixtures byte-for-byte identical in both repositories.
 - Track each completion row as `PLANNED`, `AUTOMATED`, `WINDOWS BUILD PROVEN`, `IN-GAME PROVEN`,

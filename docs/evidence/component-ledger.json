@@ -102,7 +102,7 @@
     {
       "id": "final-server-import",
       "source": "final tested SYNTH and Synthserver SHAs",
-      "target": "LORKHAN and LORKHANserver migration and parity",
+      "target": "LORKHAN and LorkhanServer migration and parity",
       "owner": "cross-repository integration",
       "state": "DEFERRED",
       "proof": "docs/evidence/start-gate-blocker.md records predecessor gate metadata and test evidence only; no predecessor source was imported or semantically copied",
