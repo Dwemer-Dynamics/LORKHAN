@@ -61,7 +61,7 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 | Relationships | Keep | Actor/player scoped state with manual create/edit and audited soft-delete management. |
 | Dynamic profiles | Keep | Server-controlled revisions with source/event history. |
 | World knowledge | Keep | Scoped documents/facts with retrieval trace. |
-| Narrator and diary | Keep | Opt-in narrator persona, inline routing, player-local speech, and revision-safe PHP/in-game narrator generation are implemented; dedicated narrator/diary/summary CRUD exists, while automatic diary generation remains deferred. |
+| Narrator and diary | Keep | Opt-in narrator persona, inline routing, player-local speech, and revision-safe PHP/in-game narrator generation are implemented. Dedicated narrator, diary, and summary CRUD exists, and typed timer, sleep, and optional wait events now feed server-gated Player, Narrator, and nearby NPC diary jobs with per-profile cooldowns. |
 | Rechat | Keep | Uses the CHIM-style history/prompt/response records and a typed playback-gated chain with a fresh bounded participant-state snapshot; new player input or any invalid/stale/failed delivery cancels continuation. |
 | Boredom, greetings and combat barks | Exclude | Baseline controls remain visible and disabled; no runtime scheduler or automatic model-triggering is shipped. |
 | Playthrough export/restore | Keep | Transactional server snapshot plus binding safeguards. |

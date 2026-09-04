@@ -42,6 +42,7 @@ std::string_view gameDataTypeName(GameDataType type)
     switch (type) {
         case GameDataType::captured_dialogue: return "captured_dialogue";
         case GameDataType::actor_profile: return "actor_profile";
+        case GameDataType::automatic_diary: return "automatic_diary";
     }
     return {};
 }
