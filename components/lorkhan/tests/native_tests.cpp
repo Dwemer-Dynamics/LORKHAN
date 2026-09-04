@@ -404,6 +404,18 @@ void testAcceptedProtocolResponses()
     CHECK(!lorkhan::parseMenuDialogueTtsReadyResponse(
         R"({"schema":"lorkhan.menu-dialogue-tts.ready.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"actor":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"media":{"media_id":"01900000-0000-7000-8000-000000000013","dialogue_message_id":"01900000-0000-7000-8000-000000000006","sha256":"e12e115acf4552b2568b55e93cbd39394c4ef81c82447faed7738adf06e9ba61","bytes":4,"codec":"ogg","duration_ms":100,"expires_at":"2026-07-18T21:00:00Z"},"extra":true})",
         jsonHeaders));
+
+    auto playerAutochat = lorkhan::parsePlayerAutochatReadyResponse(
+        R"({"schema":"lorkhan.player-autochat.ready.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"text":"Fargoth, have you found your ring yet?"})",
+        jsonHeaders);
+    CHECK(playerAutochat && playerAutochat.value().message == lorkhan::MessageId(kMessage)
+        && playerAutochat.value().request == lorkhan::RequestId(kInstallation)
+        && playerAutochat.value().session == lorkhan::SessionId(kSession)
+        && playerAutochat.value().generation == lorkhan::Generation(7)
+        && playerAutochat.value().text == "Fargoth, have you found your ring yet?");
+    CHECK(!lorkhan::parsePlayerAutochatReadyResponse(
+        R"({"schema":"lorkhan.player-autochat.ready.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"text":""})",
+        jsonHeaders));
 }
 
 void testProtocolEventResponses()

@@ -1,0 +1,15 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/player-autochat-ready.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
+    "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "schema": {"const": "lorkhan.player-autochat.ready.v1", "type": "string"},
+    "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "text": {"maxLength": 4096, "minLength": 1, "type": "string"}
+  },
+  "required": ["schema", "message_id", "request_id", "session_id", "generation", "text"],
+  "type": "object"
+}

@@ -832,12 +832,13 @@ test('focused UI builders keep chat selectors tools and notifications independen
  eq(chat[4].props.text,'One-turn prefixes: || Close, !! Shout, | Whisper.')
  -- the moved controls sit between the send hint and Send, in one compact clickable list
  local MENU_FIRST=6
- eq(#chatbox.MENU,7);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
- local expected={'mood','modes','model','profiles','history','statusHud','diagnostics'}
+ eq(#chatbox.MENU,8);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
+ local expected={'mood','autoChat','modes','model','profiles','history','statusHud','diagnostics'}
  for index,entry in ipairs(chatbox.MENU) do
   eq(entry.key,expected[index])
   local row=chat[MENU_FIRST+index-1]
-  eq(row.props.text,entry.key=='statusHud' and 'Status HUD: off' or entry.label)
+  eq(row.props.text,entry.key=='statusHud' and 'Status HUD: off'
+   or entry.key=='autoChat' and 'Auto Chat: off' or entry.label)
   clicked=nil;row.events.mouseClick();eq(clicked,entry.key)
  end
  eq(chat[MENU_FIRST].props.text,'Mood')
@@ -845,8 +846,9 @@ test('focused UI builders keep chat selectors tools and notifications independen
  local hudShown=chatbox.build({ui=ui,util=util,target='Fargoth',text='',shortcuts=uiState.SHORTCUTS,
   statusHudVisible=true,onTextChanged=function()end,onKeyPress=function()end,
   onSend=function()end,onClose=function()end})
- eq(hudShown[MENU_FIRST+5].props.text,'Status HUD: on')
+ eq(hudShown[MENU_FIRST+6].props.text,'Status HUD: on')
  eq(chatbox.statusHudLabel(true),'Status HUD: on');eq(chatbox.statusHudLabel(false),'Status HUD: off')
+ eq(chatbox.autoChatLabel(true),'Auto Chat: on');eq(chatbox.autoChatLabel(false),'Auto Chat: off')
  -- the top-left HUD draws only while statusHudVisible is set, so no transient status leaks when it is off
  local hudSource=io.open(root..'/scripts/LORKHAN/player.lua')
  local hudBody=assert(hudSource:read('*a'):match('local function renderStatusHud%(%)(.-)\nend\n'));hudSource:close()

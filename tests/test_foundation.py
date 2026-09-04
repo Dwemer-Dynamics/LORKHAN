@@ -269,10 +269,12 @@ class FoundationTests(unittest.TestCase):
 
     def test_typed_player_tts_uses_the_bounded_speech_lane(self):
         player = (ROOT / "lorkhan/files/scripts/LORKHAN/player.lua").read_text(encoding="utf-8")
-        self.assertIn("startPlayerSpeech(speaker,parsed.text)", player)
+        self.assertIn("if not speechAlreadyPlayed then startPlayerSpeech(args.speaker,args.text) end", player)
         self.assertIn("native.requestMenuDialogueTts(actor,text)", player)
         self.assertIn("state='requesting',subtitle=type(text)=='string' and text or ''", player)
         self.assertIn("adapter.playSpeech(status.media_id,current.subtitle or '',volume)", player)
+        self.assertIn("if not startPlayerSpeech(pending.args.speaker,status.text,continueTurn) then continueTurn() end", player)
+        self.assertIn("queued=true queueTypedTurn(pending.args,true)", player)
         self.assertIn("if action=='LORKHAN_Halt' then stopPlayerSpeech() end", player)
 
     def test_offline_cache_miss(self):

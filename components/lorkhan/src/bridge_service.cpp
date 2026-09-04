@@ -56,6 +56,7 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         || (request.kind == RequestKind::debug_command_query) != std::holds_alternative<DebugCommandQueryRequest>(request.payload)
         || (request.kind == RequestKind::debug_command_result) != std::holds_alternative<DebugCommandResultRequest>(request.payload)
         || (request.kind == RequestKind::menu_dialogue_tts) != std::holds_alternative<MenuDialogueTtsRequest>(request.payload)
+        || (request.kind == RequestKind::player_autochat) != std::holds_alternative<PlayerAutochatRequest>(request.payload)
         || (request.kind == RequestKind::gamedata) != std::holds_alternative<GameDataRequest>(request.payload)
         || (request.kind == RequestKind::media) != std::holds_alternative<MediaPrepareRequest>(request.payload))
         return Result<void>::failure(makeError(ErrorCode::invalid_argument, "request kind does not match typed payload"));
@@ -177,6 +178,22 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         auto text=requireValidUtf8(menu->text,16U*1024U);
         if(!text||menu->text.empty())return Result<void>::failure(makeError(ErrorCode::invalid_argument,
             "menu dialogue TTS text is outside the closed contract"));
+    }
+    if(const auto* autochat=std::get_if<PlayerAutochatRequest>(&request.payload)){
+        if(!validId(autochat->message)||!validId(autochat->correlation.request)
+            ||!validId(autochat->correlation.session)||autochat->correlation.request!=request.id
+            ||autochat->correlation.session!=request.session
+            ||autochat->correlation.generation!=request.generation||!isCanonicalUtcTimestamp(autochat->createdAt))
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,
+                "player autochat correlation is invalid"));
+        auto player=parseProtocolIdentity(autochat->serializedPlayer);
+        auto target=parseProtocolIdentity(autochat->serializedTarget);
+        if(!player||player.value().kind!="player"||!target||target.value().kind=="player")
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,
+                "player autochat identities are invalid"));
+        auto intent=requireValidUtf8(autochat->intent,16U*1024U);
+        if(!intent||autochat->intent.empty())return Result<void>::failure(makeError(ErrorCode::invalid_argument,
+            "player autochat intent is outside the closed contract"));
     }
     if (const auto* gamedata = std::get_if<GameDataRequest>(&request.payload)) {
         if (!validId(gamedata->installation) || !validId(gamedata->playthrough) || !validId(gamedata->request)

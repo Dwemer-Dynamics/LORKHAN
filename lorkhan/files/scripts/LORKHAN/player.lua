@@ -34,6 +34,7 @@ local speechActors={}
 local narratorSpeech
 local menuDialogueSpeech
 local playerSpeech
+local pendingAutochat
 local pendingCapturedDialogue={}
 local capturedDialogueSeen={}
 local capturedDialogueFlushElapsed=0
@@ -98,6 +99,7 @@ if playerInputSettings then
     uiState.setMood(state.ui,playerInputSettings:get('mood') or 'None')
     if state.ui.mood=='Custom' then uiState.setMoodDirection(state.ui,playerInputSettings:get('customMood') or '') end
 end
+state.ui.autoChat=playerInputSettings and playerInputSettings:get('autoChat')==true or false
 local function send(name,payload) if core and core.sendGlobalEvent then core.sendGlobalEvent(name,payload) end end
 local CAPABILITIES={'dialogue.text','speech.say','speech.listen','action.ai.follow','action.ai.stop',
     'action.ai.approach','action.ai.wait','action.ai.travel','action.ai.escort','action.ai.face','action.ai.wander',
@@ -201,7 +203,7 @@ local function stopNarrator(reason)
 end
 
 -- Keep typed player speech asynchronous so submitting a turn never waits for synthesis or playback.
-local function stopPlayerSpeech()
+local function stopPlayerSpeech(continueAfter)
     local current=playerSpeech
     if not current then return end
     if current.state=='playing' then adapter.stopSpeech() end
@@ -209,33 +211,36 @@ local function stopPlayerSpeech()
         pcall(native.cancelMenuDialogueTts,current.request_id)
     end
     playerSpeech=nil
+    if continueAfter and current.onComplete then current.onComplete() end
 end
 
-local function startPlayerSpeech(actor,text)
+local function startPlayerSpeech(actor,text,onComplete)
     stopPlayerSpeech()
     stopNarrator('player_speech_started')
-    if not nativeOk or not native or not native.requestMenuDialogueTts then return end
+    if not nativeOk or not native or not native.requestMenuDialogueTts then return false end
     local request,reason=native.requestMenuDialogueTts(actor,text)
     -- Carry the already-validated typed text so playback shows the player's own subtitle.
-    if request then playerSpeech={request_id=request,state='requesting',subtitle=type(text)=='string' and text or ''}
+    if request then playerSpeech={request_id=request,state='requesting',subtitle=type(text)=='string' and text or '',
+        onComplete=onComplete};return true
     elseif reason~='provider_unavailable' then print('[LORKHAN] player TTS rejected: '..tostring(reason)) end
+    return false
 end
 
 local function updatePlayerSpeech()
     local current=playerSpeech
     if not current then return end
     if current.state=='playing' then
-        if not adapter.isSpeechActive() then stopPlayerSpeech() end
+        if not adapter.isSpeechActive() then stopPlayerSpeech(true) end
         return
     end
-    if not nativeOk or not native or not native.menuDialogueTtsStatus then stopPlayerSpeech() return end
+    if not nativeOk or not native or not native.menuDialogueTtsStatus then stopPlayerSpeech(true) return end
     local status=native.menuDialogueTtsStatus(current.request_id)
-    if not status then stopPlayerSpeech() return end
+    if not status then stopPlayerSpeech(true) return end
     if status.state=='failed' then
         if status.reason~='provider_unavailable' then
             print('[LORKHAN] player TTS failed: '..tostring(status.reason or 'unavailable'))
         end
-        stopPlayerSpeech()
+        stopPlayerSpeech(true)
         return
     end
     current.state=status.state
@@ -243,7 +248,7 @@ local function updatePlayerSpeech()
         local volume=tonumber(soundSettings and soundSettings:get('ttsVolumeBoost')) or 3
         local ok,reason=adapter.playSpeech(status.media_id,current.subtitle or '',volume)
         if ok then current.state='playing'
-        else print('[LORKHAN] player TTS playback failed: '..tostring(reason or 'playback_failed'));stopPlayerSpeech() end
+        else print('[LORKHAN] player TTS playback failed: '..tostring(reason or 'playback_failed'));stopPlayerSpeech(true) end
     end
 end
 
@@ -510,8 +515,47 @@ local render
 local applySettings
 local chooseTarget
 
+local function queueTypedTurn(args,speechAlreadyPlayed)
+    if not speechAlreadyPlayed then startPlayerSpeech(args.speaker,args.text) end
+    send('LORKHAN_SUBMIT_TEXT',args)
+    pendingHistory={speaker=args.speaker,text=args.text}
+    awaitingTextQueue=true
+    state.ui.status='submitting'
+    print('[LORKHAN] text message submitted for '..displayName(state.ui.target))
+    render()
+end
+
+-- Finish the rewrite lane before starting the normal turn so player speech cannot overlap the NPC response.
+local function updatePlayerAutochat()
+    local pending=pendingAutochat
+    if not pending then return end
+    if not nativeOk or not native or not native.playerAutochatStatus then
+        pendingAutochat=nil state.ui.status='Auto Chat unavailable' render() return
+    end
+    local status=native.playerAutochatStatus(pending.request_id)
+    if not status then pendingAutochat=nil state.ui.status='Auto Chat request lost' render() return end
+    if status.state=='failed' then
+        pcall(native.cancelPlayerAutochat,pending.request_id)
+        pendingAutochat=nil state.ui.status='Auto Chat failed: '..tostring(status.reason or 'provider unavailable') render() return
+    end
+    if status.state~='ready' then return end
+    pcall(native.cancelPlayerAutochat,pending.request_id)
+    pendingAutochat=nil
+    if not identity.same(state.ui.target,pending.target) then
+        state.ui.status='Auto Chat cancelled because the target changed' render() return
+    end
+    pending.args.text=status.text
+    local queued=false
+    local function continueTurn()
+        if queued then return end
+        queued=true queueTypedTurn(pending.args,true)
+    end
+    state.ui.status='speaking rewritten player line' render()
+    if not startPlayerSpeech(pending.args.speaker,status.text,continueTurn) then continueTurn() end
+end
+
 local function submitText()
-    if pendingTextSubmit or awaitingTextQueue then return false end
+    if pendingTextSubmit or awaitingTextQueue or pendingAutochat then return false end
     local parsed,parseReason=playerInput.parse(state.ui.input)
     if not parsed then
         state.ui.status='message required'
@@ -531,16 +575,20 @@ local function submitText()
     local context=conversationContext(state.ui.target)
     local effectiveMode=parsed.mode or state.ui.mode
     context.dialogueMode=effectiveMode
-    startPlayerSpeech(speaker,parsed.text)
-    send('LORKHAN_SUBMIT_TEXT',{text=parsed.text,language='en-US',speaker=speaker,dialogueMode=effectiveMode,
+    local args={text=parsed.text,language='en-US',speaker=speaker,dialogueMode=effectiveMode,
         mood=uiState.moodSelection(state.ui),
         context=context,capabilities=CAPABILITIES,
-        recent_action_results={},ui_source='lorkhan_text'})
-    pendingHistory={speaker=speaker,text=parsed.text}
-    awaitingTextQueue=true
-    state.ui.status='submitting'
+        recent_action_results={},ui_source='lorkhan_text'}
+    if state.ui.autoChat then
+        if not nativeOk or not native or not native.requestPlayerAutochat then
+            state.ui.status='Auto Chat unavailable' render() return false
+        end
+        local request,reason=native.requestPlayerAutochat(speaker,state.ui.target,parsed.text)
+        if not request then state.ui.status='Auto Chat failed: '..tostring(reason or 'unavailable') render() return false end
+        pendingAutochat={request_id=request,args=args,target=state.ui.target}
+        state.ui.status='rewriting player intent'
+    else queueTypedTurn(args) end
     pendingTextSubmit=false
-    print('[LORKHAN] text message submitted for '..displayName(state.ui.target))
     render()
     return true
 end
@@ -759,6 +807,15 @@ local function toggleStatusHud()
     return state.ui.statusHudVisible
 end
 
+local function toggleAutoChat()
+    if pendingAutochat then state.ui.status='Auto Chat rewrite already in progress' render() return state.ui.autoChat end
+    state.ui.autoChat=not state.ui.autoChat
+    if playerInputSettings then playerInputSettings:set('autoChat',state.ui.autoChat) end
+    state.ui.status='Auto Chat '..(state.ui.autoChat and 'on' or 'off')
+    render()
+    return state.ui.autoChat
+end
+
 -- One back row for every panel that Interact and Targeted NPC Tools both reach, so the label and
 -- the destination always describe the menu the player actually came from.
 local function backRow()
@@ -864,6 +921,7 @@ render=function()
                 end
             end),
             statusHudVisible=state.ui.statusHudVisible,
+            autoChat=state.ui.autoChat,
             onSelectMood=adapter.callback(function() openFromConversation('moods') render() end),
             onSelectModes=adapter.callback(function() openFromConversation('modes') render() end),
             onSelectModel=adapter.callback(function()
@@ -872,6 +930,7 @@ render=function()
             onSelectProfiles=adapter.callback(function() openFromConversation('profile-menu') render() end),
             onSelectHistory=adapter.callback(function() openFromConversation('history') render() end),
             onToggleStatusHud=adapter.callback(toggleStatusHud),
+            onToggleAutoChat=adapter.callback(toggleAutoChat),
             onSelectDiagnostics=adapter.callback(function() openFromConversation('diagnostics') render() end),
             onSend=adapter.callback(submitText),
             onClose=adapter.callback(function() pendingTextSubmit=false state.ui.visible=false leaveUiMode() render() end)})
@@ -1529,6 +1588,9 @@ if inputOk then
     input.registerTriggerHandler('LORKHAN_Halt',adapter.callback(function()
         state.ui.pendingTargetAction=nil
         stopPlayerSpeech()
+        if pendingAutochat and nativeOk and native.cancelPlayerAutochat then
+            pcall(native.cancelPlayerAutochat,pendingAutochat.request_id) pendingAutochat=nil
+        end
         player.onAction(state,'LORKHAN_Halt',send) state.ui.status='stopped' render()
     end))
     input.registerTriggerHandler('LORKHAN_ManualActivate',adapter.callback(manualActivate))
@@ -1596,6 +1658,8 @@ return {
         -- settings scan, or event processing belongs here.
         onFrame=function()
             pumpDebugCommands()
+            if pendingAutochat and nativeOk and native.pumpPlayerAutochat then pcall(native.pumpPlayerAutochat) end
+            updatePlayerAutochat()
             updatePlayerSpeech()
             if not controlsRequestActive or not state.ui.visible
                 or not SERVER_CONTROL_PANELS[state.ui.panel] then return end
@@ -1613,6 +1677,7 @@ return {
         end,
         onUpdate=function(dt)
             if narratorSpeech and not adapter.isSpeechActive() then reportNarrator('played','playback_completed') end
+            updatePlayerAutochat()
             updatePlayerSpeech()
             updateMenuDialogueSpeech()
             flushCapturedDialogue(dt)

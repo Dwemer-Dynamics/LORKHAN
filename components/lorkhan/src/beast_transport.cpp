@@ -603,6 +603,23 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
                 +",\"text\":"+escapeJson(menu->text)+"}";
             break;
         }
+        case RequestKind::player_autochat: {
+            const auto* autochat=std::get_if<PlayerAutochatRequest>(&request.payload);
+            if(!autochat)break;
+            auto player=requireJsonObject(autochat->serializedPlayer,"player autochat player");
+            auto target=requireJsonObject(autochat->serializedTarget,"player autochat target");
+            if(!player)return Result<WireRequest>::failure(player.error());
+            if(!target)return Result<WireRequest>::failure(target.error());
+            wire.method=http::verb::post;wire.target=route("/player-autochat");wire.expectedStatus=201;
+            wire.idempotencyKey=autochat->message.value();
+            wire.body="{\"schema\":\"lorkhan.player-autochat.v1\",\"message_id\":"+escapeJson(autochat->message.value())
+                +",\"request_id\":"+escapeJson(autochat->correlation.request.value())
+                +",\"session_id\":"+escapeJson(autochat->correlation.session.value())
+                +",\"generation\":"+std::to_string(autochat->correlation.generation.value())
+                +",\"created_at\":"+escapeJson(autochat->createdAt)+",\"player\":"+autochat->serializedPlayer
+                +",\"target\":"+autochat->serializedTarget+",\"intent\":"+escapeJson(autochat->intent)+"}";
+            break;
+        }
         case RequestKind::gamedata: {
             const auto* gamedata = std::get_if<GameDataRequest>(&request.payload);
             if (!gamedata) break;
@@ -845,6 +862,17 @@ Result<InboundResult> validateResponse(const OutboundRequest& request, const Wir
                 return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
                     "menu dialogue TTS response correlation mismatch"));
             kind=ResponseKind::menu_dialogue_ready;
+            break;
+        }
+        case RequestKind::player_autochat: {
+            const auto& sent=std::get<PlayerAutochatRequest>(request.payload);
+            auto parsed=parsePlayerAutochatReadyResponse(response.body(),headers);
+            if(!parsed)return Result<InboundResult>::failure(parsed.error());
+            if(parsed.value().message!=sent.message||parsed.value().request!=sent.correlation.request
+                ||parsed.value().session!=sent.correlation.session||parsed.value().generation!=sent.correlation.generation)
+                return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
+                    "player autochat response correlation mismatch"));
+            kind=ResponseKind::player_autochat_ready;
             break;
         }
         case RequestKind::gamedata: {

@@ -1336,6 +1336,26 @@ Result<MenuDialogueTtsReadyResponse> parseMenuDialogueTtsReadyResponse(
         std::move(actor).value(),std::move(media).value()});
 }
 
+Result<PlayerAutochatReadyResponse> parsePlayerAutochatReadyResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits)
+{
+    auto object=parseObject(body,headers,"lorkhan.player-autochat.ready.v1",limits);
+    if(!object)return Result<PlayerAutochatReadyResponse>::failure(object.error());
+    if(!hasExactly(object.value(),{"schema","message_id","request_id","session_id","generation","text"}))
+        return invalidSchemaValue<PlayerAutochatReadyResponse>("player autochat fields mismatch");
+    auto message=requireUuid(object.value(),"message_id");auto request=requireUuid(object.value(),"request_id");
+    auto session=requireUuid(object.value(),"session_id");auto generation=requireUnsigned(object.value(),"generation");
+    auto text=requireString(object.value(),"text",1,4096);
+    if(!message)return invalidSchemaValue<PlayerAutochatReadyResponse>(message.error().message);
+    if(!request)return invalidSchemaValue<PlayerAutochatReadyResponse>(request.error().message);
+    if(!session)return invalidSchemaValue<PlayerAutochatReadyResponse>(session.error().message);
+    if(!generation)return invalidSchemaValue<PlayerAutochatReadyResponse>(generation.error().message);
+    if(!text)return invalidSchemaValue<PlayerAutochatReadyResponse>(text.error().message);
+    return Result<PlayerAutochatReadyResponse>::success({MessageId(std::move(message).value()),
+        RequestId(std::move(request).value()),SessionId(std::move(session).value()),Generation(generation.value()),
+        std::move(text).value()});
+}
+
 Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits)
 {

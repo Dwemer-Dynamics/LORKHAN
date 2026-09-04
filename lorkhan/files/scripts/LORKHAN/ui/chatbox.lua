@@ -47,6 +47,7 @@ end
 -- The order and count are fixed: a live prefix preview must only rewrite text on existing widgets.
 local MENU={
     {key='mood',label='Mood',callback='onSelectMood'},
+    {key='autoChat',label='Auto Chat',callback='onToggleAutoChat'},
     {key='modes',label='Dialogue mode...',callback='onSelectModes'},
     {key='model',label='LLM model...',callback='onSelectModel'},
     {key='profiles',label='Dynamic profiles...',callback='onSelectProfiles'},
@@ -58,6 +59,7 @@ M.MENU=MENU
 
 -- The status HUD is a toggle rather than a panel, so its row carries its own on/off state.
 function M.statusHudLabel(visible) return 'Status HUD: '..(visible and 'on' or 'off') end
+function M.autoChatLabel(enabled) return 'Auto Chat: '..(enabled and 'on' or 'off') end
 
 -- Build the focused Interact rows without owning targeting or protocol state.
 -- The row structure is constant so a live prefix preview only rewrites text on an existing widget.
@@ -84,6 +86,9 @@ function M.build(context)
         if entry.key=='statusHud' then
             rows[#rows+1]=text(ui,util,M.statusHudLabel(context.statusHudVisible),15,
                 context.statusHudVisible and 'active' or 'action',{mouseClick=context[entry.callback]})
+        elseif entry.key=='autoChat' then
+            rows[#rows+1]=text(ui,util,M.autoChatLabel(context.autoChat),15,
+                context.autoChat and 'active' or 'action',{mouseClick=context[entry.callback]})
         else
             rows[#rows+1]=text(ui,util,entry.label,15,'action',{mouseClick=context[entry.callback]})
         end

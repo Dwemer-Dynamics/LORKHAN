@@ -218,6 +218,15 @@ struct MenuDialogueTtsRequest {
     std::string text;
 };
 
+struct PlayerAutochatRequest {
+    MessageId message;
+    RequestCorrelation correlation;
+    std::string createdAt;
+    std::string serializedPlayer;
+    std::string serializedTarget;
+    std::string intent;
+};
+
 enum class GameDataType { captured_dialogue, actor_profile, automatic_diary };
 
 struct GameDataRequest {
@@ -255,7 +264,7 @@ struct PreparedMedia {
 using RequestPayload = std::variant<HealthRequest, InitRequest, TurnRequest, EventPollRequest,
     InterruptionRequest, ActionResultRequest, SessionEndRequest, SttRequest,
     DialogueDeliveryResultRequest, ControlsQueryRequest, ControlsSelectRequest, DebugCommandQueryRequest,
-    DebugCommandResultRequest, MenuDialogueTtsRequest, GameDataRequest,
+    DebugCommandResultRequest, MenuDialogueTtsRequest, PlayerAutochatRequest, GameDataRequest,
     MediaPrepareRequest>;
 
 enum class RequestKind {
@@ -273,11 +282,13 @@ enum class RequestKind {
     debug_command_query,
     debug_command_result,
     menu_dialogue_tts,
+    player_autochat,
     gamedata,
     media,
 };
 
-enum class ResponseKind { accepted, event, completed, failure, cancelled, media_ready, menu_dialogue_ready, status, controls, debug_command };
+enum class ResponseKind { accepted, event, completed, failure, cancelled, media_ready, menu_dialogue_ready,
+    player_autochat_ready, status, controls, debug_command };
 
 struct OutboundRequest {
     RequestId id;
