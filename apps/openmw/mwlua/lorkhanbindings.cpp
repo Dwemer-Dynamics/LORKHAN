@@ -561,6 +561,47 @@ namespace MWLua
                 sol::table result(lua, sol::create);
                 result["session_id"] = m_session->value();
                 result["generation"] = m_service->generation().value();
+                result["config_revision"] = m_configRevision;
+                if (m_clientSettings)
+                {
+                    const auto& settings = *m_clientSettings;
+                    sol::table document(lua, sol::create), behavior(lua, sol::create), memory(lua, sol::create);
+                    sol::table narrator(lua, sol::create), presentation(lua, sol::create), safety(lua, sol::create);
+                    document["schema"] = "lorkhan.client-settings.v1";
+                    behavior["auto_greeting"] = settings.behavior.autoGreeting;
+                    behavior["rechat"] = settings.behavior.rechat;
+                    behavior["rechat_delay_seconds"] = settings.behavior.rechatDelaySeconds;
+                    behavior["rechat_max_depth"] = settings.behavior.rechatMaxDepth;
+                    behavior["rechat_probability_percent"] = settings.behavior.rechatProbabilityPercent;
+                    behavior["rechat_mode"] = settings.behavior.rechatMode;
+                    behavior["rechat_strict_targeting"] = settings.behavior.rechatStrictTargeting;
+                    behavior["open_rechat"] = settings.behavior.openRechat;
+                    behavior["rechat_allow_actions"] = settings.behavior.rechatAllowActions;
+                    behavior["end_conversation_cooldown_seconds"] = settings.behavior.endConversationCooldownSeconds;
+                    behavior["boredom"] = settings.behavior.boredom;
+                    behavior["boredom_delay_seconds"] = settings.behavior.boredomDelaySeconds;
+                    behavior["combat_barks"] = settings.behavior.combatBarks;
+                    behavior["combat_bark_period_seconds"] = settings.behavior.combatBarkPeriodSeconds;
+                    memory["recent_turn_limit"] = settings.memory.recentTurnLimit;
+                    memory["knowledge_limit"] = settings.memory.knowledgeLimit;
+                    narrator["enabled"] = settings.narrator.enabled;
+                    narrator["name"] = settings.narrator.name;
+                    narrator["context_visibility"] = settings.narrator.contextVisibility;
+                    narrator["inline_mode"] = settings.narrator.inlineMode;
+                    narrator["welcome_events"] = settings.narrator.welcomeEvents;
+                    narrator["random_events"] = settings.narrator.randomEvents;
+                    narrator["quest_events"] = settings.narrator.questEvents;
+                    narrator["book_events"] = settings.narrator.bookEvents;
+                    presentation["show_status_hud"] = settings.presentation.showStatusHud;
+                    presentation["transcript_rows"] = settings.presentation.transcriptRows;
+                    presentation["tts_volume_boost"] = settings.presentation.ttsVolumeBoost;
+                    safety["actions_enabled"] = settings.safety.actionsEnabled;
+                    safety["allow_hostile"] = settings.safety.allowHostile;
+                    safety["allow_creatures"] = settings.safety.allowCreatures;
+                    document["behavior"] = behavior; document["memory"] = memory; document["narrator"] = narrator;
+                    document["presentation"] = presentation; document["safety"] = safety;
+                    result["client_settings"] = document;
+                }
                 return sol::make_object(lua, result);
             }
 
@@ -735,12 +776,15 @@ namespace MWLua
                 if(snapshot.profileRevision)effective["profile_revision"]=*snapshot.profileRevision;
                 if(snapshot.coreProfileId)effective["core_profile_id"]=*snapshot.coreProfileId;
                 if(snapshot.coreProfileRevision)effective["core_profile_revision"]=*snapshot.coreProfileRevision;
-                // Only playback-gated rechat crosses into Lua; presentation and legacy timers stay excluded.
+                behavior["auto_greeting"]=snapshot.behavior.autoGreeting;
                 behavior["rechat"]=snapshot.behavior.rechat;behavior["rechat_max_depth"]=snapshot.behavior.rechatMaxDepth;
                 behavior["rechat_probability_percent"]=snapshot.behavior.rechatProbabilityPercent;
                 behavior["rechat_mode"]=snapshot.behavior.rechatMode;behavior["rechat_strict_targeting"]=snapshot.behavior.rechatStrictTargeting;
                 behavior["open_rechat"]=snapshot.behavior.openRechat;
                 behavior["end_conversation_cooldown_seconds"]=snapshot.behavior.endConversationCooldownSeconds;
+                behavior["boredom"]=snapshot.behavior.boredom;behavior["boredom_delay_seconds"]=snapshot.behavior.boredomDelaySeconds;
+                behavior["combat_barks"]=snapshot.behavior.combatBarks;
+                behavior["combat_bark_period_seconds"]=snapshot.behavior.combatBarkPeriodSeconds;
                 memory["recent_turn_limit"]=snapshot.memory.recentTurnLimit;memory["knowledge_limit"]=snapshot.memory.knowledgeLimit;
                 narrator["enabled"]=snapshot.narrator.enabled;narrator["name"]=snapshot.narrator.name;
                 narrator["context_visibility"]=snapshot.narrator.contextVisibility;narrator["inline_mode"]=snapshot.narrator.inlineMode;
@@ -1147,6 +1191,8 @@ namespace MWLua
                         if (parsed)
                         {
                             m_session = parsed.value().session; m_cursor = parsed.value().eventCursor;
+                            m_configRevision = parsed.value().configRevision;
+                            m_clientSettings = parsed.value().clientSettings;
                             m_status = "ready"; m_error.clear(); m_initRequest.reset();
                         }
                         else
@@ -1210,7 +1256,8 @@ namespace MWLua
                 auto result = m_service->cancelGeneration(lorkhan::Generation(generation));
                 if (!result) return false;
                 cancelMenuDialogueTts();
-                m_session.reset(); m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();
+                m_session.reset(); m_clientSettings.reset(); m_configRevision.clear();
+                m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();
                 m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_turnRequests.clear();m_controlsError.clear();m_debugError.clear();beginSession();
                 m_status = "connecting";
                 return true;
@@ -1407,6 +1454,8 @@ namespace MWLua
             std::optional<ClientConfig> m_config;
             std::unique_ptr<lorkhan::BridgeService> m_service;
             std::optional<lorkhan::SessionId> m_session;
+            std::optional<lorkhan::ClientSettings> m_clientSettings;
+            std::string m_configRevision;
             std::optional<lorkhan::RequestId> m_initRequest;
             std::optional<lorkhan::RequestId> m_pollRequest;
             std::optional<lorkhan::RequestId> m_controlsRequest;

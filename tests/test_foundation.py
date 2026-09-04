@@ -197,7 +197,7 @@ class FoundationTests(unittest.TestCase):
         with self.assertRaises(SchemaError):
             validate({"unexpected":"global"}, patterned)
 
-    def test_stt_is_shipped_but_timer_autonomy_has_no_entry_points(self):
+    def test_stt_and_idle_only_automatic_dialogue_are_shipped(self):
         script_root = ROOT / "lorkhan/files/scripts/LORKHAN"
         settings = (script_root / "settings.lua").read_text(encoding="utf-8")
         player = (script_root / "player.lua").read_text(encoding="utf-8")
@@ -206,10 +206,10 @@ class FoundationTests(unittest.TestCase):
         patch_bindings = (ROOT / "openmw-patches/overlay/apps/openmw/mwlua/lorkhanbindings.cpp").read_text(encoding="utf-8")
         for token in ("key='autoGreeting'", "key='rechat'", "key='boredom'", "key='combatBarks'"):
             self.assertNotIn(token, settings)
-        for token in ("LORKHAN_LOCAL_AUTONOMY_REQUEST", "updateLocalAutonomy", "updateCombatBarks"):
-            self.assertNotIn(token, player)
-        for token in ("orchestrator.pollAutonomy", "LORKHAN_LOCAL_AUTONOMY_REQUEST"):
-            self.assertNotIn(token, global_script)
+        self.assertIn("LORKHAN_AUTONOMY_CONTEXT_REQUEST=function(event)", player)
+        self.assertIn("orchestrator.runAutonomy(state,BRIDGE_POLL_INTERVAL)", global_script)
+        self.assertNotIn("LORKHAN_LOCAL_AUTONOMY_REQUEST", player)
+        self.assertNotIn("orchestrator.pollAutonomy", global_script)
         for token in ("LORKHAN_OpenMic", "LORKHAN_OpenMicMute", "LORKHAN_PushToTalk"):
             self.assertIn(token, settings)
         self.assertIn("argument={type='action',key='LORKHAN_PushToTalk'}", settings)

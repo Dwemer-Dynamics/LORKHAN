@@ -126,11 +126,12 @@ check("native handshake negotiates speech input", all(
     binding.count('"speech.listen"') >= 2
     and '"dialogue.text", "speech.say", "speech.listen", "controls.session"' in binding
     for binding in [native_binding,native_overlay]))
-check("Lua orchestration exposes fenced STT and no general autonomy execution path",
+check("Lua orchestration exposes fenced STT and one idle-only autonomy scheduler",
       all(fragment in orchestrator for fragment in ["function M.startVoice","function M.enableOpenMic",
-          "pending.session_id==state.sessionId","pending.generation==state.generation","LORKHAN_OPEN_MIC_CONTEXT_REQUEST"])
+          "pending.session_id==state.sessionId","pending.generation==state.generation","LORKHAN_OPEN_MIC_CONTEXT_REQUEST",
+          "function M.runAutonomy", "responseQueue.idle(state.responseQueue)", "LORKHAN_AUTONOMY_CONTEXT_REQUEST"])
       and all(fragment not in orchestrator for fragment in ["function M.requestLocalAutonomy","function M.pollAutonomy",
-          "function M.runAutonomy","ui_source='lorkhan_autonomy'","LORKHAN_AUTONOMY_CONTEXT_REQUEST"]))
+          "ui_source='lorkhan_autonomy'"]))
 player_lua = text(SCRIPTS / "player.lua")
 openmw_adapter = text(SCRIPTS / "adapters" / "openmw.lua")
 context_lua = text(SCRIPTS / "context.lua")
@@ -165,13 +166,12 @@ check("target-effective settings are strict and keep local presentation client-o
       and all(fragment in native_binding for fragment in ['result["effective_settings"]=effective', 'effective["change_token"]'])
       and all(fragment in player_lua for fragment in ["controls.effective_settings", "player.applyTargetSettings(current,targetSettings)",
           "effective and effective.change_token", "refreshSessionControls(nil,true)"])
-      and "serverPresentation" not in player_lua and 'settings["presentation"]' not in native_binding
+      and "serverPresentation" not in player_lua
       and 'settings["behavior"]=behavior' in native_binding
       and all('behavior["' + key + '"]' in native_binding for key in [
+          'auto_greeting', 'boredom', 'boredom_delay_seconds', 'combat_barks', 'combat_bark_period_seconds',
           'rechat', 'rechat_max_depth', 'rechat_probability_percent', 'rechat_mode',
-          'rechat_strict_targeting', 'open_rechat', 'end_conversation_cooldown_seconds'])
-      and all('behavior["' + key + '"]' not in native_binding for key in [
-          'auto_greeting', 'rechat_delay_seconds', 'rechat_allow_actions', 'boredom', 'combat_barks']))
+          'rechat_strict_targeting', 'open_rechat', 'end_conversation_cooldown_seconds']))
 check("OpenMW Scripts page exposes bounded LORKHAN TTS volume boost", all(fragment in settings for fragment in [
     "key='ttsVolumeBoost'", "default=3", "integer=true,min=1,max=4"]))
 check("conflict-free F6 and F7 defaults seed only once", all(fragment in settings for fragment in [

@@ -59,8 +59,8 @@ stock OpenMW executable.
    the bounded turn audience without replacing manually selected group members. Auto-managed actors already
    fighting the player are removed unless `Add hostile actors` is enabled; actors selected manually remain
    under user control. Rechat is evaluated only after completed playback and is fenced by the current
-   target, session, generation and active-turn state. Automatic greetings, boredom, combat barks and
-   timer-driven autonomy are excluded; any inherited controls for them remain disabled.
+   target, session, generation and active-turn state. Automatic greetings, boredom remarks, and combat
+   barks share the normal idle dialogue lane and use the inherited Global Settings controls.
    The `Dialogue mode` hotkey opens routing choices: Standard adds normal spatial hearing, Close uses only
    the explicit group, Whisper uses the primary target only, and Shout doubles spatial hearing. Typed chat
    also accepts `|` for one Whisper turn, `||` for one Close turn, and `!!` for one Shout turn without
@@ -85,7 +85,8 @@ stock OpenMW executable.
 - typed `|`, `||`, and `!!` prefixes are removed from the displayed message, affect only that turn, and
   leave the selected mode unchanged; the optional player mood reaches the NPC prompt but not the displayed text;
 - playback-gated rechat continues only within its configured depth and never starts from an idle timer;
-- automatic greetings, boredom and combat barks do not trigger;
+- enabled automatic greetings trigger once per newly activated NPC, boredom waits for its idle delay,
+  and combat barks respect their period without interrupting active dialogue;
 - the generated short WAV plays through the actor voice path and subtitles remain visible;
 - `inspect.report` returns a terminal result;
 - `ai.follow`, same-cell `ai.travel`/`ai.escort`, `ai.stop`, and bounded `ai.wander` affect only the

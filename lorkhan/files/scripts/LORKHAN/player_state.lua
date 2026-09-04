@@ -7,6 +7,11 @@ function M.applyTargetSettings(settings,targetSettings)
     targetSettings=targetSettings or {}
     local remote=targetSettings.behavior or {}
     local behavior=settings.behavior
+    behavior.autoGreeting=remote.auto_greeting==true
+    behavior.boredom=remote.boredom==true
+    behavior.boredomDelaySeconds=remote.boredom_delay_seconds or 180
+    behavior.combatBarks=remote.combat_barks==true
+    behavior.combatBarkPeriodSeconds=remote.combat_bark_period_seconds or 20
     behavior.rechat=remote.rechat==true
     behavior.rechatMaxDepth=remote.rechat_max_depth or 2
     behavior.rechatProbabilityPercent=remote.rechat_probability_percent or 50

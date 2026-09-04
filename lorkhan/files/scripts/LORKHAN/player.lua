@@ -1398,7 +1398,7 @@ applySettings=function(session,controls)
     local exterior=self.cell and self.cell.isExterior==true
     local effective=controls and state.ui.target and identity.same(controls.target,state.ui.target)
         and controls.effective_settings or nil
-    local targetSettings=effective and effective.settings or {}
+    local targetSettings=effective and effective.settings or session and session.client_settings or {}
     local legacyHearing=autoSettings and autoSettings:get('hearingDistance')
     local interiorHearing=autoSettings and autoSettings:get('interiorHearingDistance') or legacyHearing or 500
     local exteriorHearing=autoSettings and autoSettings:get('exteriorHearingDistance') or legacyHearing or 1000
@@ -1429,7 +1429,9 @@ applySettings=function(session,controls)
     local signature=table.concat({tostring(auto.enabled),tostring(auto.interiorDistance),tostring(auto.exteriorDistance),
         tostring(auto.hearingDistance),tostring(auto.interiorHearingDistance),tostring(auto.exteriorHearingDistance),
         tostring(auto.addHostile),tostring(auto.addCreatures),tostring(behavior.actionsEnabled),
-        tostring(behavior.cancelDialogueOnCombat),tostring(behavior.rechat),tostring(behavior.rechatMaxDepth),
+        tostring(behavior.cancelDialogueOnCombat),tostring(behavior.autoGreeting),tostring(behavior.boredom),
+        tostring(behavior.boredomDelaySeconds),tostring(behavior.combatBarks),tostring(behavior.combatBarkPeriodSeconds),
+        tostring(behavior.rechat),tostring(behavior.rechatMaxDepth),
         tostring(behavior.rechatProbabilityPercent),tostring(behavior.rechatMode),tostring(behavior.rechatStrictTargeting),
         tostring(behavior.openRechat),tostring(behavior.endConversationCooldownSeconds),
         tostring(presentation.showStatusHud),tostring(presentation.transcriptRows),
@@ -1594,6 +1596,21 @@ return {
             end
         end,
         LORKHAN_AUTO_ACTIVATED=submitAutoActorProfile,
+        LORKHAN_AUTONOMY_CONTEXT_REQUEST=function(event)
+            if type(event)~='table' or type(event.actor)~='table' then return end
+            local prompts={
+                greeting='[Autonomy:greeting]',
+                boredom='[Autonomy:boredom]',
+                combat_bark='[Autonomy:combat_bark]',
+            }
+            local text=prompts[event.kind]
+            if not text then return end
+            local snapshot=conversationContext(event.actor)
+            snapshot.dialogueMode='Standard'
+            send('LORKHAN_SUBMIT_TEXT',{text=text,language='en-US',speaker=adapter.identity(self),
+                dialogueMode='Standard',context=snapshot,capabilities=CAPABILITIES,recent_action_results={},
+                ui_source='lorkhan_auto_'..event.kind,autonomy_kind=event.kind})
+        end,
         LORKHAN_MENU_DIALOGUE_SPEECH_STATUS=function(event)
             if not menuDialogueSpeech or not event then return end
             local sentence=menuDialogueSpeech.sentences[menuDialogueSpeech.index]

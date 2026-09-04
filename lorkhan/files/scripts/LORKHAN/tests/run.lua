@@ -148,8 +148,9 @@ test('target settings preserve local presentation actions and target preferences
  eq(settings.behavior.rechatMaxDepth,1);eq(settings.behavior.rechatProbabilityPercent,0)
  eq(settings.behavior.rechatMode,'group');eq(settings.behavior.openRechat,false)
  eq(settings.behavior.rechatStrictTargeting,false);eq(settings.behavior.endConversationCooldownSeconds,0)
- eq(settings.behavior.auto_greeting,nil);eq(settings.behavior.boredom,nil)
- eq(settings.behavior.combat_barks,nil);eq(settings.behavior.rechat_allow_actions,nil)
+ eq(settings.behavior.autoGreeting,true);eq(settings.behavior.boredom,true)
+ eq(settings.behavior.boredomDelaySeconds,180);eq(settings.behavior.combatBarks,true)
+ eq(settings.behavior.combatBarkPeriodSeconds,20);eq(settings.behavior.rechat_allow_actions,nil)
  eq(settings.memory.recent_turn_limit,0);eq(settings.narrator.enabled,false)
  settings=localSettings();settings.behavior.actionsEnabled=false
  settings.autoActivate.addHostile=false;settings.autoActivate.addCreatures=false
@@ -1054,24 +1055,47 @@ package.preload['openmw.lorkhan']=function() return {
  package.loaded['openmw.lorkhan']=nil
  package.loaded['scripts.LORKHAN.settings']=nil
 end)
-test('STT voice controls are exposed while general autonomy has no Lua execution entry points',function()
+test('STT voice controls and the bounded automatic dialogue scheduler are exposed',function()
  for _,name in ipairs({'startVoice','stopVoice','pollVoice','enableOpenMic','disableOpenMic','muteOpenMic','pollOpenMic','runOpenMicContext'}) do
   truthy(type(orchestrator[name])=='function')
  end
- for _,name in ipairs({'requestLocalAutonomy','pollAutonomy','runAutonomy'}) do
+ truthy(type(orchestrator.runAutonomy)=='function')
+ for _,name in ipairs({'requestLocalAutonomy','pollAutonomy'}) do
   eq(orchestrator[name],nil)
  end
 end)
-test('agent scanning never starts excluded greeting boredom or combat dialogue',function()
+test('agent scanning schedules one verified automatic greeting without submitting directly',function()
  local b=fake.bridge() local emitted={}
  local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end,nil,function()return true end)
  s.settings={autoActivate={enabled=true},behavior={autoGreeting=true,boredom=true,combatBarks=true}}
  orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
  local candidate={identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true}
  eq(orchestrator.scanAgents(s,{candidate}),1)
- orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false})
- eq(orchestrator.scanAgents(s,{candidate}),0);eq(s.conversation.target,nil);eq(#b.submitted,0)
- for _,event in ipairs(emitted) do truthy(event.name~='LORKHAN_AUTONOMY_CONTEXT_REQUEST') end
+ orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,activity='idle',conversation_state='active'})
+ truthy(orchestrator.runAutonomy(s,0.05));eq(#b.submitted,0)
+ local request=emitted[#emitted];eq(request.name,'LORKHAN_AUTONOMY_CONTEXT_REQUEST')
+ eq(request.payload.kind,'greeting');truthy(identity.same(request.payload.actor,npc))
+ eq(orchestrator.runAutonomy(s,0.05),false)
+end)
+test('boredom and combat barks share idle and period fences',function()
+ local b=fake.bridge() local emitted={}
+ local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end,nil,function()return true end)
+ s.settings={autoActivate={enabled=true},behavior={autoGreeting=false,boredom=true,boredomDelaySeconds=30,
+  combatBarks=true,combatBarkPeriodSeconds=5}}
+ orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+ local candidate={identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true}
+ eq(orchestrator.scanAgents(s,{candidate}),1)
+ orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,activity='idle',conversation_state='active'})
+ for _=1,5 do eq(orchestrator.runAutonomy(s,5),false) end
+ eq(orchestrator.runAutonomy(s,4),false);truthy(orchestrator.runAutonomy(s,1))
+ eq(emitted[#emitted].payload.kind,'boredom')
+ s.autonomy.pending=nil;s.conversation.turn=nil
+ orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,activity='combat',conversation_state='busy'})
+ eq(orchestrator.runAutonomy(s,4),false);truthy(orchestrator.runAutonomy(s,1))
+ eq(emitted[#emitted].payload.kind,'combat_bark')
+ eq(orchestrator.runAutonomy(s,4),false) -- pending context request fences duplicate work
+ eq(orchestrator.runAutonomy(s,1),false)
+ truthy(orchestrator.runAutonomy(s,4)) -- a lost player event is retried only after the watchdog expires
 end)
 test('safe movement and combat actions enforce tiers and bounds',function()
  local registry=identity.Registry();registry:activate(npc,{});registry:activate(playerId,{})

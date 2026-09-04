@@ -59,7 +59,8 @@ bounded text, TTS/media/cache, command, and metadata fields. The server normaliz
 once into this format; persistence, events, TTS, actions, delivery, diagnostics, and rechat consume it.
 
 `lorkhan.gamedata.v1` accepts only typed TES3 actor, inventory, nearby-actor, world, Journal,
-captured-dialogue, and prompt-bridge payloads. It does not accept AI quest, boredom, greeting,
+captured-dialogue, and prompt-bridge payloads. Automatic dialogue is submitted as an ordinary bounded
+turn by the game-owned scheduler; the server does not accept a separate AI quest, boredom, greeting,
 combat-bark, ITT, or Background Life variants. The required `lorkhan.events.v1.autonomy` field is
 retained for v1 wire compatibility but must always be an empty array. Rechat is a normal correlated
 turn and never an autonomy directive. All canonical envelopes require both response generation and
@@ -160,13 +161,14 @@ inherit another actor's relationships or manual memories from the session profil
 freezes the assembled prompt and selected provider revision before worker execution.
 
 Every controls response includes `lorkhan.effective-settings.v1` for the active target. It carries the
-resolved rechat, memory, narrator, safety, and client-visible routing values; Global/Core Profile/NPC source metadata; bound profile
+resolved automatic-dialogue, rechat, memory, narrator, safety, and client-visible routing values; Global/Core Profile/NPC source metadata; bound profile
 revisions; and a deterministic change token. Local hotkeys, HUD visibility, panel layout, and TTS volume boost
 remain OpenMW preferences and are never replaced when the target changes. The effective settings
-snapshot includes all seven playback-gated rechat controls. The strict v1 wire shape retains compiled
-presentation and disabled legacy behavior defaults for older parsers; the Lua bridge does not expose
-those compatibility fields. Local and server safety permissions must both allow an operation.
-Timer scheduling, boredom, greetings, combat barks, ITT, and Background Life remain excluded.
+snapshot includes the automatic-dialogue controls and all seven playback-gated rechat controls. The
+strict v1 wire shape retains compiled presentation and remaining legacy behavior defaults for older
+parsers; local presentation remains authoritative. Local and server safety permissions must both allow an operation.
+Greeting, boredom, and combat-bark timing stays game-owned and enters the existing turn lane only while
+idle. ITT, Background Life, and unrelated timer-driven model work remain excluded.
 Server-only Oghma tags and Oghma/profile-generation routes stay on the server. The source map omits
 excluded/internal paths and compatibility-only defaults; model-slot drivers remain `mock` or
 `configured`. STT uses one installation-global connector and does not enter the Global/Core Profile/NPC resolver.
