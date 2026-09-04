@@ -1024,7 +1024,12 @@ function M.poll(state)
     local accepted=0
     for index=1,math.min(#results,constants.MAX_INBOUND_RESULTS) do
         local event=results[index]
-        if event.type=='transport.failure' then
+        if event.type=='rpg.comment' then
+            if event.session_id==state.sessionId and event.generation==state.generation then
+                state.emit('LORKHAN_RPG_COMMENT',event)
+                accepted=accepted+1
+            end
+        elseif event.type=='transport.failure' then
             if applyTransportFailure(state,event) then accepted=accepted+1
             else print('[LORKHAN] transport failure dropped: '..tostring(event.request_id)) end
         else

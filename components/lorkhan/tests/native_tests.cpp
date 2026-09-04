@@ -341,6 +341,10 @@ void testAcceptedProtocolResponses()
         R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"actor_profile","duplicate":false})",
         jsonHeaders);
     CHECK(actorProfile && actorProfile.value().type == "actor_profile");
+    auto rpgEvent = lorkhan::parseGameDataAcceptedResponse(
+        R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"rpg_event","duplicate":false,"comment_requested":true})",
+        jsonHeaders);
+    CHECK(rpgEvent && rpgEvent.value().commentRequested && !rpgEvent.value().duplicate);
     CHECK(!lorkhan::parseGameDataAcceptedResponse(
         R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"journal","duplicate":false})",
         jsonHeaders));

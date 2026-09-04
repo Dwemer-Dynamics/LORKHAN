@@ -331,6 +331,7 @@ struct GameDataAcceptedResponse {
     Generation generation;
     std::string type;
     bool duplicate{};
+    bool commentRequested{};
 };
 
 [[nodiscard]] Result<ProtocolIdentity> parseProtocolIdentity(std::string_view body,
@@ -344,6 +345,24 @@ struct SessionEndedResponse {
 };
 
 struct ControlsResponse {
+    struct SettingsField {
+        std::string key;
+        std::string label;
+        std::string kind;
+        std::string value;
+        std::vector<std::pair<std::string,std::string>> choices;
+        std::optional<std::int64_t> minimum;
+        std::optional<std::int64_t> maximum;
+    };
+    struct SettingsSection {
+        std::string scope;
+        std::string label;
+        std::vector<SettingsField> fields;
+    };
+    struct SettingsEditor {
+        std::string changeToken;
+        std::vector<SettingsSection> sections;
+    };
     struct ModelSlot {
         std::string key;
         std::string label;
@@ -387,6 +406,7 @@ struct ControlsResponse {
     EffectiveSettings effectiveSettings;
     std::vector<ModelSlot> modelSlots;
     std::vector<Profile> profiles;
+    std::optional<SettingsEditor> settingsEditor{};
 };
 
 struct DebugCommandResponse {

@@ -1,0 +1,52 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/book-read-aloud.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+    },
+    "generation": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+    },
+    "message_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "request_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "schema": {
+      "const": "lorkhan.book.read-aloud.v1",
+      "type": "string"
+    },
+    "session_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "text": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "type": "string"
+    },
+    "book_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 512
+    }
+  },
+  "required": [
+    "schema",
+    "message_id",
+    "request_id",
+    "session_id",
+    "generation",
+    "created_at",
+    "text",
+    "book_id",
+    "title"
+  ],
+  "type": "object"
+}

@@ -56,6 +56,7 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         || (request.kind == RequestKind::debug_command_query) != std::holds_alternative<DebugCommandQueryRequest>(request.payload)
         || (request.kind == RequestKind::debug_command_result) != std::holds_alternative<DebugCommandResultRequest>(request.payload)
         || (request.kind == RequestKind::menu_dialogue_tts) != std::holds_alternative<MenuDialogueTtsRequest>(request.payload)
+        || (request.kind == RequestKind::book_read_aloud) != std::holds_alternative<BookReadAloudRequest>(request.payload)
         || (request.kind == RequestKind::player_autochat) != std::holds_alternative<PlayerAutochatRequest>(request.payload)
         || (request.kind == RequestKind::gamedata) != std::holds_alternative<GameDataRequest>(request.payload)
         || (request.kind == RequestKind::media) != std::holds_alternative<MediaPrepareRequest>(request.payload))
@@ -136,6 +137,17 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         if (!target) return Result<void>::failure(target.error());
     }
     if (const auto* controls = std::get_if<ControlsSelectRequest>(&request.payload)) {
+        if(controls->kind==SessionControlKind::setting){
+            if(!controls->setting||controls->selectionId||controls->selectionKey)
+                return Result<void>::failure(makeError(ErrorCode::invalid_argument,"setting selection is invalid"));
+            const auto& setting=*controls->setting;
+            if((setting.scope!="global"&&setting.scope!="core_profile"&&setting.scope!="npc")
+                ||setting.key.empty()||setting.key.size()>128||setting.changeToken.size()!=64
+                ||!std::all_of(setting.changeToken.begin(),setting.changeToken.end(),[](char c){return(c>='0'&&c<='9')||(c>='a'&&c<='f');})
+                ||!std::all_of(setting.key.begin(),setting.key.end(),[](char c){return(c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='_'||c=='.';})
+                ||!requireValidUtf8(setting.value,512))
+                return Result<void>::failure(makeError(ErrorCode::invalid_argument,"setting is outside the closed contract"));
+        }else if(controls->setting)return Result<void>::failure(makeError(ErrorCode::invalid_argument,"unexpected setting"));
         const bool modelSlot = controls->kind == SessionControlKind::model_slot;
         const bool validModelKey = controls->selectionKey && (*controls->selectionKey == "standard"
             || *controls->selectionKey == "fast" || *controls->selectionKey == "powerful"
@@ -178,6 +190,14 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         auto text=requireValidUtf8(menu->text,16U*1024U);
         if(!text||menu->text.empty())return Result<void>::failure(makeError(ErrorCode::invalid_argument,
             "menu dialogue TTS text is outside the closed contract"));
+    }
+    if(const auto* book=std::get_if<BookReadAloudRequest>(&request.payload)){
+        if(!validId(book->message)||!validId(book->correlation.request)||!validId(book->correlation.session)
+            ||book->correlation.request!=request.id||book->correlation.session!=request.session
+            ||book->correlation.generation!=request.generation||!isCanonicalUtcTimestamp(book->createdAt)
+            ||book->bookId.empty()||book->text.empty()||!requireValidUtf8(book->bookId,512)
+            ||!requireValidUtf8(book->title,512)||!requireValidUtf8(book->text,4096))
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,"book read-aloud is outside the closed contract"));
     }
     if(const auto* autochat=std::get_if<PlayerAutochatRequest>(&request.payload)){
         if(!validId(autochat->message)||!validId(autochat->correlation.request)

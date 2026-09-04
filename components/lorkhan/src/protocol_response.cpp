@@ -1361,7 +1361,7 @@ Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(
 {
     auto object = parseObject(body, headers, "lorkhan.gamedata.accepted.v1", limits);
     if (!object) return Result<GameDataAcceptedResponse>::failure(object.error());
-    if (!hasExactly(object.value(), {"schema", "request_id", "session_id", "generation", "type", "duplicate"}))
+    if (!hasExactly(object.value(), {"schema", "request_id", "session_id", "generation", "type", "duplicate"},{"comment_requested"}))
         return invalidSchemaValue<GameDataAcceptedResponse>("game-data accepted fields mismatch");
     auto request = requireUuid(object.value(), "request_id");
     auto session = requireUuid(object.value(), "session_id");
@@ -1371,11 +1371,18 @@ Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(
     if (!request) return invalidSchemaValue<GameDataAcceptedResponse>(request.error().message);
     if (!session) return invalidSchemaValue<GameDataAcceptedResponse>(session.error().message);
     if (!generation) return invalidSchemaValue<GameDataAcceptedResponse>(generation.error().message);
-    if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile"))
+    if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile"
+        &&type.value()!="automatic_diary"&&type.value()!="rpg_event"))
         return invalidSchemaValue<GameDataAcceptedResponse>("game-data type mismatch");
     if (!duplicate) return invalidSchemaValue<GameDataAcceptedResponse>(duplicate.error().message);
+    bool comment=false;
+    if(json::find(object.value(),"comment_requested")){
+        auto value=requireBoolean(object.value(),"comment_requested");
+        if(!value||type.value()!="rpg_event")return invalidSchemaValue<GameDataAcceptedResponse>("unexpected RPG commentary flag");
+        comment=value.value();
+    }
     return Result<GameDataAcceptedResponse>::success({RequestId(std::move(request).value()),
-        SessionId(std::move(session).value()), Generation(generation.value()), std::move(type).value(), duplicate.value()});
+        SessionId(std::move(session).value()), Generation(generation.value()), std::move(type).value(), duplicate.value(),comment});
 }
 
 Result<SessionEndedResponse> parseSessionEndedResponse(
@@ -1404,7 +1411,7 @@ Result<ControlsResponse> parseControlsResponse(
     if(!object)return Result<ControlsResponse>::failure(object.error());
     if(!hasExactly(object.value(),{"schema","message_id","request_id","session_id","generation","target",
             "selected_model_slot_key","resolved_model_slot_key","selected_profile_id","narrator_profile_id",
-            "effective_settings","model_slots","profiles"}))
+            "effective_settings","model_slots","profiles"},{"settings_editor"}))
         return invalidSchemaValue<ControlsResponse>("controls response fields mismatch");
     auto message=requireUuid(object.value(),"message_id");auto request=requireUuid(object.value(),"request_id");
     auto session=requireUuid(object.value(),"session_id");auto generation=requireUnsigned(object.value(),"generation");
@@ -1502,6 +1509,66 @@ Result<ControlsResponse> parseControlsResponse(
     if(parsed.selectedProfileId&&!std::any_of(parsed.profiles.begin(),parsed.profiles.end(),
         [&parsed](const ControlsResponse::Profile& profile){return profile.profileId==*parsed.selectedProfileId;}))
         return invalidSchemaValue<ControlsResponse>("selected profile is absent from the list");
+    if(const auto* editorValue=json::find(object.value(),"settings_editor")){
+        const auto* editor=editorValue->object();
+        if(!editor||!hasExactly(*editor,{"change_token","sections"}))
+            return invalidSchemaValue<ControlsResponse>("settings editor fields mismatch");
+        auto token=requireString(*editor,"change_token",64,64);
+        const auto* sectionsValue=json::find(*editor,"sections");
+        const auto* sections=sectionsValue?sectionsValue->array():nullptr;
+        if(!token||!std::all_of(token.value().begin(),token.value().end(),[](char c){return(c>='0'&&c<='9')||(c>='a'&&c<='f');})
+            ||!sections||sections->size()>3)
+            return invalidSchemaValue<ControlsResponse>("settings editor token or sections invalid");
+        ControlsResponse::SettingsEditor result{token.value(),{}};
+        std::set<std::string> scopes;
+        for(const auto& sectionValue:*sections){
+            const auto* section=sectionValue.object();
+            if(!section||!hasExactly(*section,{"scope","label","fields"}))
+                return invalidSchemaValue<ControlsResponse>("settings section fields mismatch");
+            auto scope=requireString(*section,"scope",1,32);auto label=requireString(*section,"label",1,128);
+            const auto* fieldsValue=json::find(*section,"fields");const auto* fields=fieldsValue?fieldsValue->array():nullptr;
+            if(!scope||!label||(scope.value()!="global"&&scope.value()!="core_profile"&&scope.value()!="npc")
+                ||!scopes.insert(scope.value()).second||!fields||fields->size()>64)
+                return invalidSchemaValue<ControlsResponse>("settings section invalid");
+            ControlsResponse::SettingsSection sectionResult{scope.value(),label.value(),{}};
+            std::set<std::string> keys;
+            for(const auto& fieldValue:*fields){
+                const auto* field=fieldValue.object();
+                if(!field||!hasExactly(*field,{"key","label","kind","value"},{"choices","minimum","maximum"}))
+                    return invalidSchemaValue<ControlsResponse>("setting field mismatch");
+                auto key=requireString(*field,"key",1,128);auto name=requireString(*field,"label",1,128);
+                auto kind=requireString(*field,"kind",1,16);auto value=requireString(*field,"value",0,512);
+                if(!key||!name||!kind||!value||!keys.insert(key.value()).second
+                    ||(kind.value()!="boolean"&&kind.value()!="integer"&&kind.value()!="string"&&kind.value()!="choice"))
+                    return invalidSchemaValue<ControlsResponse>("setting descriptor invalid");
+                ControlsResponse::SettingsField item{key.value(),name.value(),kind.value(),value.value(),{},std::nullopt,std::nullopt};
+                if(item.kind=="boolean"&&item.value!="true"&&item.value!="false")
+                    return invalidSchemaValue<ControlsResponse>("setting boolean invalid");
+                for(const auto bound:{"minimum","maximum"})if(const auto* limit=json::find(*field,bound)){
+                    if(!limit->integer()||*limit->integer() < -1000000||*limit->integer()>1000000)
+                        return invalidSchemaValue<ControlsResponse>("setting bounds invalid");
+                    if(std::string_view(bound)=="minimum")item.minimum=*limit->integer();else item.maximum=*limit->integer();
+                }
+                if(item.minimum&&item.maximum&&*item.minimum>*item.maximum)
+                    return invalidSchemaValue<ControlsResponse>("setting bounds reversed");
+                if(const auto* choicesValue=json::find(*field,"choices")){
+                    const auto* choices=choicesValue->array();
+                    if(!choices||choices->size()>64)return invalidSchemaValue<ControlsResponse>("setting choices invalid");
+                    std::set<std::string> values;
+                    for(const auto& choiceValue:*choices){const auto* choice=choiceValue.object();
+                        if(!choice||!hasExactly(*choice,{"value","label"}))return invalidSchemaValue<ControlsResponse>("setting choice fields mismatch");
+                        auto choiceValueText=requireString(*choice,"value",0,512);auto choiceLabel=requireString(*choice,"label",1,128);
+                        if(!choiceValueText||!choiceLabel||!values.insert(choiceValueText.value()).second)
+                            return invalidSchemaValue<ControlsResponse>("setting choice invalid");
+                        item.choices.emplace_back(choiceValueText.value(),choiceLabel.value());
+                    }
+                }
+                sectionResult.fields.push_back(std::move(item));
+            }
+            result.sections.push_back(std::move(sectionResult));
+        }
+        parsed.settingsEditor=std::move(result);
+    }
     return Result<ControlsResponse>::success(std::move(parsed));
 }
 

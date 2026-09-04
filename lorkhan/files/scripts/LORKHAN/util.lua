@@ -64,4 +64,20 @@ function M.splitSentences(text, limit)
     return sentences
 end
 
+-- Bound read-aloud chunks at word boundaries while retaining every sentence and UTF-8 character.
+function M.speechChunks(text,maximum)
+    local chunks={}
+    maximum=maximum or 240
+    for _,sentence in ipairs(M.splitSentences(text,128)) do
+        while #sentence>maximum do
+            local cut=sentence:sub(1,maximum):match('^.*()%s') or maximum
+            while cut>1 and sentence:byte(cut+1) and sentence:byte(cut+1)>=128 and sentence:byte(cut+1)<192 do cut=cut-1 end
+            chunks[#chunks+1]=sentence:sub(1,cut):match('^%s*(.-)%s*$')
+            sentence=sentence:sub(cut+1):match('^%s*(.-)%s*$')
+        end
+        if sentence~='' then chunks[#chunks+1]=sentence end
+    end
+    return chunks
+end
+
 return M

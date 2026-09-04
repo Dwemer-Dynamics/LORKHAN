@@ -317,6 +317,11 @@
       "sha256": "ddd14e7160f168148a6dd5388e4322a1c72e9042d5526404ad305cedbc016b2d"
     },
     {
+      "bytes": 1278,
+      "path": "lorkhan/schemas/v1/book-read-aloud.schema.json",
+      "sha256": "54775507bed10cd835a978d708d9ef50972f8986e4930def2a1a5688cc328b68"
+    },
+    {
       "bytes": 4231,
       "path": "lorkhan/schemas/v1/client-settings.schema.json",
       "sha256": "bbf0464cf9bef4ba8c67cce004c8aa35f9fdc6656b146b0a0f6ab3e8c94aba2b"
@@ -327,19 +332,19 @@
       "sha256": "94b573b535f434469493eba47ef784bbb152191be21841f26125e39696ab3378"
     },
     {
-      "bytes": 868,
+      "bytes": 1038,
       "path": "lorkhan/schemas/v1/controls-query.schema.json",
-      "sha256": "8e0d071910121f2e945f2af69a78e8c9a726ff3acf65563413f0255d2ece411c"
+      "sha256": "859c7eeee280bc21ab09ad295c314e7384e1757371da086a513af49c33c61330"
     },
     {
-      "bytes": 1481,
+      "bytes": 2614,
       "path": "lorkhan/schemas/v1/controls-select.schema.json",
-      "sha256": "9eca1ee4cd929fa6d51727a7d93739c92f283bf64c8086a4b02e097c7805684b"
+      "sha256": "b0b31dfaac124b2700d397834d1783ccb14c6dd2a9d436afcdda4852128f56ad"
     },
     {
-      "bytes": 12035,
+      "bytes": 20422,
       "path": "lorkhan/schemas/v1/controls.schema.json",
-      "sha256": "2b4f10952dfb57220b0c95faedcc058f616c767fab651f83ff59562849d3149f"
+      "sha256": "a17d4fb5fc550ca5501867bc242031772a0a5f51251d7b10ddde8ed18b47cabe"
     },
     {
       "bytes": 771,
@@ -387,14 +392,14 @@
       "sha256": "1a1595f30804edfd65c2967b3ef22fcd4cb0048dc01e19ff9649330802f0239b"
     },
     {
-      "bytes": 793,
+      "bytes": 1028,
       "path": "lorkhan/schemas/v1/gamedata-accepted.schema.json",
-      "sha256": "1bf8356368b5d1d6ad5e7be27ae1f399b3a0dd6dae00fce62a00a0ecad090196"
+      "sha256": "6e401b2d2f9e081663de83bf339f5697c8d17afe5f0604dc3a8ad919679dff68"
     },
     {
-      "bytes": 8421,
+      "bytes": 13105,
       "path": "lorkhan/schemas/v1/gamedata.schema.json",
-      "sha256": "1ddef66d1d610f13b606ac1270680e6c46f0a7366b16beda6bd73a3fcb79e876"
+      "sha256": "eec9881768e27a4553a128999ac2f872c9447447abb174e00ea12655ca2b5f5a"
     },
     {
       "bytes": 295,

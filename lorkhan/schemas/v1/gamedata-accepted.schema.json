@@ -3,13 +3,44 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
-    "duplicate": {"type": "boolean"},
-    "generation": {"maximum": 9007199254740991, "minimum": 1, "type": "integer"},
-    "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "schema": {"const": "lorkhan.gamedata.accepted.v1", "type": "string"},
-    "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "type": {"enum": ["actor_profile", "automatic_diary", "captured_dialogue"], "type": "string"}
+    "duplicate": {
+      "type": "boolean"
+    },
+    "generation": {
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "request_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "schema": {
+      "const": "lorkhan.gamedata.accepted.v1",
+      "type": "string"
+    },
+    "session_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "type": {
+      "enum": [
+        "actor_profile",
+        "automatic_diary",
+        "captured_dialogue",
+        "rpg_event"
+      ],
+      "type": "string"
+    },
+    "comment_requested": {
+      "type": "boolean"
+    }
   },
-  "required": ["schema", "request_id", "session_id", "generation", "type", "duplicate"],
+  "required": [
+    "schema",
+    "request_id",
+    "session_id",
+    "generation",
+    "type",
+    "duplicate"
+  ],
   "type": "object"
 }

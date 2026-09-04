@@ -40,6 +40,12 @@ test('menu dialogue splits into a bounded ordered sentence queue',function()
  eq(#sentences,2);eq(sentences[1],'Wait...');eq(sentences[2],'Still here. Final.')
  sentences=support.splitSentences('One line without punctuation',8)
  eq(#sentences,1);eq(sentences[1],'One line without punctuation')
+ local book=string.rep('Read this aloud ',40)..'End.'
+ local chunks=support.speechChunks(book,240)
+ truthy(#chunks>1);eq(table.concat(chunks,' '),book)
+ for _,chunk in ipairs(chunks) do truthy(#chunk<=240) end
+ local rpg=assert(protocol.rpgEvent({kind='levelup',player=playerId,game_time=120,text='The player reached level 2.'}))
+ eq(rpg.kind,'levelup');eq(protocol.rpgEvent({kind='levelup',player=npc,game_time=120,text='not player'}),nil)
 end)
 local function uuid(value) return string.format('00000000-0000-4000-8000-%012x',value) end
 local function dialogueLine(index,lineId,speaker,listener,text,final,speechEnabled)
@@ -832,8 +838,8 @@ test('focused UI builders keep chat selectors tools and notifications independen
  eq(chat[4].props.text,'One-turn prefixes: || Close, !! Shout, | Whisper.')
  -- the moved controls sit between the send hint and Send, in one compact clickable list
  local MENU_FIRST=6
- eq(#chatbox.MENU,8);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
- local expected={'mood','autoChat','modes','model','profiles','history','statusHud','diagnostics'}
+ eq(#chatbox.MENU,9);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
+ local expected={'mood','autoChat','modes','model','profiles','settings','history','statusHud','diagnostics'}
  for index,entry in ipairs(chatbox.MENU) do
   eq(entry.key,expected[index])
   local row=chat[MENU_FIRST+index-1]
@@ -846,7 +852,7 @@ test('focused UI builders keep chat selectors tools and notifications independen
  local hudShown=chatbox.build({ui=ui,util=util,target='Fargoth',text='',shortcuts=uiState.SHORTCUTS,
   statusHudVisible=true,onTextChanged=function()end,onKeyPress=function()end,
   onSend=function()end,onClose=function()end})
- eq(hudShown[MENU_FIRST+6].props.text,'Status HUD: on')
+ eq(hudShown[MENU_FIRST+7].props.text,'Status HUD: on')
  eq(chatbox.statusHudLabel(true),'Status HUD: on');eq(chatbox.statusHudLabel(false),'Status HUD: off')
  eq(chatbox.autoChatLabel(true),'Auto Chat: on');eq(chatbox.autoChatLabel(false),'Auto Chat: off')
  -- the top-left HUD draws only while statusHudVisible is set, so no transient status leaks when it is off
@@ -876,6 +882,12 @@ test('focused UI builders keep chat selectors tools and notifications independen
  local tools=require('scripts.LORKHAN.ui.actor_tools').build({ui=ui,util=util,target='Fargoth',
   options={{label='Actor actions...',onSelect=function()end}},onClose=function()end})
  eq(tools[1].props.text,'Targeted NPC Tools');eq(tools[2].props.text,'Target: Fargoth')
+ local saved,changed
+ local settings=require('scripts.LORKHAN.ui.settings').build({ui=ui,util=util,wrap=function(callback)return callback end,
+  editor={sections={}},field={kind='string',label='Personality'},value='Old text',
+  save=function(value)saved=value end,changeValue=function(value)changed=value end,cancel=function()end,back=function()end})
+ settings[3].events.textChanged('New text');settings[4].events.mouseClick()
+ eq(changed,'New text');eq(saved,'New text') -- Save uses the edited widget value, not its initial snapshot.
  local notifications=require('scripts.LORKHAN.ui.notifications');local notice=notifications.new()
  truthy(notifications.show(notice,'queued',1));truthy(notifications.active(notice))
  eq(notifications.update(notice,0.5),false);eq(notifications.update(notice,0.5),true);eq(notifications.active(notice),false)

@@ -181,6 +181,7 @@ struct ControlsQueryRequest {
     MessageId message;
     RequestCorrelation correlation;
     std::string serializedTarget;
+    bool includeSettingsEditor{};
 };
 
 struct DebugCommandQueryRequest {
@@ -199,7 +200,13 @@ struct DebugCommandResultRequest {
     std::string completedAt;
 };
 
-enum class SessionControlKind { model_slot, actor_profile, profile_generate, narrator_profile_generate };
+enum class SessionControlKind { model_slot, actor_profile, profile_generate, narrator_profile_generate, setting };
+struct SettingSelection {
+    std::string scope;
+    std::string key;
+    std::string value;
+    std::string changeToken;
+};
 struct ControlsSelectRequest {
     MessageId message;
     RequestCorrelation correlation;
@@ -208,6 +215,7 @@ struct ControlsSelectRequest {
     std::optional<std::string> selectionId;
     std::optional<std::string> selectionKey;
     std::string serializedTarget;
+    std::optional<SettingSelection> setting{};
 };
 
 struct MenuDialogueTtsRequest {
@@ -227,7 +235,16 @@ struct PlayerAutochatRequest {
     std::string intent;
 };
 
-enum class GameDataType { captured_dialogue, actor_profile, automatic_diary };
+struct BookReadAloudRequest {
+    MessageId message;
+    RequestCorrelation correlation;
+    std::string createdAt;
+    std::string bookId;
+    std::string title;
+    std::string text;
+};
+
+enum class GameDataType { captured_dialogue, actor_profile, automatic_diary, rpg_event };
 
 struct GameDataRequest {
     InstallationId installation;
@@ -264,7 +281,7 @@ struct PreparedMedia {
 using RequestPayload = std::variant<HealthRequest, InitRequest, TurnRequest, EventPollRequest,
     InterruptionRequest, ActionResultRequest, SessionEndRequest, SttRequest,
     DialogueDeliveryResultRequest, ControlsQueryRequest, ControlsSelectRequest, DebugCommandQueryRequest,
-    DebugCommandResultRequest, MenuDialogueTtsRequest, PlayerAutochatRequest, GameDataRequest,
+    DebugCommandResultRequest, MenuDialogueTtsRequest, PlayerAutochatRequest, BookReadAloudRequest, GameDataRequest,
     MediaPrepareRequest>;
 
 enum class RequestKind {
@@ -282,6 +299,7 @@ enum class RequestKind {
     debug_command_query,
     debug_command_result,
     menu_dialogue_tts,
+    book_read_aloud,
     player_autochat,
     gamedata,
     media,

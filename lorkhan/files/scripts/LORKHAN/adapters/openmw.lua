@@ -359,6 +359,14 @@ function M.combatStatus(modules)
         conversation_state_proven=conversationStateProven}
 end
 
+-- Observe level changes cheaply without constructing a full inventory/world snapshot.
+function M.playerLevel(modules)
+    modules=modules or loaded()
+    local actorType=modules.types and modules.types.Actor
+    local level=actorType and actorType.stats and actorType.stats.level and safe(actorType.stats.level,modules.self)
+    return level and tonumber(level.current) or nil
+end
+
 local function dynamicStats(actor, modules)
     local dynamic=modules.types and modules.types.Actor and modules.types.Actor.stats and modules.types.Actor.stats.dynamic
     if not dynamic then return {} end

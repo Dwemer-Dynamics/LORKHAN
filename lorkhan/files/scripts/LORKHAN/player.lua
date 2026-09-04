@@ -7,6 +7,7 @@ local chatbox=require('scripts.LORKHAN.ui.chatbox')
 local uiState=require('scripts.LORKHAN.ui.state')
 local selector=require('scripts.LORKHAN.ui.selector')
 local actorTools=require('scripts.LORKHAN.ui.actor_tools')
+local settingsMenu=require('scripts.LORKHAN.ui.settings')
 local support=require('scripts.LORKHAN.util')
 local core=adapter.event()
 local inputOk,input=pcall(require,'openmw.input')
@@ -34,6 +35,7 @@ local speechActors={}
 local narratorSpeech
 local menuDialogueSpeech
 local playerSpeech
+local bookSpeech
 local pendingAutochat
 local pendingCapturedDialogue={}
 local capturedDialogueSeen={}
@@ -45,6 +47,7 @@ local pendingAutomaticDiaries={}
 local automaticDiaryFlushElapsed=0
 local automaticDiaryTimerElapsed=0
 local restDiaryState
+local observedPlayerLevel,observedRpgSession
 local ownsUiMode=false
 local controlsSignature
 local responseQueueSnapshot={}
@@ -69,7 +72,10 @@ local pendingHistory
 local pendingControlPanel
 -- Panels whose contents are owned by the server, so an in-flight controls request has to settle
 -- before they can show the player anything new.
-local SERVER_CONTROL_PANELS={models=true,profiles=true,narrator=true}
+local SERVER_CONTROL_PANELS={models=true,profiles=true,narrator=true,settings=true}
+local settingScope,settingField,settingValue,settingToken,settingTarget
+local settingPage=1
+local settingsControls={}
 local controlsRequestActive=false
 local debugRequestActive=false
 local nextDebugPollAt=0
@@ -154,7 +160,7 @@ local function audienceNames()
     for _,actor in ipairs(state.ui.audience or {}) do names[#names+1]=displayName(actor) end
     return #names>0 and table.concat(names,', ') or 'None'
 end
-local function speechActive() return next(speechActors)~=nil or playerSpeech~=nil end
+local function speechActive() return next(speechActors)~=nil or playerSpeech~=nil or bookSpeech~=nil end
 
 local function narratorCooldownReady(key,minutes)
     local now=adapter.gameTime()
@@ -275,6 +281,69 @@ local function stopMenuDialogueSpeech()
         end
     end
     menuDialogueSpeech=nil
+end
+
+local function stopBookSpeech()
+    if not bookSpeech then return end
+    if bookSpeech.playing then adapter.stopSpeech() end
+    for _,sentence in ipairs(bookSpeech.sentences) do
+        if sentence.request_id and nativeOk and native.cancelMenuDialogueTts then pcall(native.cancelMenuDialogueTts,sentence.request_id) end
+    end
+    bookSpeech=nil
+end
+
+-- Reading stays in its own local speech lane and never turns book prose into player/NPC dialogue.
+local function startBookSpeech(event)
+    stopBookSpeech()
+    if not soundSettings or soundSettings:get('bookReadAloud')~=true or not nativeOk or not native.requestBookReadAloud then return end
+    local text=tostring(event.text or ''):gsub('<[^>]*>',' '):gsub('&nbsp;',' '):gsub('&quot;','"')
+        :gsub('&apos;',"'"):gsub('&lt;','<'):gsub('&gt;','>'):gsub('&amp;','&')
+    local sentences={}
+    for _,chunk in ipairs(support.speechChunks(text,240)) do sentences[#sentences+1]={text=chunk} end
+    if #sentences==0 then return end
+    stopPlayerSpeech() stopNarrator('book_reading_started') stopMenuDialogueSpeech()
+    bookSpeech={book_id=event.record_id,title=event.title or '',sentences=sentences,index=1,seenOpen=false,
+        session=native.sessionInfo(),
+        started=core and core.getRealTime and core.getRealTime() or 0}
+end
+
+local function updateBookSpeech()
+    local current=bookSpeech
+    if not current then return end
+    local session=native.sessionInfo()
+    if not session or not current.session or session.session_id~=current.session.session_id
+        or session.generation~=current.session.generation then stopBookSpeech() return end
+    local mode=interfacesOk and interfaces.UI and interfaces.UI.getMode and interfaces.UI.getMode()
+    if mode=='Book' or mode=='Scroll' then current.seenOpen=true
+    elseif current.seenOpen or (core and core.getRealTime and core.getRealTime()-current.started>1) then stopBookSpeech() return end
+    if soundSettings and soundSettings:get('bookReadAloud')~=true then stopBookSpeech() return end
+    if current.playing and not adapter.isSpeechActive() then
+        local previous=current.sentences[current.index]
+        pcall(native.cancelMenuDialogueTts,previous.request_id)
+        current.index=current.index+1 current.playing=false
+    end
+    local sentence=current.sentences[current.index]
+    if not sentence then stopBookSpeech() return end
+    -- Prefetch only the next sentence once this one has media, so the first sentence wins the FIFO.
+    for index=current.index,math.min(current.index+1,#current.sentences) do
+        local item=current.sentences[index]
+        if not item.request_id and (index==current.index or current.playing) then
+            local request,reason=native.requestBookReadAloud(current.book_id,current.title,item.text)
+            if not request then state.ui.status='Book voice unavailable: '..tostring(reason) stopBookSpeech() return end
+            item.request_id=request
+        end
+    end
+    if current.playing then return end
+    local status=native.menuDialogueTtsStatus(sentence.request_id)
+    if not status or status.state=='failed' then
+        state.ui.status='Book voice unavailable: '..tostring(status and status.reason or 'request expired')
+        stopBookSpeech() return
+    end
+    if status.state=='ready' and status.media_id then
+        local volume=tonumber(soundSettings and soundSettings:get('ttsVolumeBoost')) or 3
+        local ok,reason=adapter.playSpeech(status.media_id,sentence.text,volume)
+        if ok then current.playing=true else state.ui.status=tostring(reason) stopBookSpeech() end
+    end
 end
 
 -- Submit one sentence at a time so its media download enters the FIFO bridge before later synthesis work.
@@ -415,6 +484,14 @@ local function flushActorProfiles(dt)
 end
 
 -- Submit a bounded timer, sleep, or wait diary candidate; the server owns profile eligibility and cooldowns.
+local function submitRpgEvent(kind,text)
+    if not nativeOk or not native.submitRpgEvent or not native.sessionInfo or not native.sessionInfo() then return end
+    local payload=protocol.rpgEvent({kind=kind,player=adapter.identity(self),game_time=adapter.gameTime(),text=text})
+    if not payload then return end
+    local request,reason=native.submitRpgEvent(payload)
+    if not request then print('[LORKHAN] RPG event not queued: '..tostring(reason)) end
+end
+
 local function submitAutomaticDiary(trigger)
     if not nativeOk or not native or type(native.sessionInfo)~='function' or not native.sessionInfo() then return end
     local gameTime=adapter.gameTime()
@@ -685,12 +762,13 @@ local function pumpDebugCommands()
 end
 
 local function refreshSessionControls(panel,quiet)
-    if not state.ui.target then state.ui.status='actor target required' render() return end
+    local target=panel=='settings' and (state.ui.target or adapter.identity(self)) or state.ui.target
+    if not target then state.ui.status='actor target required' render() return end
     if not nativeOk or not native or not native.requestSessionControls then
         if not quiet then state.ui.status='session controls unavailable' render() end
         return
     end
-    local request,error=noteControlsRequest(native.requestSessionControls(state.ui.target))
+    local request,error=noteControlsRequest(native.requestSessionControls(target,panel=='settings'))
     if not quiet then
         if not request then state.ui.status=tostring(error or 'session controls unavailable') else state.ui.status='loading controls' end
         if panel then state.ui.panel=panel end
@@ -704,6 +782,29 @@ local function targetedControls()
     local controls=sessionControls()
     if controls and state.ui.target and identity.same(controls.target,state.ui.target) then return controls end
     return nil
+end
+
+-- Save only the field and snapshot explicitly opened by the player; never reuse a changed target.
+local function saveSessionSetting(value)
+    if controlsRequestActive or not settingField or not settingTarget then return end
+    local target=state.ui.target or adapter.identity(self)
+    if not target or not identity.same(target,settingTarget) then
+        state.ui.status='Target changed. Refresh settings before saving.' render() return
+    end
+    value=tostring(value or '')
+    if #value>512 then state.ui.status='Value must be at most 512 bytes' render() return end
+    if settingField.kind=='integer' then
+        local number=tonumber(value)
+        if not number or number~=math.floor(number) or (settingField.minimum and number<settingField.minimum)
+            or (settingField.maximum and number>settingField.maximum) then
+            state.ui.status='Enter a whole number within the shown range' render() return
+        end
+        value=tostring(math.floor(number))
+    end
+    local request,error=noteControlsRequest(native.updateSessionSetting(settingScope,settingField.key,value,settingToken,settingTarget))
+    if request then settingField=nil settingValue=nil settingPage=1 end
+    state.ui.status=request and 'Saving setting' or tostring(error or 'Setting update failed')
+    render()
 end
 
 local function selectSessionControl(kind,selection)
@@ -892,11 +993,45 @@ local function renderStatusHud()
         props={position=util.vector2(26,24),size=util.vector2(width,height)},content=openmwUi.content({
             {type=openmwUi.TYPE.Text,props={text=text,
                 size=util.vector2(width,height),wordWrap=false,
-                textSize=15,textColor=util.color.rgb(1.0,0.58,0.18)}}
+                textSize=15,textColor=util.color.rgb(188/255,157/255,90/255)}}
         })}
     if statusElement then statusElement.layout=layout statusElement:update()
     else statusElement=openmwUi.create(layout) end
 end
+-- Isolate the server editor from the main menu renderer's LuaJIT upvalue budget.
+function settingsControls.build()
+        local controls=sessionControls()
+        local target=state.ui.target or adapter.identity(self)
+        local editor=controls and target and identity.same(controls.target,target) and controls.settings_editor or nil
+        return settingsMenu.build({ui=openmwUi,util=util,wrap=adapter.callback,editor=editor,
+            scope=settingScope,field=settingField,value=settingValue,page=settingPage,pending=controlsRequestActive,
+            openSection=function(scope) settingScope=scope settingPage=1 render() end,
+            edit=function(field)
+                if controlsRequestActive then return end
+                settingField=field settingValue=field.value settingPage=1
+                settingToken=editor.change_token settingTarget=target
+                if field.kind=='boolean' then saveSessionSetting(field.value=='true' and 'false' or 'true') else render() end
+            end,
+            save=saveSessionSetting,changeValue=function(value) settingValue=tostring(value) end,
+            cancel=function() settingField=nil settingValue=nil settingPage=1 render() end,
+            setPage=function(page) settingPage=page render() end,
+            backToHub=function() settingScope=nil settingPage=1 render() end,
+            refresh=function() refreshSessionControls('settings') end,
+            models=function() refreshSessionControls('models') end,
+            profiles=function() state.ui.panel='profile-menu' render() end,
+            readBooks=soundSettings and soundSettings:get('bookReadAloud')==true,
+            toggleBooks=function()
+                if soundSettings then soundSettings:set('bookReadAloud',soundSettings:get('bookReadAloud')~=true) end
+                if bookSpeech then stopBookSpeech() end
+                render()
+            end,
+            back=function() settingField=nil state.ui.panel='conversation' render() end})
+end
+function settingsControls.open()
+    settingScope=nil settingField=nil settingPage=1
+    openFromConversation('settings') refreshSessionControls('settings')
+end
+
 render=function()
     renderStatusHud()
     if not state.ui.visible or not uiOk or not utilOk then
@@ -928,12 +1063,15 @@ render=function()
                 openFromConversation('models') refreshSessionControls('models')
             end),
             onSelectProfiles=adapter.callback(function() openFromConversation('profile-menu') render() end),
+            onSelectSettings=adapter.callback(settingsControls.open),
             onSelectHistory=adapter.callback(function() openFromConversation('history') render() end),
             onToggleStatusHud=adapter.callback(toggleStatusHud),
             onToggleAutoChat=adapter.callback(toggleAutoChat),
             onSelectDiagnostics=adapter.callback(function() openFromConversation('diagnostics') render() end),
             onSend=adapter.callback(submitText),
             onClose=adapter.callback(function() pendingTextSubmit=false state.ui.visible=false leaveUiMode() render() end)})
+    elseif state.ui.panel=='settings' then
+        transcript=settingsControls.build()
     elseif state.ui.panel=='nearby-profiles' then
         local exterior=self.cell and self.cell.isExterior==true
         local distance=autoSettings and autoSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')
@@ -951,7 +1089,7 @@ render=function()
             local candidate=nearby[index]
             local label=displayName(candidate.identity)..'  ('..tostring(math.floor(candidate.distance))..')'
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Talk to '..label,textSize=16,
-                textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
+                textColor=util.color.rgb(188/255,157/255,90/255)},events={mouseClick=adapter.callback(function()
                     send('LORKHAN_SELECT_TARGET',{candidate=candidate}) state.ui.panel='conversation' render()
                 end)}}
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Add '..label..' to group',textSize=14,
@@ -966,7 +1104,7 @@ render=function()
                 end)}}
         end
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Pin bounded nearby group',textSize=16,
-            textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
+            textColor=util.color.rgb(188/255,157/255,90/255)},events={mouseClick=adapter.callback(function()
                 while #nearby>12 do table.remove(nearby) end
                 send('LORKHAN_MANUAL_ACTIVATE_NEARBY_REQUEST',{candidates=nearby})
             end)}}
@@ -998,11 +1136,11 @@ render=function()
         end
         if pages>1 then
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Newer',textSize=15,
-                textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
+                textColor=util.color.rgb(188/255,157/255,90/255)},events={mouseClick=adapter.callback(function()
                     state.ui.historyPage=math.max(1,state.ui.historyPage-1) render()
                 end)}}
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Older',textSize=15,
-                textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
+                textColor=util.color.rgb(188/255,157/255,90/255)},events={mouseClick=adapter.callback(function()
                     state.ui.historyPage=math.min(pages,state.ui.historyPage+1) render()
                 end)}}
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Page '..state.ui.historyPage..' / '..pages,
@@ -1068,7 +1206,7 @@ render=function()
         end
         if state.ui.diagnostics then
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Last detail: '..tostring(state.ui.diagnostics),
-                textSize=15,textColor=util.color.rgb(1.0,0.58,0.18)}}
+                textSize=15,textColor=util.color.rgb(188/255,157/255,90/255)}}
         end
         local ids=state.ui.lastCorrelation or {}
         local copyText='message_id='..tostring(ids.messageId or 'unavailable')..'  request_id='..
@@ -1086,7 +1224,7 @@ render=function()
     elseif state.ui.panel=='actions' then
         local function option(label,name,tier,parameters)
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=label,textSize=18,
-                textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function()
+                textColor=util.color.rgb(188/255,157/255,90/255)},events={mouseClick=adapter.callback(function()
                     submitActionRequest(label,name,tier,parameters)
                 end)}}
         end
@@ -1230,7 +1368,7 @@ render=function()
         elseif narratorPanel then
             if controls.narrator_profile_id then
                 transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Generate narrator profile with AI',textSize=18,
-                    textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(generateNarratorProfile)}}
+                    textColor=util.color.rgb(188/255,157/255,90/255)},events={mouseClick=adapter.callback(generateNarratorProfile)}}
                 transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Queues one revision-safe narrator job and preserves voice routing and enablement.',textSize=14,
                     textColor=util.color.rgb(0.72,0.68,0.62)}}
             else
@@ -1240,23 +1378,23 @@ render=function()
         else
             local defaultActive=not controls.selected_profile_id and ' [active]' or ''
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Use playthrough profile'..defaultActive,textSize=18,
-                textColor=not controls.selected_profile_id and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(1.0,0.58,0.18)},
+                textColor=not controls.selected_profile_id and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(188/255,157/255,90/255)},
                 events={mouseClick=adapter.callback(function() selectSessionControl('actor_profile',nil) end)}}
             for _,profile in ipairs(controls.profiles or {}) do
                 local active=controls.selected_profile_id==profile.profile_id and ' [active]' or ''
                 transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=profile.name..active..'  |  revision '..tostring(profile.revision),textSize=17,
-                    textColor=active~='' and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(1.0,0.58,0.18)},
+                    textColor=active~='' and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(188/255,157/255,90/255)},
                     events={mouseClick=adapter.callback(function() selectSessionControl('actor_profile',profile.profile_id) end)}}
             end
             if controls.selected_profile_id then
                 transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Generate active profile with AI',textSize=17,
-                    textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(generateSelectedProfile)}}
+                    textColor=util.color.rgb(188/255,157/255,90/255)},events={mouseClick=adapter.callback(generateSelectedProfile)}}
                 transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Queues one revision-safe server job. Refresh after it completes.',textSize=14,
                     textColor=util.color.rgb(0.72,0.68,0.62)}}
             end
         end
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Refresh choices',textSize=16,
-            textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=adapter.callback(function() refreshSessionControls(state.ui.panel) end)}}
+            textColor=util.color.rgb(188/255,157/255,90/255)},events={mouseClick=adapter.callback(function() refreshSessionControls(state.ui.panel) end)}}
         transcript[#transcript+1]=backRow()
     elseif state.ui.panel=='moods' then
         local moods={}
@@ -1290,7 +1428,7 @@ render=function()
         for _,mode in ipairs(MODES) do
             local active=mode==state.ui.mode and ' [active]' or ''
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=mode..active,textSize=18,
-                textColor=mode==state.ui.mode and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(1.0,0.58,0.18)},
+                textColor=mode==state.ui.mode and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(188/255,157/255,90/255)},
                 events={mouseClick=adapter.callback(function() setMode(mode) end)}}
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=descriptions[mode],textSize=14,
                 textColor=util.color.rgb(0.72,0.68,0.62)}}
@@ -1307,7 +1445,7 @@ render=function()
     if state.ui.pendingAction then
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Confirm action: '..
             (state.ui.pendingAction.display_name or state.ui.pendingAction.name),textSize=17,
-            textColor=util.color.rgb(1.0,0.72,0.2)}}
+            textColor=util.color.rgb(218/255,187/255,120/255)}}
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Approve',textSize=16,textColor=util.color.rgb(0.45,0.9,0.45)},
             events={mouseClick=adapter.callback(function()
                 send('LORKHAN_CONFIRM_ACTION',{action_id=state.ui.pendingAction.action_id,approved=true})
@@ -1320,7 +1458,7 @@ render=function()
             end)}}
     end
     local panelSizes={conversation={560,400},['actor-tools']={540,360},['profile-menu']={520,300},
-        modes={540,480},moods={520,470},models={580,420},profiles={580,420},narrator={580,330},
+        settings={660,600},modes={540,480},moods={520,470},models={580,420},profiles={580,420},narrator={580,330},
         ['nearby-profiles']={680,460},history={760,620},diagnostics={760,620}}
     local panelSize=panelSizes[state.ui.panel] or {680,460}
     local contentWidth=panelSize[1]-20
@@ -1329,7 +1467,7 @@ render=function()
         props={position=util.vector2(30,60),size=util.vector2(panelSize[1],panelSize[2])},content=openmwUi.content({
             {type=openmwUi.TYPE.Flex,props={horizontal=false,size=util.vector2(contentWidth,contentHeight)},content=openmwUi.content({
                 {type=openmwUi.TYPE.Text,props={text='LORKHAN  |  '..state.ui.status,textSize=16,
-                    textColor=util.color.rgb(1.0,0.45,0.08)}},
+                    textColor=util.color.rgb(188/255,157/255,90/255)}},
                 unpackValues(transcript),
             })},
         })}
@@ -1583,11 +1721,13 @@ end
 if inputOk then
     input.registerTriggerHandler('LORKHAN_Talk',adapter.callback(requestTalkToggle))
     input.registerTriggerHandler('LORKHAN_StopDialogue',adapter.callback(function()
+        stopBookSpeech()
         send('LORKHAN_STOP_DIALOGUE_REQUEST',{}) state.ui.status='dialogue stopped' render()
     end))
     input.registerTriggerHandler('LORKHAN_Halt',adapter.callback(function()
         state.ui.pendingTargetAction=nil
         stopPlayerSpeech()
+        stopBookSpeech()
         if pendingAutochat and nativeOk and native.cancelPlayerAutochat then
             pcall(native.cancelPlayerAutochat,pendingAutochat.request_id) pendingAutochat=nil
         end
@@ -1631,7 +1771,7 @@ end
 return {
     engineHandlers={
         onInputAction=function(action)
-            if action=='LORKHAN_Halt' then stopPlayerSpeech() end
+            if action=='LORKHAN_Halt' then stopPlayerSpeech() stopBookSpeech() end
             return player.onAction(state,action,send)
         end,
         onKeyPress=function(event)
@@ -1657,6 +1797,8 @@ return {
         -- bounded pause-safe pump of the in-flight controls response and nothing else. No gameplay,
         -- settings scan, or event processing belongs here.
         onFrame=function()
+            if nativeOk and native.pumpMenuDialogueTts and (bookSpeech or playerSpeech or menuDialogueSpeech) then native.pumpMenuDialogueTts() end
+            updateBookSpeech()
             pumpDebugCommands()
             if pendingAutochat and nativeOk and native.pumpPlayerAutochat then pcall(native.pumpPlayerAutochat) end
             updatePlayerAutochat()
@@ -1693,6 +1835,13 @@ return {
             if settingsRefreshElapsed>=SETTINGS_REFRESH_INTERVAL then
                 settingsRefreshElapsed=0
                 local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
+                local rpgSession=session and (session.session_id..':'..tostring(session.generation)) or nil
+                local level=adapter.playerLevel()
+                if rpgSession~=observedRpgSession then observedPlayerLevel=level observedRpgSession=rpgSession
+                elseif level and observedPlayerLevel and level>observedPlayerLevel then
+                    submitRpgEvent('levelup','The player reached level '..tostring(level)..'.')
+                end
+                observedPlayerLevel=level
                 if session and session.session_id~=journalSessionId then journalSessionId=session.session_id journalSignature=nil end
                 local controls=sessionControls()
                 applySettings(session,controls)
@@ -1747,6 +1896,7 @@ return {
     eventHandlers={
         UiModeChanged=function(event)
             if type(event)~='table' then return end
+            if (event.oldMode=='Book' or event.oldMode=='Scroll') and event.newMode~='Book' and event.newMode~='Scroll' then stopBookSpeech() end
             if event.newMode=='Rest' then
                 restDiaryState={game_time=adapter.gameTime(),opened_from_bed=event.arg~=nil,
                     exterior=self.cell and self.cell.isExterior==true}
@@ -1756,7 +1906,9 @@ return {
             local entered=restDiaryState;restDiaryState=nil
             local finished=adapter.gameTime()
             if type(entered.game_time)~='number' or type(finished)~='number' or finished<=entered.game_time then return end
-            submitAutomaticDiary((entered.opened_from_bed or entered.exterior) and 'sleep' or 'wait')
+            local trigger=(entered.opened_from_bed or entered.exterior) and 'sleep' or 'wait'
+            submitAutomaticDiary(trigger)
+            submitRpgEvent(trigger,'The player finished '..(trigger=='sleep' and 'sleeping' or 'waiting')..'.')
         end,
         LORKHAN_DEBUG_COMMAND_RESULT=function(event)
             if not pendingGlobalDebugCommand or type(event)~='table'
@@ -1774,6 +1926,16 @@ return {
             end
         end,
         LORKHAN_AUTO_ACTIVATED=submitAutoActorProfile,
+        LORKHAN_RPG_COMMENT=function(event)
+            if not state.ui.target or turnActive or nearbyCombat or speechActive() or state.ui.visible then return end
+            local distance=adapter.actorDistance(state.ui.target)
+            if not distance or distance>2048 then return end
+            local snapshot=conversationContext(state.ui.target)
+            snapshot.dialogueMode='Standard'
+            send('LORKHAN_SUBMIT_TEXT',{text='[RPG:'..event.kind..'] '..event.text,language='en-US',
+                speaker=adapter.identity(self),dialogueMode='Standard',context=snapshot,
+                capabilities=CAPABILITIES,recent_action_results={},ui_source='lorkhan_rpg_event'})
+        end,
         LORKHAN_PROFILE_EVOLUTION_REQUEST=function(event)
             if type(event)~='table' or type(event.actors)~='table' then return end
             for _,actor in ipairs(event.actors) do submitAutoActorProfile({actor=actor}) end
@@ -1816,6 +1978,7 @@ return {
             updateMenuDialogueSpeech()
         end,
         LORKHAN_NARRATOR_SPEAK=function(command)
+            stopBookSpeech()
             stopPlayerSpeech()
             stopNarrator('speech_replaced')
             local ok,reason=adapter.playSpeech(command.media_id,command.subtitle,command.tts_volume_boost)
@@ -1887,6 +2050,9 @@ return {
         LORKHAN_AGENTS=function(event) state.ui.agents=event.agents or {} render() end,
         LORKHAN_COMBAT_STATUS=function(event)
             local started=event.active==true and not nearbyCombat
+            local session=nativeOk and native.sessionInfo and native.sessionInfo()
+            local sameSession=session and observedRpgSession==session.session_id..':'..tostring(session.generation)
+            if sameSession and nearbyCombat and event.active==false then submitRpgEvent('combat_end','Combat nearby has ended.') end
             nearbyCombat=event.active==true
             if started and (not behaviorSettings or behaviorSettings:get('cancelDialogueOnCombat')~=false)
                 and (turnActive or voiceRecording or openMicEnabled or speechActive()) then
@@ -1926,6 +2092,7 @@ return {
             render()
         end,
         LORKHAN_BOOK_READ=function(event)
+            startBookSpeech(event)
             if adapter.rememberBook(event) then
                 state.ui.status='book remembered: '..tostring(event.title or event.record_id)
                 send('LORKHAN_NARRATOR_EVENT_CANDIDATE',{kind='book',context_actor=state.ui.target,cooldown_ready=true})

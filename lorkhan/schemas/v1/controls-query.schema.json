@@ -3,13 +3,36 @@
   "$id": "https://lorkhan.invalid/schemas/v1/controls-query.schema.json",
   "additionalProperties": false,
   "properties": {
-    "schema": {"const": "lorkhan.controls.query.v1", "type": "string"},
-    "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
-    "target": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"}
+    "schema": {
+      "const": "lorkhan.controls.query.v1",
+      "type": "string"
+    },
+    "message_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "request_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "session_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "generation": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+    },
+    "target": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+    },
+    "include_settings_editor": {
+      "type": "boolean"
+    }
   },
-  "required": ["schema", "message_id", "request_id", "session_id", "generation", "target"],
+  "required": [
+    "schema",
+    "message_id",
+    "request_id",
+    "session_id",
+    "generation",
+    "target"
+  ],
   "type": "object"
 }

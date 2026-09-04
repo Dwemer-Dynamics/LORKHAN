@@ -238,3 +238,23 @@ context, 12 audience actors, 4 actions/turn, 1 result-aware continuation/action,
 Breaking changes use `v2` schemas/routes. Additive fields still require schema changes and dual-repo
 fixture updates because v1 rejects unknown fields. Client/server refuse unsupported versions with a
 clear compatibility status; they never silently fall back to legacy tuple or file protocols.
+
+## In-game Settings, RPG events, and book read-aloud
+
+- `/controls/query` accepts optional `include_settings_editor`. When true, the response may include
+  three bounded sections (`global`, `core_profile`, `npc`), at most 64 fields each. Values are strings
+  capped at 512 bytes in the native editor; long existing profile prose is not truncated into an edit.
+- `/controls/select` accepts `kind=setting` with `setting={scope,key,value,change_token}` and null
+  selection IDs/keys. The server owns the field allowlist and rejects stale snapshot tokens.
+- `/gamedata` accepts `type=rpg_event`, carrying `kind`, player identity, game time, and observed text.
+  Level changes, nearby combat ending, and completed sleep/wait periods are observed without engine
+  mutation. `lockpick` is reserved but is not emitted from generic Unlock events, which also include
+  spells and do not establish who used a lockpick. RPG acceptance alone may include `comment_requested`.
+- `/book/read-aloud` uses `lorkhan.book.read-aloud.v1` with standard message/request/session/generation
+  correlation plus `book_id`, `title`, and one text chunk. It returns the existing authenticated
+  `lorkhan.menu-dialogue-tts.ready.v1` media shape with the server-resolved Narrator identity.
+  The client queues short sentences and cancels on book-menu closure; this is not an NPC dialogue turn.
+
+These controls do not expose provider secrets or model-accessible console authority. Diary read-aloud
+and a provenance-correct lockpick observer remain separate follow-up work; generated diaries and
+sleep/wait diary triggers retain their existing behavior.

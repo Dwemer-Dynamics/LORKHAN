@@ -656,12 +656,16 @@ namespace MWLua
                 {
                     const lorkhan::RequestId request(uuid());
                     const std::string serialized = toJson(sol::make_object(lua, payload));
+                    if(type==lorkhan::GameDataType::rpg_event&&m_rpgRequests.size()>=32)
+                        return failure(lua,"rpg_event_queue_full");
                     lorkhan::OutboundRequest outbound{request, *m_session, m_service->generation(),
                         lorkhan::RequestKind::gamedata,
                         lorkhan::GameDataRequest{m_config->installation, m_config->playthrough, request,
                             m_service->generation(), utcNow(), type, serialized}};
                     auto accepted = m_service->enqueue(std::move(outbound));
                     if (!accepted) return failure(lua, accepted.error().message);
+                    if(type==lorkhan::GameDataType::rpg_event)
+                        m_rpgRequests.emplace(request.value(),std::make_pair(payload.get<std::string>("kind"),payload.get<std::string>("text")));
                     return success(lua, request.value());
                 }
                 catch (const std::exception& error) { return failure(lua, error.what()); }
@@ -677,7 +681,7 @@ namespace MWLua
                 return submitGameData(lua, lorkhan::GameDataType::actor_profile, std::move(payload));
             }
 
-            std::tuple<sol::object, sol::object> requestControls(sol::state_view lua, sol::table target)
+            std::tuple<sol::object, sol::object> requestControls(sol::state_view lua, sol::table target,bool includeSettingsEditor=false)
             {
                 if (!ready()) return failure(lua, "bridge_not_ready");
                 if (m_controlsRequest) return failure(lua, "controls_request_pending");
@@ -686,7 +690,7 @@ namespace MWLua
                     const lorkhan::MessageId message(uuid());
                     lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),
                         lorkhan::RequestKind::controls_query,lorkhan::ControlsQueryRequest{message,
-                            {request,*m_session,m_service->generation()},toJson(sol::make_object(lua,target))}};
+                            {request,*m_session,m_service->generation()},toJson(sol::make_object(lua,target)),includeSettingsEditor}};
                     auto accepted=m_service->enqueue(std::move(outbound));
                     if(!accepted)return failure(lua,accepted.error().message);
                     m_controlsRequest=request;m_controlsError.clear();
@@ -759,6 +763,31 @@ namespace MWLua
                 }catch(const std::exception& error){return failure(lua,error.what());}
             }
 
+            // Edits are restricted to the server-advertised field and revision, never a Lua URL or document.
+            std::tuple<sol::object,sol::object> updateSetting(sol::state_view lua,const std::string& scope,
+                const std::string& key,const std::string& value,const std::string& changeToken,sol::table target)
+            {
+                if(!ready())return failure(lua,"bridge_not_ready");
+                if(m_controlsRequest)return failure(lua,"controls_request_pending");
+                if(!m_controls||!m_controls->settingsEditor||m_controls->settingsEditor->changeToken!=changeToken)
+                    return failure(lua,"settings_snapshot_stale");
+                bool advertised=false;
+                for(const auto& section:m_controls->settingsEditor->sections)if(section.scope==scope)
+                    for(const auto& field:section.fields)if(field.key==key)advertised=true;
+                if(!advertised)return failure(lua,"setting_not_available");
+                try{
+                    const lorkhan::RequestId request(uuid());const lorkhan::MessageId message(uuid());
+                    lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),
+                        lorkhan::RequestKind::controls_select,lorkhan::ControlsSelectRequest{message,
+                            {request,*m_session,m_service->generation()},utcNow(),lorkhan::SessionControlKind::setting,
+                            std::nullopt,std::nullopt,toJson(sol::make_object(lua,target)),
+                            lorkhan::SettingSelection{scope,key,value,changeToken}}};
+                    auto accepted=m_service->enqueue(std::move(outbound));
+                    if(!accepted)return failure(lua,accepted.error().message);
+                    m_controlsRequest=request;m_controlsError.clear();return success(lua,request.value());
+                }catch(const std::exception& error){return failure(lua,error.what());}
+            }
+
             sol::object sessionControls(sol::state_view lua) const
             {
                 if(!m_controls)return sol::make_object(lua,sol::nil);
@@ -798,6 +827,27 @@ namespace MWLua
                 for(const auto&[key,source]:snapshot.sourceMap)sources[key]=source;
                 effective["settings"]=settings;effective["routing"]=routing;effective["source_map"]=sources;
                 result["effective_settings"]=effective;
+                if(m_controls->settingsEditor){
+                    sol::table editor(lua,sol::create),sections(lua,sol::create);
+                    editor["change_token"]=m_controls->settingsEditor->changeToken;
+                    std::size_t sectionIndex=0;
+                    for(const auto& section:m_controls->settingsEditor->sections){
+                        sol::table sectionRow(lua,sol::create),fields(lua,sol::create);
+                        sectionRow["scope"]=section.scope;sectionRow["label"]=section.label;
+                        std::size_t fieldIndex=0;
+                        for(const auto& field:section.fields){sol::table row(lua,sol::create),choices(lua,sol::create);
+                            row["key"]=field.key;row["label"]=field.label;row["kind"]=field.kind;row["value"]=field.value;
+                            if(field.minimum)row["minimum"]=*field.minimum;if(field.maximum)row["maximum"]=*field.maximum;
+                            std::size_t choiceIndex=0;for(const auto&[value,label]:field.choices){
+                                sol::table choice(lua,sol::create);choice["value"]=value;choice["label"]=label;
+                                choices[++choiceIndex]=choice;
+                            }
+                            row["choices"]=choices;fields[++fieldIndex]=row;
+                        }
+                        sectionRow["fields"]=fields;sections[++sectionIndex]=sectionRow;
+                    }
+                    editor["sections"]=sections;result["settings_editor"]=editor;
+                }
                 for(std::size_t index=0;index<m_controls->modelSlots.size();++index){const auto& slot=m_controls->modelSlots[index];
                     sol::table row(lua,sol::create);row["key"]=slot.key;row["label"]=slot.label;row["available"]=slot.available;
                     if(slot.configurationId)row["configuration_id"]=*slot.configurationId;
@@ -855,6 +905,69 @@ namespace MWLua
                     m_menuDialogues.emplace(request.value(),MenuDialogueState{"requesting",{},request,{}});
                     return success(lua,request.value());
                 }catch(const std::exception& error){return failure(lua,error.what());}
+            }
+
+            // Books resolve the narrator on the server; Lua cannot impersonate an NPC or choose a provider.
+            std::tuple<sol::object,sol::object> requestBookReadAloud(sol::state_view lua,const std::string& bookId,
+                const std::string& title,const std::string& text)
+            {
+                if(!ready())return failure(lua,"bridge_not_ready");
+                try{
+                    if(m_menuDialogues.size()>=32)return failure(lua,"speech_queue_full");
+                    if(m_pollRequest){static_cast<void>(m_service->cancel(*m_pollRequest));m_pollRequest.reset();}
+                    const lorkhan::RequestId request(uuid());const lorkhan::MessageId message(uuid());
+                    lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),
+                        lorkhan::RequestKind::book_read_aloud,lorkhan::BookReadAloudRequest{message,
+                            {request,*m_session,m_service->generation()},utcNow(),bookId,title,text}};
+                    auto accepted=m_service->enqueue(std::move(outbound));
+                    if(!accepted)return failure(lua,accepted.error().message);
+                    m_menuDialogues.emplace(request.value(),MenuDialogueState{"requesting",{},request,{}});
+                    return success(lua,request.value());
+                }catch(const std::exception& error){return failure(lua,error.what());}
+            }
+
+            // Process only owned speech/media while paused; unrelated results retain their arrival order.
+            bool settlePausedSpeech(const lorkhan::InboundResult& result)
+            {
+                for(auto&[unused,dialogue]:m_menuDialogues){
+                    static_cast<void>(unused);
+                    bool matches=dialogue.request&&*dialogue.request==result.request;
+                    auto media=dialogue.media?m_media.find(dialogue.media->media.value()):m_media.end();
+                    matches=matches||(media!=m_media.end()&&media->second.request&&*media->second.request==result.request);
+                    if(!matches)continue;
+                    if(result.kind==lorkhan::ResponseKind::menu_dialogue_ready){
+                        auto parsed=lorkhan::parseMenuDialogueTtsReadyResponse(result.payload,jsonHeaders());
+                        if(parsed)prepareMenuDialogueMedia(dialogue,parsed.value().media);
+                        else{dialogue.state="failed";dialogue.reason=parsed.error().message;dialogue.request.reset();}
+                    }else if(result.kind==lorkhan::ResponseKind::media_ready&&media!=m_media.end()){
+                        media->second.state="ready";media->second.reason.clear();media->second.request.reset();
+                        for(auto&[otherId,other]:m_menuDialogues){
+                            static_cast<void>(otherId);
+                            if(other.media&&other.media->media.value()==result.payload){
+                                other.state="ready";other.reason.clear();other.request.reset();
+                            }
+                        }
+                    }else{
+                        dialogue.state="failed";dialogue.reason=result.failure?result.failure->message:"speech_request_cancelled";
+                        dialogue.request.reset();
+                    }
+                    return true;
+                }
+                return false;
+            }
+
+            void pumpMenuDialogueTts()
+            {
+                if(!m_service||m_menuDialogues.empty())return;
+                for(auto iterator=m_deferredResults.begin();iterator!=m_deferredResults.end();){
+                    if(settlePausedSpeech(*iterator)){++m_resultsSeen;iterator=m_deferredResults.erase(iterator);}
+                    else ++iterator;
+                }
+                if(m_deferredResults.size()+kControlsPumpBatch>kDeferredResultCapacity)return;
+                for(auto& result:m_service->poll(kControlsPumpBatch)){
+                    if(settlePausedSpeech(result)){++m_resultsSeen;continue;}
+                    m_deferredResults.push_back(std::move(result));
+                }
             }
 
             bool cancelMenuDialogueTts(const std::optional<std::string>& requestId=std::nullopt)
@@ -1131,6 +1244,17 @@ namespace MWLua
                 for (auto& result : results)
                 {
                     ++m_resultsSeen;
+                    const auto rpg=m_rpgRequests.find(result.request.value());
+                    if(rpg!=m_rpgRequests.end()){
+                        auto accepted=lorkhan::parseGameDataAcceptedResponse(result.payload,jsonHeaders());
+                        if(accepted&&accepted.value().commentRequested&&!accepted.value().duplicate){
+                            sol::table event(lua,sol::create);event["type"]="rpg.comment";
+                            event["request_id"]=result.request.value();event["session_id"]=accepted.value().session.value();
+                            event["generation"]=accepted.value().generation.value();
+                            event["kind"]=rpg->second.first;event["text"]=rpg->second.second;output[outIndex++]=event;
+                        }
+                        m_rpgRequests.erase(rpg);continue;
+                    }
                     if (settleDebugResult(result)) continue;
                     if (result.kind == lorkhan::ResponseKind::failure)
                     {
@@ -1256,6 +1380,7 @@ namespace MWLua
                 auto result = m_service->cancelGeneration(lorkhan::Generation(generation));
                 if (!result) return false;
                 cancelMenuDialogueTts();
+                m_rpgRequests.clear();
                 m_session.reset(); m_clientSettings.reset(); m_configRevision.clear();
                 m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();
                 m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_turnRequests.clear();m_controlsError.clear();m_debugError.clear();beginSession();
@@ -1472,6 +1597,7 @@ namespace MWLua
             std::chrono::steady_clock::time_point m_nextPoll{};
             std::map<std::string, MediaState> m_media;
             std::map<std::string, MenuDialogueState> m_menuDialogues;
+            std::map<std::string,std::pair<std::string,std::string>> m_rpgRequests;
             std::string m_status{"unconfigured"};
             std::string m_error;
             std::uint64_t m_resultsSeen{};
@@ -1517,11 +1643,23 @@ namespace MWLua
             api["submitActorProfile"] = [lua](sol::table payload) {
                 return client().submitActorProfile(lua, std::move(payload));
             };
-            api["requestSessionControls"] = [lua](sol::table target) { return client().requestControls(lua,std::move(target)); };
+            api["submitAutomaticDiary"] = [lua](sol::table payload) {
+                return client().submitGameData(lua,lorkhan::GameDataType::automatic_diary,std::move(payload));
+            };
+            api["submitRpgEvent"] = [lua](sol::table payload) {
+                return client().submitGameData(lua,lorkhan::GameDataType::rpg_event,std::move(payload));
+            };
+            api["requestSessionControls"] = [lua](sol::table target,sol::optional<bool> includeSettingsEditor) {
+                return client().requestControls(lua,std::move(target),includeSettingsEditor.value_or(false));
+            };
             api["selectSessionControl"] = [lua](const std::string& kind,sol::optional<std::string> selection,sol::table target) {
                 return client().selectControl(lua,kind,std::move(selection),std::move(target));
             };
             api["sessionControls"] = [lua] { return client().sessionControls(lua); };
+            api["updateSessionSetting"] = [lua](const std::string& scope,const std::string& key,
+                const std::string& value,const std::string& changeToken,sol::table target) {
+                return client().updateSetting(lua,scope,key,value,changeToken,std::move(target));
+            };
             api["pumpSessionControls"] = [lua] { return client().pumpSessionControls(lua); };
             api["requestDebugCommand"] = [lua] { return client().requestDebugCommand(lua); };
             api["pumpDebugCommand"] = [lua] { return client().pumpDebugCommand(lua); };
@@ -1550,6 +1688,9 @@ namespace MWLua
             api["mediaStatus"] = [lua](const std::string& id) { return client().mediaStatus(lua, id); };
             api["requestMenuDialogueTts"] = [lua](sol::table actor,const std::string& text) {
                 return client().requestMenuDialogueTts(lua,std::move(actor),text); };
+            api["requestBookReadAloud"] = [lua](const std::string& bookId,const std::string& title,const std::string& text) {
+                return client().requestBookReadAloud(lua,bookId,title,text); };
+            api["pumpMenuDialogueTts"] = [] { client().pumpMenuDialogueTts(); };
             api["cancelMenuDialogueTts"] = [](sol::optional<std::string> requestId) {
                 return client().cancelMenuDialogueTts(requestId ? std::optional<std::string>(*requestId) : std::nullopt); };
             api["menuDialogueTtsStatus"] = [lua](const std::string& requestId) {

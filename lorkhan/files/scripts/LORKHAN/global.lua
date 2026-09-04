@@ -108,7 +108,7 @@ local function observeReadBook(object,actor)
     local ok,record=pcall(types.Book.record,object)
     if not ok or not record then return end
     emit('LORKHAN_BOOK_READ',{record_id=boundedBookText(record.id or object.recordId,512),
-        title=boundedBookText(record.name,512),text=boundedBookText(record.text,8192),
+        title=boundedBookText(record.name,512),text=boundedBookText(record.text,16384),
         is_scroll=record.isScroll==true,skill=boundedBookText(record.skill,128)})
 end
 

@@ -11,7 +11,7 @@ function M.build(context)
     end
     for _,option in ipairs(context.options or {}) do
         rows[#rows+1]={type=ui.TYPE.Text,props={text=option.label..(option.active and '  [active]' or ''),textSize=18,
-            textColor=option.active and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(1.0,0.58,0.18)},
+            textColor=option.active and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(188/255,157/255,90/255)},
             events={mouseClick=option.onSelect}}
         if option.detail then
             rows[#rows+1]={type=ui.TYPE.Text,props={text=option.detail,textSize=14,
@@ -20,7 +20,7 @@ function M.build(context)
     end
     if context.onRefresh then
         rows[#rows+1]={type=ui.TYPE.Text,props={text='Refresh',textSize=16,
-            textColor=util.color.rgb(1.0,0.58,0.18)},events={mouseClick=context.onRefresh}}
+            textColor=util.color.rgb(188/255,157/255,90/255)},events={mouseClick=context.onRefresh}}
     end
     if context.onBack then
         rows[#rows+1]={type=ui.TYPE.Text,props={text='Back',textSize=16,
@@ -32,8 +32,8 @@ function M.build(context)
 end
 
 -- One colour per slot state, taken from the palette the other panels already use.
-local MODEL_SLOT_COLORS={active={0.45,0.9,0.45},fallback={0.45,0.9,0.45},selected={1.0,0.72,0.2},
-    selecting={1.0,0.72,0.2},ready={1.0,0.58,0.18},unavailable={0.72,0.68,0.62},loading={0.72,0.68,0.62}}
+local MODEL_SLOT_COLORS={active={0.45,0.9,0.45},fallback={0.45,0.9,0.45},selected={218/255,187/255,120/255},
+    selecting={218/255,187/255,120/255},ready={188/255,157/255,90/255},unavailable={0.72,0.68,0.62},loading={0.72,0.68,0.62}}
 
 -- Build the fixed eight-row LLM Model panel: title, state line, the four semantic slots, refresh,
 -- back. The count never changes, so no server state can move a row out from under the virtual

@@ -4,10 +4,10 @@ local COLORS={
     title={0.95,0.9,0.82},
     status={0.92,0.82,0.68},
     detail={0.72,0.68,0.62},
-    action={1.0,0.58,0.18},
+    action={188/255,157/255,90/255},
     quiet={0.82,0.78,0.72},
     active={0.45,0.9,0.45},
-    highlight={1.0,0.72,0.2},
+    highlight={218/255,187/255,120/255},
 }
 
 local function text(ui,util,value,size,color,events)
@@ -51,6 +51,7 @@ local MENU={
     {key='modes',label='Dialogue mode...',callback='onSelectModes'},
     {key='model',label='LLM model...',callback='onSelectModel'},
     {key='profiles',label='Dynamic profiles...',callback='onSelectProfiles'},
+    {key='settings',label='Settings...',callback='onSelectSettings'},
     {key='history',label='Context history...',callback='onSelectHistory'},
     {key='statusHud',label='Status HUD',callback='onToggleStatusHud'},
     {key='diagnostics',label='Diagnostics...',callback='onSelectDiagnostics'},

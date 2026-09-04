@@ -136,6 +136,7 @@ I.Settings.registerGroup({
     settings={
         {key='ttsVolumeBoost',renderer='number',default=3,name='TtsVolumeBoost_name',description='TtsVolumeBoost_description',argument={integer=true,min=1,max=4}},
         {key='menuDialogueTts',renderer='checkbox',default=true,name='MenuDialogueTts_name',description='MenuDialogueTts_description'},
+        {key='bookReadAloud',renderer='checkbox',default=false,name='BookReadAloud_name',description='BookReadAloud_description'},
     },
 })
 

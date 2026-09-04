@@ -105,4 +105,6 @@ TranscriptRows_description: Maximum recent dialogue rows retained in the in-game
 TtsVolumeBoost_name: AI Voice Volume Boost (x)
 TtsVolumeBoost_description: Multiply only LORKHAN-generated speech volume. 1x uses normal OpenMW voice volume; 4x is four times louder.
 MenuDialogueTts_name: Menu Dialogue TTS
+BookReadAloud_name: Read Books Aloud
+BookReadAloud_description: Read opened books and scrolls with the Narrator voice. Streams short sentences and stops immediately when the book closes. Off by default.
 MenuDialogueTts_description: Speak regular Morrowind dialogue and menu responses aloud. Off leaves vanilla topic text silent.

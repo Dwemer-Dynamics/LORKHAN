@@ -43,6 +43,7 @@ std::string_view gameDataTypeName(GameDataType type)
         case GameDataType::captured_dialogue: return "captured_dialogue";
         case GameDataType::actor_profile: return "actor_profile";
         case GameDataType::automatic_diary: return "automatic_diary";
+        case GameDataType::rpg_event: return "rpg_event";
     }
     return {};
 }
@@ -537,6 +538,7 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
                 + ",\"request_id\":" + escapeJson(controls->correlation.request.value())
                 + ",\"session_id\":" + escapeJson(controls->correlation.session.value())
                 + ",\"generation\":" + std::to_string(controls->correlation.generation.value())
+                + (controls->includeSettingsEditor ? ",\"include_settings_editor\":true" : "")
                 + ",\"target\":" + controls->serializedTarget + "}";
             break;
         }
@@ -556,10 +558,16 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
                 + ",\"created_at\":" + escapeJson(controls->createdAt)
                 + ",\"kind\":" + escapeJson(controls->kind == SessionControlKind::model_slot ? "model_slot"
                     : controls->kind == SessionControlKind::actor_profile ? "actor_profile"
-                    : controls->kind == SessionControlKind::profile_generate ? "profile_generate" : "narrator_profile_generate")
+                    : controls->kind == SessionControlKind::profile_generate ? "profile_generate"
+                    : controls->kind == SessionControlKind::setting ? "setting" : "narrator_profile_generate")
                 + ",\"selection_id\":" + (controls->selectionId ? escapeJson(*controls->selectionId) : "null")
                 + ",\"selection_key\":" + (controls->selectionKey ? escapeJson(*controls->selectionKey) : "null")
                 + ",\"target\":" + controls->serializedTarget + "}";
+            if(controls->setting){const auto& setting=*controls->setting;
+                wire.body.pop_back();wire.body+=",\"setting\":{\"scope\":"+escapeJson(setting.scope)
+                    +",\"key\":"+escapeJson(setting.key)+",\"value\":"+escapeJson(setting.value)
+                    +",\"change_token\":"+escapeJson(setting.changeToken)+"}}";
+            }
             break;
         }
         case RequestKind::debug_command_query: {
@@ -601,6 +609,18 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
                 +",\"generation\":"+std::to_string(menu->correlation.generation.value())
                 +",\"created_at\":"+escapeJson(menu->createdAt)+",\"actor\":"+menu->serializedActor
                 +",\"text\":"+escapeJson(menu->text)+"}";
+            break;
+        }
+        case RequestKind::book_read_aloud: {
+            const auto* book=std::get_if<BookReadAloudRequest>(&request.payload);if(!book)break;
+            wire.method=http::verb::post;wire.target=route("/book/read-aloud");wire.expectedStatus=201;
+            wire.idempotencyKey=book->message.value();
+            wire.body="{\"schema\":\"lorkhan.book.read-aloud.v1\",\"message_id\":"+escapeJson(book->message.value())
+                +",\"request_id\":"+escapeJson(book->correlation.request.value())
+                +",\"session_id\":"+escapeJson(book->correlation.session.value())
+                +",\"generation\":"+std::to_string(book->correlation.generation.value())
+                +",\"created_at\":"+escapeJson(book->createdAt)+",\"book_id\":"+escapeJson(book->bookId)
+                +",\"title\":"+escapeJson(book->title)+",\"text\":"+escapeJson(book->text)+"}";
             break;
         }
         case RequestKind::player_autochat: {
@@ -863,6 +883,16 @@ Result<InboundResult> validateResponse(const OutboundRequest& request, const Wir
                     "menu dialogue TTS response correlation mismatch"));
             kind=ResponseKind::menu_dialogue_ready;
             break;
+        }
+        case RequestKind::book_read_aloud: {
+            const auto& sent=std::get<BookReadAloudRequest>(request.payload);
+            auto parsed=parseMenuDialogueTtsReadyResponse(response.body(),headers);
+            if(!parsed)return Result<InboundResult>::failure(parsed.error());
+            if(parsed.value().message!=sent.message||parsed.value().request!=sent.correlation.request
+                ||parsed.value().session!=sent.correlation.session||parsed.value().generation!=sent.correlation.generation
+                ||parsed.value().media.dialogueMessage!=sent.message)
+                return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,"book read-aloud response correlation mismatch"));
+            kind=ResponseKind::menu_dialogue_ready;break;
         }
         case RequestKind::player_autochat: {
             const auto& sent=std::get<PlayerAutochatRequest>(request.payload);

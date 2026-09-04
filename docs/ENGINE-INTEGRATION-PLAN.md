@@ -115,3 +115,21 @@ userinfo; redirects; proxy variables; CRLF; duplicate headers; chunk overflow; w
 bad token; duplicate IDs; unknown fields; malformed UTF-8/JSON; numeric overflow; queue pressure;
 timeouts at each stage; cancel races; server restart; profile/generation change; shutdown during each
 stage; media truncation/hash/codec/path/zip-bomb-like data; cache quota and symlink/reparse attacks.
+
+## CHIM parity controls and reading additions
+
+The typed native surface also exposes `updateSessionSetting(scope,key,value,changeToken,target)`.
+It accepts only a field advertised by the current authenticated Settings snapshot. Server-side
+allowlists, target/installation scope, revision checks, and generation checks remain authoritative.
+`requestSessionControls(target,true)` opts into the bounded Settings editor; old queries retain their
+unchanged response shape. No generic URL or document mutation is exposed.
+
+`submitAutomaticDiary` and `submitRpgEvent` submit their closed game-data types. RPG commentary is
+considered only after the server explicitly authorizes an accepted event. The internal callback is
+session/generation fenced and uses the ordinary nearby-target dialogue path without player TTS.
+
+`requestBookReadAloud(bookId,title,text)` submits one bounded book sentence to the server's Narrator
+route. The player must enable Read Books Aloud, which defaults off. Existing verified media and
+local speech playback are reused; no provider, actor impersonation, path, or arbitrary URL is accepted.
+`pumpMenuDialogueTts` advances only owned speech/media during paused menus and defers other results.
+Book closure, Halt, session change, and generation change cancel pending and playing book speech.

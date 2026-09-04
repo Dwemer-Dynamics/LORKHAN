@@ -3,27 +3,113 @@
   "$id": "https://lorkhan.invalid/schemas/v1/controls-select.schema.json",
   "additionalProperties": false,
   "properties": {
-    "schema": {"const": "lorkhan.controls.select.v1", "type": "string"},
-    "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
-    "created_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
-    "kind": {"enum": ["actor_profile", "model_slot", "profile_generate", "narrator_profile_generate"], "type": "string"},
+    "schema": {
+      "const": "lorkhan.controls.select.v1",
+      "type": "string"
+    },
+    "message_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "request_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "session_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "generation": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+    },
+    "created_at": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+    },
+    "kind": {
+      "enum": [
+        "actor_profile",
+        "model_slot",
+        "profile_generate",
+        "narrator_profile_generate",
+        "setting"
+      ],
+      "type": "string"
+    },
     "selection_id": {
       "oneOf": [
-        {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-        {"type": "null"}
+        {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        },
+        {
+          "type": "null"
+        }
       ]
     },
     "selection_key": {
       "oneOf": [
-        {"enum": ["standard", "fast", "powerful", "experimental"], "type": "string"},
-        {"type": "null"}
+        {
+          "enum": [
+            "standard",
+            "fast",
+            "powerful",
+            "experimental"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
       ]
     },
-    "target": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"}
+    "target": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+    },
+    "include_settings_editor": {
+      "type": "boolean"
+    },
+    "setting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "key",
+        "value",
+        "change_token"
+      ],
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": [
+            "global",
+            "core_profile",
+            "npc"
+          ]
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z0-9_.]+$"
+        },
+        "value": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "change_token": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
   },
-  "required": ["schema", "message_id", "request_id", "session_id", "generation", "created_at", "kind", "selection_id", "selection_key", "target"],
+  "required": [
+    "schema",
+    "message_id",
+    "request_id",
+    "session_id",
+    "generation",
+    "created_at",
+    "kind",
+    "selection_id",
+    "selection_key",
+    "target"
+  ],
   "type": "object"
 }
