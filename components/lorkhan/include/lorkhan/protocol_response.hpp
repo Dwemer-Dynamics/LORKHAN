@@ -52,8 +52,15 @@ struct ClientNarratorSettings {
     bool contextVisibility{true};
     std::string inlineMode{"Disabled"};
     bool welcomeEvents{};
+    std::uint64_t welcomeCooldownMinutes{10};
     bool randomEvents{};
+    std::uint64_t randomChancePercent{15};
+    std::uint64_t randomCooldownRounds{2};
+    bool boredEvents{};
+    std::uint64_t boredChancePercent{25};
     bool questEvents{};
+    std::uint64_t questChancePercent{10};
+    std::uint64_t questCooldownMinutes{3};
     bool bookEvents{};
 };
 

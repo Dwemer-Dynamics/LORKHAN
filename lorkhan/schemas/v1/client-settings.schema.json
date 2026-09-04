@@ -41,11 +41,18 @@
         "enabled": {"type": "boolean"},
         "inline_mode": {"enum": ["Disabled", "Narrator", "NPC", "Text Only"], "type": "string"},
         "name": {"maxLength": 128, "minLength": 1, "type": "string"},
+        "bored_chance_percent": {"maximum": 100, "minimum": 1, "type": "integer"},
+        "bored_events": {"type": "boolean"},
+        "quest_chance_percent": {"maximum": 100, "minimum": 1, "type": "integer"},
+        "quest_cooldown_minutes": {"maximum": 60, "minimum": 1, "type": "integer"},
         "quest_events": {"type": "boolean"},
+        "random_chance_percent": {"maximum": 100, "minimum": 1, "type": "integer"},
+        "random_cooldown_rounds": {"maximum": 10, "minimum": 0, "type": "integer"},
         "random_events": {"type": "boolean"},
+        "welcome_cooldown_minutes": {"maximum": 1440, "minimum": 1, "type": "integer"},
         "welcome_events": {"type": "boolean"}
       },
-      "required": ["enabled", "name", "context_visibility", "inline_mode", "welcome_events", "random_events", "quest_events", "book_events"],
+      "required": ["enabled", "name", "context_visibility", "inline_mode", "welcome_events", "welcome_cooldown_minutes", "random_events", "random_chance_percent", "random_cooldown_rounds", "bored_events", "bored_chance_percent", "quest_events", "quest_chance_percent", "quest_cooldown_minutes", "book_events"],
       "type": "object"
     },
     "presentation": {
