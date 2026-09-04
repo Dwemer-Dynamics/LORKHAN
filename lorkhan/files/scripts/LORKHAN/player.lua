@@ -40,6 +40,10 @@ local capturedDialogueFlushElapsed=0
 local pendingActorProfiles={}
 local pendingActorProfileKeys={}
 local actorProfileFlushElapsed=0
+local pendingAutomaticDiaries={}
+local automaticDiaryFlushElapsed=0
+local automaticDiaryTimerElapsed=0
+local restDiaryState
 local ownsUiMode=false
 local controlsSignature
 local responseQueueSnapshot={}
@@ -80,6 +84,7 @@ local currentNarratorSettings={}
 local SETTINGS_REFRESH_INTERVAL=0.5
 local AIM_SCAN_INTERVAL=0.25
 local AUTO_SCAN_INTERVAL=1.0
+local AUTOMATIC_DIARY_POLL_INTERVAL=30
 local DEBUG_POLL_INTERVAL=0.25
 local GLOBAL_DEBUG_COMMANDS={
     ['player.inventory.add']=true,['player.inventory.remove']=true,
@@ -401,6 +406,46 @@ local function flushActorProfiles(dt)
         print('[LORKHAN] auto-activated profile failed: '..tostring(reason))
         pendingActorProfileKeys[item.key]=nil
         table.remove(pendingActorProfiles,1)
+    end
+end
+
+-- Submit a bounded timer, sleep, or wait diary candidate; the server owns profile eligibility and cooldowns.
+local function submitAutomaticDiary(trigger)
+    if not nativeOk or not native or type(native.sessionInfo)~='function' or not native.sessionInfo() then return end
+    local gameTime=adapter.gameTime()
+    if type(gameTime)~='number' then return end
+    local actors={}
+    for _,candidate in ipairs(adapter.nearbyActors(2048)) do
+        if candidate.identity then actors[#actors+1]=candidate.identity end
+        if #actors>=12 then break end
+    end
+    local payload,reason=protocol.automaticDiary({trigger=trigger,game_time=gameTime,actors=actors})
+    if not payload then print('[LORKHAN] automatic diary rejected: '..tostring(reason)) return end
+    local request,submitReason
+    if nativeOk and native and native.submitAutomaticDiary then
+        request,submitReason=native.submitAutomaticDiary(payload)
+    else submitReason='bridge_not_ready' end
+    if request then return end
+    if #pendingAutomaticDiaries>=8 then table.remove(pendingAutomaticDiaries,1) end
+    pendingAutomaticDiaries[#pendingAutomaticDiaries+1]={payload=payload,attempts=0}
+    if submitReason~='bridge_not_ready' then print('[LORKHAN] automatic diary queued: '..tostring(submitReason)) end
+end
+
+local function flushAutomaticDiaries(dt)
+    if #pendingAutomaticDiaries==0 then return end
+    automaticDiaryFlushElapsed=automaticDiaryFlushElapsed+(tonumber(dt) or 0)
+    if automaticDiaryFlushElapsed<0.25 then return end
+    automaticDiaryFlushElapsed=0
+    local item=pendingAutomaticDiaries[1]
+    local request,reason
+    if nativeOk and native and native.submitAutomaticDiary then
+        request,reason=native.submitAutomaticDiary(item.payload)
+    else reason='bridge_not_ready' end
+    if request then table.remove(pendingAutomaticDiaries,1) return end
+    item.attempts=item.attempts+1
+    if item.attempts>=20 and reason~='bridge_not_ready' then
+        print('[LORKHAN] automatic diary failed: '..tostring(reason))
+        table.remove(pendingAutomaticDiaries,1)
     end
 end
 
@@ -1572,7 +1617,13 @@ return {
             updateMenuDialogueSpeech()
             flushCapturedDialogue(dt)
             flushActorProfiles(dt)
+            flushAutomaticDiaries(dt)
             local elapsed=tonumber(dt) or 0
+            automaticDiaryTimerElapsed=automaticDiaryTimerElapsed+elapsed
+            if automaticDiaryTimerElapsed>=AUTOMATIC_DIARY_POLL_INTERVAL then
+                automaticDiaryTimerElapsed=0
+                submitAutomaticDiary('timer')
+            end
             settingsRefreshElapsed=settingsRefreshElapsed+elapsed
             if settingsRefreshElapsed>=SETTINGS_REFRESH_INTERVAL then
                 settingsRefreshElapsed=0
@@ -1629,6 +1680,19 @@ return {
         end,
     },
     eventHandlers={
+        UiModeChanged=function(event)
+            if type(event)~='table' then return end
+            if event.newMode=='Rest' then
+                restDiaryState={game_time=adapter.gameTime(),opened_from_bed=event.arg~=nil,
+                    exterior=self.cell and self.cell.isExterior==true}
+                return
+            end
+            if event.oldMode~='Rest' or not restDiaryState then return end
+            local entered=restDiaryState;restDiaryState=nil
+            local finished=adapter.gameTime()
+            if type(entered.game_time)~='number' or type(finished)~='number' or finished<=entered.game_time then return end
+            submitAutomaticDiary((entered.opened_from_bed or entered.exterior) and 'sleep' or 'wait')
+        end,
         LORKHAN_DEBUG_COMMAND_RESULT=function(event)
             if not pendingGlobalDebugCommand or type(event)~='table'
                 or event.command_id~=pendingGlobalDebugCommand.command.command_id then return end

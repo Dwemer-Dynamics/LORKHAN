@@ -205,6 +205,25 @@ function M.actorProfile(args)
         level=args.level,disposition=args.disposition,factions=factions}
 end
 
+-- Validate one bounded automatic diary candidate before it reaches the native bridge.
+function M.automaticDiary(args)
+    if type(args)~='table' or not ({timer=true,sleep=true,wait=true})[args.trigger]
+        or type(args.game_time)~='number' or args.game_time<0
+        or type(args.actors)~='table' or #args.actors>constants.MAX_AUDIENCE then
+        return nil,'invalid_automatic_diary'
+    end
+    local actors,seen={},{}
+    for _,actor in ipairs(args.actors) do
+        if not identity.validate(actor) or (actor.kind~='npc' and actor.kind~='creature') then
+            return nil,'invalid_automatic_diary'
+        end
+        local key=identity.key(actor)
+        if seen[key] then return nil,'duplicate_automatic_diary_actor' end
+        seen[key]=true actors[#actors+1]=util.copy(actor)
+    end
+    return {trigger=args.trigger,game_time=args.game_time,actors=actors}
+end
+
 -- pollResults returns native-validated internal DTOs, not canonical wire envelopes.
 function M.validatePolledEvent(event)
     if type(event)~='table' then return nil,'event_not_table' end

@@ -684,6 +684,11 @@ namespace MWLua
                 return submitGameData(lua, lorkhan::GameDataType::actor_profile, std::move(payload));
             }
 
+            std::tuple<sol::object, sol::object> submitAutomaticDiary(sol::state_view lua, sol::table payload)
+            {
+                return submitGameData(lua, lorkhan::GameDataType::automatic_diary, std::move(payload));
+            }
+
             std::tuple<sol::object, sol::object> requestControls(sol::state_view lua, sol::table target)
             {
                 if (!ready()) return failure(lua, "bridge_not_ready");
@@ -1532,6 +1537,9 @@ namespace MWLua
             };
             api["submitActorProfile"] = [lua](sol::table payload) {
                 return client().submitActorProfile(lua, std::move(payload));
+            };
+            api["submitAutomaticDiary"] = [lua](sol::table payload) {
+                return client().submitAutomaticDiary(lua, std::move(payload));
             };
             api["requestSessionControls"] = [lua](sol::table target) { return client().requestControls(lua,std::move(target)); };
             api["selectSessionControl"] = [lua](const std::string& kind,sol::optional<std::string> selection,sol::table target) {

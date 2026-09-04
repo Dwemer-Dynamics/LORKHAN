@@ -218,7 +218,7 @@ struct MenuDialogueTtsRequest {
     std::string text;
 };
 
-enum class GameDataType { captured_dialogue, actor_profile };
+enum class GameDataType { captured_dialogue, actor_profile, automatic_diary };
 
 struct GameDataRequest {
     InstallationId installation;

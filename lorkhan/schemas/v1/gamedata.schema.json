@@ -30,6 +30,16 @@
       "required": ["source", "speaker", "listener", "audience", "text", "topic"],
       "type": "object"
     },
+    "automatic_diary": {
+      "additionalProperties": false,
+      "properties": {
+        "actors": {"items": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"}, "maxItems": 12, "type": "array", "uniqueItems": true},
+        "game_time": {"maximum": 9007199254740991, "minimum": 0, "type": "number"},
+        "trigger": {"enum": ["timer", "sleep", "wait"], "type": "string"}
+      },
+      "required": ["trigger", "game_time", "actors"],
+      "type": "object"
+    },
     "inventory": {
       "additionalProperties": false,
       "properties": {
@@ -134,13 +144,13 @@
     "generation": {"maximum": 9007199254740991, "minimum": 1, "type": "integer"},
     "installation_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
     "observed_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
-    "payload": {"oneOf": [{"$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/actor_profile"}, {"$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/captured_dialogue"}, {"$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/inventory"}, {"$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/journal"}, {"$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/nearby_actors"}, {"$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/prompt_bridge"}, {"$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/world_context"}]},
+    "payload": {"oneOf": [{"$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/actor_profile"}, {"$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/automatic_diary"}, {"$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/captured_dialogue"}, {"$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/inventory"}, {"$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/journal"}, {"$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/nearby_actors"}, {"$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/prompt_bridge"}, {"$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/world_context"}]},
     "playthrough_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
     "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
     "runtime_generation": {"maximum": 9007199254740991, "minimum": 1, "type": "integer"},
     "schema": {"const": "lorkhan.gamedata.v1", "type": "string"},
     "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "type": {"enum": ["actor_profile", "captured_dialogue", "dialogue_prompt_bridge", "inventory", "journal", "nearby_actors", "world_context"], "type": "string"}
+    "type": {"enum": ["actor_profile", "automatic_diary", "captured_dialogue", "dialogue_prompt_bridge", "inventory", "journal", "nearby_actors", "world_context"], "type": "string"}
   },
   "required": ["schema", "installation_id", "playthrough_id", "session_id", "request_id", "generation", "runtime_generation", "observed_at", "game", "type", "payload"],
   "type": "object"
