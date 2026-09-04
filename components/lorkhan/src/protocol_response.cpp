@@ -690,7 +690,7 @@ Result<ClientSettings> parseClientSettings(const json::Value& value)
     const auto* presentation=objectFor("presentation");const auto* safety=objectFor("safety");
     if(!behavior||!hasExactly(*behavior,{"auto_greeting","rechat","rechat_delay_seconds","rechat_max_depth","rechat_probability_percent","rechat_mode","rechat_strict_targeting","open_rechat","rechat_allow_actions","end_conversation_cooldown_seconds","boredom","boredom_delay_seconds","combat_barks","combat_bark_period_seconds"})
         ||!memory||!hasExactly(*memory,{"recent_turn_limit","knowledge_limit"})
-        ||!narrator||!hasExactly(*narrator,{"enabled","name","context_visibility","inline_mode","welcome_events","random_events","quest_events","book_events"})
+        ||!narrator||!hasExactly(*narrator,{"enabled","name","context_visibility","inline_mode","welcome_events","welcome_cooldown_minutes","random_events","random_chance_percent","random_cooldown_rounds","bored_events","bored_chance_percent","quest_events","quest_chance_percent","quest_cooldown_minutes","book_events"})
         ||!presentation||!hasExactly(*presentation,{"show_status_hud","transcript_rows","tts_volume_boost"})
         ||!safety||!hasExactly(*safety,{"actions_enabled","allow_hostile","allow_creatures"}))
         return invalidSchemaValue<ClientSettings>("client settings section mismatch");
@@ -704,15 +704,20 @@ Result<ClientSettings> parseClientSettings(const json::Value& value)
     auto recentTurns=requireUnsigned(*memory,"recent_turn_limit",100,1);auto knowledgeLimit=requireUnsigned(*memory,"knowledge_limit",20);
     auto narratorEnabled=requireBoolean(*narrator,"enabled");auto narratorName=requireString(*narrator,"name",1,128);
     auto contextVisibility=requireBoolean(*narrator,"context_visibility");auto inlineMode=requireString(*narrator,"inline_mode",1,16);
-    auto welcomeEvents=requireBoolean(*narrator,"welcome_events");auto randomEvents=requireBoolean(*narrator,"random_events");
-    auto questEvents=requireBoolean(*narrator,"quest_events");auto bookEvents=requireBoolean(*narrator,"book_events");
+    auto welcomeEvents=requireBoolean(*narrator,"welcome_events");auto welcomeCooldown=requireUnsigned(*narrator,"welcome_cooldown_minutes",1440,1);
+    auto randomEvents=requireBoolean(*narrator,"random_events");auto randomChance=requireUnsigned(*narrator,"random_chance_percent",100,1);
+    auto randomCooldown=requireUnsigned(*narrator,"random_cooldown_rounds",10);auto boredEvents=requireBoolean(*narrator,"bored_events");
+    auto boredChance=requireUnsigned(*narrator,"bored_chance_percent",100,1);auto questEvents=requireBoolean(*narrator,"quest_events");
+    auto questChance=requireUnsigned(*narrator,"quest_chance_percent",100,1);auto questCooldown=requireUnsigned(*narrator,"quest_cooldown_minutes",60,1);
+    auto bookEvents=requireBoolean(*narrator,"book_events");
     auto showStatus=requireBoolean(*presentation,"show_status_hud");auto transcriptRows=requireUnsigned(*presentation,"transcript_rows",20,2);
     auto volumeBoost=requireUnsigned(*presentation,"tts_volume_boost",4,1);auto actionsEnabled=requireBoolean(*safety,"actions_enabled");
     auto allowHostile=requireBoolean(*safety,"allow_hostile");auto allowCreatures=requireBoolean(*safety,"allow_creatures");
     if(!autoGreeting||!rechat||!rechatDelay||!rechatDepth||!rechatProbability||!rechatMode||!strictRechat||!openRechat
         ||!rechatActions||!conversationCooldown||!boredom||!boredomDelay||!combatBarks||!combatPeriod
         ||!recentTurns||!knowledgeLimit||!narratorEnabled||!narratorName||!contextVisibility||!inlineMode
-        ||!welcomeEvents||!randomEvents||!questEvents||!bookEvents||!showStatus||!transcriptRows||!volumeBoost
+        ||!welcomeEvents||!welcomeCooldown||!randomEvents||!randomChance||!randomCooldown||!boredEvents||!boredChance
+        ||!questEvents||!questChance||!questCooldown||!bookEvents||!showStatus||!transcriptRows||!volumeBoost
         ||!actionsEnabled||!allowHostile||!allowCreatures)return invalidSchemaValue<ClientSettings>("client settings value mismatch");
     if(inlineMode.value()!="Disabled"&&inlineMode.value()!="Narrator"&&inlineMode.value()!="NPC"&&inlineMode.value()!="Text Only")
         return invalidSchemaValue<ClientSettings>("inline narration mode is invalid");
@@ -722,7 +727,9 @@ Result<ClientSettings> parseClientSettings(const json::Value& value)
         {autoGreeting.value(),rechat.value(),rechatDelay.value(),rechatDepth.value(),rechatProbability.value(),std::move(rechatMode).value(),
             strictRechat.value(),openRechat.value(),rechatActions.value(),conversationCooldown.value(),boredom.value(),boredomDelay.value(),combatBarks.value(),combatPeriod.value()},
         {recentTurns.value(),knowledgeLimit.value()},
-        {narratorEnabled.value(),std::move(narratorName).value(),contextVisibility.value(),std::move(inlineMode).value(),welcomeEvents.value(),randomEvents.value(),questEvents.value(),bookEvents.value()},
+        {narratorEnabled.value(),std::move(narratorName).value(),contextVisibility.value(),std::move(inlineMode).value(),
+            welcomeEvents.value(),welcomeCooldown.value(),randomEvents.value(),randomChance.value(),randomCooldown.value(),
+            boredEvents.value(),boredChance.value(),questEvents.value(),questChance.value(),questCooldown.value(),bookEvents.value()},
         {showStatus.value(),transcriptRows.value(),volumeBoost.value()},
         {actionsEnabled.value(),allowHostile.value(),allowCreatures.value()}});
 }
@@ -767,7 +774,7 @@ Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::V
     const auto* presentation=objectFor("presentation");const auto* safety=objectFor("safety");
     if(!behavior||!hasExactly(*behavior,{"auto_greeting","rechat","rechat_delay_seconds","rechat_max_depth","rechat_probability_percent","rechat_mode","rechat_strict_targeting","open_rechat","rechat_allow_actions","end_conversation_cooldown_seconds","boredom","boredom_delay_seconds","combat_barks","combat_bark_period_seconds"})
         ||!memory||!hasExactly(*memory,{"recent_turn_limit","knowledge_limit"})
-        ||!narrator||!hasExactly(*narrator,{"enabled","name","context_visibility","inline_mode","welcome_events","random_events","quest_events","book_events"})
+        ||!narrator||!hasExactly(*narrator,{"enabled","name","context_visibility","inline_mode","welcome_events","welcome_cooldown_minutes","random_events","random_chance_percent","random_cooldown_rounds","bored_events","bored_chance_percent","quest_events","quest_chance_percent","quest_cooldown_minutes","book_events"})
         ||!presentation||!hasExactly(*presentation,{"show_status_hud","transcript_rows","tts_volume_boost"})
         ||!safety||!hasExactly(*safety,{"actions_enabled","allow_hostile","allow_creatures"}))
         return invalidSchemaValue<Snapshot>("effective settings value sections mismatch");
@@ -781,8 +788,12 @@ Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::V
     auto recentTurns=requireUnsigned(*memory,"recent_turn_limit",100,1);auto knowledgeLimit=requireUnsigned(*memory,"knowledge_limit",20);
     auto narratorEnabled=requireBoolean(*narrator,"enabled");auto narratorName=requireString(*narrator,"name",1,128);
     auto contextVisibility=requireBoolean(*narrator,"context_visibility");auto inlineMode=requireString(*narrator,"inline_mode",1,16);
-    auto welcomeEvents=requireBoolean(*narrator,"welcome_events");auto randomEvents=requireBoolean(*narrator,"random_events");
-    auto questEvents=requireBoolean(*narrator,"quest_events");auto bookEvents=requireBoolean(*narrator,"book_events");
+    auto welcomeEvents=requireBoolean(*narrator,"welcome_events");auto welcomeCooldown=requireUnsigned(*narrator,"welcome_cooldown_minutes",1440,1);
+    auto randomEvents=requireBoolean(*narrator,"random_events");auto randomChance=requireUnsigned(*narrator,"random_chance_percent",100,1);
+    auto randomCooldown=requireUnsigned(*narrator,"random_cooldown_rounds",10);auto boredEvents=requireBoolean(*narrator,"bored_events");
+    auto boredChance=requireUnsigned(*narrator,"bored_chance_percent",100,1);auto questEvents=requireBoolean(*narrator,"quest_events");
+    auto questChance=requireUnsigned(*narrator,"quest_chance_percent",100,1);auto questCooldown=requireUnsigned(*narrator,"quest_cooldown_minutes",60,1);
+    auto bookEvents=requireBoolean(*narrator,"book_events");
     auto showStatus=requireBoolean(*presentation,"show_status_hud");auto transcriptRows=requireUnsigned(*presentation,"transcript_rows",20,2);
     auto volumeBoost=requireUnsigned(*presentation,"tts_volume_boost",4,1);
     auto actionsEnabled=requireBoolean(*safety,"actions_enabled");auto allowHostile=requireBoolean(*safety,"allow_hostile");
@@ -790,7 +801,8 @@ Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::V
     if(!autoGreeting||!rechat||!rechatDelay||!rechatDepth||!rechatProbability||!rechatMode||!strictRechat||!openRechat
         ||!rechatActions||!conversationCooldown||!boredom||!boredomDelay||!combatBarks||!combatPeriod
         ||!recentTurns||!knowledgeLimit||!narratorEnabled||!narratorName||!contextVisibility||!inlineMode
-        ||!welcomeEvents||!randomEvents||!questEvents||!bookEvents||!showStatus||!transcriptRows||!volumeBoost
+        ||!welcomeEvents||!welcomeCooldown||!randomEvents||!randomChance||!randomCooldown||!boredEvents||!boredChance
+        ||!questEvents||!questChance||!questCooldown||!bookEvents||!showStatus||!transcriptRows||!volumeBoost
         ||!actionsEnabled||!allowHostile||!allowCreatures)
         return invalidSchemaValue<Snapshot>("effective settings value mismatch");
     if(inlineMode.value()!="Disabled"&&inlineMode.value()!="Narrator"&&inlineMode.value()!="NPC"&&inlineMode.value()!="Text Only")
@@ -806,7 +818,8 @@ Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::V
         boredom.value(),boredomDelay.value(),combatBarks.value(),combatPeriod.value()};
     parsed.memory={recentTurns.value(),knowledgeLimit.value()};
     parsed.narrator={narratorEnabled.value(),std::move(narratorName).value(),contextVisibility.value(),std::move(inlineMode).value(),
-        welcomeEvents.value(),randomEvents.value(),questEvents.value(),bookEvents.value()};
+        welcomeEvents.value(),welcomeCooldown.value(),randomEvents.value(),randomChance.value(),randomCooldown.value(),
+        boredEvents.value(),boredChance.value(),questEvents.value(),questChance.value(),questCooldown.value(),bookEvents.value()};
     parsed.presentation={showStatus.value(),transcriptRows.value(),volumeBoost.value()};
     parsed.safety={actionsEnabled.value(),allowHostile.value(),allowCreatures.value()};
     static constexpr std::array<std::string_view,7> routingIds={"prompt_configuration_id","llm_configuration_id",
@@ -827,8 +840,9 @@ Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::V
         "rechat_probability_percent","rechat_mode","rechat_strict_targeting","open_rechat","rechat_allow_actions",
         "end_conversation_cooldown_seconds","boredom","boredom_delay_seconds","combat_barks","combat_bark_period_seconds"};
     static constexpr std::array<std::string_view,2> memoryFields={"recent_turn_limit","knowledge_limit"};
-    static constexpr std::array<std::string_view,8> narratorFields={"enabled","name","context_visibility","inline_mode",
-        "welcome_events","random_events","quest_events","book_events"};
+    static constexpr std::array<std::string_view,15> narratorFields={"enabled","name","context_visibility","inline_mode",
+        "welcome_events","welcome_cooldown_minutes","random_events","random_chance_percent","random_cooldown_rounds",
+        "bored_events","bored_chance_percent","quest_events","quest_chance_percent","quest_cooldown_minutes","book_events"};
     static constexpr std::array<std::string_view,3> safetyFields={"actions_enabled","allow_hostile","allow_creatures"};
     static constexpr std::array<std::string_view,3> presentationFields={"show_status_hud","transcript_rows","tts_volume_boost"};
     const auto validSettingPath=[&](std::string_view path,std::string_view prefix,const auto& fields){
@@ -844,7 +858,7 @@ Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::V
                 &&(std::find(routingIds.begin(),routingIds.end(),std::string_view(key).substr(8))!=routingIds.end()
                     ||std::find(routingFlags.begin(),routingFlags.end(),std::string_view(key).substr(8))!=routingFlags.end()));
         if(!validPath||!item.string()||(*item.string()!="default"&&*item.string()!="global"
-                &&*item.string()!="core_profile"&&*item.string()!="npc"))
+                &&*item.string()!="core_profile"&&*item.string()!="npc"&&*item.string()!="narrator_profile"))
             return invalidSchemaValue<Snapshot>("effective settings source map mismatch");
         parsed.sourceMap.emplace_back(key,*item.string());
     }

@@ -485,6 +485,17 @@ local function journal(player, modules)
     return result
 end
 
+function M.journalEntries(modules)
+    modules=modules or loaded()
+    return journal(modules.self,modules)
+end
+
+function M.gameTime(modules)
+    modules=modules or loaded()
+    local value=modules.core and safe(modules.core.getGameTime) or nil
+    return type(value)=='number' and value or nil
+end
+
 local function actorState(actor, player, modules)
     if not actor then return {} end
     local actorType=modules.types and modules.types.Actor
