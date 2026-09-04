@@ -1596,6 +1596,10 @@ return {
             end
         end,
         LORKHAN_AUTO_ACTIVATED=submitAutoActorProfile,
+        LORKHAN_PROFILE_EVOLUTION_REQUEST=function(event)
+            if type(event)~='table' or type(event.actors)~='table' then return end
+            for _,actor in ipairs(event.actors) do submitAutoActorProfile({actor=actor}) end
+        end,
         LORKHAN_AUTONOMY_CONTEXT_REQUEST=function(event)
             if type(event)~='table' or type(event.actor)~='table' then return end
             local prompts={

@@ -48,7 +48,10 @@ stock OpenMW executable.
 7. Bind `Targeted NPC tools` to open the compact activation, group, dynamic-profile, actor-action and
    stop controls for the aimed NPC. `Manual AI Activate` toggles the aimed actor, or pins up to 12
    nearby actors when no actor is aimed. The Dynamic Profiles selector can manage the targeted NPC,
-   a bounded nearby AI NPC, or the narrator without opening a master dashboard.
+   a bounded nearby AI NPC, or the narrator without opening a master dashboard. Character and Narration
+   management can opt an unlocked profile into automatic evolution of Personality, Speech Style, Goals,
+   or any selected combination. While a session is active, the client resubmits at most 32 managed nearby
+   NPC snapshots every 20 minutes; the server freezes at most 50 witnessed turns into each revision-safe job.
 8. For `Attack aimed actor` or `Stop combat with aimed actor`, choose the action, aim at the second
    actor, and use `Targeted NPC tools` again. The server accepts only a different actor from the bounded nearby-actor
    snapshot. For `Go to aimed point` or `Escort me to aimed point`, choose the action, aim at a point
