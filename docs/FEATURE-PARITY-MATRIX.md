@@ -24,15 +24,15 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 | --- | --- | --- |
 | Targeted conversation | Keep | Dedicated semantic action + ray target + compact target/input/Send/Close chatbox. |
 | Group conversation | Keep | Explicit speaker/addressee/audience registry and one ordered no-overlap speech lane. |
-| Typed player input | Keep | Custom TextEdit overlay, size/UTF-8 validation. |
+| Typed player input | Keep | Custom TextEdit overlay, size/UTF-8 validation, and an opt-in dedicated Auto Chat rewrite that speaks the generated player line before submitting the ordinary turn. Direct typed and voice input remain available. |
 | In-game controls | Adapt | Dialectic-style focused Hotkeys/Auto Activate/Behavior/Sound/AI Agents/Tools settings; compact mode/model/profile selectors and one targeted-NPC tools menu replace the master dashboard. |
 | Push-to-talk/STT | Keep | Configurable semantic hold action, bounded PCM16 WAV capture, authenticated upload, durable provider work, fenced transcript event, and normal player-text pipeline. |
 | Open microphone | Adapt | Explicit toggle and mute controls with bounded VAD sensitivity, end delay, maximum recording, no-voice timeout, device selection, and zero native microphone polling while idle. |
 | Subtitles/transcript | Keep | Custom UI with speaker and status, independent of stock subtitle toggle. |
 | Interrupt/skip/hard halt | Keep | Reserved control lane; speech/action/server cancellation. |
-| Automatic greeting | Exclude | Baseline control remains visible and disabled; no automatic model-triggering. |
+| Automatic greeting | Keep | The game-owned real-time scheduler can submit one idle-only greeting for a newly activated eligible NPC without interrupting an active turn. |
 | Rechat | Keep | Playback-driven continuation of a player-started conversation with a bounded chain ID/depth; only final `played` delivery advances the chain, an immediate bounded actor-local state probe removes busy/unconscious/inactive participants, and rechat cannot emit actions. |
-| Boredom | Exclude | Baseline control remains visible and disabled; no scheduler, cooldown, or automatic model-triggering. |
+| Boredom | Keep | The same scheduler can submit one bounded idle remark after the configured quiet period, with actor rotation and active-turn fences. |
 | Vanilla dialogue context | Adapt | Passive `DialogueResponse` capture; never replace vanilla UI. |
 | Skyrim/Fallout HUD widgets | Adapt | OpenMW Lua UI built from scratch; no copied SWF/Papyrus. |
 
@@ -63,7 +63,7 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 | World knowledge | Keep | Scoped documents/facts with retrieval trace. |
 | Narrator and diary | Keep | Opt-in narrator persona, inline routing, player-local speech, and revision-safe PHP/in-game narrator generation are implemented. Dedicated narrator, diary, and summary CRUD exists, and typed timer, sleep, and optional wait events now feed server-gated Player, Narrator, and nearby NPC diary jobs with per-profile cooldowns. |
 | Rechat | Keep | Uses the CHIM-style history/prompt/response records and a typed playback-gated chain with a fresh bounded participant-state snapshot; new player input or any invalid/stale/failed delivery cancels continuation. |
-| Boredom, greetings and combat barks | Exclude | Baseline controls remain visible and disabled; no runtime scheduler or automatic model-triggering is shipped. |
+| Boredom, greetings and combat barks | Keep | One game-owned real-time scheduler routes enabled automatic dialogue through ordinary typed turns, applies bounded idle/cooldown/actor-state fences, and cannot emit actions. |
 | Playthrough export/restore | Keep | Transactional server snapshot plus binding safeguards. |
 | LLM/TTS/STT providers | Keep | Typed LLM/TTS catalogs plus one installation-global STT connector, bounded adapters, health and secret handling, API Badge integration, per-profile LLM/TTS routing, portable preset workflows, and persistent voice management. |
 | Prompt/action editor | Keep | Validated schemas, revisions, rollback, portable prompt export/import/clone, explicit per-NPC prompt selection with in-use deletion guards, and labelled per-action policy controls that cannot broaden the server-owned OpenMW catalog. |

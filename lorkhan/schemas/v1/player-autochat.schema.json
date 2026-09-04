@@ -1,0 +1,18 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/player-autochat.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+    "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
+    "intent": {"maxLength": 4096, "minLength": 1, "type": "string"},
+    "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "player": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+    "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "schema": {"const": "lorkhan.player-autochat.v1", "type": "string"},
+    "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "target": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"}
+  },
+  "required": ["schema", "message_id", "request_id", "session_id", "generation", "created_at", "player", "target", "intent"],
+  "type": "object"
+}

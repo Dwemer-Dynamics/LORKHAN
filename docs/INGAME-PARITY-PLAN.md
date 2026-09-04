@@ -39,16 +39,16 @@ Other semantic actions are deliberately unbound until the player assigns them in
 | Status/history/log views | Compact HUD, session history and safe diagnostics; no raw secret/log browser | IMPLEMENTED; layout proof required |
 | LLM model slots | Authenticated typed query/select routes expose revisioned server-owned slots; configured slots override only the model and never expose credentials/endpoints; management supports secret-free export/import/clone and blocks deletion while in use | IMPLEMENTED; in-game proof required |
 | Per-profile LLM/TTS routing | CHIM-style NPC profile fields choose Standard, Fast, Powerful, Experimental and Fallback LLM slots plus a speech connector; optional deterministic per-turn randomization uses only configured general-purpose slots, an enabled fallback is frozen with the accepted turn and tried once after primary failure, explicit F9 model selection overrides profile LLM routing, and per-speaker TTS uses the profile voice, then the connector's male/female fallback selected from profile gender, then the connector default; TTS/STT connector forms expose driver-specific labelled controls during both creation and editing; TTS Studio imports bounded WAV/ZIP samples, explicitly syncs them to compatible PocketTTS/OmniVoice/Chatterbox/XTTS services, durably caches explicitly discovered provider voices for NPC profile selection, and can test or set a revisioned connector default | IMPLEMENTED; management/integration, real multipart provider-sync and real fallback-worker proof complete; in-game proof required |
-| Player speech-style profile | Player Management can analyze up to 200 stored real player turns through the configured profile-generation provider and update only the current profile's speech-style field if its revision is unchanged; typed player messages can use the player profile's TTS connector and voice | IMPLEMENTED; autonomous player chat remains excluded |
+| Player speech-style and Auto Chat | Player Management can analyze up to 200 stored real player turns, select a dedicated Auto Chat connector, and route typed intent through one strict player rewrite before existing player subtitle/TTS and normal turn submission; the Interact toggle defaults off and direct typed/voice input remains available | IMPLEMENTED; in-game proof required |
 | NPC profile management | CHIM-style search, favorites, edit locking, portraits and bulk operations | IMPLEMENTED with private portrait storage, default-on auto-locking, auditable revisions, bulk unlock/delete/binding switch and portable profile export; live management proof complete |
 | Roleplay memory and relationship management | CHIM-style roleplay tabs create/edit/rebuild/delete scoped memories and create/edit/audit-delete relationships without exposing raw database access | IMPLEMENTED; browser-like CRUD and live layout proof complete |
-| Server behavior settings | Global, Core Profile and NPC settings expose bounded playback-gated rechat inheritance; unsupported autonomy controls remain visible only as disabled status landmarks | RECHAT IMPLEMENTED; greetings, boredom, combat barks and timer autonomy EXCLUDED |
+| Server behavior settings | Global, Core Profile and NPC settings expose bounded playback-gated rechat plus automatic greeting, boredom and combat-bark controls; the game-owned scheduler applies idle, actor-state and cooldown fences | IMPLEMENTED; in-game proof required |
 | Profile slot assignment and dynamic profile regeneration | Actor-specific profile binding preserves session memory/playthrough scope; PHP and the OpenMW master menu can queue a bounded, revision-safe LLM generation job for the profile explicitly bound to the current target; Character Management can queue up to 100 unlocked NPC profiles from one installation while excluding locked/player/narrator profiles; Narration management and the OpenMW master menu provide the same revision-safe operation with narrator-specific generation instructions; opted-in unlocked nearby NPC and Narrator profiles can evolve selected Personality, Speech Style and Goals fields every 20 minutes from frozen witnessed history | TARGET, INSTALLATION BATCH, NARRATOR GENERATION AND AUTOMATIC EVOLUTION IMPLEMENTED; in-game proof required |
 | Narrator routing | One opt-in installation narrator profile, deterministic leading `*narration*` separation, narrator/NPC/text-only modes, narrator-specific TTS context, ordered player-local playback and normal delivery receipts | IMPLEMENTED; disabled by default; in-game proof required |
 | Installation configuration transfer | Server-generated, hash-verified backup/restore for profiles, prompts, model slots, speech presets, action policies, selections and profile preferences | IMPLEMENTED; same-installation restore only; secrets, portraits, voices and runtime roleplay data excluded |
 | Nearby actors/activity, items and points of interest | Bounded identities, player/target state, explicit held items, actor-local AI activity, item ownership, door/container locks, keys/traps, cell, weather and journal; activity is reported only for managed actors because API 129 exposes AI packages only to the actor-local script | IMPLEMENTED; in-game prompt proof required |
 | Quests and read books | The client sends the bounded Morrowind journal on every turn; vanilla world activation and inventory use observe opened books without replacing their normal behavior, deduplicate them locally, and attach a bounded recent-books list to subsequent turns | IMPLEMENTED; book observation requires in-game proof |
-| Combat barks | Timer-driven hostile remarks are outside the bounded player-driven conversation scope | EXCLUDED; any inherited control remains visible and disabled |
+| Combat barks | Enabled hostile actors can issue bounded periodic remarks through the ordinary typed-turn lane while no dialogue is active | IMPLEMENTED; in-game proof required |
 | CHIM Browser, Soulgaze, AI Quest Manager and rumor tools | Skyrim/Prisma or server-product features, not core Morrowind conversation-control parity | OUT OF CURRENT IN-GAME CORE |
 | Dialectic `OpenMenu` and `QuickCommand` bindings | Pinned declarations have no GameLoop consumer, so LORKHAN does not copy dead controls | INTENTIONALLY OMITTED |
 
@@ -61,9 +61,8 @@ Other semantic actions are deliberately unbound until the player assigns them in
 - CHIM's matching popup change only presents the same Skyrim return/teleport workflow and therefore
   has no independent OpenMW user outcome to port.
 - DialecticServer's new "copy profile setting to all" control targets free profile metadata. LORKHAN
-  preserves Global -> Core Profile -> NPC inheritance for bounded playback-gated rechat only. Greeting,
-  boredom, combat-bark and timer-driven autonomy controls remain disabled and are not copied into
-  runtime scheduling state.
+  preserves Global -> Core Profile -> NPC inheritance for rechat, automatic greetings, boredom and
+  combat barks; the OpenMW scheduler consumes only the validated effective settings for the active actor.
 
 ## Activation, targeting, and groups
 
@@ -80,16 +79,16 @@ Other semantic actions are deliberately unbound until the player assigns them in
 | Explicit group conversation | Aim or nearby picker adds actors; reset returns to primary target; duplicates and oversize fail closed | AUTOMATED |
 | Optional follower awareness | Follower Detection Util 2.x relationships enter bounded prompt context when its interface exists; absence disables only the adapter | AUTOMATED adapter; compatibility/in-game proof required |
 
-## Rechat boundary
+## Automatic dialogue and rechat boundary
 
 | Requirement | Current implementation | Current proof |
 | --- | --- | --- |
 | Playback-gated rechat | An enabled profile can continue only after the preceding response finishes, while retaining the current target/session/generation fence and bounded continuation depth | AUTOMATED logic; full runtime chain proof required |
 | Live participant eligibility | After final playback, the global script requests an immediate actor-local API-129 state probe for the previous speaker and at most 12 candidates. Missing/late proof fails closed; busy, unconscious, inactive, or dead actors cannot respond. OpenMW sleep detection remains unavailable, so the server-only direct-address sleep rule is forward-compatible rather than claimed native proof. | AUTOMATED Lua/native source and server integration; in-game state transitions required |
 | Cancellation safety | Halt, target/session/generation changes and newer accepted turns cancel or fence stale continuation work | AUTOMATED source checks; in-game state proof required |
-| Automatic greeting | No scheduler or automatic model-triggering | EXCLUDED |
-| Bored conversation | No quiet timer, actor rotation or automatic model-triggering | EXCLUDED |
-| Combat barks | No entry timer, periodic timer or automatic model-triggering | EXCLUDED |
+| Automatic greeting | One greeting per newly activated eligible NPC, only while the turn and speech lanes are idle | AUTOMATED Lua/server checks; in-game proof required |
+| Bored conversation | Configured quiet timer, bounded actor rotation and idle-only ordinary turn submission | AUTOMATED Lua/server checks; in-game proof required |
+| Combat barks | Configured periodic hostile-actor remarks with active-turn, speech and actor-state fences | AUTOMATED Lua/server checks; in-game proof required |
 
 ## Action parity
 
@@ -116,9 +115,8 @@ console/Lua/MWScript remain Not Applicable or excluded for the authority reasons
 `docs/evidence/openmw-action-parity-audit.md`; they are not future implementation promises.
 
 Remaining control/runtime work is manual proof only: exercise the current popup, model/profile binding,
-enriched context, voice runtime, queue interruption, and enabled actions in the deployed pinned build.
-Disabled greetings, boredom, combat-bark, ITT, Background Life, and timer-autonomy landmarks must remain
-inert throughout that checklist.
+enriched context, voice runtime, queue interruption, enabled actions, and each enabled automatic-dialogue
+path in the deployed pinned build. ITT, Background Life, and unrelated timer autonomy must remain inert.
 
 ### Pinned API-129 design gates
 

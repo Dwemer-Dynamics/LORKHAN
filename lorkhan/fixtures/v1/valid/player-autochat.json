@@ -1,0 +1,29 @@
+{
+  "description": "Authenticated player intent rewrite before a normal dialogue turn",
+  "instance": {
+    "schema": "lorkhan.player-autochat.v1",
+    "message_id": "10000000-0000-4000-8000-000000000701",
+    "request_id": "10000000-0000-4000-8000-000000000702",
+    "session_id": "10000000-0000-4000-8000-000000000703",
+    "generation": 7,
+    "created_at": "2026-09-04T20:00:00Z",
+    "player": {
+      "kind": "player",
+      "record_id": "player",
+      "refnum": {"index": 0, "content_file": 0},
+      "content_file": "Morrowind.esm",
+      "cell": {"kind": "interior", "name": "Seyda Neen, Census and Excise Office"},
+      "display_name": "Nerevarine"
+    },
+    "target": {
+      "kind": "npc",
+      "record_id": "fargoth",
+      "refnum": {"index": 42, "content_file": 0},
+      "content_file": "Morrowind.esm",
+      "cell": {"kind": "interior", "name": "Seyda Neen, Census and Excise Office"},
+      "display_name": "Fargoth"
+    },
+    "intent": "ask whether he has found his ring"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/player-autochat.schema.json"
+}

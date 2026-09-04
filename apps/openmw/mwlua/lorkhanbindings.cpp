@@ -460,6 +460,12 @@ namespace MWLua
                 std::optional<lorkhan::RequestId> request;
                 std::optional<lorkhan::CanonicalMediaDescriptor> media;
             };
+            struct PlayerAutochatState {
+                std::string state;
+                std::string text;
+                std::string reason;
+                std::optional<lorkhan::RequestId> request;
+            };
 
         public:
             NativeClient()
@@ -914,6 +920,48 @@ namespace MWLua
                 return sol::make_object(lua,result);
             }
 
+            std::tuple<sol::object, sol::object> requestPlayerAutochat(sol::state_view lua,
+                sol::table player,sol::table target,const std::string& intent)
+            {
+                if(!ready())return failure(lua,"bridge_not_ready");
+                try{
+                    if(intent.empty()||intent.size()>16U*1024U)throw std::runtime_error("invalid_player_autochat_intent");
+                    if(!m_playerAutochats.empty())return failure(lua,"player_autochat_busy");
+                    if(m_pollRequest){static_cast<void>(m_service->cancel(*m_pollRequest));m_pollRequest.reset();}
+                    const lorkhan::RequestId request(uuid());const lorkhan::MessageId message(uuid());
+                    lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),
+                        lorkhan::RequestKind::player_autochat,lorkhan::PlayerAutochatRequest{message,
+                            {request,*m_session,m_service->generation()},utcNow(),
+                            toJson(sol::make_object(lua,player)),toJson(sol::make_object(lua,target)),intent}};
+                    auto accepted=m_service->enqueue(std::move(outbound));
+                    if(!accepted)return failure(lua,accepted.error().message);
+                    m_playerAutochats.emplace(request.value(),PlayerAutochatState{"requesting",{}, {},request});
+                    return success(lua,request.value());
+                }catch(const std::exception& error){return failure(lua,error.what());}
+            }
+
+            bool cancelPlayerAutochat(const std::optional<std::string>& requestId=std::nullopt)
+            {
+                bool cancelled=false;
+                for(auto iterator=m_playerAutochats.begin();iterator!=m_playerAutochats.end();){
+                    if(requestId&&iterator->first!=*requestId){++iterator;continue;}
+                    if(iterator->second.request&&m_service)static_cast<void>(m_service->cancel(*iterator->second.request));
+                    iterator=m_playerAutochats.erase(iterator);cancelled=true;
+                    if(requestId)break;
+                }
+                return cancelled;
+            }
+
+            sol::object playerAutochatStatus(sol::state_view lua,const std::string& requestId) const
+            {
+                const auto found=m_playerAutochats.find(requestId);
+                if(found==m_playerAutochats.end())return sol::make_object(lua,sol::nil);
+                sol::table result(lua,sol::create);result["state"]=found->second.state;
+                if(!found->second.text.empty())result["text"]=found->second.text;
+                if(!found->second.reason.empty())result["reason"]=found->second.reason;
+                return sol::make_object(lua,result);
+            }
+
             sol::object mediaStatus(sol::state_view lua, const std::string& mediaId) const
             {
                 const auto found = m_media.find(mediaId);
@@ -1088,6 +1136,23 @@ namespace MWLua
                 return true;
             }
 
+            // Settle the single player rewrite request without consuming unrelated global-lane results.
+            bool settlePlayerAutochatResult(const lorkhan::InboundResult& result)
+            {
+                const auto found=m_playerAutochats.find(result.request.value());
+                if(found==m_playerAutochats.end()||!found->second.request)return false;
+                found->second.request.reset();
+                if(result.kind==lorkhan::ResponseKind::player_autochat_ready){
+                    auto parsed=lorkhan::parsePlayerAutochatReadyResponse(result.payload,jsonHeaders());
+                    if(parsed){found->second.state="ready";found->second.text=parsed.value().text;found->second.reason.clear();}
+                    else{found->second.state="failed";found->second.reason=parsed.error().message;}
+                }else if(result.kind==lorkhan::ResponseKind::failure){
+                    found->second.state="failed";
+                    found->second.reason=result.failure?result.failure->message:"transport_failure";
+                }else{found->second.state="failed";found->second.reason="unexpected_player_autochat_response";}
+                return true;
+            }
+
             // The Interact overlay owns Interface UI mode and pauses simulation, so the GLOBAL Lua lane
             // that drives poll stops running while a server-owned controls panel is open. Player onFrame
             // keeps running every frame, so this settles only the in-flight controls response. Every
@@ -1138,6 +1203,20 @@ namespace MWLua
                 return status;
             }
 
+            sol::table pumpPlayerAutochat(sol::state_view lua)
+            {
+                sol::table status(lua,sol::create);bool settled=false;
+                if(m_service&&!m_playerAutochats.empty()
+                    &&m_deferredResults.size()+kControlsPumpBatch<=kDeferredResultCapacity){
+                    for(auto& result:m_service->poll(kControlsPumpBatch)){
+                        if(settlePlayerAutochatResult(result)){++m_resultsSeen;settled=true;continue;}
+                        m_deferredResults.push_back(std::move(result));
+                    }
+                }
+                status["settled"]=settled;status["pending"]=!m_playerAutochats.empty();
+                return status;
+            }
+
             sol::table poll(sol::state_view lua, std::size_t maximum)
             {
                 sol::table output(lua, sol::create);
@@ -1153,6 +1232,7 @@ namespace MWLua
                 {
                     ++m_resultsSeen;
                     if (settleDebugResult(result)) continue;
+                    if (settlePlayerAutochatResult(result)) continue;
                     if (result.kind == lorkhan::ResponseKind::failure)
                     {
                         const auto failedTurn=m_turnRequests.find(result.request.value());
@@ -1277,6 +1357,7 @@ namespace MWLua
                 auto result = m_service->cancelGeneration(lorkhan::Generation(generation));
                 if (!result) return false;
                 cancelMenuDialogueTts();
+                cancelPlayerAutochat();
                 m_session.reset(); m_clientSettings.reset(); m_configRevision.clear();
                 m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();
                 m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_turnRequests.clear();m_controlsError.clear();m_debugError.clear();beginSession();
@@ -1493,6 +1574,7 @@ namespace MWLua
             std::chrono::steady_clock::time_point m_nextPoll{};
             std::map<std::string, MediaState> m_media;
             std::map<std::string, MenuDialogueState> m_menuDialogues;
+            std::map<std::string, PlayerAutochatState> m_playerAutochats;
             std::string m_status{"unconfigured"};
             std::string m_error;
             std::uint64_t m_resultsSeen{};
@@ -1547,6 +1629,7 @@ namespace MWLua
             };
             api["sessionControls"] = [lua] { return client().sessionControls(lua); };
             api["pumpSessionControls"] = [lua] { return client().pumpSessionControls(lua); };
+            api["pumpPlayerAutochat"] = [lua] { return client().pumpPlayerAutochat(lua); };
             api["requestDebugCommand"] = [lua] { return client().requestDebugCommand(lua); };
             api["pumpDebugCommand"] = [lua] { return client().pumpDebugCommand(lua); };
             api["submitDebugCommandResult"] = [lua](const std::string& commandId,const std::string& status,
@@ -1578,6 +1661,12 @@ namespace MWLua
                 return client().cancelMenuDialogueTts(requestId ? std::optional<std::string>(*requestId) : std::nullopt); };
             api["menuDialogueTtsStatus"] = [lua](const std::string& requestId) {
                 return client().menuDialogueTtsStatus(lua,requestId); };
+            api["requestPlayerAutochat"] = [lua](sol::table player,sol::table target,const std::string& intent) {
+                return client().requestPlayerAutochat(lua,std::move(player),std::move(target),intent); };
+            api["cancelPlayerAutochat"] = [](sol::optional<std::string> requestId) {
+                return client().cancelPlayerAutochat(requestId ? std::optional<std::string>(*requestId) : std::nullopt); };
+            api["playerAutochatStatus"] = [lua](const std::string& requestId) {
+                return client().playerAutochatStatus(lua,requestId); };
             api["playSpeech"] = [lua, luaManager](const std::string& id, const sol::object& actor,
                                     sol::optional<std::string> subtitle, sol::optional<float> volumeBoost) {
                 return client().playSpeech(lua, id, actor, subtitle.value_or(""), volumeBoost.value_or(3.f), luaManager);

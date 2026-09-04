@@ -252,6 +252,16 @@
       "sha256": "7f8192a739030f383e6881863a18f173d16ff0078a7625285130be9579f1d33c"
     },
     {
+      "bytes": 504,
+      "path": "lorkhan/fixtures/v1/valid/player-autochat-ready.json",
+      "sha256": "4db7a7a53892c25dc6a6b3d9f6ba8a4ea05e638d6bf6675717ceaf1de9d7fb6e"
+    },
+    {
+      "bytes": 1081,
+      "path": "lorkhan/fixtures/v1/valid/player-autochat.json",
+      "sha256": "a811c6dd288e2269146179eb5ba8f1c3c4473854033f020e92e0ff7f72369f5d"
+    },
+    {
       "bytes": 3995,
       "path": "lorkhan/fixtures/v1/valid/response-utf8-and-action.json",
       "sha256": "a6979a77be088efd4bdaf17c9c1e9f2442d8cc285f1d9d81305a6e4f62ef9c2f"
@@ -420,6 +430,16 @@
       "bytes": 1063,
       "path": "lorkhan/schemas/v1/menu-dialogue-tts.schema.json",
       "sha256": "168ed1b8dc12d492cebfa4e09f597a94c004a19d6b17a480d18fd85adcccae7f"
+    },
+    {
+      "bytes": 850,
+      "path": "lorkhan/schemas/v1/player-autochat-ready.schema.json",
+      "sha256": "115d8597b5e7922e681d8ce384d3d4c3077e305bc759848d585d223c682cea6e"
+    },
+    {
+      "bytes": 1172,
+      "path": "lorkhan/schemas/v1/player-autochat.schema.json",
+      "sha256": "08b4080325e153fd198ad0f66bf986d2dd4a3198da4b89a66f22abd4c79cfe9b"
     },
     {
       "bytes": 3688,

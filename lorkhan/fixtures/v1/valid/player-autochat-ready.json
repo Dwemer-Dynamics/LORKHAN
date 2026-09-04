@@ -1,0 +1,12 @@
+{
+  "description": "Correlated rewritten player line ready for subtitle, TTS, and turn submission",
+  "instance": {
+    "schema": "lorkhan.player-autochat.ready.v1",
+    "message_id": "10000000-0000-4000-8000-000000000701",
+    "request_id": "10000000-0000-4000-8000-000000000702",
+    "session_id": "10000000-0000-4000-8000-000000000703",
+    "generation": 7,
+    "text": "Fargoth, have you found your ring yet?"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/player-autochat-ready.schema.json"
+}
