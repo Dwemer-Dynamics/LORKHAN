@@ -12,6 +12,11 @@ local util=require('scripts.LORKHAN.util')
 
 local M={}
 
+local function newAutonomyState()
+    return {idleSeconds=0,combatSeconds=0,pending=nil,pendingSeconds=0,greetingQueue={},
+        greeted={},interacted={},rotation=0}
+end
+
 function M.new(bridge,emit,sendActor,manageActor)
     local generation=bridge and bridge.generation and bridge.generation() or 1
     local state={bridge=bridge,emit=emit or function() end,sendActor=sendActor or function() return nil,'actor_sender_unavailable' end,
@@ -20,7 +25,8 @@ function M.new(bridge,emit,sendActor,manageActor)
         conversation=conversation.new(generation),responseQueue=responseQueue.new(generation,generation),events=nil,
         attachments={},media={},pendingConfirmations={},actionFollowups={seen={},pending={}},
         activeSpeechMediaId=nil,rechat=nil,rechatSeed=nil,pendingVoice=nil,pendingStt={},openMic=false,openMicRequested=false,
-        combatThreats={},combatVerified={},rechatEligibility=nil,
+        combatThreats={},combatActors={},combatVerified={},actorStates={},rechatEligibility=nil,
+        autonomy=newAutonomyState(),
         dialogueMode='Standard',disabled=false,hardHalted=false,agentsSignature=nil}
     state.recentVanillaDialogue={}
     return state
@@ -108,7 +114,8 @@ function M.lifecycle(state,kind)
     state.activeSpeechMediaId=nil
     state.rechat=nil state.rechatSeed=nil
     state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
-    state.combatThreats={} state.combatVerified={} state.rechatEligibility=nil
+    state.combatThreats={} state.combatActors={} state.combatVerified={} state.actorStates={}
+    state.rechatEligibility=nil state.autonomy=newAutonomyState()
     state.recentVanillaDialogue={}
     state.hardHalted=false state.conversation.hardHalted=false
     state.registry:clear()
@@ -133,7 +140,7 @@ function M.deactivate(state,actorIdentity,object)
     local removed=state.registry:deactivate(actorIdentity,object)
     if removed and key then
         agentRegistry.remove(state.agents,actorIdentity)
-        state.combatVerified[key]=nil state.combatThreats[key]=nil
+        state.combatVerified[key]=nil state.combatThreats[key]=nil state.combatActors[key]=nil state.actorStates[key]=nil
         emitCombatState(state)
         if state.attachments[key] then state.sendActor(actorIdentity,'LORKHAN_ACTOR_DETACH',{actor=actorIdentity}) state.attachments[key]=nil end
         if state.conversation.target and identity.same(state.conversation.target,actorIdentity) then
@@ -177,7 +184,7 @@ end
 
 local function detachAgent(state,actor,reason)
     local key=identity.key(actor)
-    if key then state.combatVerified[key]=nil end
+    if key then state.combatVerified[key]=nil state.combatActors[key]=nil state.actorStates[key]=nil end
     local removedThreat=key and state.combatThreats[key]~=nil
     if key then state.combatThreats[key]=nil end
     if key and state.attachments[key] then
@@ -231,7 +238,14 @@ function M.scanAgents(state,candidates)
                 local actor,status=M.manageCandidate(state,candidate,'auto',true)
                 if actor and status=='activated' then
                     added=added+1
-                    if actor.kind=='npc' then state.emit('LORKHAN_AUTO_ACTIVATED',{actor=util.copy(actor)}) end
+                    if actor.kind=='npc' then
+                        state.emit('LORKHAN_AUTO_ACTIVATED',{actor=util.copy(actor)})
+                        local key=identity.key(actor)
+                        if key and not state.autonomy.greeted[key] and not state.autonomy.interacted[key]
+                            and #state.autonomy.greetingQueue<32 then
+                            state.autonomy.greetingQueue[#state.autonomy.greetingQueue+1]=util.copy(actor)
+                        end
+                    end
                 end
             end
         end
@@ -271,6 +285,10 @@ function M.actorCombatStatus(state,event)
         probe.states[key]=conversationState
     end
     state.combatVerified[key]=true
+    state.actorStates[key]={conversationState=conversationState,activity=event.activity,
+        hostile=event.hostile_to_player==true}
+    if event.activity=='combat' then state.combatActors[key]=util.copy(event.actor)
+    else state.combatActors[key]=nil end
     if event.hostile_to_player==true then state.combatThreats[key]=util.copy(event.actor)
     else state.combatThreats[key]=nil end
     emitCombatState(state)
@@ -297,6 +315,107 @@ function M.actorCombatStatus(state,event)
     detachAgent(state,event.actor,'auto_hostile_to_player')
     emitAgents(state)
     return true,'hostile_removed'
+end
+
+local function autonomyActorEligible(state,actor,combat)
+    local key=identity.key(actor)
+    local entry=key and agentRegistry.get(state.agents,actor) or nil
+    local status=key and state.actorStates[key] or nil
+    if not entry or not status or not state.registry:resolve(actor) then return false end
+    if combat then return status.activity=='combat' end
+    return status.conversationState=='active' and status.hostile~=true
+end
+
+local function setAutonomyTarget(state,actor)
+    local ok=conversation.setTarget(state.conversation,actor)
+    if not ok then return false end
+    state.emit('LORKHAN_TARGET',{target=util.copy(actor),audience={util.copy(actor)}})
+    return true
+end
+
+local function requestAutonomy(state,kind,actor)
+    if not setAutonomyTarget(state,actor) then return false end
+    state.rechat=nil state.rechatSeed=nil state.rechatEligibility=nil
+    state.autonomy.pending={kind=kind,actor=util.copy(actor)}
+    state.autonomy.pendingSeconds=0
+    state.autonomy.idleSeconds=0
+    if kind=='combat_bark' then state.autonomy.combatSeconds=0 end
+    state.emit('LORKHAN_AUTONOMY_CONTEXT_REQUEST',{kind=kind,actor=util.copy(actor),generation=state.generation})
+    return true
+end
+
+local function nextGreeting(state)
+    local queue=state.autonomy.greetingQueue
+    for index=#queue,1,-1 do
+        local actor=queue[index]
+        local key=identity.key(actor)
+        if not key or state.autonomy.greeted[key] or state.autonomy.interacted[key]
+            or not agentRegistry.get(state.agents,actor) then table.remove(queue,index) end
+    end
+    for index,actor in ipairs(queue) do
+        if autonomyActorEligible(state,actor,false) then
+            table.remove(queue,index)
+            state.autonomy.greeted[identity.key(actor)]=true
+            return actor
+        end
+    end
+    return nil
+end
+
+local function nextBoredActor(state)
+    local candidates={}
+    for _,entry in ipairs(agentRegistry.snapshot(state.agents)) do
+        if entry.identity.kind=='npc' and autonomyActorEligible(state,entry.identity,false) then
+            candidates[#candidates+1]=entry.identity
+        end
+    end
+    if #candidates==0 then return nil end
+    state.autonomy.rotation=(state.autonomy.rotation%#candidates)+1
+    return candidates[state.autonomy.rotation]
+end
+
+local function nextCombatActor(state)
+    local candidates={}
+    for _,actor in pairs(state.combatActors) do
+        if actor.kind=='npc' and autonomyActorEligible(state,actor,true) then candidates[#candidates+1]=actor end
+    end
+    table.sort(candidates,function(left,right)return identity.key(left)<identity.key(right) end)
+    return candidates[1]
+end
+
+-- Run one real-time, idle-only scheduler for greetings, boredom remarks, and combat barks.
+function M.runAutonomy(state,elapsed)
+    local seconds=math.max(0,math.min(5,tonumber(elapsed) or 0))
+    local autonomy=state.autonomy
+    if autonomy.pending then
+        autonomy.pendingSeconds=autonomy.pendingSeconds+seconds
+        if autonomy.pendingSeconds<5 then return false end
+        autonomy.pending=nil autonomy.pendingSeconds=0
+    end
+    local behavior=state.settings and state.settings.behavior or {}
+    local turn=state.conversation.turn
+    local busy=state.disabled or state.hardHalted or not state.sessionId or not responseQueue.idle(state.responseQueue)
+        or (turn and not turn.terminal) or state.pendingVoice~=nil or state.openMic==true
+    if busy then autonomy.idleSeconds=0 return false end
+    autonomy.idleSeconds=autonomy.idleSeconds+seconds
+    if next(state.combatActors)~=nil then autonomy.combatSeconds=autonomy.combatSeconds+seconds
+    else autonomy.combatSeconds=0 end
+
+    local combatPeriod=math.max(5,math.min(300,tonumber(behavior.combatBarkPeriodSeconds) or 20))
+    if behavior.combatBarks==true and autonomy.combatSeconds>=combatPeriod then
+        local actor=nextCombatActor(state)
+        if actor then return requestAutonomy(state,'combat_bark',actor) end
+    end
+    if behavior.autoGreeting==true then
+        local actor=nextGreeting(state)
+        if actor then return requestAutonomy(state,'greeting',actor) end
+    end
+    local boredomDelay=math.max(30,math.min(86400,tonumber(behavior.boredomDelaySeconds) or 180))
+    if behavior.boredom==true and autonomy.idleSeconds>=boredomDelay then
+        local actor=nextBoredActor(state)
+        if actor then return requestAutonomy(state,'boredom',actor) end
+    end
+    return false
 end
 
 function M.selectTarget(state,candidate)
@@ -439,10 +558,19 @@ function M.submitText(state,args)
     end
     local isRechat=args.ui_source=='lorkhan_rechat'
     local isActionFollowup=args.ui_source=='lorkhan_action_followup'
-    local isContinuation=isRechat or isActionFollowup
+    local isAutonomy=({lorkhan_auto_greeting=true,lorkhan_auto_boredom=true,
+        lorkhan_auto_combat_bark=true})[args.ui_source]==true
+    if isAutonomy then
+        state.autonomy.pending=nil state.autonomy.pendingSeconds=0 state.autonomy.idleSeconds=0
+        if not responseQueue.idle(state.responseQueue)
+            or state.conversation.turn and not state.conversation.turn.terminal then return nil,'autonomy_busy' end
+    end
+    local isContinuation=isRechat or isActionFollowup or isAutonomy
     if not isContinuation then
         state.rechat=nil state.rechatEligibility=nil
         if not responseQueue.idle(state.responseQueue) then cancelResponseLane(state,'superseded_by_player',true) end
+        local targetKey=identity.key(state.conversation.target)
+        if targetKey then state.autonomy.interacted[targetKey]=true end
     end
     local requestId=args.request_id
     local turnId=args.turn_id
@@ -515,6 +643,8 @@ function M.submitText(state,args)
         state.rechat.requestInFlight=true
     elseif isActionFollowup then
         state.rechat=nil state.rechatEligibility=nil
+    elseif isAutonomy then
+        state.rechat=nil state.rechatSeed=nil state.rechatEligibility=nil
     end
     state.recentVanillaDialogue={}
     state.emit('LORKHAN_TURN',{status='queued',message_id=args.message_id,request_id=requestId,turn_id=turnId,

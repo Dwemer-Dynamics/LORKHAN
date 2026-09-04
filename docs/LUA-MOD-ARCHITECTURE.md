@@ -78,7 +78,7 @@ into a delivery result, never speech from a substitute.
 - Primary: center camera/crosshair ray filtered to actor types and maximum distance.
 - Controller: same semantic OpenMW action, not hardcoded device scancodes.
 - Secondary: small nearby active-actor picker sorted by distance with identity disambiguation.
-- Automatic greetings, boredom, combat barks, Background Life, ITT, and timer-driven model triggers
+- Background Life, ITT, and timer-driven model triggers outside the owned automatic-dialogue scheduler
   are excluded and have no input action or runtime scheduler.
 - Vanilla `Activate` and dialogue continue unchanged. LORKHAN does not suppress or replace them.
 
