@@ -409,6 +409,9 @@ return {
         LORKHAN_HALT_ACTIONS_REQUEST=function() orchestrator.haltActions(state,'halt_ai_actions') end,
         LORKHAN_HARD_HALT_REQUEST=function() orchestrator.hardHalt(state) end,
         LORKHAN_SETTINGS_UPDATE=function(event) state.settings=event end,
+        LORKHAN_NARRATOR_EVENT_CANDIDATE=function(event)
+            if type(event)=='table' then orchestrator.queueNarratorEvent(state,event.kind,event.context_actor,event.cooldown_ready) end
+        end,
         LORKHAN_VANILLA_DIALOGUE=function(event) orchestrator.recordVanillaDialogue(state,event) end,
         LORKHAN_MENU_DIALOGUE_SPEAK=function(event)
             if type(event)~='table' or type(event.actor)~='table' or type(event.media_id)~='string' then return end

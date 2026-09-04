@@ -53,6 +53,7 @@ local soundSettings=storageOk and openmwStorage.playerSection('SettingsLORKHANSo
 local agentSettings=storageOk and openmwStorage.playerSection('SettingsLORKHANAgents') or nil
 local presentationSettings=storageOk and openmwStorage.playerSection('SettingsLORKHANPresentation') or nil
 local playerInputSettings=storageOk and openmwStorage.playerSection('SettingsLORKHANPlayerInput') or nil
+local narratorEventStorage=storageOk and openmwStorage.playerSection('LORKHANNarratorEvents') or nil
 local inputBindings=storageOk and openmwStorage.playerSection('OMWInputBindings') or nil
 local unpackValues=table.unpack or unpack
 local whiteTexture=uiOk and openmwUi.texture and openmwUi.texture({path='white'}) or nil
@@ -72,6 +73,10 @@ local aimCandidate
 local aimScanElapsed=0
 local aimSignature=''
 local settingsRefreshElapsed=0.5
+local journalScanElapsed=0
+local journalSignature
+local journalSessionId
+local currentNarratorSettings={}
 local SETTINGS_REFRESH_INTERVAL=0.5
 local AIM_SCAN_INTERVAL=0.25
 local AUTO_SCAN_INTERVAL=1.0
@@ -143,6 +148,24 @@ local function audienceNames()
     return #names>0 and table.concat(names,', ') or 'None'
 end
 local function speechActive() return next(speechActors)~=nil or playerSpeech~=nil end
+
+local function narratorCooldownReady(key,minutes)
+    local now=adapter.gameTime()
+    local previous=narratorEventStorage and tonumber(narratorEventStorage:get(key)) or nil
+    if not now or not previous then return true end
+    return now<previous or now-previous>=math.max(1,tonumber(minutes) or 1)*60
+end
+
+local function markNarratorEvent(key)
+    local now=adapter.gameTime()
+    if narratorEventStorage and now then narratorEventStorage:set(key,now) end
+end
+
+local function currentJournalSignature(entries)
+    local latest=type(entries)=='table' and entries[#entries] or nil
+    if type(latest)~='table' then return '' end
+    return table.concat({tostring(latest.id or ''),tostring(latest.quest_id or ''),tostring(latest.text or '')},'|')
+end
 local function nativeValue(name,fallback)
     if not nativeOk or not native or type(native[name])~='function' then return fallback end
     local ok,value=pcall(native[name])
@@ -1426,6 +1449,10 @@ applySettings=function(session,controls)
     local auto=current.autoActivate or {}
     local behavior=current.behavior or {}
     local presentation=current.presentation or {}
+    local narrator=current.narrator or {}
+    narrator.welcomeReady=narratorCooldownReady('lastWelcomeGameTime',narrator.welcome_cooldown_minutes or 10)
+    narrator.questReady=narratorCooldownReady('lastQuestGameTime',narrator.quest_cooldown_minutes or 3)
+    currentNarratorSettings=narrator
     local signature=table.concat({tostring(auto.enabled),tostring(auto.interiorDistance),tostring(auto.exteriorDistance),
         tostring(auto.hearingDistance),tostring(auto.interiorHearingDistance),tostring(auto.exteriorHearingDistance),
         tostring(auto.addHostile),tostring(auto.addCreatures),tostring(behavior.actionsEnabled),
@@ -1434,6 +1461,11 @@ applySettings=function(session,controls)
         tostring(behavior.rechat),tostring(behavior.rechatMaxDepth),
         tostring(behavior.rechatProbabilityPercent),tostring(behavior.rechatMode),tostring(behavior.rechatStrictTargeting),
         tostring(behavior.openRechat),tostring(behavior.endConversationCooldownSeconds),
+        tostring(narrator.enabled),tostring(narrator.welcome_events),tostring(narrator.welcome_cooldown_minutes),
+        tostring(narrator.random_events),tostring(narrator.random_chance_percent),tostring(narrator.random_cooldown_rounds),
+        tostring(narrator.bored_events),tostring(narrator.bored_chance_percent),tostring(narrator.quest_events),
+        tostring(narrator.quest_chance_percent),tostring(narrator.quest_cooldown_minutes),tostring(narrator.book_events),
+        tostring(narrator.welcomeReady),tostring(narrator.questReady),
         tostring(presentation.showStatusHud),tostring(presentation.transcriptRows),
         tostring(presentation.ttsVolumeBoost),tostring(effective and effective.change_token),tostring(session and session.config_revision)},'|')
     if signature==settingsSignature then return end
@@ -1545,6 +1577,7 @@ return {
             if settingsRefreshElapsed>=SETTINGS_REFRESH_INTERVAL then
                 settingsRefreshElapsed=0
                 local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
+                if session and session.session_id~=journalSessionId then journalSessionId=session.session_id journalSignature=nil end
                 local controls=sessionControls()
                 applySettings(session,controls)
                 local signature=controls and table.concat({tostring(controls.selected_model_slot_key),
@@ -1577,6 +1610,22 @@ return {
                 end
                 send('LORKHAN_AUTO_ACTIVATE_SCAN',{candidates=candidates})
             end
+            journalScanElapsed=journalScanElapsed+elapsed
+            if journalScanElapsed>=5 then
+                journalScanElapsed=0
+                local entries=adapter.journalEntries()
+                local signature=currentJournalSignature(entries)
+                if journalSignature==nil then journalSignature=signature
+                elseif signature~='' and signature~=journalSignature then
+                    journalSignature=signature
+                    local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
+                    if session then
+                        send('LORKHAN_NARRATOR_EVENT_CANDIDATE',{kind='quest',context_actor=state.ui.target,
+                            cooldown_ready=narratorCooldownReady('lastQuestGameTime',
+                                currentNarratorSettings.quest_cooldown_minutes or 3)})
+                    end
+                end
+            end
         end,
     },
     eventHandlers={
@@ -1606,14 +1655,22 @@ return {
                 greeting='[Autonomy:greeting]',
                 boredom='[Autonomy:boredom]',
                 combat_bark='[Autonomy:combat_bark]',
+                narrator_welcome='[Narrator:welcome]',
+                narrator_random='[Narrator:random]',
+                narrator_boredom='[Narrator:boredom]',
+                narrator_quest='[Narrator:quest]',
+                narrator_book='[Narrator:book]',
             }
             local text=prompts[event.kind]
             if not text then return end
-            local snapshot=conversationContext(event.actor)
+            if event.kind=='narrator_welcome' then markNarratorEvent('lastWelcomeGameTime') end
+            if event.kind=='narrator_quest' then markNarratorEvent('lastQuestGameTime') end
+            local snapshot=conversationContext(event.context_actor or event.actor)
             snapshot.dialogueMode='Standard'
+            local source=event.kind:match('^narrator_') and 'lorkhan_'..event.kind or 'lorkhan_auto_'..event.kind
             send('LORKHAN_SUBMIT_TEXT',{text=text,language='en-US',speaker=adapter.identity(self),
                 dialogueMode='Standard',context=snapshot,capabilities=CAPABILITIES,recent_action_results={},
-                ui_source='lorkhan_auto_'..event.kind,autonomy_kind=event.kind})
+                ui_source=source,autonomy_kind=event.kind})
         end,
         LORKHAN_MENU_DIALOGUE_SPEECH_STATUS=function(event)
             if not menuDialogueSpeech or not event then return end
@@ -1742,6 +1799,7 @@ return {
         LORKHAN_BOOK_READ=function(event)
             if adapter.rememberBook(event) then
                 state.ui.status='book remembered: '..tostring(event.title or event.record_id)
+                send('LORKHAN_NARRATOR_EVENT_CANDIDATE',{kind='book',context_actor=state.ui.target,cooldown_ready=true})
                 render()
             end
         end,

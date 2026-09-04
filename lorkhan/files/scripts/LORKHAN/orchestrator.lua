@@ -14,7 +14,9 @@ local M={}
 
 local function newAutonomyState()
     return {idleSeconds=0,combatSeconds=0,pending=nil,pendingSeconds=0,greetingQueue={},
-        greeted={},interacted={},rotation=0,profileEvolutionSeconds=0}
+        greeted={},interacted={},rotation=0,profileEvolutionSeconds=0,narratorRounds=0,
+        narratorRandomPending=false,narratorQueue={},welcomeAttempted=false,restoreTarget=nil,restoreTargetPresent=false,
+        activeTurnTarget=nil,activeTurnSource=nil}
 end
 
 function M.new(bridge,emit,sendActor,manageActor)
@@ -27,6 +29,7 @@ function M.new(bridge,emit,sendActor,manageActor)
         activeSpeechMediaId=nil,rechat=nil,rechatSeed=nil,pendingVoice=nil,pendingStt={},openMic=false,openMicRequested=false,
         combatThreats={},combatActors={},combatVerified={},actorStates={},rechatEligibility=nil,
         autonomy=newAutonomyState(),
+        randomPercent=function() return math.random(1,100) end,
         dialogueMode='Standard',disabled=false,hardHalted=false,agentsSignature=nil}
     state.recentVanillaDialogue={}
     return state
@@ -344,6 +347,66 @@ local function requestAutonomy(state,kind,actor)
     return true
 end
 
+local function narratorIdentity(state)
+    local narrator=state.settings and state.settings.narrator or {}
+    return {kind='narrator',record_id='lorkhan:narrator',refnum={index=0,content_file=0},
+        content_file='LORKHAN',cell={kind='interior',name='LORKHAN Narrator'},
+        display_name=type(narrator.name)=='string' and narrator.name~='' and narrator.name or 'The Narrator'}
+end
+
+-- Temporarily target the player-local narrator while preserving the user's world-actor target.
+local function requestNarrator(state,kind,contextActor)
+    local narrator=state.settings and state.settings.narrator or {}
+    if narrator.enabled~=true then return false end
+    local actor=narratorIdentity(state)
+    state.autonomy.restoreTargetPresent=true
+    state.autonomy.restoreTarget=state.conversation.target and util.copy(state.conversation.target) or nil
+    if not conversation.setTarget(state.conversation,actor) then
+        state.autonomy.restoreTarget=nil state.autonomy.restoreTargetPresent=false return false
+    end
+    state.rechat=nil state.rechatSeed=nil state.rechatEligibility=nil
+    state.autonomy.pending={kind=kind,actor=util.copy(actor)}
+    state.autonomy.pendingSeconds=0 state.autonomy.idleSeconds=0
+    state.emit('LORKHAN_AUTONOMY_CONTEXT_REQUEST',{kind=kind,actor=actor,
+        context_actor=contextActor and util.copy(contextActor) or nil,generation=state.generation})
+    return true
+end
+
+local function finishAutonomyTurn(state,succeeded)
+    local autonomy=state.autonomy
+    local target=autonomy.activeTurnTarget
+    local source=autonomy.activeTurnSource
+    if succeeded and target and target.kind=='narrator' then
+        autonomy.narratorRounds=0
+    elseif succeeded and target and target.kind~='narrator' and ({lorkhan_text=true,lorkhan_voice=true,
+        lorkhan_open_mic=true,lorkhan_rechat=true})[source]==true then
+        autonomy.narratorRounds=autonomy.narratorRounds+1
+        autonomy.narratorRandomPending=true
+    end
+    autonomy.activeTurnTarget=nil autonomy.activeTurnSource=nil
+    local restore=autonomy.restoreTarget
+    local shouldRestore=autonomy.restoreTargetPresent
+    autonomy.restoreTarget=nil autonomy.restoreTargetPresent=false
+    if restore then conversation.setTarget(state.conversation,restore)
+    elseif shouldRestore then conversation.clearTarget(state.conversation) end
+end
+
+-- Queue one bounded world event for the narrator; settings and probability stay game-owned.
+function M.queueNarratorEvent(state,kind,contextActor,cooldownReady)
+    if kind~='quest' and kind~='book' then return false,'invalid_narrator_event' end
+    local narrator=state.settings and state.settings.narrator or {}
+    if narrator.enabled~=true or narrator[kind..'_events']~=true then return false,'narrator_event_disabled' end
+    if cooldownReady==false then return false,'narrator_event_cooldown' end
+    if kind=='quest' then
+        local chance=math.max(1,math.min(100,tonumber(narrator.quest_chance_percent) or 10))
+        if state.randomPercent()>chance then return false,'narrator_event_chance' end
+    end
+    local queue=state.autonomy.narratorQueue
+    if #queue>=8 then return false,'narrator_event_queue_full' end
+    queue[#queue+1]={kind='narrator_'..kind,contextActor=contextActor and util.copy(contextActor) or nil}
+    return true
+end
+
 local function nextGreeting(state)
     local queue=state.autonomy.greetingQueue
     for index=#queue,1,-1 do
@@ -392,12 +455,33 @@ function M.runAutonomy(state,elapsed)
         autonomy.pendingSeconds=autonomy.pendingSeconds+seconds
         if autonomy.pendingSeconds<5 then return false end
         autonomy.pending=nil autonomy.pendingSeconds=0
+        local restore=autonomy.restoreTarget
+        local shouldRestore=autonomy.restoreTargetPresent
+        autonomy.restoreTarget=nil autonomy.restoreTargetPresent=false
+        if restore then conversation.setTarget(state.conversation,restore)
+        elseif shouldRestore then conversation.clearTarget(state.conversation) end
     end
     local behavior=state.settings and state.settings.behavior or {}
     local turn=state.conversation.turn
     local busy=state.disabled or state.hardHalted or not state.sessionId or not responseQueue.idle(state.responseQueue)
         or (turn and not turn.terminal) or state.pendingVoice~=nil or state.openMic==true
     if busy then autonomy.idleSeconds=0 return false end
+    local narrator=state.settings and state.settings.narrator or {}
+    if narrator.enabled==true and narrator.welcome_events==true and not autonomy.welcomeAttempted then
+        autonomy.welcomeAttempted=true
+        if narrator.welcomeReady~=false and requestNarrator(state,'narrator_welcome',nil) then return true end
+    end
+    if #autonomy.narratorQueue>0 then
+        local event=table.remove(autonomy.narratorQueue,1)
+        if requestNarrator(state,event.kind,event.contextActor) then return true end
+    end
+    if autonomy.narratorRandomPending then
+        autonomy.narratorRandomPending=false
+        local cooldown=math.max(0,math.min(10,tonumber(narrator.random_cooldown_rounds) or 2))
+        local chance=math.max(1,math.min(100,tonumber(narrator.random_chance_percent) or 15))
+        if narrator.enabled==true and narrator.random_events==true and autonomy.narratorRounds>=cooldown
+            and state.randomPercent()<=chance and requestNarrator(state,'narrator_random',nil) then return true end
+    end
     local profilePeriod=20*60
     if autonomy.profileEvolutionSeconds>=profilePeriod then
         local actors={}
@@ -429,7 +513,13 @@ function M.runAutonomy(state,elapsed)
     local boredomDelay=math.max(30,math.min(86400,tonumber(behavior.boredomDelaySeconds) or 180))
     if behavior.boredom==true and autonomy.idleSeconds>=boredomDelay then
         local actor=nextBoredActor(state)
-        if actor then return requestAutonomy(state,'boredom',actor) end
+        if actor then
+            local chance=math.max(1,math.min(100,tonumber(narrator.bored_chance_percent) or 25))
+            if narrator.enabled==true and narrator.bored_events==true and state.randomPercent()<=chance then
+                return requestNarrator(state,'narrator_boredom',actor)
+            end
+            return requestAutonomy(state,'boredom',actor)
+        end
     end
     return false
 end
@@ -575,7 +665,8 @@ function M.submitText(state,args)
     local isRechat=args.ui_source=='lorkhan_rechat'
     local isActionFollowup=args.ui_source=='lorkhan_action_followup'
     local isAutonomy=({lorkhan_auto_greeting=true,lorkhan_auto_boredom=true,
-        lorkhan_auto_combat_bark=true})[args.ui_source]==true
+        lorkhan_auto_combat_bark=true,lorkhan_narrator_welcome=true,lorkhan_narrator_random=true,
+        lorkhan_narrator_boredom=true,lorkhan_narrator_quest=true,lorkhan_narrator_book=true})[args.ui_source]==true
     if isAutonomy then
         state.autonomy.pending=nil state.autonomy.pendingSeconds=0 state.autonomy.idleSeconds=0
         if not responseQueue.idle(state.responseQueue)
@@ -648,6 +739,8 @@ function M.submitText(state,args)
     if not dto then state.conversation.turn=nil return nil,buildReason end
     local submitted,nativeReason=state.bridge.submitTurn(dto)
     if not submitted then state.conversation.turn=nil return nil,nativeReason end
+    state.autonomy.activeTurnTarget=util.copy(state.conversation.target)
+    state.autonomy.activeTurnSource=args.ui_source
     if not isContinuation then
         args.dialogueMode=mode
         args.mood=nil
@@ -920,6 +1013,7 @@ local function applyTransportFailure(state,event)
         session_id=state.sessionId,generation=state.generation,
         payload={status='failed',code=turn.reason}}
     emitInbound(state,'LORKHAN_EVENT',failed)
+    finishAutonomyTurn(state,false)
     print('[LORKHAN] response turn terminal: transport.failure '..tostring(turn.turnId))
     return true
 end
@@ -996,6 +1090,7 @@ function M.poll(state)
                     emitInbound(state,'LORKHAN_EVENT',event)
                     if event.type=='turn.complete' or event.type=='turn.failed' or event.type=='turn.cancelled' then
                         if state.rechat then state.rechat.requestInFlight=false end
+                        finishAutonomyTurn(state,event.type=='turn.complete')
                         print('[LORKHAN] response turn terminal: '..tostring(event.type)..' '..tostring(event.turn_id))
                     end
                 end

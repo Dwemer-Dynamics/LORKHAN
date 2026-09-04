@@ -1109,6 +1109,35 @@ test('boredom and combat barks share idle and period fences',function()
  eq(orchestrator.runAutonomy(s,1),false)
  truthy(orchestrator.runAutonomy(s,4)) -- a lost player event is retried only after the watchdog expires
 end)
+test('narrator events use welcome, round, quest, and bored fences',function()
+ local b=fake.bridge() local emitted={}
+ local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end,nil,function()return true end)
+ s.randomPercent=function()return 1 end
+ s.settings={autoActivate={enabled=true},behavior={boredom=true,boredomDelaySeconds=30},narrator={enabled=true,
+  name='The Narrator',welcome_events=true,welcomeReady=true,random_events=true,random_chance_percent=100,
+  random_cooldown_rounds=2,bored_events=true,bored_chance_percent=100,quest_events=true,quest_chance_percent=100}}
+ orchestrator.configureSession(s,UUID.session)
+ truthy(orchestrator.runAutonomy(s,0.05));eq(emitted[#emitted].payload.kind,'narrator_welcome')
+ eq(emitted[#emitted].payload.actor.kind,'narrator')
+ orchestrator.runAutonomy(s,5);eq(s.conversation.target,nil)
+ s.conversation.turn=nil
+ s.autonomy.narratorRounds=1;s.autonomy.narratorRandomPending=true
+ eq(orchestrator.runAutonomy(s,0.05),false)
+ s.autonomy.narratorRounds=2;s.autonomy.narratorRandomPending=true
+ truthy(orchestrator.runAutonomy(s,0.05));eq(emitted[#emitted].payload.kind,'narrator_random')
+ orchestrator.runAutonomy(s,5);eq(s.conversation.target,nil)
+ s.conversation.turn=nil
+ truthy(orchestrator.queueNarratorEvent(s,'quest',nil,true));truthy(orchestrator.runAutonomy(s,0.05))
+ eq(emitted[#emitted].payload.kind,'narrator_quest')
+ orchestrator.runAutonomy(s,5);eq(s.conversation.target,nil)
+ s.conversation.turn=nil
+ orchestrator.activate(s,npc,{})
+ local candidate={identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true}
+ orchestrator.scanAgents(s,{candidate})
+ orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,activity='idle',conversation_state='active'})
+ for _=1,6 do orchestrator.runAutonomy(s,5) end
+ eq(emitted[#emitted].payload.kind,'narrator_boredom');truthy(identity.same(emitted[#emitted].payload.context_actor,npc))
+end)
 test('safe movement and combat actions enforce tiers and bounds',function()
  local registry=identity.Registry();registry:activate(npc,{});registry:activate(playerId,{})
  local authority={generation=2,session_id='s',actor=npc,resolve=function(id)return registry:resolve(id)end,expired=function()return false end}
