@@ -141,6 +141,7 @@
         "lorkhan/fixtures/v1/valid/event-journal-utf8.json",
         "lorkhan/fixtures/v1/valid/events.json",
         "lorkhan/fixtures/v1/valid/gamedata-accepted.json",
+        "lorkhan/fixtures/v1/valid/gamedata-automatic-diary.json",
         "lorkhan/fixtures/v1/valid/gamedata-captured-dialogue.json",
         "lorkhan/fixtures/v1/valid/gamedata-morrowind.json",
         "lorkhan/fixtures/v1/valid/health.json",
