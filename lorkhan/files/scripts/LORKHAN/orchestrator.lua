@@ -14,7 +14,7 @@ local M={}
 
 local function newAutonomyState()
     return {idleSeconds=0,combatSeconds=0,pending=nil,pendingSeconds=0,greetingQueue={},
-        greeted={},interacted={},rotation=0}
+        greeted={},interacted={},rotation=0,profileEvolutionSeconds=0}
 end
 
 function M.new(bridge,emit,sendActor,manageActor)
@@ -387,6 +387,7 @@ end
 function M.runAutonomy(state,elapsed)
     local seconds=math.max(0,math.min(5,tonumber(elapsed) or 0))
     local autonomy=state.autonomy
+    if state.sessionId then autonomy.profileEvolutionSeconds=autonomy.profileEvolutionSeconds+seconds end
     if autonomy.pending then
         autonomy.pendingSeconds=autonomy.pendingSeconds+seconds
         if autonomy.pendingSeconds<5 then return false end
@@ -397,6 +398,21 @@ function M.runAutonomy(state,elapsed)
     local busy=state.disabled or state.hardHalted or not state.sessionId or not responseQueue.idle(state.responseQueue)
         or (turn and not turn.terminal) or state.pendingVoice~=nil or state.openMic==true
     if busy then autonomy.idleSeconds=0 return false end
+    local profilePeriod=20*60
+    if autonomy.profileEvolutionSeconds>=profilePeriod then
+        local actors={}
+        for _,entry in ipairs(agentRegistry.snapshot(state.agents)) do
+            if entry.identity.kind=='npc' and state.registry:resolve(entry.identity) then
+                actors[#actors+1]=util.copy(entry.identity)
+                if #actors>=32 then break end
+            end
+        end
+        autonomy.profileEvolutionSeconds=0
+        if #actors>0 then
+            state.emit('LORKHAN_PROFILE_EVOLUTION_REQUEST',{actors=actors,generation=state.generation})
+            return true
+        end
+    end
     autonomy.idleSeconds=autonomy.idleSeconds+seconds
     if next(state.combatActors)~=nil then autonomy.combatSeconds=autonomy.combatSeconds+seconds
     else autonomy.combatSeconds=0 end

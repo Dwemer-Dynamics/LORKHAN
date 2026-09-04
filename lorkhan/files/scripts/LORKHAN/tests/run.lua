@@ -1077,6 +1077,18 @@ test('agent scanning schedules one verified automatic greeting without submittin
  eq(request.payload.kind,'greeting');truthy(identity.same(request.payload.actor,npc))
  eq(orchestrator.runAutonomy(s,0.05),false)
 end)
+test('dynamic profile timer resubmits a bounded nearby batch after the CHIM cadence',function()
+ local b=fake.bridge() local emitted={}
+ local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end,nil,function()return true end)
+ s.settings={autoActivate={enabled=true},behavior={}}
+ orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+ local candidate={identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true}
+ eq(orchestrator.scanAgents(s,{candidate}),1)
+ for _=1,239 do eq(orchestrator.runAutonomy(s,5),false) end
+ truthy(orchestrator.runAutonomy(s,5))
+ local request=emitted[#emitted];eq(request.name,'LORKHAN_PROFILE_EVOLUTION_REQUEST')
+ eq(#request.payload.actors,1);truthy(identity.same(request.payload.actors[1],npc))
+end)
 test('boredom and combat barks share idle and period fences',function()
  local b=fake.bridge() local emitted={}
  local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end,nil,function()return true end)
