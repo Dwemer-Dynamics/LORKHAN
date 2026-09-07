@@ -190,6 +190,17 @@ test('OpenMW async callback retains its package identifier',function()
  local fn=function()return true end;eq(openmwAdapter.callback(fn),fn)
  package.loaded['openmw.async']=savedLoaded;package.preload['openmw.async']=savedPreload
 end)
+test('journal stages match record info IDs without guessing from entry IDs',function()
+ local first='31540100981975929470';local second='1642660101856927121'
+ local entries={{id=first,questId='test_quest',text='First.'},{id=second,questId='test_quest',text='Second.'},
+  {id='10',questId='test_quest',text='Missing record.'},{id='orphan',text='No quest.'}}
+ local modules={types={Player={journal=function()return{journalTextEntries=entries}end}},
+  core={dialogue={journal={records={test_quest={infos={{id=first,questStage=10},{id=second,questStage=20}}}}}}}}
+ local journal=openmwAdapter.journalEntries(modules)
+ eq(#journal,4);eq(journal[1].id,first);eq(journal[1].stage,10);eq(journal[2].stage,20)
+ eq(journal[3].stage,nil);eq(journal[4].stage,nil);eq(journal[1].text,'First.')
+ modules.core={};eq(openmwAdapter.journalEntries(modules)[1].stage,nil)
+end)
 test('future save disables and cannot overwrite',function()
  local raw={schemaVersion=99,secret='do-not-touch'} local loaded,meta=storage.load(raw,4)
  truthy(loaded.disabled) truthy(meta.preserve) local saved,reason=storage.save(loaded);eq(saved,nil);eq(reason,'future_schema_preserved')

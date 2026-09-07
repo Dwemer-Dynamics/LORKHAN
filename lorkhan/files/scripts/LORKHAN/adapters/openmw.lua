@@ -486,9 +486,29 @@ local function journal(player, modules)
     local result={}
     if not entries then return result end
     local first=math.max(1,#entries-31)
+    local records=modules.core and modules.core.dialogue and modules.core.dialogue.journal
+        and modules.core.dialogue.journal.records
+    local questStages={}
     for index=first,#entries do
         local entry=entries[index]
-        result[#result+1]={id=entry.id,quest_id=entry.questId,text=entry.text,day=entry.day,month=entry.month,day_of_month=entry.dayOfMonth}
+        local stages
+        if records and type(entry.questId)=='string' then
+            stages=questStages[entry.questId]
+            if not stages then
+                stages={};questStages[entry.questId]=stages
+                local record=safe(function()return records[entry.questId]end)
+                local infos=record and record.infos
+                -- Journal IDs identify individual lines, not stages. Match the observed line only.
+                if infos then for infoIndex=1,math.min(#infos,1024) do
+                    local info=infos[infoIndex];local stage=info.questStage
+                    if type(stage)=='number' and stage>=0 and stage<=2147483647 and stage%1==0 then
+                        stages[info.id]=stage
+                    end
+                end end
+            end
+        end
+        result[#result+1]={id=entry.id,quest_id=entry.questId,stage=stages and stages[entry.id],
+            text=entry.text,day=entry.day,month=entry.month,day_of_month=entry.dayOfMonth}
     end
     return result
 end

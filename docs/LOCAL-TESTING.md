@@ -25,6 +25,22 @@ pairing configuration, updates the LORKHAN OpenMW profile, and recreates the des
 
 ## OpenMW requirement
 
+### Dynamic Oghma journal stages
+
+The adapter matches each of the latest 32 journal lines to its quest record's
+`DialogueRecordInfo.id` and sends that record's `questStage` as optional `stage`.
+It reads at most 1,024 info records per represented quest and omits the stage when
+no match exists. Entry IDs remain strings; they are never cast to stage numbers.
+This uses the pinned [OpenMW journal record API](https://openmw.readthedocs.io/en/openmw-0.51.0/reference/lua-scripting/openmw_core.html#DialogueRecordInfo.questStage)
+without changing the engine, journal or save. Older servers accept the optional
+field in the existing bounded context object. Restart the game normally after a
+Lua deployment to load changed scripts; deployment does not launch it.
+
+Automated evidence: 67 Lua tests pass, including exact line-to-stage mapping,
+oversized string IDs and unavailable records. The structural Python check has one
+pre-existing failure: it expects the old three-panel `SERVER_CONTROL_PANELS`
+literal, while main already includes `settings=true`. No in-game proof is claimed.
+
 Stock OpenMW does not contain `openmw.lorkhan`. Use the deployed LORKHAN-patched OpenMW 0.51.0 build,
 which was produced from the exact commit in `config/source-pins/openmw.json`. Do not substitute a
 stock OpenMW executable.
