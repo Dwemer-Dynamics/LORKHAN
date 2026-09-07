@@ -392,9 +392,9 @@
       "sha256": "1a1595f30804edfd65c2967b3ef22fcd4cb0048dc01e19ff9649330802f0239b"
     },
     {
-      "bytes": 1028,
+      "bytes": 968,
       "path": "lorkhan/schemas/v1/gamedata-accepted.schema.json",
-      "sha256": "6e401b2d2f9e081663de83bf339f5697c8d17afe5f0604dc3a8ad919679dff68"
+      "sha256": "66fb9b333958f5db965e5530e5f26e806947a490cde1e0dc435c2abe25628993"
     },
     {
       "bytes": 13105,

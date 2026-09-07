@@ -22,13 +22,7 @@
       "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
     },
     "type": {
-      "enum": [
-        "actor_profile",
-        "automatic_diary",
-        "captured_dialogue",
-        "rpg_event"
-      ],
-      "type": "string"
+      "$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/properties/type"
     },
     "comment_requested": {
       "type": "boolean"
