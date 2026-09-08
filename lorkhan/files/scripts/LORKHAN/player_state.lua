@@ -1,7 +1,37 @@
 local ui=require('scripts.LORKHAN.ui.state')
 local targeting=require('scripts.LORKHAN.targeting')
+local util=require('scripts.LORKHAN.util')
 local M={}
 function M.new() return {ui=ui.new(),action='LORKHAN_Talk',haltAction='LORKHAN_Halt'} end
+-- Keep only recent session-owned responder identities; observations without comments never grow this past 32.
+function M.rememberRpgComment(state,request,responder,session,now)
+    local pending=state.pendingRpgComments or {}
+    local count=0
+    for key,item in pairs(pending) do
+        if item.session_id~=session.session_id or item.generation~=session.generation or now-item.created>30 then
+            pending[key]=nil
+        else count=count+1 end
+    end
+    state.pendingRpgComments=pending
+    if count>=32 then return false end
+    pending[request]={responder=util.copy(responder),
+        session_id=session.session_id,generation=session.generation,created=now}
+    return true
+end
+
+-- Consume once, even when stale, so duplicate acknowledgements cannot start another turn.
+function M.takeRpgComment(state,event,session,now)
+    if type(event)~='table' then return nil end
+    local pending=state.pendingRpgComments or {}
+    local item=pending[event.request_id]
+    if not item then return nil end
+    pending[event.request_id]=nil
+    if not session or item.session_id~=session.session_id or item.generation~=session.generation
+        or event.session_id~=item.session_id or event.generation~=item.generation
+        or now-item.created>30 or now<item.created then return nil end
+    return item.responder
+end
+
 -- Apply server-owned target behavior without replacing local presentation, action, or targeting preferences.
 function M.applyTargetSettings(settings,targetSettings)
     targetSettings=targetSettings or {}

@@ -1,0 +1,49 @@
+{
+  "description": "An RPG observation with a frozen NPC responder for Core Profile policy",
+  "instance": {
+    "game": "tes3",
+    "generation": 12,
+    "installation_id": "10000000-0000-4000-8000-000000000001",
+    "observed_at": "2026-08-09T18:00:03Z",
+    "payload": {
+      "kind": "levelup",
+      "player": {
+        "cell": {
+          "kind": "interior",
+          "name": "Balmora"
+        },
+        "content_file": "Morrowind.esm",
+        "display_name": "Player",
+        "kind": "player",
+        "record_id": "player",
+        "refnum": {
+          "content_file": 0,
+          "index": 1
+        }
+      },
+      "responder": {
+        "cell": {
+          "kind": "interior",
+          "name": "Balmora"
+        },
+        "content_file": "Morrowind.esm",
+        "display_name": "Fargoth",
+        "kind": "npc",
+        "record_id": "fargoth",
+        "refnum": {
+          "content_file": 0,
+          "index": 16384
+        }
+      },
+      "game_time": 43210.5,
+      "text": "The player reached level 2."
+    },
+    "playthrough_id": "10000000-0000-4000-8000-000000000002",
+    "request_id": "10000000-0000-4000-8000-000000000014",
+    "runtime_generation": 4,
+    "schema": "lorkhan.gamedata.v1",
+    "session_id": "10000000-0000-4000-8000-000000000005",
+    "type": "rpg_event"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json"
+}

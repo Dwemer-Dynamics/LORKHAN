@@ -47,6 +47,49 @@ test('menu dialogue splits into a bounded ordered sentence queue',function()
  local rpg=assert(protocol.rpgEvent({kind='levelup',player=playerId,game_time=120,text='The player reached level 2.'}))
  eq(rpg.kind,'levelup');eq(protocol.rpgEvent({kind='levelup',player=npc,game_time=120,text='not player'}),nil)
 end)
+test('RPG responder is typed and acknowledgements stay bounded and session owned',function()
+ local args={kind='sleep',player=playerId,responder=npc,game_time=120,text='The player slept.'}
+ local dto=assert(protocol.rpgEvent(args));truthy(identity.same(dto.responder,npc));truthy(dto.responder~=npc)
+ args.responder=playerId;eq(protocol.rpgEvent(args),nil)
+ args.responder=enemy;truthy(protocol.rpgEvent(args));args.kind='lockpick';eq(protocol.rpgEvent(args),nil)
+ local s=player.new();local session={session_id=UUID.session,generation=7}
+ local ack={request_id=UUID.request,session_id=UUID.session,generation=7}
+ truthy(player.rememberRpgComment(s,UUID.request,npc,session,10))
+ truthy(identity.same(player.takeRpgComment(s,ack,session,11),npc))
+ eq(player.takeRpgComment(s,ack,session,11),nil)
+ truthy(player.rememberRpgComment(s,UUID.request,npc,session,10))
+ eq(player.takeRpgComment(s,ack,session,41),nil)
+ truthy(player.rememberRpgComment(s,UUID.request,npc,session,10))
+ eq(player.takeRpgComment(s,ack,{session_id=UUID.session,generation=8},11),nil)
+ for i=1,32 do truthy(player.rememberRpgComment(s,tostring(i),npc,session,10)) end
+ eq(player.rememberRpgComment(s,'overflow',npc,session,10),false)
+ truthy(player.rememberRpgComment(s,'new',npc,{session_id='new-session',generation=7},11))
+ local count=0;for _ in pairs(s.pendingRpgComments) do count=count+1 end;eq(count,1)
+end)
+test('RPG global handoff refuses changed responders, generations and busy turns',function()
+ local function setup()
+  local b=fake.bridge();local s=orchestrator.new(b,nil,nil,function()return true end)
+  orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+  truthy(orchestrator.selectTarget(s,{identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true}))
+  local request=b.nextTurnMetadata();request.text='[RPG:sleep] The player slept.';request.language='en-US'
+  request.speaker=playerId;request.context={};request.capabilities={'dialogue.text'};request.recent_action_results={}
+  request.ui_source='lorkhan_rpg_event';request.rpg_responder=npc;request.rpg_session_id=s.sessionId;request.rpg_generation=s.generation
+  return b,s,request
+ end
+ local b,s,request=setup();request.rpg_responder=enemy
+ local ok,reason=orchestrator.submitText(s,request);eq(ok,nil);eq(reason,'stale_rpg_responder');eq(#b.submitted,0)
+ b,s,request=setup();request.rpg_generation=s.generation+1
+ ok,reason=orchestrator.submitText(s,request);eq(ok,nil);eq(reason,'stale_rpg_responder')
+ b,s,request=setup();s.conversation.turn={terminal=false}
+ ok,reason=orchestrator.submitText(s,request);eq(ok,nil);eq(reason,'rpg_busy');eq(#b.submitted,0)
+ b,s,request=setup();s.combatActors[identity.key(enemy)]=true
+ ok,reason=orchestrator.submitText(s,request);eq(ok,nil);eq(reason,'rpg_busy')
+ b,s,request=setup();truthy(orchestrator.submitText(s,request));truthy(identity.same(b.submitted[1].payload.target,npc))
+ eq(s.autonomy.rpgCooldownSeconds,60)
+ ok,reason=orchestrator.submitText(s,request);eq(ok,nil);eq(reason,'rpg_cooldown')
+ for _=1,12 do orchestrator.runAutonomy(s,5) end;eq(s.autonomy.rpgCooldownSeconds,0)
+ orchestrator.lifecycle(s,'load');eq(s.autonomy.rpgCooldownSeconds,0)
+end)
 local function uuid(value) return string.format('00000000-0000-4000-8000-%012x',value) end
 local function dialogueLine(index,lineId,speaker,listener,text,final,speechEnabled)
  return {schema='lorkhan.response.line.v1',line_id=lineId,line_index=index,speaker=speaker.display_name,

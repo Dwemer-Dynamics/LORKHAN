@@ -409,7 +409,6 @@
           "enum": [
             "levelup",
             "combat_end",
-            "lockpick",
             "sleep",
             "wait"
           ]
@@ -426,6 +425,30 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 1024
+        },
+        "responder": {
+          "allOf": [
+            {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cell": {},
+                "content_file": {},
+                "display_name": {},
+                "kind": {
+                  "enum": [
+                    "npc",
+                    "creature"
+                  ]
+                },
+                "record_id": {},
+                "refnum": {}
+              }
+            }
+          ]
         }
       }
     }

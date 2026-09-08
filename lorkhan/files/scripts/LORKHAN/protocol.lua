@@ -207,13 +207,20 @@ end
 
 -- Real RPG observations stay separate from spoken dialogue and model-authored event text.
 function M.rpgEvent(args)
-    if type(args)~='table' or not ({levelup=true,combat_end=true,lockpick=true,sleep=true,wait=true})[args.kind] then
+    if type(args)~='table' or not ({levelup=true,combat_end=true,sleep=true,wait=true})[args.kind] then
         return nil,'invalid_rpg_event'
     end
     if not identity.validate(args.player) or args.player.kind~='player' then return nil,'invalid_rpg_player' end
     if type(args.game_time)~='number' or args.game_time~=args.game_time or args.game_time<0 or args.game_time>9007199254740991 then return nil,'invalid_game_time' end
     if type(args.text)~='string' or #args.text<1 or #args.text>1024 then return nil,'invalid_rpg_text' end
-    return {kind=args.kind,player=util.copy(args.player),game_time=args.game_time,text=args.text}
+    local payload={kind=args.kind,player=util.copy(args.player),game_time=args.game_time,text=args.text}
+    if args.responder~=nil then
+        if not identity.validate(args.responder) or (args.responder.kind~='npc' and args.responder.kind~='creature') then
+            return nil,'invalid_rpg_responder'
+        end
+        payload.responder=util.copy(args.responder)
+    end
+    return payload
 end
 
 -- Validate one bounded automatic diary candidate before it reaches the native bridge.

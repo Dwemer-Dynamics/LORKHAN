@@ -483,13 +483,20 @@ local function flushActorProfiles(dt)
     end
 end
 
--- Submit a bounded timer, sleep, or wait diary candidate; the server owns profile eligibility and cooldowns.
+-- Persist the observation and freeze the eligible responder before the server makes its profile policy decision.
 local function submitRpgEvent(kind,text)
-    if not nativeOk or not native.submitRpgEvent or not native.sessionInfo or not native.sessionInfo() then return end
-    local payload=protocol.rpgEvent({kind=kind,player=adapter.identity(self),game_time=adapter.gameTime(),text=text})
+    if not nativeOk or not native.submitRpgEvent or not native.sessionInfo then return end
+    local session=native.sessionInfo()
+    if not session then return end
+    local responder=state.ui.target
+    local distance=responder and adapter.actorDistance(responder)
+    if turnActive or nearbyCombat or speechActive() or state.ui.visible or not distance or distance>2048 then responder=nil end
+    local payload=protocol.rpgEvent({kind=kind,player=adapter.identity(self),game_time=adapter.gameTime(),text=text,responder=responder})
     if not payload then return end
     local request,reason=native.submitRpgEvent(payload)
-    if not request then print('[LORKHAN] RPG event not queued: '..tostring(reason)) end
+    if request and responder then
+        player.rememberRpgComment(state,request,responder,session,core.getRealTime())
+    elseif not request then print('[LORKHAN] RPG event not queued: '..tostring(reason)) end
 end
 
 local function submitAutomaticDiary(trigger)
@@ -1927,13 +1934,17 @@ return {
         end,
         LORKHAN_AUTO_ACTIVATED=submitAutoActorProfile,
         LORKHAN_RPG_COMMENT=function(event)
-            if not state.ui.target or turnActive or nearbyCombat or speechActive() or state.ui.visible then return end
-            local distance=adapter.actorDistance(state.ui.target)
+            local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
+            local responder=player.takeRpgComment(state,event,session,core.getRealTime())
+            if not responder or not identity.same(responder,state.ui.target)
+                or turnActive or nearbyCombat or speechActive() or state.ui.visible then return end
+            local distance=adapter.actorDistance(responder)
             if not distance or distance>2048 then return end
-            local snapshot=conversationContext(state.ui.target)
+            local snapshot=conversationContext(responder)
             snapshot.dialogueMode='Standard'
             send('LORKHAN_SUBMIT_TEXT',{text='[RPG:'..event.kind..'] '..event.text,language='en-US',
                 speaker=adapter.identity(self),dialogueMode='Standard',context=snapshot,
+                rpg_responder=responder,rpg_session_id=event.session_id,rpg_generation=event.generation,
                 capabilities=CAPABILITIES,recent_action_results={},ui_source='lorkhan_rpg_event'})
         end,
         LORKHAN_PROFILE_EVOLUTION_REQUEST=function(event)

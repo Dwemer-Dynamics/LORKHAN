@@ -14,7 +14,7 @@ local M={}
 
 local function newAutonomyState()
     return {idleSeconds=0,combatSeconds=0,pending=nil,pendingSeconds=0,greetingQueue={},
-        greeted={},interacted={},rotation=0,profileEvolutionSeconds=0,narratorRounds=0,
+        greeted={},interacted={},rotation=0,profileEvolutionSeconds=0,narratorRounds=0,rpgCooldownSeconds=0,
         narratorRandomPending=false,narratorQueue={},welcomeAttempted=false,restoreTarget=nil,restoreTargetPresent=false,
         activeTurnTarget=nil,activeTurnSource=nil}
 end
@@ -450,6 +450,7 @@ end
 function M.runAutonomy(state,elapsed)
     local seconds=math.max(0,math.min(5,tonumber(elapsed) or 0))
     local autonomy=state.autonomy
+    autonomy.rpgCooldownSeconds=math.max(0,autonomy.rpgCooldownSeconds-seconds)
     if state.sessionId then autonomy.profileEvolutionSeconds=autonomy.profileEvolutionSeconds+seconds end
     if autonomy.pending then
         autonomy.pendingSeconds=autonomy.pendingSeconds+seconds
@@ -662,6 +663,14 @@ function M.submitText(state,args)
     for _,key in ipairs({'request_id','turn_id','message_id'}) do
         if not protocol.isUuid(args[key]) then return nil,'invalid_'..key end
     end
+    if args.ui_source=='lorkhan_rpg_event' then
+        if state.autonomy.rpgCooldownSeconds>0 then return nil,'rpg_cooldown' end
+        if args.rpg_session_id~=state.sessionId or args.rpg_generation~=state.generation
+            or not identity.same(args.rpg_responder,state.conversation.target) then return nil,'stale_rpg_responder' end
+        if not responseQueue.idle(state.responseQueue) or next(state.combatActors)~=nil
+            or state.pendingVoice~=nil or state.openMic==true
+            or state.conversation.turn and not state.conversation.turn.terminal then return nil,'rpg_busy' end
+    end
     local isRechat=args.ui_source=='lorkhan_rechat'
     local isActionFollowup=args.ui_source=='lorkhan_action_followup'
     local isAutonomy=({lorkhan_auto_greeting=true,lorkhan_auto_boredom=true,
@@ -739,6 +748,7 @@ function M.submitText(state,args)
     if not dto then state.conversation.turn=nil return nil,buildReason end
     local submitted,nativeReason=state.bridge.submitTurn(dto)
     if not submitted then state.conversation.turn=nil return nil,nativeReason end
+    if args.ui_source=='lorkhan_rpg_event' then state.autonomy.rpgCooldownSeconds=60 end
     state.autonomy.activeTurnTarget=util.copy(state.conversation.target)
     state.autonomy.activeTurnSource=args.ui_source
     if not isContinuation then
