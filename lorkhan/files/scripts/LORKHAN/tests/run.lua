@@ -1185,6 +1185,18 @@ test('boredom and combat barks share idle and period fences',function()
  eq(orchestrator.runAutonomy(s,1),false)
  truthy(orchestrator.runAutonomy(s,4)) -- a lost player event is retried only after the watchdog expires
 end)
+test('combat cooldown accepts the full profile range without a 300 second clamp',function()
+ local b=fake.bridge() local emitted={}
+ local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end,nil,function()return true end)
+ s.settings={autoActivate={enabled=true},behavior={combatBarks=true,combatBarkPeriodSeconds=600}}
+ orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+ orchestrator.scanAgents(s,{{identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true}})
+ orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,activity='combat',conversation_state='busy'})
+ for _=1,119 do eq(orchestrator.runAutonomy(s,5),false) end
+ eq(orchestrator.runAutonomy(s,4),false);truthy(orchestrator.runAutonomy(s,1))
+ eq(emitted[#emitted].payload.kind,'combat_bark')
+end)
+
 test('narrator events use welcome, round, quest, and bored fences',function()
  local b=fake.bridge() local emitted={}
  local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end,nil,function()return true end)

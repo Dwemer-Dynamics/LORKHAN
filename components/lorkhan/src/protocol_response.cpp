@@ -700,7 +700,7 @@ Result<ClientSettings> parseClientSettings(const json::Value& value)
     auto strictRechat=requireBoolean(*behavior,"rechat_strict_targeting");auto openRechat=requireBoolean(*behavior,"open_rechat");
     auto rechatActions=requireBoolean(*behavior,"rechat_allow_actions");auto conversationCooldown=requireUnsigned(*behavior,"end_conversation_cooldown_seconds",300);
     auto boredom=requireBoolean(*behavior,"boredom");auto boredomDelay=requireUnsigned(*behavior,"boredom_delay_seconds",86400,30);
-    auto combatBarks=requireBoolean(*behavior,"combat_barks");auto combatPeriod=requireUnsigned(*behavior,"combat_bark_period_seconds",300,5);
+    auto combatBarks=requireBoolean(*behavior,"combat_barks");auto combatPeriod=requireUnsigned(*behavior,"combat_bark_period_seconds",600,5);
     auto recentTurns=requireUnsigned(*memory,"recent_turn_limit",100,1);auto knowledgeLimit=requireUnsigned(*memory,"knowledge_limit",20);
     auto narratorEnabled=requireBoolean(*narrator,"enabled");auto narratorName=requireString(*narrator,"name",1,128);
     auto contextVisibility=requireBoolean(*narrator,"context_visibility");auto inlineMode=requireString(*narrator,"inline_mode",1,16);
@@ -784,7 +784,7 @@ Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::V
     auto strictRechat=requireBoolean(*behavior,"rechat_strict_targeting");auto openRechat=requireBoolean(*behavior,"open_rechat");
     auto rechatActions=requireBoolean(*behavior,"rechat_allow_actions");auto conversationCooldown=requireUnsigned(*behavior,"end_conversation_cooldown_seconds",300);
     auto boredom=requireBoolean(*behavior,"boredom");auto boredomDelay=requireUnsigned(*behavior,"boredom_delay_seconds",86400,30);
-    auto combatBarks=requireBoolean(*behavior,"combat_barks");auto combatPeriod=requireUnsigned(*behavior,"combat_bark_period_seconds",300,5);
+    auto combatBarks=requireBoolean(*behavior,"combat_barks");auto combatPeriod=requireUnsigned(*behavior,"combat_bark_period_seconds",600,5);
     auto recentTurns=requireUnsigned(*memory,"recent_turn_limit",100,1);auto knowledgeLimit=requireUnsigned(*memory,"knowledge_limit",20);
     auto narratorEnabled=requireBoolean(*narrator,"enabled");auto narratorName=requireString(*narrator,"name",1,128);
     auto contextVisibility=requireBoolean(*narrator,"context_visibility");auto inlineMode=requireString(*narrator,"inline_mode",1,16);

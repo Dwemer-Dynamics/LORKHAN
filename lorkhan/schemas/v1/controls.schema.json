@@ -140,7 +140,7 @@
                 "combat_bark_period_seconds": {
                   "type": "integer",
                   "minimum": 5,
-                  "maximum": 300
+                  "maximum": 600
                 }
               },
               "required": [

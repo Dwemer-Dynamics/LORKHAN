@@ -334,7 +334,7 @@
     {
       "bytes": 4231,
       "path": "lorkhan/schemas/v1/client-settings.schema.json",
-      "sha256": "bbf0464cf9bef4ba8c67cce004c8aa35f9fdc6656b146b0a0f6ab3e8c94aba2b"
+      "sha256": "5330d64a6bb539cacb22dedc10dbbfd672104ee4db48a5958664b9d34f0dc84e"
     },
     {
       "bytes": 4501,
@@ -354,7 +354,7 @@
     {
       "bytes": 20422,
       "path": "lorkhan/schemas/v1/controls.schema.json",
-      "sha256": "a17d4fb5fc550ca5501867bc242031772a0a5f51251d7b10ddde8ed18b47cabe"
+      "sha256": "98f17dd9989d76395159659176be3096acb1898a48a2755ccff316e61503ccac"
     },
     {
       "bytes": 771,

@@ -9,7 +9,7 @@
         "auto_greeting": {"type": "boolean"},
         "boredom": {"type": "boolean"},
         "boredom_delay_seconds": {"maximum": 86400, "minimum": 30, "type": "integer"},
-        "combat_bark_period_seconds": {"maximum": 300, "minimum": 5, "type": "integer"},
+        "combat_bark_period_seconds": {"maximum": 600, "minimum": 5, "type": "integer"},
         "combat_barks": {"type": "boolean"},
         "rechat": {"type": "boolean"},
         "end_conversation_cooldown_seconds": {"maximum": 300, "minimum": 0, "type": "integer"},
