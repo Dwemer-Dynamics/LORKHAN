@@ -410,7 +410,7 @@ return {
         LORKHAN_HARD_HALT_REQUEST=function() orchestrator.hardHalt(state) end,
         LORKHAN_SETTINGS_UPDATE=function(event) state.settings=event end,
         LORKHAN_NARRATOR_EVENT_CANDIDATE=function(event)
-            if type(event)=='table' then orchestrator.queueNarratorEvent(state,event.kind,event.context_actor,event.cooldown_ready) end
+            if type(event)=='table' then orchestrator.queueNarratorEvent(state,event.kind,event.context_actor,event.cooldown_ready,event.observed_text) end
         end,
         LORKHAN_BORED_POLICY_SUBMITTED=function(event) orchestrator.bindBoredRequest(state,event) end,
         LORKHAN_VANILLA_DIALOGUE=function(event) orchestrator.recordVanillaDialogue(state,event) end,

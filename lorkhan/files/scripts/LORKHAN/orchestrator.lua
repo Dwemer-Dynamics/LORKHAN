@@ -355,7 +355,7 @@ local function narratorIdentity(state)
 end
 
 -- Temporarily target the player-local narrator while preserving the user's world-actor target.
-local function requestNarrator(state,kind,contextActor)
+local function requestNarrator(state,kind,contextActor,observedText)
     local narrator=state.settings and state.settings.narrator or {}
     if narrator.enabled~=true then return false end
     local actor=narratorIdentity(state)
@@ -368,7 +368,7 @@ local function requestNarrator(state,kind,contextActor)
     state.autonomy.pending={kind=kind,actor=util.copy(actor)}
     state.autonomy.pendingSeconds=0 state.autonomy.idleSeconds=0
     state.emit('LORKHAN_AUTONOMY_CONTEXT_REQUEST',{kind=kind,actor=actor,
-        context_actor=contextActor and util.copy(contextActor) or nil,generation=state.generation})
+        context_actor=contextActor and util.copy(contextActor) or nil,generation=state.generation,observed_text=observedText})
     return true
 end
 
@@ -392,8 +392,9 @@ local function finishAutonomyTurn(state,succeeded)
 end
 
 -- Queue one bounded world event for the narrator; settings and probability stay game-owned.
-function M.queueNarratorEvent(state,kind,contextActor,cooldownReady)
+function M.queueNarratorEvent(state,kind,contextActor,cooldownReady,observedText)
     if kind~='quest' and kind~='book' then return false,'invalid_narrator_event' end
+    if observedText~=nil and (kind~='quest' or type(observedText)~='string' or #observedText<1 or #observedText>8192) then return false,'invalid_narrator_observation' end
     local narrator=state.settings and state.settings.narrator or {}
     if narrator.enabled~=true or narrator[kind..'_events']~=true then return false,'narrator_event_disabled' end
     if cooldownReady==false then return false,'narrator_event_cooldown' end
@@ -403,7 +404,7 @@ function M.queueNarratorEvent(state,kind,contextActor,cooldownReady)
     end
     local queue=state.autonomy.narratorQueue
     if #queue>=8 then return false,'narrator_event_queue_full' end
-    queue[#queue+1]={kind='narrator_'..kind,contextActor=contextActor and util.copy(contextActor) or nil}
+    queue[#queue+1]={kind='narrator_'..kind,contextActor=contextActor and util.copy(contextActor) or nil,observedText=observedText}
     return true
 end
 
@@ -478,7 +479,7 @@ function M.runAutonomy(state,elapsed)
     end
     if #autonomy.narratorQueue>0 then
         local event=table.remove(autonomy.narratorQueue,1)
-        if requestNarrator(state,event.kind,event.contextActor) then return true end
+        if requestNarrator(state,event.kind,event.contextActor,event.observedText) then return true end
     end
     if autonomy.narratorRandomPending then
         autonomy.narratorRandomPending=false

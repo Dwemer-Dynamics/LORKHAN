@@ -224,12 +224,10 @@ function M.rpgEvent(args)
 end
 
 -- Send complete observed quest lines within the wire limit; never invent an unknown journal stage.
-function M.questEvent(args)
-    if type(args)~='table' or not identity.validate(args.responder) or args.responder.kind~='npc'
-        or type(args.game_time)~='number' or args.game_time~=args.game_time or args.game_time<0
-        or args.game_time>9007199254740991 or type(args.entries)~='table' then return nil,'invalid_quest_event' end
+function M.questText(entries)
+    if type(entries)~='table' then return nil,'invalid_quest_event' end
     local lines,bytes={},0
-    for _,entry in ipairs(args.entries) do
+    for _,entry in ipairs(entries) do
         if type(entry)=='table' and type(entry.quest_id)=='string' and type(entry.text)=='string' and entry.text~='' then
             local heading='Quest '..entry.quest_id
             if type(entry.stage)=='number' and entry.stage>=0 and entry.stage%1==0 then heading=heading..', stage '..tostring(entry.stage) end
@@ -239,7 +237,17 @@ function M.questEvent(args)
         if #lines>=32 then break end
     end
     if #lines==0 then return nil,'quest_text_unavailable' end
-    return {responder=util.copy(args.responder),game_time=args.game_time,text=table.concat(lines,'\n')}
+    return table.concat(lines,'\n')
+end
+
+-- Bind the formatted observation to an eligible NPC for the server policy decision.
+function M.questEvent(args)
+    if type(args)~='table' or not identity.validate(args.responder) or args.responder.kind~='npc'
+        or type(args.game_time)~='number' or args.game_time~=args.game_time or args.game_time<0
+        or args.game_time>9007199254740991 then return nil,'invalid_quest_event' end
+    local text,reason=M.questText(args.entries)
+    if not text then return nil,reason end
+    return {responder=util.copy(args.responder),game_time=args.game_time,text=text}
 end
 
 -- Validate one bounded automatic diary candidate before it reaches the native bridge.

@@ -1894,7 +1894,7 @@ return {
                 if #changes>0 then
                     if session then
                         if currentNarratorSettings.enabled==true and currentNarratorSettings.quest_events==true then
-                            send('LORKHAN_NARRATOR_EVENT_CANDIDATE',{kind='quest',context_actor=state.ui.target,
+                            send('LORKHAN_NARRATOR_EVENT_CANDIDATE',{kind='quest',context_actor=state.ui.target,observed_text=protocol.questText(changes),
                                 cooldown_ready=narratorCooldownReady('lastQuestGameTime',
                                     currentNarratorSettings.quest_cooldown_minutes or 3)})
                         else submitQuestEvent(changes,session) end
@@ -1978,6 +1978,7 @@ return {
             }
             local text=prompts[event.kind]
             if not text then return end
+            if event.kind=='narrator_quest' and type(event.observed_text)=='string' then text=text..'\n'..event.observed_text end
             if event.kind=='narrator_welcome' then markNarratorEvent('lastWelcomeGameTime') end
             if event.kind=='narrator_quest' then markNarratorEvent('lastQuestGameTime') end
             local snapshot=conversationContext(event.context_actor or event.actor)

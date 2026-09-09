@@ -1246,8 +1246,10 @@ test('narrator events use welcome, round, quest, and bored fences',function()
  truthy(orchestrator.runAutonomy(s,0.05));eq(emitted[#emitted].payload.kind,'narrator_random')
  orchestrator.runAutonomy(s,5);eq(s.conversation.target,nil)
  s.conversation.turn=nil
- truthy(orchestrator.queueNarratorEvent(s,'quest',nil,true));truthy(orchestrator.runAutonomy(s,0.05))
+ truthy(orchestrator.queueNarratorEvent(s,'quest',nil,true,'Quest test, stage 20: Observed objective.'));truthy(orchestrator.runAutonomy(s,0.05))
  eq(emitted[#emitted].payload.kind,'narrator_quest')
+ eq(emitted[#emitted].payload.observed_text,'Quest test, stage 20: Observed objective.')
+ eq(orchestrator.queueNarratorEvent(s,'quest',nil,true,string.rep('x',8193)),false)
  orchestrator.runAutonomy(s,5);eq(s.conversation.target,nil)
  s.conversation.turn=nil
  orchestrator.activate(s,npc,{})
