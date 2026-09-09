@@ -244,7 +244,7 @@ struct BookReadAloudRequest {
     std::string text;
 };
 
-enum class GameDataType { captured_dialogue, actor_profile, automatic_diary, rpg_event, bored_event };
+enum class GameDataType { captured_dialogue, actor_profile, automatic_diary, rpg_event, bored_event, quest_event };
 
 struct GameDataRequest {
     InstallationId installation;

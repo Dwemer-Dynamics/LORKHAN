@@ -45,6 +45,7 @@ std::string_view gameDataTypeName(GameDataType type)
         case GameDataType::automatic_diary: return "automatic_diary";
         case GameDataType::rpg_event: return "rpg_event";
         case GameDataType::bored_event: return "bored_event";
+        case GameDataType::quest_event: return "quest_event";
     }
     return {};
 }

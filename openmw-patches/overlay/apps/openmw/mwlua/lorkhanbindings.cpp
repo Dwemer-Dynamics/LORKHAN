@@ -656,7 +656,7 @@ namespace MWLua
                 {
                     const lorkhan::RequestId request(uuid());
                     const std::string serialized = toJson(sol::make_object(lua, payload));
-                    if((type==lorkhan::GameDataType::rpg_event||type==lorkhan::GameDataType::bored_event)&&m_rpgRequests.size()>=32)
+                    if((type==lorkhan::GameDataType::rpg_event||type==lorkhan::GameDataType::bored_event||type==lorkhan::GameDataType::quest_event)&&m_rpgRequests.size()>=32)
                         return failure(lua,"rpg_event_queue_full");
                     lorkhan::OutboundRequest outbound{request, *m_session, m_service->generation(),
                         lorkhan::RequestKind::gamedata,
@@ -666,6 +666,8 @@ namespace MWLua
                     if (!accepted) return failure(lua, accepted.error().message);
                     if(type==lorkhan::GameDataType::rpg_event)
                         m_rpgRequests.emplace(request.value(),std::make_pair(payload.get<std::string>("kind"),payload.get<std::string>("text")));
+                    if(type==lorkhan::GameDataType::quest_event)
+                        m_rpgRequests.emplace(request.value(),std::make_pair("quest_event",payload.get<std::string>("text")));
                     if(type==lorkhan::GameDataType::bored_event)
                         m_rpgRequests.emplace(request.value(),std::make_pair("bored_event", ""));
                     return success(lua, request.value());
@@ -1250,7 +1252,7 @@ namespace MWLua
                     if(rpg!=m_rpgRequests.end()){
                         auto accepted=lorkhan::parseGameDataAcceptedResponse(result.payload,jsonHeaders());
                         if(accepted&&!accepted.value().duplicate&&(accepted.value().commentRequested||rpg->second.first=="bored_event")){
-                            sol::table event(lua,sol::create);event["type"]=rpg->second.first=="bored_event"?"bored.decision":"rpg.comment";
+                            sol::table event(lua,sol::create);event["type"]=rpg->second.first=="bored_event"?"bored.decision":(rpg->second.first=="quest_event"?"quest.comment":"rpg.comment");
                             event["comment_requested"]=accepted.value().commentRequested;
                             event["request_id"]=result.request.value();event["session_id"]=accepted.value().session.value();
                             event["generation"]=accepted.value().generation.value();
@@ -1648,6 +1650,9 @@ namespace MWLua
             };
             api["submitAutomaticDiary"] = [lua](sol::table payload) {
                 return client().submitGameData(lua,lorkhan::GameDataType::automatic_diary,std::move(payload));
+            };
+            api["submitQuestEvent"] = [lua](sol::table payload) {
+                return client().submitGameData(lua,lorkhan::GameDataType::quest_event,std::move(payload));
             };
             api["submitBoredEvent"] = [lua](sol::table payload) {
                 return client().submitGameData(lua,lorkhan::GameDataType::bored_event,std::move(payload));

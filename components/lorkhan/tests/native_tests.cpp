@@ -350,6 +350,11 @@ void testAcceptedProtocolResponses()
         R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"bored_event","duplicate":false,"comment_requested":false})",
         jsonHeaders);
     CHECK(boredEvent && boredEvent.value().type == "bored_event" && !boredEvent.value().commentRequested);
+    auto questEvent = lorkhan::parseGameDataAcceptedResponse(
+        R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"quest_event","duplicate":false,"comment_requested":true})",
+        jsonHeaders);
+    CHECK(questEvent && questEvent.value().type == "quest_event" && questEvent.value().commentRequested);
+
 
     CHECK(!lorkhan::parseGameDataAcceptedResponse(
         R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"journal","duplicate":false})",

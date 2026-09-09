@@ -695,7 +695,7 @@ function M.submitText(state,args)
     for _,key in ipairs({'request_id','turn_id','message_id'}) do
         if not protocol.isUuid(args[key]) then return nil,'invalid_'..key end
     end
-    if args.ui_source=='lorkhan_rpg_event' then
+    if (args.ui_source=='lorkhan_rpg_event' or args.ui_source=='lorkhan_quest_event') then
         if state.autonomy.rpgCooldownSeconds>0 then return nil,'rpg_cooldown' end
         if args.rpg_session_id~=state.sessionId or args.rpg_generation~=state.generation
             or not identity.same(args.rpg_responder,state.conversation.target) then return nil,'stale_rpg_responder' end
@@ -780,7 +780,7 @@ function M.submitText(state,args)
     if not dto then state.conversation.turn=nil return nil,buildReason end
     local submitted,nativeReason=state.bridge.submitTurn(dto)
     if not submitted then state.conversation.turn=nil return nil,nativeReason end
-    if args.ui_source=='lorkhan_rpg_event' then state.autonomy.rpgCooldownSeconds=60 end
+    if (args.ui_source=='lorkhan_rpg_event' or args.ui_source=='lorkhan_quest_event') then state.autonomy.rpgCooldownSeconds=60 end
     state.autonomy.activeTurnTarget=util.copy(state.conversation.target)
     state.autonomy.activeTurnSource=args.ui_source
     if not isContinuation then
@@ -1068,7 +1068,7 @@ function M.poll(state)
         local event=results[index]
         if event.type=='bored.decision' then
             if acceptBoredDecision(state,event) then accepted=accepted+1 end
-        elseif event.type=='rpg.comment' then
+        elseif event.type=='rpg.comment' or event.type=='quest.comment' then
             if event.session_id==state.sessionId and event.generation==state.generation then
                 state.emit('LORKHAN_RPG_COMMENT',event)
                 accepted=accepted+1

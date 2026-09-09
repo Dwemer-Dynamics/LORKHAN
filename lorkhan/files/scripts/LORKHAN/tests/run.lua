@@ -233,6 +233,12 @@ test('OpenMW async callback retains its package identifier',function()
  local fn=function()return true end;eq(openmwAdapter.callback(fn),fn)
  package.loaded['openmw.async']=savedLoaded;package.preload['openmw.async']=savedPreload
 end)
+test('quest commentary carries observed journal text without inventing stages',function()
+ local args={responder=npc,game_time=120,entries={{quest_id='mq_test',stage=20,text='Actual journal line.'},{quest_id='unknown',text='No known stage.'}}}
+ local q=assert(protocol.questEvent(args));eq(q.text,'Quest mq_test, stage 20: Actual journal line.\nQuest unknown: No known stage.')
+ truthy(identity.same(q.responder,npc));args.responder=playerId;eq(protocol.questEvent(args),nil)
+ args.responder=npc;args.entries={{quest_id='too_long',text=string.rep('x',8193)}};eq(protocol.questEvent(args),nil)
+end)
 test('journal deltas preserve entry content and fence initial snapshots and session changes',function()
  local s={} local session={session_id=UUID.session,generation=1}
  local first={id='a',quest_id='quest',stage=10,text='First objective.'}

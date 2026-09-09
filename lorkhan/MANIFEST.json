@@ -247,6 +247,11 @@
       "sha256": "3a117b195a4b8be68fe46311a095c806f624cfbf60122b46448f684e46f97d9e"
     },
     {
+      "bytes": 1074,
+      "path": "lorkhan/fixtures/v1/valid/gamedata-quest-responder.json",
+      "sha256": "78cb1ab83d3931f58d9cd1f09791899748ddf596a3f254b26d89ec8e8b7239fa"
+    },
+    {
       "bytes": 1381,
       "path": "lorkhan/fixtures/v1/valid/gamedata-rpg-responder.json",
       "sha256": "5ccf17b6bcaf0b24c562551235b936fe33fb9690199c182edcc0b3f2459a043c"
@@ -417,9 +422,9 @@
       "sha256": "66fb9b333958f5db965e5530e5f26e806947a490cde1e0dc435c2abe25628993"
     },
     {
-      "bytes": 15401,
+      "bytes": 16649,
       "path": "lorkhan/schemas/v1/gamedata.schema.json",
-      "sha256": "faeafed7558eeeed7cea06640fdb48a7f476c7ee44f15d9c36cc5e5c01a43fbc"
+      "sha256": "cb1e9a599f8ae00a12448fd6b041fcec3458fdc8f7acc7e99fe33ec646c55ee7"
     },
     {
       "bytes": 295,

@@ -492,6 +492,18 @@ local function submitRpgEvent(kind,text)
     elseif not request then print('[LORKHAN] RPG event not queued: '..tostring(reason)) end
 end
 
+-- Freeze the NPC and actual journal update while the server evaluates its Core quest policy.
+local function submitQuestEvent(entries,session)
+    if not nativeOk or not native.submitQuestEvent or not session then return end
+    local responder=state.ui.target
+    local distance=responder and adapter.actorDistance(responder)
+    if turnActive or nearbyCombat or speechActive() or state.ui.visible or not distance or distance>2048 then return end
+    local payload=protocol.questEvent({entries=entries,responder=responder,game_time=adapter.gameTime()})
+    if not payload then return end
+    local request=native.submitQuestEvent(payload)
+    if request then player.rememberRpgComment(state,request,responder,session,core.getRealTime()) end
+end
+
 local function submitAutomaticDiary(trigger)
     if not nativeOk or not native or type(native.sessionInfo)~='function' or not native.sessionInfo() then return end
     local gameTime=adapter.gameTime()
@@ -1881,9 +1893,11 @@ return {
                 local changes=player.journalChanges(state,adapter.journalEntries(),session)
                 if #changes>0 then
                     if session then
-                        send('LORKHAN_NARRATOR_EVENT_CANDIDATE',{kind='quest',context_actor=state.ui.target,
-                            cooldown_ready=narratorCooldownReady('lastQuestGameTime',
-                                currentNarratorSettings.quest_cooldown_minutes or 3)})
+                        if currentNarratorSettings.enabled==true and currentNarratorSettings.quest_events==true then
+                            send('LORKHAN_NARRATOR_EVENT_CANDIDATE',{kind='quest',context_actor=state.ui.target,
+                                cooldown_ready=narratorCooldownReady('lastQuestGameTime',
+                                    currentNarratorSettings.quest_cooldown_minutes or 3)})
+                        else submitQuestEvent(changes,session) end
                     end
                 end
             end
@@ -1941,10 +1955,10 @@ return {
             if not distance or distance>2048 then return end
             local snapshot=conversationContext(responder)
             snapshot.dialogueMode='Standard'
-            send('LORKHAN_SUBMIT_TEXT',{text='[RPG:'..event.kind..'] '..event.text,language='en-US',
+            send('LORKHAN_SUBMIT_TEXT',{text=(event.type=='quest.comment' and '[Quest update] ' or '[RPG:'..event.kind..'] ')..event.text,language='en-US',
                 speaker=adapter.identity(self),dialogueMode='Standard',context=snapshot,
                 rpg_responder=responder,rpg_session_id=event.session_id,rpg_generation=event.generation,
-                capabilities=CAPABILITIES,recent_action_results={},ui_source='lorkhan_rpg_event'})
+                capabilities=CAPABILITIES,recent_action_results={},ui_source=event.type=='quest.comment' and 'lorkhan_quest_event' or 'lorkhan_rpg_event'})
         end,
         LORKHAN_PROFILE_EVOLUTION_REQUEST=function(event)
             if type(event)~='table' or type(event.actors)~='table' then return end
