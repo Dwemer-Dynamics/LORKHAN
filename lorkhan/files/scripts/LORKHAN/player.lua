@@ -1933,6 +1933,16 @@ return {
             end
         end,
         LORKHAN_AUTO_ACTIVATED=submitAutoActorProfile,
+        LORKHAN_BORED_POLICY_REQUEST=function(event)
+            local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
+            if not session or not native.submitBoredEvent or type(event)~='table'
+                or event.session_id~=session.session_id or event.generation~=session.generation then return end
+            local gameTime=adapter.gameTime()
+            if type(gameTime)~='number' or not identity.validate(event.actor) or event.actor.kind~='npc' then return end
+            local request=native.submitBoredEvent({responder=event.actor,game_time=gameTime})
+            if request then send('LORKHAN_BORED_POLICY_SUBMITTED',{request_id=request,actor=event.actor,
+                session_id=event.session_id,generation=event.generation,opportunity=event.opportunity}) end
+        end,
         LORKHAN_RPG_COMMENT=function(event)
             local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
             local responder=player.takeRpgComment(state,event,session,core.getRealTime())

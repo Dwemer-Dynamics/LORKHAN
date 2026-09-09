@@ -1176,7 +1176,17 @@ test('boredom and combat barks share idle and period fences',function()
  orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,activity='idle',conversation_state='active'})
  for _=1,5 do eq(orchestrator.runAutonomy(s,5),false) end
  eq(orchestrator.runAutonomy(s,4),false);truthy(orchestrator.runAutonomy(s,1))
- eq(emitted[#emitted].payload.kind,'boredom')
+ eq(emitted[#emitted].name,'LORKHAN_BORED_POLICY_REQUEST')
+ truthy(orchestrator.bindBoredRequest(s,{opportunity=s.autonomy.boredPending.opportunity,actor=npc,session_id=s.sessionId,generation=s.generation,request_id=UUID.request}))
+ local count=#emitted
+ b.pollResults=function()return {{type='bored.decision',request_id=UUID.request,session_id=s.sessionId,generation=s.generation,comment_requested=false}} end
+ orchestrator.poll(s);eq(#emitted,count);eq(s.autonomy.boredPending,nil)
+ for _=1,5 do eq(orchestrator.runAutonomy(s,5),false) end
+ truthy(orchestrator.runAutonomy(s,5));eq(emitted[#emitted].name,'LORKHAN_BORED_POLICY_REQUEST')
+ truthy(orchestrator.bindBoredRequest(s,{opportunity=s.autonomy.boredPending.opportunity,actor=npc,session_id=s.sessionId,generation=s.generation,request_id=UUID.request}))
+ b.pollResults=function()return {{type='bored.decision',request_id=UUID.request,session_id=s.sessionId,generation=s.generation,comment_requested=true}} end
+ orchestrator.poll(s);eq(emitted[#emitted].payload.kind,'boredom')
+ count=#emitted;orchestrator.poll(s);eq(#emitted,count)
  s.autonomy.pending=nil;s.conversation.turn=nil
  orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,activity='combat',conversation_state='busy'})
  eq(orchestrator.runAutonomy(s,4),false);truthy(orchestrator.runAutonomy(s,1))
@@ -1224,6 +1234,10 @@ test('narrator events use welcome, round, quest, and bored fences',function()
  orchestrator.scanAgents(s,{candidate})
  orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,activity='idle',conversation_state='active'})
  for _=1,6 do orchestrator.runAutonomy(s,5) end
+ eq(emitted[#emitted].name,'LORKHAN_BORED_POLICY_REQUEST')
+ truthy(orchestrator.bindBoredRequest(s,{opportunity=s.autonomy.boredPending.opportunity,actor=npc,session_id=s.sessionId,generation=s.generation,request_id=UUID.request}))
+ b.pollResults=function()return {{type='bored.decision',request_id=UUID.request,session_id=s.sessionId,generation=s.generation,comment_requested=true}} end
+ orchestrator.poll(s)
  eq(emitted[#emitted].payload.kind,'narrator_boredom');truthy(identity.same(emitted[#emitted].payload.context_actor,npc))
 end)
 test('safe movement and combat actions enforce tiers and bounds',function()

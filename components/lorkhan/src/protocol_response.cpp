@@ -1372,13 +1372,13 @@ Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(
     if (!session) return invalidSchemaValue<GameDataAcceptedResponse>(session.error().message);
     if (!generation) return invalidSchemaValue<GameDataAcceptedResponse>(generation.error().message);
     if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile"
-        &&type.value()!="automatic_diary"&&type.value()!="rpg_event"))
+        &&type.value()!="automatic_diary"&&type.value()!="rpg_event"&&type.value()!="bored_event"))
         return invalidSchemaValue<GameDataAcceptedResponse>("game-data type mismatch");
     if (!duplicate) return invalidSchemaValue<GameDataAcceptedResponse>(duplicate.error().message);
     bool comment=false;
     if(json::find(object.value(),"comment_requested")){
         auto value=requireBoolean(object.value(),"comment_requested");
-        if(!value||type.value()!="rpg_event")return invalidSchemaValue<GameDataAcceptedResponse>("unexpected RPG commentary flag");
+        if(!value||(type.value()!="rpg_event"&&type.value()!="bored_event"))return invalidSchemaValue<GameDataAcceptedResponse>("unexpected RPG commentary flag");
         comment=value.value();
     }
     return Result<GameDataAcceptedResponse>::success({RequestId(std::move(request).value()),

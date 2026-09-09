@@ -44,6 +44,7 @@ std::string_view gameDataTypeName(GameDataType type)
         case GameDataType::actor_profile: return "actor_profile";
         case GameDataType::automatic_diary: return "automatic_diary";
         case GameDataType::rpg_event: return "rpg_event";
+        case GameDataType::bored_event: return "bored_event";
     }
     return {};
 }

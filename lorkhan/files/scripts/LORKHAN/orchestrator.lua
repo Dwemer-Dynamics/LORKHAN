@@ -451,6 +451,10 @@ function M.runAutonomy(state,elapsed)
     local seconds=math.max(0,math.min(5,tonumber(elapsed) or 0))
     local autonomy=state.autonomy
     autonomy.rpgCooldownSeconds=math.max(0,autonomy.rpgCooldownSeconds-seconds)
+    if autonomy.boredPending then
+        autonomy.boredPending.seconds=autonomy.boredPending.seconds+seconds
+        if autonomy.boredPending.seconds>=30 then autonomy.boredPending=nil end
+    end
     if state.sessionId then autonomy.profileEvolutionSeconds=autonomy.profileEvolutionSeconds+seconds end
     if autonomy.pending then
         autonomy.pendingSeconds=autonomy.pendingSeconds+seconds
@@ -512,17 +516,45 @@ function M.runAutonomy(state,elapsed)
         if actor then return requestAutonomy(state,'greeting',actor) end
     end
     local boredomDelay=math.max(30,math.min(86400,tonumber(behavior.boredomDelaySeconds) or 180))
-    if behavior.boredom==true and autonomy.idleSeconds>=boredomDelay then
+    if behavior.boredom==true and not autonomy.boredPending and autonomy.idleSeconds>=boredomDelay then
         local actor=nextBoredActor(state)
         if actor then
-            local chance=math.max(1,math.min(100,tonumber(narrator.bored_chance_percent) or 25))
-            if narrator.enabled==true and narrator.bored_events==true and state.randomPercent()<=chance then
-                return requestNarrator(state,'narrator_boredom',actor)
-            end
-            return requestAutonomy(state,'boredom',actor)
+            autonomy.idleSeconds=0
+            autonomy.boredSequence=(autonomy.boredSequence or 0)+1
+            autonomy.boredPending={actor=util.copy(actor),seconds=0,session_id=state.sessionId,generation=state.generation,opportunity=autonomy.boredSequence}
+            state.emit('LORKHAN_BORED_POLICY_REQUEST',{actor=util.copy(actor),session_id=state.sessionId,generation=state.generation,opportunity=autonomy.boredSequence})
+            return true
         end
     end
     return false
+end
+
+-- Bind the asynchronous policy reply to this one idle opportunity, never to the selected NPC.
+function M.bindBoredRequest(state,event)
+    local pending=state.autonomy.boredPending
+    if not pending or type(event)~='table' or event.session_id~=pending.session_id
+        or event.generation~=pending.generation or event.opportunity~=pending.opportunity or not identity.same(event.actor,pending.actor) then return false end
+    pending.request_id=event.request_id
+    return true
+end
+
+local function acceptBoredDecision(state,event)
+    local pending=state.autonomy.boredPending
+    if not pending or not pending.request_id or event.request_id~=pending.request_id then return false end
+    state.autonomy.boredPending=nil
+    if event.session_id~=state.sessionId or event.generation~=state.generation
+        or pending.session_id~=state.sessionId or pending.generation~=state.generation
+        or event.comment_requested~=true or state.disabled or state.hardHalted
+        or state.settings.behavior.boredom~=true or not responseQueue.idle(state.responseQueue)
+        or (state.conversation.turn and not state.conversation.turn.terminal)
+        or state.pendingVoice~=nil or state.openMic==true
+        or not autonomyActorEligible(state,pending.actor,false) then return false end
+    local narrator=state.settings.narrator or {}
+    local chance=math.max(1,math.min(100,tonumber(narrator.bored_chance_percent) or 25))
+    if narrator.enabled==true and narrator.bored_events==true and state.randomPercent()<=chance then
+        return requestNarrator(state,'narrator_boredom',pending.actor)
+    end
+    return requestAutonomy(state,'boredom',pending.actor)
 end
 
 function M.selectTarget(state,candidate)
@@ -1034,7 +1066,9 @@ function M.poll(state)
     local accepted=0
     for index=1,math.min(#results,constants.MAX_INBOUND_RESULTS) do
         local event=results[index]
-        if event.type=='rpg.comment' then
+        if event.type=='bored.decision' then
+            if acceptBoredDecision(state,event) then accepted=accepted+1 end
+        elseif event.type=='rpg.comment' then
             if event.session_id==state.sessionId and event.generation==state.generation then
                 state.emit('LORKHAN_RPG_COMMENT',event)
                 accepted=accepted+1

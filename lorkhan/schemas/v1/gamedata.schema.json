@@ -451,6 +451,44 @@
           ]
         }
       }
+    },
+    "bored_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "responder",
+        "game_time"
+      ],
+      "properties": {
+        "responder": {
+          "allOf": [
+            {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cell": {},
+                "content_file": {},
+                "display_name": {},
+                "kind": {
+                  "enum": [
+                    "npc"
+                  ]
+                },
+                "record_id": {},
+                "refnum": {}
+              }
+            }
+          ]
+        },
+        "game_time": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
     }
   },
   "additionalProperties": false,
@@ -498,6 +536,9 @@
         },
         {
           "$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/rpg_event"
+        },
+        {
+          "$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/bored_event"
         }
       ]
     },
@@ -529,7 +570,8 @@
         "journal",
         "nearby_actors",
         "world_context",
-        "rpg_event"
+        "rpg_event",
+        "bored_event"
       ],
       "type": "string"
     }
