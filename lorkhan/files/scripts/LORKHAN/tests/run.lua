@@ -233,6 +233,21 @@ test('OpenMW async callback retains its package identifier',function()
  local fn=function()return true end;eq(openmwAdapter.callback(fn),fn)
  package.loaded['openmw.async']=savedLoaded;package.preload['openmw.async']=savedPreload
 end)
+test('journal deltas preserve entry content and fence initial snapshots and session changes',function()
+ local s={} local session={session_id=UUID.session,generation=1}
+ local first={id='a',quest_id='quest',stage=10,text='First objective.'}
+ local second={id='b',quest_id='quest',stage=20,text='Second objective.'}
+ eq(#player.journalChanges(s,{first,second},session),0)
+ eq(#player.journalChanges(s,{second,first},session),0) -- ordering alone is not an update
+ first.stage=11
+ local changed=player.journalChanges(s,{first,second},session)
+ eq(#changed,1);eq(changed[1].stage,11);eq(changed[1].text,'First objective.')
+ changed[1].text='mutated';eq(#player.journalChanges(s,{first,second},session),0)
+ second.text='New objective text.';eq(#player.journalChanges(s,{first,second},session),1)
+ eq(#player.journalChanges(s,{second},session),0) -- truncated/removed rows are not new entries
+ session.generation=2;eq(#player.journalChanges(s,{first,second},session),0)
+ eq(#player.journalChanges(s,{},nil),0);eq(#player.journalChanges(s,{first,second},session),0)
+end)
 test('journal stages match record info IDs without guessing from entry IDs',function()
  local first='31540100981975929470';local second='1642660101856927121'
  local entries={{id=first,questId='test_quest',text='First.'},{id=second,questId='test_quest',text='Second.'},

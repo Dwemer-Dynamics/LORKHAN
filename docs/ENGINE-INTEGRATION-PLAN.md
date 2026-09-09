@@ -133,3 +133,18 @@ route. The player must enable Read Books Aloud, which defaults off. Existing ver
 local speech playback are reused; no provider, actor impersonation, path, or arbitrary URL is accepted.
 `pumpMenuDialogueTts` advances only owned speech/media during paused menus and defers other results.
 Book closure, Halt, session change, and generation change cancel pending and playing book speech.
+
+
+### Quest journal delta preparation (2026-09-08)
+
+Replaced the final-line-only signature with a bounded 32-entry comparison owned
+by the current session and generation. Initial snapshots and ordering/removal
+alone do not emit updates; changed stage/text retains the exact entry payload
+for the upcoming Quest Comment request. Existing narrator routing remains in
+place. Tests cover baseline, order, stage/text changes, copy isolation, repeated
+snapshot and session-generation reset: 71 Lua tests passed.
+
+Deployed only player.lua and player_state.lua with matching hashes and unchanged
+Config; local Temp rollback `lorkhan-journal-rollback-o54upfn0`. No engine build
+needed and no game launched. This does not yet implement NPC Quest Comments: the
+server request, actual changed-text prompt, Core UI and end-to-end checks remain.

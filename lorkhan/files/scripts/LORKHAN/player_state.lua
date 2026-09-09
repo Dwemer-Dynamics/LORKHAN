@@ -3,6 +3,33 @@ local targeting=require('scripts.LORKHAN.targeting')
 local util=require('scripts.LORKHAN.util')
 local M={}
 function M.new() return {ui=ui.new(),action='LORKHAN_Talk',haltAction='LORKHAN_Halt'} end
+-- Compare the bounded observed journal window without treating session/load snapshots as new quests.
+function M.journalChanges(state,entries,session)
+    if not session or type(entries)~='table' then state.journalBaseline=nil return {} end
+    local previous=state.journalBaseline
+    local current={session_id=session.session_id,generation=session.generation,entries={}}
+    local changed={}
+    local sameSession=previous and previous.session_id==session.session_id and previous.generation==session.generation
+    for index=math.max(1,#entries-31),#entries do
+        local entry=entries[index]
+        if type(entry)=='table' and type(entry.id)=='string' and type(entry.quest_id)=='string'
+            and type(entry.text)=='string' and entry.text~='' then
+            local key=tostring(#entry.quest_id)..':'..entry.quest_id..entry.id
+            local old=sameSession and previous.entries[key] or nil
+            local differs=not old
+            if old then
+                for _,field in ipairs({'stage','text','day','month','day_of_month'}) do
+                    if old[field]~=entry[field] then differs=true break end
+                end
+            end
+            current.entries[key]=util.copy(entry)
+            if sameSession and differs then changed[#changed+1]=util.copy(entry) end
+        end
+    end
+    state.journalBaseline=current
+    return changed
+end
+
 -- Keep only recent session-owned responder identities; observations without comments never grow this past 32.
 function M.rememberRpgComment(state,request,responder,session,now)
     local pending=state.pendingRpgComments or {}

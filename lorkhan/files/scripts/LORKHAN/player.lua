@@ -85,8 +85,6 @@ local aimScanElapsed=0
 local aimSignature=''
 local settingsRefreshElapsed=0.5
 local journalScanElapsed=0
-local journalSignature
-local journalSessionId
 local currentNarratorSettings={}
 local SETTINGS_REFRESH_INTERVAL=0.5
 local AIM_SCAN_INTERVAL=0.25
@@ -174,11 +172,6 @@ local function markNarratorEvent(key)
     if narratorEventStorage and now then narratorEventStorage:set(key,now) end
 end
 
-local function currentJournalSignature(entries)
-    local latest=type(entries)=='table' and entries[#entries] or nil
-    if type(latest)~='table' then return '' end
-    return table.concat({tostring(latest.id or ''),tostring(latest.quest_id or ''),tostring(latest.text or '')},'|')
-end
 local function nativeValue(name,fallback)
     if not nativeOk or not native or type(native[name])~='function' then return fallback end
     local ok,value=pcall(native[name])
@@ -1849,7 +1842,6 @@ return {
                     submitRpgEvent('levelup','The player reached level '..tostring(level)..'.')
                 end
                 observedPlayerLevel=level
-                if session and session.session_id~=journalSessionId then journalSessionId=session.session_id journalSignature=nil end
                 local controls=sessionControls()
                 applySettings(session,controls)
                 local signature=controls and table.concat({tostring(controls.selected_model_slot_key),
@@ -1885,12 +1877,9 @@ return {
             journalScanElapsed=journalScanElapsed+elapsed
             if journalScanElapsed>=5 then
                 journalScanElapsed=0
-                local entries=adapter.journalEntries()
-                local signature=currentJournalSignature(entries)
-                if journalSignature==nil then journalSignature=signature
-                elseif signature~='' and signature~=journalSignature then
-                    journalSignature=signature
-                    local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
+                local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
+                local changes=player.journalChanges(state,adapter.journalEntries(),session)
+                if #changes>0 then
                     if session then
                         send('LORKHAN_NARRATOR_EVENT_CANDIDATE',{kind='quest',context_actor=state.ui.target,
                             cooldown_ready=narratorCooldownReady('lastQuestGameTime',
