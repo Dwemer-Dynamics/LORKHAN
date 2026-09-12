@@ -21,6 +21,21 @@ function M.execute(state, command, adapter, authority)
         if ok then return actions.result(state.actions,accepted.action_id,'succeeded',detail or 'inspection_completed',observed or {}) end
         return actions.result(state.actions,accepted.action_id,'failed',detail or 'engine_rejected',{})
     end
+    if accepted.name=='conversation.end' then
+        -- Release only LORKHAN-owned packages; vanilla actor behavior stays under the game's control.
+        M.cancelFace(state,adapter,'conversation_ended')
+        if state.ownedAi then
+            local ok,detail=adapter.stopAi(state.ownedAi)
+            if not ok then return actions.result(state.actions,accepted.action_id,'failed',detail or 'engine_rejected',{}) end
+            state.ownedAi=nil
+        end
+        if state.ownedCombat then
+            local ok,detail=adapter.stopCombat(state.ownedCombat.target)
+            if not ok then return actions.result(state.actions,accepted.action_id,'failed',detail or 'engine_rejected',{}) end
+            state.ownedCombat=nil
+        end
+        return actions.result(state.actions,accepted.action_id,'succeeded','conversation_ended',{})
+    end
     if accepted.name=='ai.stop' then
         if not state.ownedAi then return actions.result(state.actions,accepted.action_id,'succeeded','no_owned_ai_package',{}) end
         local ok,detail=adapter.stopAi(state.ownedAi)

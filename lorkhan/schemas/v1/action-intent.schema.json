@@ -337,6 +337,74 @@
       },
       "required": ["schema", "action_id", "turn_id", "name", "tier", "actor", "target", "parameters", "expires_at"],
       "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        },
+        "actor": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+        },
+        "expires_at": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+        },
+        "confirmation_required": {
+          "type": "boolean"
+        },
+        "display_name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "followup_enabled": {
+          "type": "boolean"
+        },
+        "followup_actions_allowed": {
+          "type": "boolean"
+        },
+        "followup_depth": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "const": "conversation.end",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": false,
+          "properties": {},
+          "type": "object"
+        },
+        "schema": {
+          "const": "lorkhan.action-intent.v1",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+        },
+        "tier": {
+          "const": 1,
+          "type": "integer"
+        },
+        "turn_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        }
+      },
+      "required": [
+        "schema",
+        "action_id",
+        "turn_id",
+        "name",
+        "tier",
+        "actor",
+        "target",
+        "parameters",
+        "expires_at"
+      ],
+      "type": "object"
     }
   ]
 }

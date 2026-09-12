@@ -656,6 +656,25 @@ test('halt actions cancels queued rolecommands and reports terminal receipts',fu
  local snapshot=require('scripts.LORKHAN.response_queue').snapshot(s.responseQueue)
  eq(snapshot.pending_actions,0);truthy(snapshot.unfinished==false)
 end)
+test('successful End Conversation suppresses Rechat and result followups',function()
+ local b=fake.bridge() local sent={}
+ local s=orchestrator.new(b,nil,function(_,name,payload)sent[#sent+1]={name=name,payload=payload};return true end)
+ orchestrator.configureSession(s,UUID.session)
+ s.conversation.turn={requestId=UUID.request,turnId=UUID.turn,generation=1,status='accepted',terminal=false}
+ orchestrator.activate(s,npc,{});s.attachments[identity.key(npc)]=npc
+ local lineId=uuid(185);local actionId=uuid(186)
+ local intent={schema='lorkhan.action-intent.v1',action_id=actionId,request_id=UUID.request,turn_id=UUID.turn,
+  session_id=UUID.session,generation=1,name='conversation.end',tier=1,actor=npc,target=playerId,
+  followup_enabled=true,parameters={},expires_at='2026-07-19T21:00:00Z'}
+ local actionEvent=event(2,'action.intent',1,intent);actionEvent.message_id=lineId
+ b.results={responseEvent(1,{actionLine(0,lineId,npc,playerId,'conversation.end',{})},1),actionEvent,
+  event(3,'turn.complete',1,{status='complete'})}
+ eq(orchestrator.poll(s),3);eq(sent[1].name,'LORKHAN_ACTOR_ACTION')
+ s.rechat={lastSpeaker=npc};s.rechatSeed={};s.rechatEligibility={}
+ local result={action_id=actionId,status='succeeded',reason_code='conversation_ended'}
+ truthy(orchestrator.actionResult(s,{result=result}));eq(s.rechat,nil);eq(s.rechatSeed,nil);eq(s.rechatEligibility,nil)
+ eq(#s.actionFollowups.pending,0);eq(#b.submitted,0)
+end)
 test('narrator media uses the ordered player-local speech lane',function()
  local b=fake.bridge() local emitted={} local actorSends=0
  local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end,
@@ -733,6 +752,22 @@ test('face action reports only observed completion and cancels cleanly',function
  adapter.updateFace=function()return false,'face_interrupted_by_combat',{},'cancelled' end
  actor.execute(state,intent,adapter,authority);result=actor.updateFace(state,adapter,0.016)
  eq(result.status,'cancelled');eq(result.reason,'face_interrupted_by_combat')
+end)
+test('ending conversation releases only owned packages and reports cleanup failures',function()
+ local authority={generation=2,session_id='s',actor=npc,resolve=function()return {}end,expired=function()return false end}
+ local intent={schema='lorkhan.action-intent.v1',action_id='end',request_id='r',turn_id='t',session_id='s',
+  generation=2,name='conversation.end',tier=1,actor=npc,target=playerId,parameters={},expires_at='soon'}
+ local state=actor.new(npc,2,{'action.conversation.end'});state.ownedAi={type='Follow'};state.ownedCombat={target=playerId}
+ local stopped={}
+ local result=actor.execute(state,intent,{stopAi=function(owned)stopped.ai=owned.type;return true end,
+  stopCombat=function(target)stopped.combat=target;return true end},authority)
+ eq(result.status,'succeeded');eq(result.reason,'conversation_ended');eq(stopped.ai,'Follow');eq(stopped.combat,playerId)
+ eq(state.ownedAi,nil);eq(state.ownedCombat,nil)
+ state=actor.new(npc,2,{'action.conversation.end'});state.ownedAi={type='Follow'}
+ result=actor.execute(state,intent,{stopAi=function()return false,'cleanup_failed'end},authority)
+ eq(result.status,'failed');eq(result.reason,'cleanup_failed');eq(state.ownedAi.type,'Follow')
+ state=actor.new(npc,2,{'action.conversation.end'});intent.parameters={script='tgm'}
+ result=actor.execute(state,intent,{},authority);eq(result.status,'rejected')
 end)
 test('typed player action request remains inside the strict turn envelope',function()
  local dto,reason=protocol.turn({message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,

@@ -32,6 +32,11 @@
       "sha256": "ca94a22df3ef7e2546934fa064f8d4b5877e23091b3791f3432eccce447451b1"
     },
     {
+      "bytes": 1105,
+      "path": "lorkhan/fixtures/v1/invalid/action-intent-conversation-end-parameters.json",
+      "sha256": "daa0fdee0b77a09f074d5a860d64ffb8ba3e7cf82dcc46467d2f7ec7f0f641af"
+    },
+    {
       "bytes": 700,
       "path": "lorkhan/fixtures/v1/invalid/debug-command-browser-extra.json",
       "sha256": "b7ba4079c7fae35be3d72552c83f8d8557fdae272c4d1a546ba81166bc8d5d2c"
@@ -145,6 +150,11 @@
       "bytes": 954,
       "path": "lorkhan/fixtures/v1/valid/action-intent-ai-wait.json",
       "sha256": "c374d388b1cea47cba3ef7d2df499d57d17a4bfadf129b06c69c3aaa532f31d3"
+    },
+    {
+      "bytes": 1068,
+      "path": "lorkhan/fixtures/v1/valid/action-intent-conversation-end.json",
+      "sha256": "0f91fc5f635ee8a3ee951d734814f54ddc987bce04800e2c32944006010c06fa"
     },
     {
       "bytes": 1048,
@@ -357,9 +367,9 @@
       "sha256": "ed9a6501ff7e95631f777ac770f87313f2b717f816f60a1cc87eccb544ee8473"
     },
     {
-      "bytes": 23371,
+      "bytes": 25139,
       "path": "lorkhan/schemas/v1/action-intent.schema.json",
-      "sha256": "49c4e89d1eca53dc1182574e2c96855a164c29159b8945b3874b9ba194d3645b"
+      "sha256": "25eeaeace57a4e2fcab4badc0fb4e3196f3fbbb6c0e480283d48f3bb7c152137"
     },
     {
       "bytes": 1157,
@@ -432,9 +442,9 @@
       "sha256": "f11514d29c05c6f44bbc8a5b1d10c31079de8c9a34610d65db78c222f617c984"
     },
     {
-      "bytes": 1897,
+      "bytes": 1930,
       "path": "lorkhan/schemas/v1/error.schema.json",
-      "sha256": "753375ebfe4a29ce6164042b256f0a6006bd0df6f2b0cff46159ae4ec9bc6d7a"
+      "sha256": "f7077172eaf7ba2956fcc58026a939549c666d5d979bb94bee78eec2d780a3f0"
     },
     {
       "bytes": 4900,

@@ -1458,7 +1458,7 @@ namespace MWLua
             }
 
             static std::vector<std::string> capabilities()
-            { return { "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "speech.browser.v1", "action.ai.follow", "action.ai.stop",
+            { return { "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "speech.browser.v1", "action.conversation.end", "action.ai.follow", "action.ai.stop",
                 "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
                 "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" }; }
@@ -1493,6 +1493,7 @@ namespace MWLua
                         switch (item.kind) {
                             case lorkhan::ActionIntentKind::ai_follow: name = "ai.follow"; tier = 1; break;
                             case lorkhan::ActionIntentKind::ai_stop: name = "ai.stop"; tier = 1; break;
+                            case lorkhan::ActionIntentKind::conversation_end: name = "conversation.end"; tier = 1; break;
                             case lorkhan::ActionIntentKind::ai_approach: name = "ai.approach"; tier = 1; break;
                             case lorkhan::ActionIntentKind::ai_wait: name = "ai.wait"; tier = 1; break;
                             case lorkhan::ActionIntentKind::ai_travel: name = "ai.travel"; tier = 1; break;

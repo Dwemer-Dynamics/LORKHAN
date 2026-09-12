@@ -245,6 +245,7 @@ void testProtocolResponses()
              std::pair{"action_tier_mismatch", lorkhan::ErrorCode::invalid_action},
              std::pair{"invalid_audio", lorkhan::ErrorCode::media_rejected},
              std::pair{"rechat_cooldown", lorkhan::ErrorCode::cancelled},
+             std::pair{"conversation_cooldown", lorkhan::ErrorCode::cancelled},
              std::pair{"invalid_rechat_context", lorkhan::ErrorCode::invalid_schema}}) {
         const auto response = lorkhan::parseProtocolErrorResponse(
             std::string(R"({"schema":"lorkhan.error.v1","code":")") + code
@@ -568,13 +569,13 @@ void testProtocolEventResponses()
             && equip->intent.stringParameter == "iron dagger"
             && equip->intent.secondaryStringParameter == "carried_right");
     }
-    auto parityActions = lorkhan::parseEventsResponse(
+    const std::string parityActionsJson =
         R"({"schema":"lorkhan.events.v1","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"next_after":3,"events":[
         {"message_id":"01900000-0000-7000-8000-000000000021","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-19T20:00:03Z","type":"action.intent","payload":{"schema":"lorkhan.action-intent.v1","action_id":"01900000-0000-7000-8000-000000000031","turn_id":"01900000-0000-7000-8000-000000000005","name":"inventory.inspect","tier":0,"actor":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"target":{"kind":"player","record_id":"player","refnum":{"index":1,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Player"},"parameters":{},"expires_at":"2026-07-19T20:00:30Z"}},
         {"message_id":"01900000-0000-7000-8000-000000000022","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":2,"created_at":"2026-07-19T20:00:04Z","type":"action.intent","payload":{"schema":"lorkhan.action-intent.v1","action_id":"01900000-0000-7000-8000-000000000032","turn_id":"01900000-0000-7000-8000-000000000005","name":"ai.approach","tier":1,"actor":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"target":{"kind":"player","record_id":"player","refnum":{"index":1,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Player"},"parameters":{},"expires_at":"2026-07-19T20:00:30Z"}},
         {"message_id":"01900000-0000-7000-8000-000000000023","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":3,"created_at":"2026-07-19T20:00:05Z","type":"action.intent","payload":{"schema":"lorkhan.action-intent.v1","action_id":"01900000-0000-7000-8000-000000000033","turn_id":"01900000-0000-7000-8000-000000000005","name":"ai.wait","tier":1,"actor":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"target":{"kind":"player","record_id":"player","refnum":{"index":1,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Player"},"parameters":{"duration_seconds":3600},"expires_at":"2026-07-19T20:00:30Z"}}
-        ],"autonomy":[]})",
-        jsonHeaders);
+        ],"autonomy":[]})";
+    auto parityActions = lorkhan::parseEventsResponse(parityActionsJson, jsonHeaders);
     CHECK(parityActions && parityActions.value().events.size() == 3);
     if (parityActions && parityActions.value().events.size() == 3) {
         const auto* inventory = std::get_if<lorkhan::ActionIntentEventPayload>(&parityActions.value().events[0].payload);
@@ -584,6 +585,16 @@ void testProtocolEventResponses()
         CHECK(approach && approach->intent.kind == lorkhan::ActionIntentKind::ai_approach);
         CHECK(wait && wait->intent.kind == lorkhan::ActionIntentKind::ai_wait
             && wait->intent.wanderDurationSeconds == 3600);
+    }
+    auto endJson = parityActionsJson;
+    const auto approachName = endJson.find("ai.approach");
+    CHECK(approachName != std::string::npos);
+    endJson.replace(approachName, std::string("ai.approach").size(), "conversation.end");
+    auto ended = lorkhan::parseEventsResponse(endJson, jsonHeaders);
+    CHECK(ended && ended.value().events.size() == 3);
+    if (ended && ended.value().events.size() == 3) {
+        const auto* end = std::get_if<lorkhan::ActionIntentEventPayload>(&ended.value().events[1].payload);
+        CHECK(end && end->intent.kind == lorkhan::ActionIntentKind::conversation_end);
     }
 }
 

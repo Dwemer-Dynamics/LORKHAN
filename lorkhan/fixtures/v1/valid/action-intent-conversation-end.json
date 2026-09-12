@@ -1,0 +1,43 @@
+{
+  "description": "End conversation uses a fixed empty-parameter action",
+  "instance": {
+    "action_id": "00000000-0000-4000-8000-000000000037",
+    "actor": {
+      "cell": {
+        "grid_x": -2,
+        "grid_y": -9,
+        "kind": "exterior"
+      },
+      "content_file": "Morrowind.esm",
+      "display_name": "Fargoth",
+      "kind": "npc",
+      "record_id": "fargoth",
+      "refnum": {
+        "content_file": 0,
+        "index": 112
+      }
+    },
+    "expires_at": "2026-07-19T20:00:30Z",
+    "name": "conversation.end",
+    "parameters": {},
+    "schema": "lorkhan.action-intent.v1",
+    "target": {
+      "cell": {
+        "grid_x": -2,
+        "grid_y": -9,
+        "kind": "exterior"
+      },
+      "content_file": "Morrowind.esm",
+      "display_name": "Fargoth",
+      "kind": "npc",
+      "record_id": "fargoth",
+      "refnum": {
+        "content_file": 0,
+        "index": 112
+      }
+    },
+    "tier": 1,
+    "turn_id": "00000000-0000-4000-8000-000000000032"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/action-intent.schema.json"
+}

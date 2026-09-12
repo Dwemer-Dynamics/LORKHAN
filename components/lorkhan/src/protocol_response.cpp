@@ -502,7 +502,7 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     if (!turn) return invalidSchemaValue<ActionIntent>(turn.error().message);
     if (turn.value() != envelopeTurn.value())
         return invalidSchemaValue<ActionIntent>("action intent turn does not match event envelope");
-    if (!name || (name.value() != "ai.follow" && name.value() != "ai.stop"
+    if (!name || (name.value() != "ai.follow" && name.value() != "ai.stop" && name.value() != "conversation.end"
         && name.value() != "ai.approach" && name.value() != "ai.wait"
         && name.value() != "ai.travel" && name.value() != "ai.escort" && name.value() != "ai.face"
         && name.value() != "ai.wander" && name.value() != "combat.start"
@@ -621,6 +621,9 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     } else if (name.value() == "ai.stop") {
         if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("ai.stop parameters must be empty");
         intentKind = ActionIntentKind::ai_stop;
+    } else if (name.value() == "conversation.end") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("conversation.end parameters must be empty");
+        intentKind = ActionIntentKind::conversation_end;
     } else if (name.value() == "combat.start") {
         if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("combat.start parameters must be empty");
         intentKind = ActionIntentKind::combat_start;
@@ -917,6 +920,7 @@ std::optional<ErrorCode> protocolCode(std::string_view code)
         Mapping{"rechat_chain_conflict", ErrorCode::duplicate_conflict},
         Mapping{"rechat_complete", ErrorCode::cancelled},
         Mapping{"rechat_cooldown", ErrorCode::cancelled},
+        Mapping{"conversation_cooldown", ErrorCode::cancelled},
         Mapping{"rechat_no_responder", ErrorCode::cancelled},
         Mapping{"rechat_unavailable", ErrorCode::cancelled},
         Mapping{"invalid_rechat_context", ErrorCode::invalid_schema},

@@ -24,6 +24,7 @@ function M.validate(state, intent, authority)
         ['inventory.inspect']={capability='action.inventory.inspect',tier=0},
         ['ai.follow']={capability='action.ai.follow',tier=1},
         ['ai.stop']={capability='action.ai.stop',tier=1},
+        ['conversation.end']={capability='action.conversation.end',tier=1},
         ['ai.approach']={capability='action.ai.approach',tier=1},
         ['ai.wait']={capability='action.ai.wait',tier=1},
         ['ai.travel']={capability='action.ai.travel',tier=1},

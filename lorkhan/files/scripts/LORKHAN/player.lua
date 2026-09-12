@@ -105,7 +105,7 @@ if playerInputSettings then
 end
 state.ui.autoChat=playerInputSettings and playerInputSettings:get('autoChat')==true or false
 local function send(name,payload) if core and core.sendGlobalEvent then core.sendGlobalEvent(name,payload) end end
-local CAPABILITIES={'dialogue.text','speech.say','speech.listen','action.ai.follow','action.ai.stop',
+local CAPABILITIES={'dialogue.text','speech.say','speech.listen','action.ai.follow','action.ai.stop','action.conversation.end',
     'action.ai.approach','action.ai.wait','action.ai.travel','action.ai.escort','action.ai.face','action.ai.wander',
     'action.combat.start','action.combat.stop','action.inspect.report','action.inventory.inspect',
     'action.animation.play','action.item.equip','action.item.unequip','action.item.use',

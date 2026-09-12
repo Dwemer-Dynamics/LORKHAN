@@ -31,6 +31,7 @@
         "rechat_chain_conflict",
         "rechat_complete",
         "rechat_cooldown",
+        "conversation_cooldown",
         "rechat_no_responder",
         "rechat_unavailable",
         "request_mismatch",

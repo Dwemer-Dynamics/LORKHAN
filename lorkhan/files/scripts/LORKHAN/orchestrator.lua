@@ -1185,7 +1185,12 @@ function M.actionResult(state,event)
     local intent=item and item.kind=='action' and item.intent or nil
     local completed,advance=responseQueue.completeAction(state.responseQueue,result.action_id)
     if not completed then return nil,advance end
-    if intent and intent.followup_enabled==true and not state.actionFollowups.seen[result.action_id] then
+    local ended=intent and intent.name=='conversation.end' and result.status=='succeeded'
+    if ended then
+        state.rechat=nil state.rechatSeed=nil state.rechatEligibility=nil
+        state.actionFollowups.pending={}
+    end
+    if not ended and intent and intent.followup_enabled==true and not state.actionFollowups.seen[result.action_id] then
         state.actionFollowups.seen[result.action_id]=true
         state.actionFollowups.pending[#state.actionFollowups.pending+1]={intent=util.copy(intent),result=util.copy(result)}
     end
