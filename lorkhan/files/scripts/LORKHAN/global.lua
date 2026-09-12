@@ -290,6 +290,34 @@ end
 
 local function handleGlobalDebugCommand(event)
     local command=event and event.command
+    if command and command.name=='player.dialogue.submit' then
+        local now=core and core.getRealTime and core.getRealTime() or 0
+        local reason
+        if event.session_id~=state.sessionId or event.generation~=state.generation then reason='stale_session'
+        elseif type(event.deadline)~='number' or now>=event.deadline then reason='command_expired'
+        elseif state.pendingVoice or state.openMic or state.conversation.turn and not state.conversation.turn.terminal then reason='player_input_busy'
+        elseif type(event.browser_args)~='table' then reason='invalid_browser_speech_request' end
+        if not reason and not state.conversation.target then
+            local candidate=event.candidate or select(1,nearestWorldCandidate(2048))
+            if not candidate or not selectCandidate(candidate,'browser_speech') then reason='target_required' end
+        end
+        local args=event.browser_args
+        local submitted
+        if not reason then
+            -- Reuse the normal immutable player turn; the command never contains executable code.
+            args.text=command.parameters.text args.language=command.parameters.language
+            args.ui_source='lorkhan_browser_speech'
+            enrichWorldCalendar(args)
+            local metadata=bridge.nextTurnMetadata and bridge.nextTurnMetadata() or {}
+            for key,value in pairs(metadata) do args[key]=value end
+            args.input_key=command.command_id
+            submitted,reason=orchestrator.submitText(state,args)
+        end
+        emit('LORKHAN_DEBUG_COMMAND_RESULT',{command_id=command.command_id,
+            status=submitted and 'succeeded' or 'rejected',reason_code=submitted and 'dialogue_queued' or reason,
+            observed=submitted and {request_id=args.request_id,turn_id=args.turn_id,message_id=args.message_id,created_at=args.created_at} or {}})
+        return
+    end
     local status,reason,observed=executeGlobalDebugCommand(command)
     emit('LORKHAN_DEBUG_COMMAND_RESULT',{command_id=command and command.command_id,status=status,
         reason_code=reason,observed=observed})

@@ -1625,7 +1625,26 @@ Result<DebugCommandResponse> parseDebugCommandResponse(
         ||name.value()=="target.actor.restore"||name.value()=="target.teleport.to_player";
     const bool switchCommand=name.value()=="god_mode.set"||name.value()=="collision.set"||name.value()=="ai.set"
         ||name.value()=="mwscript.set"||name.value()=="shader_hot_reload.set";
-    if(empty){if(!parameters->empty())return invalidSchemaValue<DebugCommandResponse>("debug command takes no parameters");}
+    if(name.value()=="player.dialogue.submit"){
+        if(!hasExactly(*parameters,{"text","language"}))return invalidSchemaValue<DebugCommandResponse>("browser speech fields mismatch");
+        auto text=requireString(*parameters,"text",1,2048);auto language=requireString(*parameters,"language",2,16);
+        if(!text||!language)return invalidSchemaValue<DebugCommandResponse>("invalid browser speech strings");
+        if(text.value().find_first_not_of(' ')==std::string::npos
+            ||std::any_of(text.value().begin(),text.value().end(),[](unsigned char c){return c<0x20||c==0x7f;}))
+            return invalidSchemaValue<DebugCommandResponse>("invalid browser speech text");
+        const auto& tag=language.value();std::size_t start=0;bool first=true;
+        while(start<tag.size()){
+            const auto dash=tag.find('-',start);const auto end=dash==std::string::npos?tag.size():dash;
+            const auto size=end-start;
+            if(size<2||size>(first?3U:8U))return invalidSchemaValue<DebugCommandResponse>("invalid browser speech language");
+            for(auto index=start;index<end;++index){const char c=tag[index];
+                if(!((c>='a'&&c<='z')||(!first&&((c>='A'&&c<='Z')||(c>='0'&&c<='9')))))
+                    return invalidSchemaValue<DebugCommandResponse>("invalid browser speech language");}
+            if(dash==std::string::npos)break;
+            start=dash+1;first=false;if(start==tag.size())return invalidSchemaValue<DebugCommandResponse>("invalid browser speech language");
+        }
+        parsedParameters.emplace("text",std::move(text).value());parsedParameters.emplace("language",std::move(language).value());
+    }else if(empty){if(!parameters->empty())return invalidSchemaValue<DebugCommandResponse>("debug command takes no parameters");}
     else if(switchCommand){if(!hasExactly(*parameters,{"enabled"}))return invalidSchemaValue<DebugCommandResponse>("debug switch fields mismatch");
         auto value=requireBoolean(*parameters,"enabled");if(!value)return invalidSchemaValue<DebugCommandResponse>(value.error().message);}
     else if(name.value()=="render_mode.toggle"){

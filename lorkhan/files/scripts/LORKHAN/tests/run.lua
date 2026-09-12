@@ -155,6 +155,38 @@ test('GLOBAL loaded-save handshake waits for the player and submits only calenda
  for _,name in ipairs(modules) do package.loaded[name]=saved[name] end
  assert(ok,err)
 end)
+test('browser speech queues a normal turn only for the current idle session before its deadline',function()
+ local saved={} local modules={'scripts.LORKHAN.adapters.openmw','scripts.LORKHAN.orchestrator',
+  'openmw.world','openmw.types','openmw.interfaces','openmw.util'}
+ for _,name in ipairs(modules) do saved[name]=package.loaded[name] end
+ local ok,err=pcall(function()
+  local results={} local calls={} local current={sessionId='session',generation=4,conversation={target={kind='npc'}}}
+  local native={nextTurnMetadata=function()return {request_id=UUID.message,turn_id=UUID.message,message_id=UUID.message,created_at='2026-09-12T00:00:00Z'} end}
+  package.loaded['scripts.LORKHAN.adapters.openmw']={bridge=function()return native end,
+   event=function()return {getRealTime=function()return 10 end} end}
+  package.loaded['scripts.LORKHAN.orchestrator']={new=function()return current end,
+   submitText=function(_,args) calls[#calls+1]=args;return args.request_id end}
+  package.loaded['openmw.world']={players={{sendEvent=function(_,name,payload)results[#results+1]={name=name,payload=payload}end}}}
+  for _,name in ipairs({'openmw.types','openmw.interfaces','openmw.util'}) do package.loaded[name]={} end
+  local handler=assert(loadfile(root..'/scripts/LORKHAN/global.lua'))().eventHandlers.LORKHAN_DEBUG_COMMAND
+  local function submit(overrides)
+   local input={command={name='player.dialogue.submit',command_id=UUID.message,
+    parameters={text='Where is Caius? *curious*',language='en-US'}},
+    browser_args={text='ignored',context={}},session_id='session',generation=4,deadline=20}
+   for key,value in pairs(overrides or {}) do input[key]=value end
+   handler(input);return results[#results].payload
+  end
+  eq(submit({generation=3}).reason_code,'stale_session');eq(#calls,0)
+  eq(submit({deadline=10}).reason_code,'command_expired');eq(#calls,0)
+  current.pendingVoice={};eq(submit().reason_code,'player_input_busy');current.pendingVoice=nil
+  current.conversation.turn={terminal=false};eq(submit().reason_code,'player_input_busy');current.conversation.turn=nil
+  local result=submit();eq(result.status,'succeeded');eq(result.reason_code,'dialogue_queued');eq(#calls,1)
+  eq(calls[1].text,'Where is Caius? *curious*');eq(calls[1].input_key,UUID.message)
+  eq(calls[1].ui_source,'lorkhan_browser_speech');eq(result.observed.request_id,UUID.message)
+ end)
+ for _,name in ipairs(modules) do package.loaded[name]=saved[name] end
+ assert(ok,err)
+end)
 test('wire validators reject uppercase UUID and zero-byte media',function()
  eq(protocol.isUuid('00000000-0000-4000-8000-000000000001'),true)
  eq(protocol.isUuid('00000000-0000-4000-8000-00000000000A'),false)

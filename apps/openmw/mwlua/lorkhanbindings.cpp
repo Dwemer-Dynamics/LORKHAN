@@ -1458,7 +1458,7 @@ namespace MWLua
             }
 
             static std::vector<std::string> capabilities()
-            { return { "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "action.ai.follow", "action.ai.stop",
+            { return { "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "speech.browser.v1", "action.ai.follow", "action.ai.stop",
                 "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
                 "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" }; }

@@ -32,6 +32,11 @@
       "sha256": "ca94a22df3ef7e2546934fa064f8d4b5877e23091b3791f3432eccce447451b1"
     },
     {
+      "bytes": 700,
+      "path": "lorkhan/fixtures/v1/invalid/debug-command-browser-extra.json",
+      "sha256": "b7ba4079c7fae35be3d72552c83f8d8557fdae272c4d1a546ba81166bc8d5d2c"
+    },
+    {
       "bytes": 613,
       "path": "lorkhan/fixtures/v1/invalid/debug-command-freeform.json",
       "sha256": "bf50260599e5f50e9a37190e24c284108d991248f6240b10bca0466dfa46b946"
@@ -180,6 +185,11 @@
       "bytes": 4126,
       "path": "lorkhan/fixtures/v1/valid/controls.json",
       "sha256": "4ac42de257604360351f49c393bd934fbaf28a2c1134afb928532209d678a190"
+    },
+    {
+      "bytes": 717,
+      "path": "lorkhan/fixtures/v1/valid/debug-command-browser-speech.json",
+      "sha256": "31190c005b798b0319a0c45e9ca232239f1e65d728c9153d8709df934a0e0e1b"
     },
     {
       "bytes": 654,
@@ -407,9 +417,9 @@
       "sha256": "b147be4a82a99fb9f463034d86a7b8a93fd9fc8ed5bed9a7791e21b497e9ae46"
     },
     {
-      "bytes": 20029,
+      "bytes": 21385,
       "path": "lorkhan/schemas/v1/debug-command.schema.json",
-      "sha256": "3ef31996effbaa74ef61fee59c681cb61e4a5c6df90d3579ab8e4fc24b7de460"
+      "sha256": "c897c85a2a058315987054cc6d62cb308bf57640966e90cdffe63df5740452f5"
     },
     {
       "bytes": 1184,

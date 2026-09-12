@@ -399,6 +399,13 @@ void testAcceptedProtocolResponses()
     CHECK(debugCommand && debugCommand.value().command
         && debugCommand.value().command->name == "god_mode.set"
         && std::get<bool>(debugCommand.value().command->parameters.at("enabled")) == true);
+    const std::string browserSpeech=R"({"schema":"lorkhan.debug-command.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"command":{"command_id":"01900000-0000-7000-8000-000000000007","name":"player.dialogue.submit","parameters":{"text":"Where is Caius? *curious* / ordinary text","language":"en-US"},"expires_at":"2026-08-31T12:00:30Z"}})";
+    auto speechCommand=lorkhan::parseDebugCommandResponse(browserSpeech,jsonHeaders);
+    CHECK(speechCommand&&speechCommand.value().command&&std::get<std::string>(speechCommand.value().command->parameters.at("text"))=="Where is Caius? *curious* / ordinary text");
+    for(const auto& invalid:std::array<std::string,3>{"en-","e-US","EN-us"}){
+        auto changed=browserSpeech;changed.replace(changed.find("en-US"),5,invalid);
+        CHECK(!lorkhan::parseDebugCommandResponse(changed,jsonHeaders));
+    }
     auto inventoryDebugCommand = lorkhan::parseDebugCommandResponse(
         R"({"schema":"lorkhan.debug-command.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"command":{"command_id":"01900000-0000-7000-8000-000000000007","name":"player.inventory.add","parameters":{"record_id":"fur_colovian_helm","count":1},"expires_at":"2026-08-31T12:00:30Z"}})",
         jsonHeaders);

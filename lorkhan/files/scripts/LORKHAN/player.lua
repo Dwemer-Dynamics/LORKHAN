@@ -644,7 +644,8 @@ local function updatePlayerAutochat()
 end
 
 local function submitText()
-    if pendingTextSubmit or awaitingTextQueue or pendingAutochat then return false end
+    if pendingTextSubmit or awaitingTextQueue or pendingAutochat
+        or pendingGlobalDebugCommand and pendingGlobalDebugCommand.browser_args then return false end
     local parsed,parseReason=playerInput.parse(state.ui.input)
     if not parsed then
         state.ui.status='message required'
@@ -764,6 +765,30 @@ local function pumpDebugCommands()
     if status.pending==true then return end
     debugRequestActive=false
     if type(status.command)~='table' then return end
+    if status.command.name=='player.dialogue.submit' then
+        if awaitingTextQueue or pendingTextSubmit or pendingAutochat or voiceRecording or openMicEnabled then
+            submitDebugResult(status.command,'rejected','player_input_busy',{}) return
+        end
+        local session=native.sessionInfo and native.sessionInfo()
+        if not session then submitDebugResult(status.command,'rejected','session_unavailable',{}) return end
+        local parsed,parseReason=playerInput.parse(status.command.parameters.text)
+        if not parsed then submitDebugResult(status.command,'rejected',parseReason or 'message_required',{}) return end
+        local candidate
+        if not state.ui.target then
+            candidate=select(1,adapter.resolveCameraTarget(2048))
+            if not candidate then candidate=(adapter.nearbyActors(2048) or {})[1] end
+        end
+        local target=state.ui.target or (candidate and candidate.identity)
+        local args={text=parsed.text,language=status.command.parameters.language,
+            speaker=adapter.identity(self),dialogueMode=parsed.mode or state.ui.mode,mood=uiState.moodSelection(state.ui),
+            context=conversationContext(target),capabilities=CAPABILITIES,recent_action_results={},
+            ui_source='lorkhan_browser_speech'}
+        pendingGlobalDebugCommand={command=status.command,started_at=now,browser_args=args,
+            session_id=session.session_id,generation=session.generation}
+        send('LORKHAN_DEBUG_COMMAND',{command=status.command,browser_args=args,candidate=candidate,
+            session_id=session.session_id,generation=session.generation,deadline=now+20})
+        return
+    end
     if GLOBAL_DEBUG_COMMANDS[status.command.name] then
         pendingGlobalDebugCommand={command=status.command,started_at=now}
         send('LORKHAN_DEBUG_COMMAND',{command=status.command})
@@ -1923,6 +1948,21 @@ return {
         LORKHAN_DEBUG_COMMAND_RESULT=function(event)
             if not pendingGlobalDebugCommand or type(event)~='table'
                 or event.command_id~=pendingGlobalDebugCommand.command.command_id then return end
+            local browserArgs=pendingGlobalDebugCommand.browser_args
+            if browserArgs then
+                local session=native.sessionInfo and native.sessionInfo()
+                if not session or session.session_id~=pendingGlobalDebugCommand.session_id
+                    or session.generation~=pendingGlobalDebugCommand.generation then
+                    pendingGlobalDebugCommand=nil return
+                end
+            end
+            if browserArgs and event.status=='succeeded' then
+                player.queued(state,browserArgs.speaker,browserArgs.text,event.observed or {})
+                startPlayerSpeech(browserArgs.speaker,browserArgs.text)
+                turnActive=true
+                state.ui.status='browser speech queued'
+                render()
+            end
             submitDebugResult(pendingGlobalDebugCommand.command,event.status or 'failed',
                 event.reason_code or 'global_command_failed',event.observed or {})
             pendingGlobalDebugCommand=nil
