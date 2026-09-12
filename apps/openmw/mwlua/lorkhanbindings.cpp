@@ -1351,7 +1351,7 @@ namespace MWLua
                 return output;
             }
 
-            bool cancelGeneration(std::uint64_t generation)
+            bool cancelGeneration(std::uint64_t generation, bool loadedSave = false)
             {
                 if (!m_service) return false;
                 auto result = m_service->cancelGeneration(lorkhan::Generation(generation));
@@ -1360,9 +1360,27 @@ namespace MWLua
                 cancelPlayerAutochat();
                 m_session.reset(); m_clientSettings.reset(); m_configRevision.clear();
                 m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();
-                m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_turnRequests.clear();m_controlsError.clear();m_debugError.clear();beginSession();
+                m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_turnRequests.clear();m_controlsError.clear();m_debugError.clear();
+                m_loadedSave=loadedSave;m_waitingLoadedCalendar=loadedSave;m_loadedCalendar.reset();beginSession();
                 m_status = "connecting";
                 return true;
+            }
+
+            // Finish only a real load fence, after GLOBAL Lua can read the loaded player's calendar.
+            bool finishLoadedSave(sol::optional<sol::table> value)
+            {
+                if(!m_waitingLoadedCalendar)return false;
+                if(value){
+                    const auto year=(*value)["year"].get_or<double>(0),month=(*value)["month"].get_or<double>(-1);
+                    const auto day=(*value)["day"].get_or<double>(0),hour=(*value)["hour"].get_or<double>(-1);
+                    if(!std::isfinite(year)||!std::isfinite(month)||!std::isfinite(day)
+                        ||year<1||year>9999||month<0||month>11||day<1||day>31
+                        ||std::floor(year)!=year||std::floor(month)!=month||std::floor(day)!=day)return false;
+                    lorkhan::LoadedSaveCalendar calendar{static_cast<int>(year),static_cast<int>(month),static_cast<int>(day),hour};
+                    if(!calendar.valid())return false;
+                    m_loadedCalendar=calendar;
+                }
+                m_waitingLoadedCalendar=false;beginSession();return true;
             }
 
             void halt()
@@ -1411,16 +1429,17 @@ namespace MWLua
 
             void beginSession()
             {
-                if (!m_service || !m_config || m_initRequest) return;
+                if (!m_service || !m_config || m_initRequest || m_waitingLoadedCalendar) return;
                 const lorkhan::RequestId request(uuid());
                 lorkhan::EnvelopeIds ids{ m_config->installation, m_config->profile, m_config->playthrough, {}, request,
                     lorkhan::TurnId(uuid()), lorkhan::MessageId(uuid()), m_service->generation() };
                 lorkhan::RuntimeInfo runtime; runtime.platform = m_config->platform;
                 runtime.capabilities = capabilities();
-                lorkhan::OutboundRequest outbound{ request, {}, ids.generation, lorkhan::RequestKind::init,
-                    lorkhan::InitRequest{ std::move(ids), std::move(runtime), m_config->fingerprint, utcNow() } };
+                lorkhan::InitRequest init{ std::move(ids), std::move(runtime), m_config->fingerprint, utcNow() };
+                init.loadedSave=m_loadedSave;init.loadedCalendar=m_loadedCalendar;
+                lorkhan::OutboundRequest outbound{ request, {}, ids.generation, lorkhan::RequestKind::init, std::move(init) };
                 auto result = m_service->enqueue(std::move(outbound));
-                if (result) m_initRequest = request;
+                if (result) {m_initRequest = request;m_loadedSave=false;m_loadedCalendar.reset();}
                 else { m_status = "error"; m_error = result.error().message; }
             }
 
@@ -1559,6 +1578,9 @@ namespace MWLua
             std::optional<lorkhan::ClientSettings> m_clientSettings;
             std::string m_configRevision;
             std::optional<lorkhan::RequestId> m_initRequest;
+            bool m_waitingLoadedCalendar=false;
+            bool m_loadedSave=false;
+            std::optional<lorkhan::LoadedSaveCalendar> m_loadedCalendar;
             std::optional<lorkhan::RequestId> m_pollRequest;
             std::optional<lorkhan::RequestId> m_controlsRequest;
             std::optional<lorkhan::ControlsResponse> m_controls;
@@ -1684,7 +1706,8 @@ namespace MWLua
             api["submitDialogueDeliveryResult"] = [lua](sol::table dto) {
                 return client().submitDialogueDeliveryResult(lua, std::move(dto));
             };
-            api["cancelGeneration"] = [](std::uint64_t generation) { return client().cancelGeneration(generation); };
+            api["cancelGeneration"] = [](std::uint64_t generation, sol::optional<bool> loadedSave) { return client().cancelGeneration(generation,loadedSave.value_or(false)); };
+            api["finishLoadedSave"] = [](sol::optional<sol::table> calendar) { return client().finishLoadedSave(calendar); };
             api["halt"] = [] { client().halt(); };
             return LuaUtil::makeReadOnly(api);
         }

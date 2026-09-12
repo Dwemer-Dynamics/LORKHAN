@@ -337,20 +337,33 @@ void testHealthAndWirePolicy()
 
 void testSessionTurnAndCorrelation()
 {
-    {
-        OneShotServer server([](const CapturedRequest& request, tcp::socket& socket) {
+    for (int loaded = 0; loaded < 3; ++loaded) {
+        OneShotServer server([loaded](const CapturedRequest& request, tcp::socket& socket) {
             CHECK(request.method == http::verb::post);
             CHECK(request.target == std::string(kBasePath) + "/sessions");
             CHECK(request.idempotency == kMessage);
             CHECK(request.contentType == "application/json; charset=utf-8");
             CHECK(request.body.find("\"schema\":\"lorkhan.session.init.v1\"") != std::string::npos);
             CHECK(request.body.find("\"created_at\":\"2026-07-18T20:00:00Z\"") != std::string::npos);
+            if (loaded == 0) CHECK(request.body.find("loaded_save") == std::string::npos);
+            if (loaded == 1) CHECK(request.body.find("\"loaded_save\":null") != std::string::npos);
+            if (loaded == 2) {
+                CHECK(request.body.find("\"loaded_save\":{\"year\":427,\"month\":7,\"day\":16,\"hour\":9.500000}") != std::string::npos);
+                std::this_thread::sleep_for(100ms);
+            }
             sendJson(socket, 201, std::string(R"({"schema":"lorkhan.session.accepted.v1","message_id":")")
                 + kMessage + R"(","session_id":")" + kSession
                 + R"(","generation":7,"capabilities":["dialogue.text"],"config_revision":"test","client_settings":{"schema":"lorkhan.client-settings.v1","behavior":{"auto_greeting":false,"rechat":false,"rechat_delay_seconds":45,"rechat_max_depth":2,"rechat_probability_percent":50,"rechat_mode":"random","rechat_strict_targeting":false,"open_rechat":true,"rechat_allow_actions":false,"end_conversation_cooldown_seconds":60,"boredom":false,"boredom_delay_seconds":180,"combat_barks":false,"combat_bark_period_seconds":20},"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"book_events":false,"bored_chance_percent":25,"bored_events":false,"context_visibility":true,"enabled":false,"inline_mode":"Disabled","name":"The Narrator","quest_chance_percent":10,"quest_cooldown_minutes":3,"quest_events":false,"random_chance_percent":15,"random_cooldown_rounds":2,"random_events":false,"welcome_cooldown_minutes":10,"welcome_events":false},"presentation":{"show_status_hud":true,"transcript_rows":8,"tts_volume_boost":3},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"event_cursor":0})");
         });
-        lorkhan::BeastTransport transport(url(server.port()), lorkhan::InstallationId(kInstallation), token(), cacheRoot());
-        auto result = transport.execute(init(), {});
+        lorkhan::BeastTransport::Deadlines deadlines;
+        deadlines.firstByte = 50ms;
+        deadlines.loadedSaveFirstByte = 1000ms;
+        lorkhan::BeastTransport transport(url(server.port()), lorkhan::InstallationId(kInstallation), token(), cacheRoot(), deadlines);
+        auto request = init();
+        auto& payload = std::get<lorkhan::InitRequest>(request.payload);
+        payload.loadedSave = loaded != 0;
+        if (loaded == 2) payload.loadedCalendar = lorkhan::LoadedSaveCalendar{427, 7, 16, 9.5};
+        auto result = transport.execute(request, {});
         CHECK(result && result.value().session == lorkhan::SessionId(kSession));
     }
     {

@@ -52,9 +52,9 @@
       "sha256": "23c218d4c89cfed2eb9459e4c83e83770f76581ef93163540974605ce93b1143"
     },
     {
-      "bytes": 1000,
+      "bytes": 967,
       "path": "lorkhan/fixtures/v1/invalid/gamedata-bored-player-responder.json",
-      "sha256": "e036f172592cf183627baf30ce7b02e3198f46abc00dc941a7d580780e89b2f6"
+      "sha256": "d3c75b1552339d2b5fec9419190835fff4aea66850de53d1a294cb36e6aed9a1"
     },
     {
       "bytes": 1345,
@@ -105,6 +105,16 @@
       "bytes": 821,
       "path": "lorkhan/fixtures/v1/invalid/runtime-pin.json",
       "sha256": "7db1887b5cf8f2507ea4c8aeab83f0085c79420c9f1b78b8fc64929b0ad8eea0"
+    },
+    {
+      "bytes": 1564,
+      "path": "lorkhan/fixtures/v1/invalid/session-loaded-save-hour.json",
+      "sha256": "0cf8440cda12449c99e97d21a27dbe58fb13bbb35465b4aef019bd336633c9ed"
+    },
+    {
+      "bytes": 1567,
+      "path": "lorkhan/fixtures/v1/invalid/session-loaded-save-leap-day.json",
+      "sha256": "cd87df85575d4024cb667edcaaaf03c9f057f8fb68f1d8611aa44db9917a7aff"
     },
     {
       "bytes": 680,
@@ -232,9 +242,9 @@
       "sha256": "138ed195ea59e1c5a490e72175b9a0b2b7b334644e03aea90445f4d04a31f9f1"
     },
     {
-      "bytes": 1001,
+      "bytes": 968,
       "path": "lorkhan/fixtures/v1/valid/gamedata-bored-responder.json",
-      "sha256": "7776e4de3887d0b4220cd6ca13cf6230de0a2edaef6eb129c71b3106e6e73ff6"
+      "sha256": "93bb086551ac732de4dbb10bba54c0b2a0ec3644546f59d8c3249f9be1076a4a"
     },
     {
       "bytes": 1230,
@@ -247,9 +257,9 @@
       "sha256": "3a117b195a4b8be68fe46311a095c806f624cfbf60122b46448f684e46f97d9e"
     },
     {
-      "bytes": 1074,
+      "bytes": 1040,
       "path": "lorkhan/fixtures/v1/valid/gamedata-quest-responder.json",
-      "sha256": "78cb1ab83d3931f58d9cd1f09791899748ddf596a3f254b26d89ec8e8b7239fa"
+      "sha256": "6464dcfdfae6a8737b37468ed10fe53d99ef267283a284b4db28d0ed0eaca854"
     },
     {
       "bytes": 1381,
@@ -305,6 +315,16 @@
       "bytes": 1248,
       "path": "lorkhan/fixtures/v1/valid/session-init.json",
       "sha256": "b55ebcbb3d6942ac2c3fdf5c3b5c7f0900907ec2ffe6d4dc5353d3d56474f4d5"
+    },
+    {
+      "bytes": 1493,
+      "path": "lorkhan/fixtures/v1/valid/session-loaded-save-unknown.json",
+      "sha256": "f590eeb1a4d60ffee6129feae614b0d67fc5767ef0f089aa5388651fb579f260"
+    },
+    {
+      "bytes": 1560,
+      "path": "lorkhan/fixtures/v1/valid/session-loaded-save.json",
+      "sha256": "2148bcd5a52c9c27c406dbcf6c3b6eb0426801b1b2353cbb191fe81d5a706b64"
     },
     {
       "bytes": 501,
@@ -422,9 +442,9 @@
       "sha256": "66fb9b333958f5db965e5530e5f26e806947a490cde1e0dc435c2abe25628993"
     },
     {
-      "bytes": 16649,
+      "bytes": 16008,
       "path": "lorkhan/schemas/v1/gamedata.schema.json",
-      "sha256": "cb1e9a599f8ae00a12448fd6b041fcec3458fdc8f7acc7e99fe33ec646c55ee7"
+      "sha256": "3b055782040d4b8a0a60a87a494d62b12ab5c914fded0480289f391c255af63e"
     },
     {
       "bytes": 295,
@@ -492,9 +512,9 @@
       "sha256": "37fe0695f63bdfa574827da8d5aba8994ad25afa5493f633883393a799f3b2f0"
     },
     {
-      "bytes": 1254,
+      "bytes": 4069,
       "path": "lorkhan/schemas/v1/session-init.schema.json",
-      "sha256": "485d947415833e9b93307ff9c6f29894d2ca8a7a0ef69aa65d2247e4310f0135"
+      "sha256": "ce7cf8c5a908ed5b07d8b8ec9814f22a634a75b587054aadcb6471dd34b020c5"
     },
     {
       "bytes": 1032,

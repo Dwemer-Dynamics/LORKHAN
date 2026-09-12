@@ -156,6 +156,9 @@ def validate(value: Any, schema: dict[str, Any], registry: dict[str, dict[str, A
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         if value < schema.get("minimum", float("-inf")) or value > schema.get("maximum", float("inf")):
             raise ValidationError(f"{path}: number out of bounds")
+        if ("exclusiveMinimum" in schema and value <= schema["exclusiveMinimum"]
+                or "exclusiveMaximum" in schema and value >= schema["exclusiveMaximum"]):
+            raise ValidationError(f"{path}: number outside exclusive bounds")
 
 
 def valid(schema: dict[str, Any], value: Any, registry: dict[str, dict[str, Any]], path: str) -> bool:

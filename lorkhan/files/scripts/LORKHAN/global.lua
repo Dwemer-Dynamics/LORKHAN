@@ -11,6 +11,7 @@ local pendingPlayerEvents={}
 local bridgeStatus
 local bridgePollElapsed=0.05
 local lastBridgePollAt
+local pendingLoadedSave=false
 local BRIDGE_POLL_INTERVAL=0.05
 
 local function currentPlayer()
@@ -84,6 +85,18 @@ local function enrichWorldCalendar(event)
         month_name=month and morrowindMonths[month+1] or nil,day=tonumber(variables.day),
         days_passed=tonumber(variables.dayspassed),hour=hour,
         time=hour and string.format('%02d:%02d',math.floor(hour)%24,math.floor((hour%1)*60)) or nil}
+end
+
+-- Release the load handshake only after the loaded player and GLOBAL calendar are available.
+local function finishLoadedSave()
+    if not pendingLoadedSave or not currentPlayer() then return end
+    local event={context={}}
+    enrichWorldCalendar(event)
+    local calendar=event.context.world and event.context.world.calendar
+    local accepted=bridge.finishLoadedSave(calendar and {year=calendar.year,month=calendar.month,day=calendar.day,hour=calendar.hour} or nil)
+    -- Missing/invalid game globals are explicit unknowns; they must not prevent normal play.
+    if not accepted then accepted=bridge.finishLoadedSave(nil) end
+    pendingLoadedSave=not accepted
 end
 
 -- Observe vanilla NPC/creature activation as a target hint without consuming or replacing the
@@ -285,12 +298,14 @@ end
 return {
     engineHandlers={
         onNewGame=function()
+            pendingLoadedSave=false
             pendingPlayerEvents={}
             orchestrator.lifecycle(state,'new_game')
             activateWorldActors()
             flushPlayerEvents()
         end,
         onLoad=function(data)
+            pendingLoadedSave=type(bridge.finishLoadedSave)=='function'
             pendingPlayerEvents={}
             orchestrator.load(state,data)
             activateWorldActors()
@@ -300,9 +315,11 @@ return {
         onActorActive=activate,
         onPlayerAdded=function(object)
             activate(object)
+            finishLoadedSave()
             flushPlayerEvents(object)
         end,
         onUpdate=function(dt)
+            finishLoadedSave()
             local elapsed=tonumber(dt) or 0
             if core and core.getRealTime then
                 local now=core.getRealTime()

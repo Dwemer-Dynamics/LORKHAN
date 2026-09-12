@@ -108,7 +108,7 @@ function M.lifecycle(state,kind)
     cancelResponseLane(state,kind,true)
     detachAll(state,kind)
     state.generation=conversation.invalidate(state.conversation,kind)
-    if state.bridge then state.bridge.cancelGeneration(state.generation-1) end
+    if state.bridge then state.bridge.cancelGeneration(state.generation-1,kind=='load' and state.bridge.finishLoadedSave~=nil) end
     state.events=state.sessionId and protocol.CursoredEvents(state.sessionId,state.generation) or nil
     state.pendingConfirmations={}
     state.actionFollowups={seen={},pending={}}

@@ -19,6 +19,8 @@ public:
         std::chrono::milliseconds firstByte{5000};
         std::chrono::milliseconds read{20000};
         std::chrono::milliseconds total{30000};
+        // A loaded-save init may capture the previous timeline before accepting the session.
+        std::chrono::milliseconds loadedSaveFirstByte{20000};
     };
 
     BeastTransport(BaseUrl baseUrl, InstallationId installation, PairingToken token,

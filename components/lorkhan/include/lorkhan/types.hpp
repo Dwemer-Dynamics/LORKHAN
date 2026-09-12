@@ -4,6 +4,7 @@
 
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -108,11 +109,26 @@ struct RequestCorrelation {
 };
 
 struct HealthRequest {};
+// Morrowind uses zero-based months and a fixed, non-leap calendar.
+struct LoadedSaveCalendar {
+    int year = 0;
+    int month = 0;
+    int day = 0;
+    double hour = 0;
+    bool valid() const noexcept
+    {
+        constexpr int days[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+        return year >= 1 && year <= 9999 && month >= 0 && month < 12
+            && day >= 1 && day <= days[month] && std::isfinite(hour) && hour >= 0 && hour < 24;
+    }
+};
 struct InitRequest {
     EnvelopeIds ids;
     RuntimeInfo runtime;
     std::string contentFingerprint;
     std::string createdAt;
+    bool loadedSave = false;
+    std::optional<LoadedSaveCalendar> loadedCalendar = std::nullopt;
 };
 struct TurnRequest {
     EnvelopeIds ids;

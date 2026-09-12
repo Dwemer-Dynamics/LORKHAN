@@ -3,16 +3,161 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
-    "content_fingerprint": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/content_fingerprint"},
-    "created_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
-    "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
-    "installation_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "playthrough_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "profile_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "runtime": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/runtime"},
-    "schema": {"const": "lorkhan.session.init.v1", "type": "string"}
+    "content_fingerprint": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/content_fingerprint"
+    },
+    "created_at": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+    },
+    "generation": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+    },
+    "installation_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "message_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "playthrough_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "profile_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "runtime": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/runtime"
+    },
+    "schema": {
+      "const": "lorkhan.session.init.v1",
+      "type": "string"
+    },
+    "loaded_save": {
+      "description": "Present only on an actual loaded-save lifecycle; null means its calendar is unavailable.",
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "year",
+            "month",
+            "day",
+            "hour"
+          ],
+          "properties": {
+            "year": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9999
+            },
+            "month": {
+              "type": "integer",
+              "enum": [
+                1
+              ]
+            },
+            "day": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 28
+            },
+            "hour": {
+              "type": "number",
+              "minimum": 0,
+              "exclusiveMaximum": 24
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "year",
+            "month",
+            "day",
+            "hour"
+          ],
+          "properties": {
+            "year": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9999
+            },
+            "month": {
+              "type": "integer",
+              "enum": [
+                3,
+                5,
+                8,
+                10
+              ]
+            },
+            "day": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            },
+            "hour": {
+              "type": "number",
+              "minimum": 0,
+              "exclusiveMaximum": 24
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "year",
+            "month",
+            "day",
+            "hour"
+          ],
+          "properties": {
+            "year": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9999
+            },
+            "month": {
+              "type": "integer",
+              "enum": [
+                0,
+                2,
+                4,
+                6,
+                7,
+                9,
+                11
+              ]
+            },
+            "day": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 31
+            },
+            "hour": {
+              "type": "number",
+              "minimum": 0,
+              "exclusiveMaximum": 24
+            }
+          }
+        }
+      ]
+    }
   },
-  "required": ["schema", "message_id", "installation_id", "profile_id", "playthrough_id", "generation", "created_at", "runtime", "content_fingerprint"],
+  "required": [
+    "schema",
+    "message_id",
+    "installation_id",
+    "profile_id",
+    "playthrough_id",
+    "generation",
+    "created_at",
+    "runtime",
+    "content_fingerprint"
+  ],
   "type": "object"
 }

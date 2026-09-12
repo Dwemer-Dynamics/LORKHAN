@@ -148,3 +148,20 @@ Deployed only player.lua and player_state.lua with matching hashes and unchanged
 Config; local Temp rollback `lorkhan-journal-rollback-o54upfn0`. No engine build
 needed and no game launched. This does not yet implement NPC Quest Comments: the
 server request, actual changed-text prompt, Core UI and end-to-end checks remain.
+
+### Loaded-save handshake fence
+
+`cancelGeneration(generation, loadedSave)` accepts an optional boolean lifecycle
+marker; the default remains false. Only GLOBAL orchestration passes true for an
+actual save load. `finishLoadedSave(calendar)` releases that pending fence with
+four validated calendar scalars or nil for unknown. It returns false when no load
+fence exists. Neither method accepts a URL, path, script or generic request.
+
+Loaded-save snapshot checkpoint: WINDOWS BUILD PROVEN on 2026-09-12. Exact OpenMW
+pin f4bec41444214a7903bebd178389ca22ca13f646; Release openmw.exe SHA-256
+096691cd213ab048ea632bc684d0994bd01ff78fb97a689d8512818f336c9b7b.
+Windows native and Beast tests passed; 73 standalone Lua tests passed, including
+GLOBAL handler load/player readiness. No game was launched; in-game proof remains
+outstanding. Existing unrelated foundation/provenance failures are not waived by
+these focused results. Temp evidence: dragon-windows-build.txt and WSL
+/tmp/dragon-global-lua.txt.

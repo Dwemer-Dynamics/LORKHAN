@@ -62,6 +62,8 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         || (request.kind == RequestKind::media) != std::holds_alternative<MediaPrepareRequest>(request.payload))
         return Result<void>::failure(makeError(ErrorCode::invalid_argument, "request kind does not match typed payload"));
     if (const auto* init = std::get_if<InitRequest>(&request.payload)) {
+        if (init->loadedCalendar && (!init->loadedSave || !init->loadedCalendar->valid()))
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument, "invalid loaded-save calendar"));
         if (!validEnvelope(init->ids, false) || !envelopeMatches(init->ids))
             return Result<void>::failure(makeError(ErrorCode::invalid_argument, "init envelope contains malformed or inconsistent IDs"));
     }

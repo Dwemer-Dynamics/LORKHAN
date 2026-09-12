@@ -200,7 +200,11 @@
         "lorkhan/tests/test_contract_harness.py",
         "scripts/protocol/generate_manifest.py",
         "scripts/protocol/validate.py",
-        "tests/test_protocol.py"
+        "tests/test_protocol.py",
+        "lorkhan/fixtures/v1/valid/session-loaded-save.json",
+        "lorkhan/fixtures/v1/valid/session-loaded-save-unknown.json",
+        "lorkhan/fixtures/v1/invalid/session-loaded-save-hour.json",
+        "lorkhan/fixtures/v1/invalid/session-loaded-save-leap-day.json"
       ],
       "source_repository": null,
       "source_commit": null,

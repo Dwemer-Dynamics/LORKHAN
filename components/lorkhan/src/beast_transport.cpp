@@ -368,6 +368,8 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
             const auto* init = std::get_if<InitRequest>(&request.payload);
             if (!init)
                 break;
+            if (init->loadedCalendar && !init->loadedSave)
+                return Result<WireRequest>::failure(makeError(ErrorCode::invalid_argument, "calendar requires loaded-save lifecycle"));
             wire.method = http::verb::post;
             wire.target = route("/sessions");
             wire.expectedStatus = 201;
@@ -379,7 +381,17 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
                 + ",\"generation\":" + std::to_string(init->ids.generation.value())
                 + ",\"created_at\":" + escapeJson(init->createdAt)
                 + ",\"runtime\":" + runtimeJson(init->runtime)
-                + ",\"content_fingerprint\":" + escapeJson(init->contentFingerprint) + "}";
+                + ",\"content_fingerprint\":" + escapeJson(init->contentFingerprint);
+            if (init->loadedSave) {
+                wire.body += ",\"loaded_save\":";
+                if (init->loadedCalendar) {
+                    const auto& calendar = *init->loadedCalendar;
+                    if (!calendar.valid()) return Result<WireRequest>::failure(makeError(ErrorCode::invalid_argument, "invalid loaded-save calendar"));
+                    wire.body += "{\"year\":" + std::to_string(calendar.year) + ",\"month\":" + std::to_string(calendar.month)
+                        + ",\"day\":" + std::to_string(calendar.day) + ",\"hour\":" + std::to_string(calendar.hour) + "}";
+                } else wire.body += "null";
+            }
+            wire.body += "}";
             break;
         }
         case RequestKind::turn: {
@@ -1025,7 +1037,8 @@ struct BeastTransport::Impl {
             || deadlines.write <= std::chrono::milliseconds::zero()
             || deadlines.firstByte <= std::chrono::milliseconds::zero()
             || deadlines.read <= std::chrono::milliseconds::zero()
-            || deadlines.total <= std::chrono::milliseconds::zero())
+            || deadlines.total <= std::chrono::milliseconds::zero()
+            || deadlines.loadedSaveFirstByte <= std::chrono::milliseconds::zero())
             throw std::invalid_argument("BeastTransport deadlines must be positive");
     }
 
@@ -1147,8 +1160,11 @@ Result<InboundResult> BeastTransport::execute(const OutboundRequest& request, st
     parser.eager(false);
     parser.header_limit(kMaximumHeaderBytes);
     parser.body_limit(wire.responseBodyLimit);
+    const auto* init = std::get_if<InitRequest>(&request.payload);
+    const auto firstByteBudget = init && init->loadedSave && init->loadedCalendar
+        ? m_impl->deadlines.loadedSaveFirstByte : m_impl->deadlines.firstByte;
     const auto firstByteDeadline = std::chrono::steady_clock::now()
-        + boundedStage(totalDeadline, m_impl->deadlines.firstByte);
+        + boundedStage(totalDeadline, firstByteBudget);
     operation->stream.expires_at(firstByteDeadline);
     http::async_read_header(operation->stream, buffer, parser,
         [&error](const boost::system::error_code& result, std::size_t) { error = result; });

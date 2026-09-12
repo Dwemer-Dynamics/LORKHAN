@@ -117,6 +117,43 @@ end
 test('lifecycle invalidates generation and cancels native',function()
  local b=fake.bridge() local s=orchestrator.new(b) local before=s.generation orchestrator.lifecycle(s,'load')
  eq(s.generation,before+1) eq(b.cancelled[1],before)
+ local loadedFlag
+ b.finishLoadedSave=function() return true end
+ b.cancelGeneration=function(_,loaded) loadedFlag=loaded end
+ orchestrator.lifecycle(s,'load');eq(loadedFlag,true)
+ orchestrator.lifecycle(s,'new_game');eq(loadedFlag,false)
+end)
+test('GLOBAL loaded-save handshake waits for the player and submits only calendar fields',function()
+ local saved={} local modules={'scripts.LORKHAN.adapters.openmw','scripts.LORKHAN.orchestrator',
+  'openmw.world','openmw.types','openmw.interfaces','openmw.util'}
+ for _,name in ipairs(modules) do saved[name]=package.loaded[name] end
+ local ok,err=pcall(function()
+  local calls={} local fenced=false
+  local world={players={},activeActors={},mwscript={}}
+  local variables={year=427,month=7,day=16,gamehour=9.5,dayspassed=50}
+  world.mwscript.getGlobalVariables=function() return variables end
+  local native={finishLoadedSave=function(calendar)
+   if not fenced then return false end
+   fenced=false;calls[#calls+1]=calendar or 'unknown';return true
+  end}
+  package.loaded['scripts.LORKHAN.adapters.openmw']={bridge=function()return native end,
+   event=function()return {} end,identity=function()return nil end}
+  package.loaded['scripts.LORKHAN.orchestrator']={new=function()return {} end,
+   load=function()fenced=true end,lifecycle=function()fenced=false end}
+  package.loaded['openmw.world']=world
+  for _,name in ipairs({'openmw.types','openmw.interfaces','openmw.util'}) do package.loaded[name]={} end
+  local handlers=assert(loadfile(root..'/scripts/LORKHAN/global.lua'))().engineHandlers
+  handlers.onLoad({});handlers.onPlayerAdded({});eq(#calls,0)
+  world.players[1]={sendEvent=function()end}
+  handlers.onPlayerAdded(world.players[1]);eq(#calls,1)
+  eq(calls[1].year,427);eq(calls[1].month,7);eq(calls[1].day,16);eq(calls[1].hour,9.5)
+  eq(calls[1].days_passed,nil);eq(calls[1].month_name,nil)
+  handlers.onPlayerAdded(world.players[1]);eq(#calls,1)
+  handlers.onNewGame();handlers.onPlayerAdded(world.players[1]);eq(#calls,1)
+  world.mwscript=nil;handlers.onLoad({});handlers.onPlayerAdded(world.players[1]);eq(calls[2],'unknown')
+ end)
+ for _,name in ipairs(modules) do package.loaded[name]=saved[name] end
+ assert(ok,err)
 end)
 test('wire validators reject uppercase UUID and zero-byte media',function()
  eq(protocol.isUuid('00000000-0000-4000-8000-000000000001'),true)

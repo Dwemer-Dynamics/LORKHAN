@@ -274,3 +274,25 @@ speech/combat/input lanes cannot substitute another NPC. The global handoff chec
 that identity again. A successful RPG turn starts a 60-second game-owned real-time
 scheduler cooldown; lifecycle invalidation clears it. Existing native serialization
 and acknowledgement fields are unchanged; no native engine modification is needed.
+
+### Loaded-save calendar and pre-replacement snapshots
+
+`lorkhan.session.init.v1` optionally includes `loaded_save`. Normal startup,
+reconnect and new-game initialization omit it. Only an actual loaded save includes
+an object with integer `year` (1..9999), zero-based `month` (0..11), valid fixed-calendar
+`day`, and numeric `hour` (0 inclusive, 24 exclusive). Null records an unavailable
+calendar without inventing a date. Unknown fields and invalid dates are rejected.
+
+GLOBAL Lua fences the native session restart at `onLoad`, then calls the typed
+`finishLoadedSave(calendar)` when the loaded player is present. Native code freezes
+the four scalar fields in the init DTO; it performs no network work on the main
+thread. A known-calendar loaded-save init has a 20-second first-byte budget within
+the existing 30-second total request budget. Normal requests keep their deadlines.
+
+After authentication, schema and generation checks, but before replacing the old
+session, the server compares the calendar with the latest recorded turn in that
+installation/playthrough/profile. A rollback of at least three game days attempts
+an immutable full database snapshot. The archive retains committed pre-replacement
+state; duplicate calendar transitions reuse the stored record. Capture failures
+are logged and audited without intentionally rejecting a valid session. This does
+not restore the database or prune immutable future history automatically.
