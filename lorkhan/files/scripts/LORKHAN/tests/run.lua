@@ -311,6 +311,8 @@ test('old save migrates and drops inflight',function()
  truthy(meta.migrated) eq(loaded.schemaVersion,2) eq(loaded.generationSeed,6) eq(loaded.inFlight,nil)
 end)
 test('context applies all bounded constants',function()
+ local over=context.snapshot({world={description=string.rep('x',context.limits.MAX_CONTEXT_BYTES)},targetState={inventory={items={{record_id='dagger',count=1}},total=1,truncated=false}}})
+ truthy(over.budget.truncated);eq(#over.targetState.inventory.items,0);eq(over.targetState.inventory.total,1);truthy(over.targetState.inventory.truncated)
  local many={} for i=1,300 do many[i]={n=i} end
  local snap=context.snapshot({audience=many,actorActivities=many,inventory=many,nearbyObjects=many,activeEffects=many,journal=many,books=many,recentVanillaDialogue=many,contentFiles=many})
  eq(#snap.audience.items,12);eq(#snap.actorActivities.items,12);eq(#snap.inventory.items,48);eq(#snap.nearbyObjects.items,32);eq(#snap.activeEffects.items,32);eq(#snap.journal.items,32);eq(#snap.books.items,8);eq(#snap.recentVanillaDialogue.items,8);eq(#snap.contentFiles.items,256);truthy(snap.audience.truncated)
@@ -1459,6 +1461,23 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
  eq(context.playerState.held_items[1].display_name,'Iron Dagger')
  eq(context.nearbyObjects[1].ownership.record_id,'fargoth');eq(context.nearbyObjects[2].lock.locked,true)
  eq(context.nearbyObjects[2].lock.level,35);eq(context.nearbyObjects[2].lock.key_record_id,'warehouse_key')
+ local npcItems={}
+ for index=1,49 do npcItems[index]={recordId=string.format('npc_item_%02d',index),count=index,
+  type={record=function(item)return{name='NPC '..item.recordId}end}} end
+ modules.types.Actor.inventory=function(owner)
+  if owner==object then return {getAll=function()return npcItems end} end
+  return inventorySource
+ end
+ local captured=openmwAdapter.playerContext(mapped,modules)
+ eq(#captured.inventory,2);eq(captured.inventory[1].record_id,'iron_dagger')
+ eq(#captured.targetState.inventory.items,48);eq(captured.targetState.inventory.total,49)
+ eq(captured.targetState.inventory.truncated,true)
+ eq(captured.targetState.inventory.items[1].display_name,'NPC npc_item_01')
+ eq(captured.targetState.inventory.items[48].count,48)
+ npcItems={};captured=openmwAdapter.playerContext(mapped,modules)
+ eq(captured.targetState.inventory.total,0);eq(#captured.targetState.inventory.items,0)
+ modules.types.Actor.inventory=function()return nil end
+ eq(openmwAdapter.playerContext(mapped,modules).targetState.inventory,nil)
 end)
 
 io.write(string.format('%d tests, %d failures\n',tests,failures))

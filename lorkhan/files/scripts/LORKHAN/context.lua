@@ -62,6 +62,10 @@ function M.snapshot(source)
         snapshot.nearbyObjects.truncated = snapshot.nearbyObjects.total > 0
         snapshot.inventory.items = {}
         snapshot.inventory.truncated = snapshot.inventory.total > 0
+        if type(snapshot.targetState.inventory)=='table' and type(snapshot.targetState.inventory.items)=='table' then
+            snapshot.targetState.inventory.items = {}
+            snapshot.targetState.inventory.truncated = (tonumber(snapshot.targetState.inventory.total) or 0) > 0
+        end
     end
     return snapshot
 end

@@ -394,19 +394,22 @@ local function factions(actor, modules)
     return result
 end
 
-local function inventory(actor, modules)
+local function inventory(actor, modules, includeNames)
     local actorType=modules.types and modules.types.Actor
     local source=actorType and safe(actorType.inventory,actor)
     local objects=source and safe(source.getAll,source)
-    if not objects then return {} end
-    local rows,byRecord={},{}
+    if not objects then return {},false end
+    local rows,byRecord,names={},{},{}
     for _,item in ipairs(objects) do
         local recordId=item.recordId
-        if type(recordId)=='string' and recordId~='' then byRecord[recordId]=(byRecord[recordId] or 0)+(item.count or 1) end
+        if type(recordId)=='string' and recordId~='' then
+            byRecord[recordId]=(byRecord[recordId] or 0)+(item.count or 1)
+            if includeNames and not names[recordId] then names[recordId]=objectDisplayName(item) end
+        end
     end
-    for recordId,count in pairs(byRecord) do rows[#rows+1]={record_id=recordId,count=count} end
+    for recordId,count in pairs(byRecord) do rows[#rows+1]={record_id=recordId,count=count,display_name=names[recordId]} end
     table.sort(rows,function(a,b)return a.record_id<b.record_id end)
-    return rows
+    return rows,true
 end
 
 local function effects(actor, modules)
@@ -535,6 +538,14 @@ local function actorState(actor, player, modules)
     end
     local state={stats=dynamicStats(actor,modules),factions=factions(actor,modules),equipment=equipped,held_items=held,
         spells=spells(actor,modules),activeEffects=effects(actor,modules),gold=actorType and safe(actorType.getBarterGold,actor)}
+    if player then
+        local rows,available=inventory(actor,modules,true)
+        if available then
+            local limit=require('scripts.LORKHAN.constants').MAX_INVENTORY_ROWS
+            local items={} for index=1,math.min(#rows,limit) do items[index]=rows[index] end
+            state.inventory={items=items,total=#rows,truncated=#rows>limit}
+        end
+    end
     if actorType and actorType.stats then
         state.attributes=namedStats(actor,actorType.stats.attributes,
             {'strength','intelligence','willpower','agility','speed','endurance','personality','luck'})
