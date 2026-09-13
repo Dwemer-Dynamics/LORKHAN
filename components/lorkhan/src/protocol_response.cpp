@@ -1664,7 +1664,15 @@ Result<DebugCommandResponse> parseDebugCommandResponse(
         ||name.value()=="target.actor.restore"||name.value()=="target.teleport.to_player";
     const bool switchCommand=name.value()=="god_mode.set"||name.value()=="collision.set"||name.value()=="ai.set"
         ||name.value()=="mwscript.set"||name.value()=="shader_hot_reload.set";
-    if(name.value()=="player.dialogue.submit"){
+    if (name.value() == "npc.status" || name.value() == "npc.visit"
+        || name.value() == "npc.teleport" || name.value() == "npc.return") {
+        if (!hasExactly(*parameters, {"actor"}))
+            return invalidSchemaValue<DebugCommandResponse>("NPC manager fields mismatch");
+        auto actor = parseIdentity(*json::find(*parameters, "actor"));
+        if (!actor || (actor.value().kind != "npc" && actor.value().kind != "creature"))
+            return invalidSchemaValue<DebugCommandResponse>("NPC manager requires an exact NPC or creature identity");
+        parsedParameters.emplace("actor", std::move(actor).value());
+    } else if(name.value()=="player.dialogue.submit"){
         if(!hasExactly(*parameters,{"text","language"}))return invalidSchemaValue<DebugCommandResponse>("browser speech fields mismatch");
         auto text=requireString(*parameters,"text",1,2048);auto language=requireString(*parameters,"language",2,16);
         if(!text||!language)return invalidSchemaValue<DebugCommandResponse>("invalid browser speech strings");

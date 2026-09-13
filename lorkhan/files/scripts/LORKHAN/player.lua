@@ -92,6 +92,7 @@ local AUTO_SCAN_INTERVAL=1.0
 local AUTOMATIC_DIARY_POLL_INTERVAL=30
 local DEBUG_POLL_INTERVAL=0.25
 local GLOBAL_DEBUG_COMMANDS={
+    ['npc.status']=true,['npc.visit']=true,['npc.teleport']=true,['npc.return']=true,
     ['player.inventory.add']=true,['player.inventory.remove']=true,
     ['player.spell.add']=true,['player.spell.remove']=true,['player.vitals.restore']=true,
     ['player.stat.set']=true,['player.attribute.set']=true,['player.skill.set']=true,
@@ -790,8 +791,10 @@ local function pumpDebugCommands()
         return
     end
     if GLOBAL_DEBUG_COMMANDS[status.command.name] then
-        pendingGlobalDebugCommand={command=status.command,started_at=now}
-        send('LORKHAN_DEBUG_COMMAND',{command=status.command})
+        local session=native.sessionInfo and native.sessionInfo()
+        if not session then submitDebugResult(status.command,'rejected','session_unavailable',{}) return end
+        pendingGlobalDebugCommand={command=status.command,started_at=now,session_id=session.session_id,generation=session.generation}
+        send('LORKHAN_DEBUG_COMMAND',{command=status.command,session_id=session.session_id,generation=session.generation,deadline=now+20})
         return
     end
     local outcome,reason,observed=executeDebugCommand(status.command)
@@ -1948,6 +1951,11 @@ return {
         LORKHAN_DEBUG_COMMAND_RESULT=function(event)
             if not pendingGlobalDebugCommand or type(event)~='table'
                 or event.command_id~=pendingGlobalDebugCommand.command.command_id then return end
+            if pendingGlobalDebugCommand.session_id then
+                local session=native.sessionInfo and native.sessionInfo()
+                if not session or session.session_id~=pendingGlobalDebugCommand.session_id
+                    or session.generation~=pendingGlobalDebugCommand.generation then pendingGlobalDebugCommand=nil return end
+            end
             local browserArgs=pendingGlobalDebugCommand.browser_args
             if browserArgs then
                 local session=native.sessionInfo and native.sessionInfo()

@@ -422,14 +422,14 @@
       "sha256": "5ba01a8c62872239adf3a2092e072d4a8d00939501368600f7d29e957409dd0a"
     },
     {
-      "bytes": 3420,
+      "bytes": 3578,
       "path": "lorkhan/schemas/v1/debug-command-result.schema.json",
-      "sha256": "b147be4a82a99fb9f463034d86a7b8a93fd9fc8ed5bed9a7791e21b497e9ae46"
+      "sha256": "ede5fdbad8b7fb598d63356527cb733adc8a3ca73a12db93e11d304dc8fc2e27"
     },
     {
-      "bytes": 21385,
+      "bytes": 22524,
       "path": "lorkhan/schemas/v1/debug-command.schema.json",
-      "sha256": "c897c85a2a058315987054cc6d62cb308bf57640966e90cdffe63df5740452f5"
+      "sha256": "811579fe721603007e0bbe74ded9ff1f63e8c89f81b48b5b5a671778d3aefa60"
     },
     {
       "bytes": 1184,

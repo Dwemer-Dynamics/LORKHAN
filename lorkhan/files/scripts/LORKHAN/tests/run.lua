@@ -815,6 +815,79 @@ test('typed player action request remains inside the strict turn envelope',funct
   ui_source='lorkhan_action_menu',action_request={name='../run',tier=1,parameters={}}})
  eq(dto,nil);eq(reason,'invalid_action_request')
 end)
+test('NPC manager uses exact references and verifies deferred movement with save-backed Return',function()
+ local manager=require('scripts.LORKHAN.npc_manager')
+ local function rotation(pitch,yaw)
+  return {getAnglesXZ=function()return pitch,yaw end}
+ end
+ local origin={id='origin',name='Origin',isExterior=false}
+ local destination={id='destination',name='Destination',isExterior=false}
+ local pending={} local loads=0 local valid=true local materialize=false
+ local actorObject={recordId=npc.record_id,cell=origin,position={x=10,y=20,z=30},rotation=rotation(0.35,math.pi)}
+ local playerObject={recordId='player',cell=destination,position={x=100,y=200,z=300},rotation=rotation(0,0)}
+ function actorObject:isValid()return valid end
+ local function teleport(object,cell,position,options)
+  pending[#pending+1]=function()object.cell=cell;object.position=position;object.rotation=options.rotation end
+ end
+ actorObject.teleport=teleport;playerObject.teleport=teleport
+ function origin:getAll()loads=loads+1;if materialize then valid=true end end
+ local function transformValue(apply)
+  return setmetatable({apply=apply,getAnglesXZ=function()
+   local x,y,z=apply(0,1,0);return -math.asin(z),(math.atan2 or math.atan)(x,y)
+  end},{__mul=function(a,b)return transformValue(function(x,y,z)return a.apply(b.apply(x,y,z))end)end})
+ end
+ local transform={rotateX=function(angle)return transformValue(function(x,y,z)
+  return x,math.cos(angle)*y+math.sin(angle)*z,-math.sin(angle)*y+math.cos(angle)*z end)end,
+  rotateZ=function(angle)return transformValue(function(x,y,z)
+  return math.cos(angle)*x+math.sin(angle)*y,-math.sin(angle)*x+math.cos(angle)*y,z end)end}
+ local world={players={playerObject},getObjectByFormId=function(id)if id=='exact' then return actorObject end end,
+  getCellByName=function(name)if name==npc.cell.name then return origin end end,
+  getCellById=function(id)if id=='origin' then return origin elseif id=='destination' then return destination end end}
+ local controls=manager.new({world=world,core={getFormId=function(file,index)
+  if file==npc.content_file and index==npc.refnum.index then return'exact'end return'other'end},
+  types={NPC={objectIsInstance=function(object)return object==actorObject end}},
+  util={transform=transform,vector3=function(x,y,z)return{x=x,y=y,z=z}end}})
+ local function command(name)return{session_id=UUID.session,generation=1,deadline=20,
+  command={command_id=UUID.message,name=name,parameters={actor=npc}}}end
+ local status,reason,observed=manager.start(controls,command('npc.status'),UUID.session,1,0)
+ eq(status,'succeeded');eq(observed.actor_available,true);eq(observed.return_available,false);eq(#pending,0)
+ local request=command('npc.teleport');request.generation=2
+ eq(manager.start(controls,request,UUID.session,1,0),'rejected');eq(#pending,0)
+ eq(manager.start(controls,command('npc.teleport'),UUID.session,1,0),nil)
+ eq(actorObject.cell,origin);eq(manager.poll(controls,UUID.session,1,0.1),nil)
+ table.remove(pending,1)();actorObject.rotation=rotation(0.35,-math.pi)
+ local result=manager.poll(controls,UUID.session,1,0.2)
+ eq(result.status,'succeeded');eq(result.observed.return_available,true);eq(actorObject.cell,destination)
+ status,reason=manager.start(controls,command('npc.teleport'),UUID.session,1,1)
+ eq(status,'rejected');eq(reason,'return_pending')
+ local saved=manager.save(controls);manager.load(controls,saved)
+ eq(manager.start(controls,command('npc.return'),UUID.session,1,2),nil)
+ eq(manager.poll(controls,UUID.session,1,3),nil)
+ table.remove(pending,1)();result=manager.poll(controls,UUID.session,1,4)
+ eq(result.status,'succeeded');eq(result.observed.return_available,false);eq(actorObject.cell,origin);eq(actorObject.position.x,10)
+ eq(manager.start(controls,command('npc.visit'),UUID.session,1,5),nil)
+ eq(playerObject.cell,destination);table.remove(pending,1)();result=manager.poll(controls,UUID.session,1,6)
+ eq(result.status,'succeeded');eq(playerObject.cell,origin);eq(actorObject.position.x,10)
+ playerObject.cell=destination;playerObject.position={x=100,y=200,z=300}
+ eq(manager.start(controls,command('npc.teleport'),UUID.session,1,7),nil)
+ result=manager.poll(controls,UUID.session,1,20);eq(result.status,'failed');eq(result.observed.return_available,true)
+ pending={};valid=false
+ status,reason,observed=manager.start(controls,command('npc.status'),UUID.session,1,8)
+ eq(status,'succeeded');eq(observed.actor_available,false);eq(observed.return_available,true);eq(loads,1)
+ eq(manager.start(controls,command('npc.return'),UUID.session,1,8),'rejected');eq(loads,2)
+ materialize=true
+ status,reason,observed=manager.start(controls,command('npc.status'),UUID.session,1,8)
+ eq(observed.actor_available,true);eq(loads,3);eq(#pending,0)
+ valid=true;actorObject.recordId='different_actor'
+ status,reason,observed=manager.start(controls,command('npc.status'),UUID.session,1,8)
+ eq(observed.actor_available,false);eq(#pending,0)
+ actorObject.recordId=npc.record_id
+ manager.load(controls,nil)
+ eq(manager.start(controls,command('npc.teleport'),UUID.session,1,9),nil)
+ eq(manager.poll(controls,UUID.session,2,10),nil);eq(controls.pending,nil)
+ truthy(next(manager.save(controls)))
+ manager.load(controls,nil);eq(next(manager.save(controls)),nil)
+end)
 test('inventory observations are changed-only bounded and fenced from failed reads and sessions',function()
  local state={} local playerState=require('scripts.LORKHAN.player_state')
  local session={session_id=UUID.session,generation=1}

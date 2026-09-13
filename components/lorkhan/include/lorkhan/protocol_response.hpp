@@ -410,7 +410,7 @@ struct ControlsResponse {
 };
 
 struct DebugCommandResponse {
-    using Parameter = std::variant<bool, std::int64_t, double, std::string>;
+    using Parameter = std::variant<bool, std::int64_t, double, std::string, ProtocolIdentity>;
     struct Command {
         MessageId command;
         std::string name;

@@ -12,6 +12,9 @@
       "maxProperties": 8,
       "properties": {
         "ai_enabled": {"type": "boolean"},
+        "actor_available": {"type": "boolean"},
+        "return_available": {"type": "boolean"},
+        "return_cell": {"maxLength": 300, "type": "string"},
         "attribute": {"maxLength": 32, "type": "string"},
         "base": {"maximum": 1000000, "minimum": 0, "type": "number"},
         "bounty": {"maximum": 1000000000, "minimum": 0, "type": "integer"},

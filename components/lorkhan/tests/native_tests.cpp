@@ -429,6 +429,24 @@ void testAcceptedProtocolResponses()
         auto changed=browserSpeech;changed.replace(changed.find("en-US"),5,invalid);
         CHECK(!lorkhan::parseDebugCommandResponse(changed,jsonHeaders));
     }
+    const std::string npcCommandPrefix = R"({"schema":"lorkhan.debug-command.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"command":{"command_id":"01900000-0000-7000-8000-000000000007","name":")";
+    const std::string npcCommandSuffix = R"(},"expires_at":"2026-08-31T12:00:30Z"}})";
+    const std::string npcActor = R"({"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"})";
+    for (const std::string name : {"npc.status", "npc.visit", "npc.teleport", "npc.return"}) {
+        const auto prefix = npcCommandPrefix + name + R"(","parameters":{"actor":)";
+        auto manager = lorkhan::parseDebugCommandResponse(prefix + npcActor + npcCommandSuffix, jsonHeaders);
+        CHECK(manager && manager.value().command
+            && std::get<lorkhan::ProtocolIdentity>(manager.value().command->parameters.at("actor")).refnumIndex == 112);
+        auto creature = npcActor; creature.replace(creature.find("npc"), 3, "creature");
+        CHECK(lorkhan::parseDebugCommandResponse(prefix + creature + npcCommandSuffix, jsonHeaders));
+        for (const std::string kind : {"player", "narrator"}) {
+            auto invalid = npcActor; invalid.replace(invalid.find("npc"), 3, kind);
+            CHECK(!lorkhan::parseDebugCommandResponse(prefix + invalid + npcCommandSuffix, jsonHeaders));
+        }
+        CHECK(!lorkhan::parseDebugCommandResponse(prefix + "{}" + npcCommandSuffix, jsonHeaders));
+        CHECK(!lorkhan::parseDebugCommandResponse(prefix + npcActor + R"(,"x":42)" + npcCommandSuffix, jsonHeaders));
+        CHECK(!lorkhan::parseDebugCommandResponse(prefix + npcActor + R"(,"code":"tgm")" + npcCommandSuffix, jsonHeaders));
+    }
     auto inventoryDebugCommand = lorkhan::parseDebugCommandResponse(
         R"({"schema":"lorkhan.debug-command.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"command":{"command_id":"01900000-0000-7000-8000-000000000007","name":"player.inventory.add","parameters":{"record_id":"fur_colovian_helm","count":1},"expires_at":"2026-08-31T12:00:30Z"}})",
         jsonHeaders);

@@ -479,6 +479,45 @@
             "expires_at"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "expires_at": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+            },
+            "name": {
+              "enum": [
+                "npc.status",
+                "npc.visit",
+                "npc.teleport",
+                "npc.return"
+              ],
+              "type": "string"
+            },
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "actor": {
+                  "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+                }
+              },
+              "required": [
+                "actor"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "parameters",
+            "expires_at"
+          ],
+          "type": "object"
         }
       ]
     },

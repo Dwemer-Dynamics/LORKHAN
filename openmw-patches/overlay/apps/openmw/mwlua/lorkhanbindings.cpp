@@ -1232,7 +1232,11 @@ namespace MWLua
                     command["command_id"]=m_debugCommand->command.value();command["name"]=m_debugCommand->name;
                     command["expires_at"]=m_debugCommand->expiresAt;
                     for(const auto& [key,value]:m_debugCommand->parameters){
-                        std::visit([&](const auto& parameter){parameters[key]=parameter;},value);
+                        std::visit([&](const auto& parameter) {
+                            if constexpr (std::is_same_v<std::decay_t<decltype(parameter)>, lorkhan::ProtocolIdentity>)
+                                parameters[key] = identityTable(lua, parameter);
+                            else parameters[key] = parameter;
+                        }, value);
                     }
                     command["parameters"]=parameters;status["command"]=command;
                     m_debugCommand.reset();}
@@ -1491,7 +1495,7 @@ namespace MWLua
             }
 
             static std::vector<std::string> capabilities()
-            { return { "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "speech.browser.v1", "action.conversation.end", "action.ai.follow", "action.ai.stop",
+            { return { "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.conversation.end", "action.ai.follow", "action.ai.stop",
                 "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
                 "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" }; }

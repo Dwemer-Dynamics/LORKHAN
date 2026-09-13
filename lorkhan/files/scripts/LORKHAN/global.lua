@@ -6,6 +6,8 @@ local interfacesOk,interfaces=pcall(require,'openmw.interfaces')
 local typesOk,types=pcall(require,'openmw.types')
 local worldOk,world=pcall(require,'openmw.world')
 local worldUtilOk,worldUtil=pcall(require,'openmw.util')
+local npcManager=require('scripts.LORKHAN.npc_manager')
+local npcControls=npcManager.new({core=core,world=world,types=types,util=worldUtil})
 local state
 local pendingPlayerEvents={}
 local bridgeStatus
@@ -290,6 +292,14 @@ end
 
 local function handleGlobalDebugCommand(event)
     local command=event and event.command
+    if command and ({['npc.status']=true,['npc.visit']=true,['npc.teleport']=true,['npc.return']=true})[command.name] then
+        local now=core and core.getRealTime and core.getRealTime() or 0
+        local ok,status,reason,observed=pcall(npcManager.start,npcControls,event,state.sessionId,state.generation,now)
+        if not ok then status='failed';reason='npc_command_failed';observed={} end
+        if status then emit('LORKHAN_DEBUG_COMMAND_RESULT',{command_id=command.command_id,status=status,
+            reason_code=reason,observed=observed,session_id=event.session_id,generation=event.generation}) end
+        return
+    end
     if command and command.name=='player.dialogue.submit' then
         local now=core and core.getRealTime and core.getRealTime() or 0
         local reason
@@ -328,6 +338,7 @@ return {
         onNewGame=function()
             pendingLoadedSave=false
             pendingPlayerEvents={}
+            npcManager.load(npcControls,nil)
             orchestrator.lifecycle(state,'new_game')
             activateWorldActors()
             flushPlayerEvents()
@@ -336,10 +347,18 @@ return {
             pendingLoadedSave=type(bridge.finishLoadedSave)=='function'
             pendingPlayerEvents={}
             orchestrator.load(state,data)
+            npcManager.load(npcControls,type(data)=='table' and type(data.actorStateHints)=='table' and data.actorStateHints.npcReturnPoses or nil)
             activateWorldActors()
             flushPlayerEvents()
         end,
-        onSave=function() return orchestrator.save(state) end,
+        onSave=function()
+            local data=orchestrator.save(state)
+            if data and not state.futureSave then
+                data.actorStateHints=data.actorStateHints or {}
+                data.actorStateHints.npcReturnPoses=npcManager.save(npcControls)
+            end
+            return data
+        end,
         onActorActive=activate,
         onPlayerAdded=function(object)
             activate(object)
@@ -347,6 +366,8 @@ return {
             flushPlayerEvents(object)
         end,
         onUpdate=function(dt)
+            local result=npcManager.poll(npcControls,state.sessionId,state.generation,core and core.getRealTime and core.getRealTime() or 0)
+            if result then emit('LORKHAN_DEBUG_COMMAND_RESULT',result) end
             finishLoadedSave()
             local elapsed=tonumber(dt) or 0
             if core and core.getRealTime then
