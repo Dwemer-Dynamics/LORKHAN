@@ -463,6 +463,56 @@ function M.targetInventory(targetIdentity, modules)
     return inventory(actor,modules)
 end
 
+-- Capture a complete typed inventory observation; unavailable rows invalidate the snapshot, not its contents.
+function M.inventoryObservation(targetIdentity, modules)
+    modules=modules or loaded()
+    local actor,reason=M.resolve(targetIdentity,modules)
+    if not actor then return nil,reason end
+    local actorType=modules.types and modules.types.Actor
+    local source=actorType and safe(actorType.inventory,actor)
+    local objects=source and safe(source.getAll,source)
+    local equipped=actorType and safe(actorType.getEquipment,actor)
+    if not objects or not equipped then return nil,'inventory_unavailable' end
+    if #objects>512 then return nil,'inventory_over_budget' end
+    local function number(value) return type(value)=='number' and value==value and value~=math.huge and value~=-math.huge end
+    local rows={}
+    for _,item in ipairs(objects) do
+        local ok,row=pcall(function()
+            local record=item.type and item.type.record and item.type.record(item)
+            if not record or type(record.name)~='string' or record.name=='' or #record.name>256
+                or type(item.recordId)~='string' or item.recordId=='' or #item.recordId>256
+                or not number(item.count) or item.count<1 or item.count>2147483647 or item.count%1~=0
+                or not number(record.value) or record.value<0 or record.value>2147483647 or record.value%1~=0 then return nil end
+            local entry={record_id=item.recordId,name=record.name,count=item.count,value=record.value,equipped=false}
+            for _,held in pairs(equipped) do if held==item or (item.id and held.id==item.id) then entry.equipped=true break end end
+            -- GameObject.contentFile identifies reference origin, not the winning record definition.
+            -- No canonical record-owner resolver is exposed here, so omit optional content_file.
+            local itemType=modules.types and modules.types.Item
+            local data=itemType and safe(itemType.itemData,item)
+            local maximum=record.health or record.maxCondition or record.duration
+            if data and number(data.condition) and number(maximum) and maximum>0 then
+                local condition=data.condition/maximum
+                if condition>=0 and condition<=1 then entry.condition=condition
+                elseif not (record.duration and data.condition==-1) then return nil end
+            end
+            return entry
+        end)
+        if not ok or not row then return nil,'inventory_item_unavailable' end
+        rows[#rows+1]=row
+    end
+    local function key(row)
+        local parts={}
+        for _,field in ipairs({'record_id','content_file','name','count','value','equipped','condition'}) do
+            local value=tostring(row[field]);parts[#parts+1]=tostring(#value)..':'..value
+        end
+        return table.concat(parts)
+    end
+    table.sort(rows,function(a,b)return key(a)<key(b) end)
+    local signatures={}
+    for _,row in ipairs(rows) do signatures[#signatures+1]=key(row) end
+    return {owner=targetIdentity,items=rows},table.concat(signatures,';')
+end
+
 function M.targetEquipment(targetIdentity, modules)
     modules=modules or loaded()
     local actor,reason=M.resolve(targetIdentity,modules)

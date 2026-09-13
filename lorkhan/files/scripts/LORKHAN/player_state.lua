@@ -1,6 +1,7 @@
 local ui=require('scripts.LORKHAN.ui.state')
 local targeting=require('scripts.LORKHAN.targeting')
 local util=require('scripts.LORKHAN.util')
+local identity=require('scripts.LORKHAN.identity')
 local M={}
 function M.new() return {ui=ui.new(),action='LORKHAN_Talk',haltAction='LORKHAN_Halt'} end
 -- Compare the bounded observed journal window without treating session/load snapshots as new quests.
@@ -101,4 +102,31 @@ function M.event(state,event)
     else ui.setStatus(state.ui,event.payload.status or event.type) end
 end
 function M.queued(state,speaker,text,event) ui.queued(state.ui,speaker,text,event) end
+-- Keep change detection session-owned and bounded; failed reads or submissions never clear known inventory.
+function M.observeInventory(state,event,session,reader,submit,now)
+    if type(event)~='table' or type(session)~='table' or event.session_id~=session.session_id
+        or event.generation~=session.generation or type(submit)~='function'
+        or type(now)~='number' or now~=now or now<0 or now==math.huge then return false end
+    local ownerKey=identity.key(event.actor)
+    if not ownerKey then return false end
+    local observations=state.inventoryObservations
+    if not observations or observations.session_id~=session.session_id or observations.generation~=session.generation then
+        observations={session_id=session.session_id,generation=session.generation,values={},sentAt={},order={}}
+        state.inventoryObservations=observations
+    end
+    local payload,signature=reader(event.actor)
+    if not payload or type(signature)~='string' then return false end
+    -- Re-send unchanged observations after five minutes so a dropped HTTP request cannot suppress them forever.
+    local sentAt=observations.sentAt[ownerKey]
+    if observations.values[ownerKey]==signature and sentAt and now>=sentAt and now-sentAt<300 then return false end
+    if not submit(payload) then return false end
+    if observations.values[ownerKey]==nil then observations.order[#observations.order+1]=ownerKey end
+    observations.values[ownerKey]=signature;observations.sentAt[ownerKey]=now
+    while #observations.order>32 do
+        local expired=table.remove(observations.order,1)
+        observations.values[expired]=nil;observations.sentAt[expired]=nil
+    end
+    return true
+end
+
 return M

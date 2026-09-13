@@ -2004,6 +2004,10 @@ return {
             if type(event)~='table' or type(event.actors)~='table' then return end
             for _,actor in ipairs(event.actors) do submitAutoActorProfile({actor=actor}) end
         end,
+        LORKHAN_INVENTORY_OBSERVE=function(event)
+            if not nativeOk or not native.submitInventory or not native.sessionInfo then return end
+            player.observeInventory(state,event,native.sessionInfo(),adapter.inventoryObservation,native.submitInventory,core.getRealTime())
+        end,
         LORKHAN_RECHAT_CONTEXT_REQUEST=function(event)
             local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
             if type(event)~='table' or not session or event.session_id~=session.session_id

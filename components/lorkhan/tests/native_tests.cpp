@@ -343,6 +343,28 @@ void testAcceptedProtocolResponses()
         R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"actor_profile","duplicate":false})",
         jsonHeaders);
     CHECK(actorProfile && actorProfile.value().type == "actor_profile");
+    auto inventoryAccepted = lorkhan::parseGameDataAcceptedResponse(
+        R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"inventory","duplicate":false})",
+        jsonHeaders);
+    CHECK(inventoryAccepted && inventoryAccepted.value().type == "inventory");
+    const std::string inventoryPrefix = R"({"owner":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"items":[)";
+    const std::string inventoryItem = R"({"record_id":"gold_001","name":"Gold","count":3,"value":1,"equipped":false})";
+    CHECK(lorkhan::validateInventoryPayload(inventoryPrefix + "]}"));
+    auto creatureInventory = inventoryPrefix;
+    creatureInventory.replace(creatureInventory.find("npc"), 3, "creature");
+    CHECK(lorkhan::validateInventoryPayload(creatureInventory + "]}"));
+    auto narratorInventory = inventoryPrefix;
+    narratorInventory.replace(narratorInventory.find("npc"), 3, "narrator");
+    CHECK(!lorkhan::validateInventoryPayload(narratorInventory + "]}"));
+    CHECK(lorkhan::validateInventoryPayload(inventoryPrefix + inventoryItem + "]}"));
+    CHECK(lorkhan::validateInventoryPayload(inventoryPrefix + R"({"record_id":"iron_dagger","name":"Iron dagger","count":1,"value":10,"equipped":true,"condition":0.5,"content_file":"Morrowind.esm"}]})"));
+    CHECK(!lorkhan::validateInventoryPayload(inventoryPrefix + R"({"record_id":"gold_001","name":"Gold","count":0,"value":1,"equipped":false}]})"));
+    CHECK(!lorkhan::validateInventoryPayload(inventoryPrefix + R"({"record_id":"gold_001","name":"Gold","count":1,"value":1,"equipped":false,"condition":2}]})"));
+    CHECK(!lorkhan::validateInventoryPayload(inventoryPrefix + R"({"record_id":"gold_001","name":"Gold","count":1,"value":1,"equipped":false,"url":"http://localhost"}]})"));
+    std::string inventoryMaximum = inventoryPrefix;
+    for (int item = 0; item < 512; ++item) inventoryMaximum += (item ? "," : "") + inventoryItem;
+    CHECK(lorkhan::validateInventoryPayload(inventoryMaximum + "]}"));
+    CHECK(!lorkhan::validateInventoryPayload(inventoryMaximum + "," + inventoryItem + "]}"));
     auto rpgEvent = lorkhan::parseGameDataAcceptedResponse(
         R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"rpg_event","duplicate":false,"comment_requested":true})",
         jsonHeaders);
@@ -729,6 +751,21 @@ void testBridgeDialogueDeliveryValidation()
     auto badTimestamp = makeDelivery(uuidFor(86));
     std::get<lorkhan::DialogueDeliveryResultRequest>(badTimestamp.payload).completedAt = "2026-02-30T20:00:02Z";
     CHECK(!bridge.enqueue(std::move(badTimestamp)));
+
+    lorkhan::OutboundRequest inventory{lorkhan::RequestId(uuidFor(88)), lorkhan::SessionId(kSession), generation,
+        lorkhan::RequestKind::gamedata,
+        lorkhan::GameDataRequest{lorkhan::InstallationId(kInstallation), lorkhan::PlaythroughId(kPlaythrough),
+            lorkhan::RequestId(uuidFor(88)), generation, "2026-07-19T20:00:02Z", lorkhan::GameDataType::inventory,
+            "{\"owner\":" + protocolIdentity() + ",\"items\":[]}"}};
+    CHECK(bridge.enqueue(inventory));
+    inventory.id = lorkhan::RequestId(uuidFor(89));
+    auto& invalidInventory = std::get<lorkhan::GameDataRequest>(inventory.payload);
+    invalidInventory.request = inventory.id;
+    invalidInventory.serializedPayload = "{}";
+    CHECK(!bridge.enqueue(inventory));
+    invalidInventory.serializedPayload = "{\"owner\":" + protocolIdentity() + ",\"items\":[]}";
+    invalidInventory.runtimeGeneration = lorkhan::Generation(generation.value() + 1);
+    CHECK(!bridge.enqueue(inventory));
 
     lorkhan::EnvelopeIds sttIds{lorkhan::InstallationId(kInstallation), lorkhan::ProfileId(kProfile),
         lorkhan::PlaythroughId(kPlaythrough), lorkhan::SessionId(kSession), lorkhan::RequestId(uuidFor(87)),

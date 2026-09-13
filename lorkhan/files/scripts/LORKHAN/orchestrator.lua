@@ -447,6 +447,30 @@ local function nextCombatActor(state)
     return candidates[1]
 end
 
+-- Refresh at most one managed active actor every two seconds without scheduling any model work.
+function M.pollInventoryObservations(state,elapsed)
+    if state.disabled or state.hardHalted or not state.sessionId then return false end
+    local scan=state.inventoryScan
+    if not scan or scan.sessionId~=state.sessionId or scan.generation~=state.generation then
+        scan={sessionId=state.sessionId,generation=state.generation,elapsed=2,index=0}
+        state.inventoryScan=scan
+    end
+    scan.elapsed=scan.elapsed+math.max(0,math.min(2,tonumber(elapsed) or 0))
+    if scan.elapsed<2 then return false end
+    scan.elapsed=0
+    local actors=agentRegistry.snapshot(state.agents)
+    if #actors==0 then return false end
+    for _=1,#actors do
+        scan.index=scan.index%#actors+1
+        local actor=actors[scan.index].identity
+        if (actor.kind=='npc' or actor.kind=='creature') and state.registry:resolve(actor) then
+            state.emit('LORKHAN_INVENTORY_OBSERVE',{actor=util.copy(actor),session_id=state.sessionId,generation=state.generation})
+            return true
+        end
+    end
+    return false
+end
+
 -- Run one real-time, idle-only scheduler for greetings, boredom remarks, and combat barks.
 function M.runAutonomy(state,elapsed)
     local seconds=math.max(0,math.min(5,tonumber(elapsed) or 0))

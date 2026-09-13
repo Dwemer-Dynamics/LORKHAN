@@ -685,6 +685,11 @@ namespace MWLua
                 return submitGameData(lua, lorkhan::GameDataType::captured_dialogue, std::move(payload));
             }
 
+            std::tuple<sol::object, sol::object> submitInventory(sol::state_view lua, sol::table payload)
+            {
+                return submitGameData(lua, lorkhan::GameDataType::inventory, std::move(payload));
+            }
+
             std::tuple<sol::object, sol::object> submitActorProfile(sol::state_view lua, sol::table payload)
             {
                 return submitGameData(lua, lorkhan::GameDataType::actor_profile, std::move(payload));
@@ -1639,6 +1644,9 @@ namespace MWLua
             api["submitTurn"] = [lua](sol::table dto) { return client().submitTurn(lua, std::move(dto)); };
             api["submitCapturedDialogue"] = [lua](sol::table payload) {
                 return client().submitCapturedDialogue(lua, std::move(payload));
+            };
+            api["submitInventory"] = [lua](sol::table payload) {
+                return client().submitInventory(lua, std::move(payload));
             };
             api["submitActorProfile"] = [lua](sol::table payload) {
                 return client().submitActorProfile(lua, std::move(payload));

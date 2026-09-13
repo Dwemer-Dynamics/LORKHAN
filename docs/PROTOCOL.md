@@ -296,3 +296,20 @@ an immutable full database snapshot. The archive retains committed pre-replaceme
 state; duplicate calendar transitions reuse the stored record. Capture failures
 are logged and audited without intentionally rejecting a valid session. This does
 not restore the database or prune immutable future history automatically.
+
+
+### Independent inventory observations
+
+The typed gamedata inventory observation keeps exact owner identity and a bounded
+item list. Native and server admission accept only physical NPC, creature or player
+owners; Narrator is rejected. Item `condition` is optional: report a normalized 0-1 value only when
+OpenMW provides a degrading condition and its maximum. Items without durability
+omit it. Item `content_file` is also optional when the engine cannot establish the
+record origin; no content file is guessed from the owner. Present values retain
+the existing type, length and range checks. This does not relax action identities:
+item actions still require their canonical record/content-file pair.
+
+Inventory observations have no recorded game calendar. Consumers use only the
+current exact session/generation/playthrough and never carry them across a loaded
+save. Current-turn observed inventory, including an empty list, wins over fallback.
+Deploy the paired server schema before a client that emits the optional fields.

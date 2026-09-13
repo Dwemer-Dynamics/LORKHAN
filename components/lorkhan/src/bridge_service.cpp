@@ -223,6 +223,8 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
             || !isCanonicalUtcTimestamp(gamedata->observedAt))
             return Result<void>::failure(makeError(ErrorCode::invalid_argument,
                 "game-data correlation is invalid"));
+        if (gamedata->type == GameDataType::inventory)
+            return validateInventoryPayload(gamedata->serializedPayload);
     }
     const auto validatePayload = [](std::string_view value, std::size_t limit) -> Result<void> {
         auto valid = requireValidUtf8(value, limit);

@@ -815,6 +815,30 @@ test('typed player action request remains inside the strict turn envelope',funct
   ui_source='lorkhan_action_menu',action_request={name='../run',tier=1,parameters={}}})
  eq(dto,nil);eq(reason,'invalid_action_request')
 end)
+test('inventory observations are changed-only bounded and fenced from failed reads and sessions',function()
+ local state={} local playerState=require('scripts.LORKHAN.player_state')
+ local session={session_id=UUID.session,generation=1}
+ local observation={session_id=UUID.session,generation=1,actor=npc}
+ local signature='initial' local available=true local accepted=true local calls=0
+ local function read()if available then return {owner=npc,items={}},signature end end
+ local function submit()calls=calls+1;return accepted end
+ truthy(playerState.observeInventory(state,observation,session,read,submit,10));eq(calls,1)
+ eq(playerState.observeInventory(state,observation,session,read,submit,10),false);eq(calls,1)
+ truthy(playerState.observeInventory(state,observation,session,read,submit,310));eq(calls,2)
+ eq(playerState.observeInventory(state,observation,session,read,submit,311),false);eq(calls,2)
+ available=false;eq(playerState.observeInventory(state,observation,session,read,submit,312),false);eq(calls,2)
+ available=true;signature='';accepted=false
+ eq(playerState.observeInventory(state,observation,session,read,submit,10),false)
+ accepted=true;truthy(playerState.observeInventory(state,observation,session,read,submit,10))
+ observation.generation=2;eq(playerState.observeInventory(state,observation,session,read,submit,10),false)
+ session.generation=2;truthy(playerState.observeInventory(state,observation,session,read,submit,10))
+ local emitted=0 local scheduler=orchestrator.new(fake.bridge(),function(name)if name=='LORKHAN_INVENTORY_OBSERVE' then emitted=emitted+1 end end)
+ orchestrator.configureSession(scheduler,UUID.session);orchestrator.activate(scheduler,npc,{})
+ require('scripts.LORKHAN.agent_registry').activate(scheduler.agents,npc,'auto',1)
+ truthy(orchestrator.pollInventoryObservations(scheduler,0));eq(emitted,1)
+ eq(orchestrator.pollInventoryObservations(scheduler,1),false);eq(emitted,1)
+ truthy(orchestrator.pollInventoryObservations(scheduler,1));eq(emitted,2)
+end)
 test('managed agents activate in bounded batches and manual pins survive distance cleanup',function()
  local b=fake.bridge() local managed=0 local detached=0 local agentEvents=0 local profileEvents=0
  local s=orchestrator.new(b,function(name,payload)
@@ -1571,8 +1595,25 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
  eq(captured.targetState.inventory.items[48].count,48)
  npcItems={};captured=openmwAdapter.playerContext(mapped,modules)
  eq(captured.targetState.inventory.total,0);eq(#captured.targetState.inventory.items,0)
+ local sword={recordId='iron_dagger',id='sword',count=2,contentFile='Morrowind.esm',
+  type={record=function()return{name='Iron Dagger',value=10,health=100}end}}
+ local robe={recordId='robe',id='robe',count=1,type={record=function()return{name='Robe',value=20}end}}
+ modules.types.Actor.inventory=function()return {getAll=function()return{sword,robe}end}end
+ modules.types.Actor.getEquipment=function()return{[1]=sword}end
+ modules.types.Item={itemData=function(item)if item==sword then return{condition=50}end return{}end}
+ local payload,signature=openmwAdapter.inventoryObservation(mapped,modules)
+ eq(#payload.items,2);eq(payload.items[1].condition,0.5);eq(payload.items[1].equipped,true)
+ eq(payload.items[1].content_file,nil)
+ eq(payload.items[2].condition,nil);eq(payload.items[2].content_file,nil)
+ modules.types.Actor.inventory=function()return {getAll=function()return{robe,sword}end}end
+ local _,reordered=openmwAdapter.inventoryObservation(mapped,modules);eq(signature,reordered)
+ robe.type.record=function()return{name='Robe'}end
+ eq(openmwAdapter.inventoryObservation(mapped,modules),nil)
+ modules.types.Actor.inventory=function()return {getAll=function()return{}end}end
+ payload,signature=openmwAdapter.inventoryObservation(mapped,modules);eq(#payload.items,0);eq(signature,'')
  modules.types.Actor.inventory=function()return nil end
  eq(openmwAdapter.playerContext(mapped,modules).targetState.inventory,nil)
+ eq(openmwAdapter.inventoryObservation(mapped,modules),nil)
 end)
 
 io.write(string.format('%d tests, %d failures\n',tests,failures))

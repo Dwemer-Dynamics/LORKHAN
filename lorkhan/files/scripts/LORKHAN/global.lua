@@ -383,6 +383,7 @@ return {
             end
             if state.events then orchestrator.poll(state) end
             orchestrator.pollRechatEligibility(state,BRIDGE_POLL_INTERVAL)
+            orchestrator.pollInventoryObservations(state,BRIDGE_POLL_INTERVAL)
             orchestrator.runAutonomy(state,BRIDGE_POLL_INTERVAL)
             orchestrator.pollVoice(state)
             orchestrator.pollOpenMic(state)

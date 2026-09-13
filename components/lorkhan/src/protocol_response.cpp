@@ -1360,6 +1360,41 @@ Result<PlayerAutochatReadyResponse> parsePlayerAutochatReadyResponse(
         std::move(text).value()});
 }
 
+Result<void> validateInventoryPayload(std::string_view body, json::ParseLimits limits)
+{
+    auto parsed = json::parse(body, limits);
+    if (!parsed) return Result<void>::failure(parsed.error());
+    const auto* object = parsed.value().object();
+    if (!object || !hasExactly(*object, {"owner", "items"}))
+        return invalidSchema("inventory fields mismatch");
+    auto owner = parseIdentity(*json::find(*object, "owner"));
+    if (!owner || (owner.value().kind != "npc" && owner.value().kind != "player" && owner.value().kind != "creature"))
+        return invalidSchema("inventory owner must be a physical actor");
+    const auto* items = json::find(*object, "items")->array();
+    if (!items || items->size() > 512) return invalidSchema("inventory item count exceeds bounds");
+    for (const auto& value : *items) {
+        const auto* item = value.object();
+        if (!item || !hasExactly(*item, {"record_id", "name", "count", "value", "equipped"},
+                {"condition", "content_file"}))
+            return invalidSchema("inventory item fields mismatch");
+        if (!requireString(*item, "record_id", 1, 256) || !requireString(*item, "name", 1, 256)
+            || !requireUnsigned(*item, "count", 2147483647, 1)
+            || !requireUnsigned(*item, "value", 2147483647)
+            || !requireBoolean(*item, "equipped"))
+            return invalidSchema("inventory item values exceed bounds");
+        if (json::find(*item, "content_file") && !requireString(*item, "content_file", 1, 256))
+            return invalidSchema("inventory item content file is invalid");
+        if (const auto* condition = json::find(*item, "condition")) {
+            const auto* number = condition->number();
+            const auto* integer = condition->integer();
+            if ((!number && !integer) || (number && (!std::isfinite(*number) || *number < 0 || *number > 1))
+                || (integer && (*integer < 0 || *integer > 1)))
+                return invalidSchema("inventory condition is outside 0..1");
+        }
+    }
+    return Result<void>::success();
+}
+
 Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits)
 {
@@ -1375,7 +1410,7 @@ Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(
     if (!request) return invalidSchemaValue<GameDataAcceptedResponse>(request.error().message);
     if (!session) return invalidSchemaValue<GameDataAcceptedResponse>(session.error().message);
     if (!generation) return invalidSchemaValue<GameDataAcceptedResponse>(generation.error().message);
-    if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile"
+    if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile" && type.value() != "inventory"
         &&type.value()!="automatic_diary"&&type.value()!="rpg_event"&&type.value()!="bored_event"&&type.value()!="quest_event"))
         return invalidSchemaValue<GameDataAcceptedResponse>("game-data type mismatch");
     if (!duplicate) return invalidSchemaValue<GameDataAcceptedResponse>(duplicate.error().message);

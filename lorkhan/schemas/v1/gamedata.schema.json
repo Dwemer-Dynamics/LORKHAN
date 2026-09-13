@@ -182,12 +182,10 @@
             },
             "required": [
               "record_id",
-              "content_file",
               "name",
               "count",
               "value",
-              "equipped",
-              "condition"
+              "equipped"
             ],
             "type": "object"
           },
