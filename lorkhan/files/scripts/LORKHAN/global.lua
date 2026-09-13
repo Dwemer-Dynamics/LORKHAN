@@ -389,6 +389,10 @@ return {
         end,
     },
     eventHandlers={
+        LORKHAN_RECHAT_CONTEXT=function(event)
+            enrichWorldCalendar(event)
+            orchestrator.rechatContext(state,event)
+        end,
         LORKHAN_DEBUG_COMMAND=handleGlobalDebugCommand,
         LORKHAN_SESSION=function(event) orchestrator.configureSession(state,event.session_id) end,
         LORKHAN_TARGET_REQUEST=function(event) emit('LORKHAN_PLAYER_RESOLVE_TARGET',{maxDistance=event.maxDistance}) end,

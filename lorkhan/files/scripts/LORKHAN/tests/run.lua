@@ -482,9 +482,13 @@ test('media prepare handoff is opaque generation-bound and fake-adapter tested',
   orchestrator.lifecycle(s,'load');truthy(s.responseQueue.unfinished==false)
  end)
 test('Close rechat preserves its group through one correlated continuation',function()
+ for _,freshItems in ipairs({{{record_id='new_dagger',count=2}}, {}}) do
+ local contextRequest
  local busy=fake.identity('npc','busy_actor',4)
  local b=fake.bridge() local s
- s=orchestrator.new(b,nil,function(actorIdentity,name,payload)
+ s=orchestrator.new(b,function(name,payload)
+  if name=='LORKHAN_RECHAT_CONTEXT_REQUEST' then contextRequest=payload end
+ end,function(actorIdentity,name,payload)
   if name=='LORKHAN_ACTOR_CONVERSATION_STATE_REQUEST' then
    orchestrator.actorCombatStatus(s,{actor=actorIdentity,hostile_to_player=false,activity='idle',
     conversation_state=identity.same(actorIdentity,busy) and 'busy' or 'active',conversation_state_proven=true,
@@ -502,7 +506,7 @@ test('Close rechat preserves its group through one correlated continuation',func
   installation_id='00000000-0000-4000-8000-000000000060',profile_id='00000000-0000-4000-8000-000000000061',
   playthrough_id='00000000-0000-4000-8000-000000000062',created_at='2026-07-19T20:00:00Z',platform='windows',
   content_fingerprint='sha256:'..string.rep('a',64),text='Hello.',input_key='player:1',language='en-US',
-  speaker=playerId,context={},capabilities={'dialogue.text','speech.say'},recent_action_results={},ui_source='lorkhan_text'}))
+  speaker=playerId,context={targetState={inventory={items={{record_id='old_dagger',count=1}},total=1,truncated=false}}},capabilities={'dialogue.text','speech.say'},recent_action_results={},ui_source='lorkhan_text'}))
  local dialogue=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Greetings.'});dialogue.message_id=UUID.message
  local descriptor={media_id='00000000-0000-4000-8000-000000000005',dialogue_message_id=UUID.message,
   sha256=string.rep('a',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
@@ -512,6 +516,24 @@ test('Close rechat preserves its group through one correlated continuation',func
  b.media[descriptor.media_id]={state='ready'};orchestrator.poll(s);eq(#b.submitted,1)
  truthy(orchestrator.speechStatus(s,{media_id=descriptor.media_id,active=false,status='played'}))
  truthy(orchestrator.pollRechatEligibility(s,0))
+ eq(#b.submitted,1);truthy(contextRequest);eq(s.rechat.depth,0)
+ contextRequest.context={targetState={inventory={items=freshItems,total=#freshItems,truncated=false}}}
+ local original=contextRequest.generation
+ contextRequest.generation=original+1;eq(orchestrator.rechatContext(s,contextRequest),false)
+ contextRequest.generation=original
+ local session=contextRequest.session_id;contextRequest.session_id=UUID.request
+ eq(orchestrator.rechatContext(s,contextRequest),false);contextRequest.session_id=session
+ local chain=contextRequest.chain_id;contextRequest.chain_id=UUID.request
+ eq(orchestrator.rechatContext(s,contextRequest),false);contextRequest.chain_id=chain
+ contextRequest.depth=2;eq(orchestrator.rechatContext(s,contextRequest),false);contextRequest.depth=1
+ contextRequest.target=enemy;eq(orchestrator.rechatContext(s,contextRequest),false);contextRequest.target=npc
+ local target=s.conversation.target;s.conversation.target=enemy
+ eq(orchestrator.rechatContext(s,contextRequest),false);s.conversation.target=target
+ local origin=s.conversation.turn.turnId;s.conversation.turn.turnId=UUID.request
+ eq(orchestrator.rechatContext(s,contextRequest),false);s.conversation.turn.turnId=origin
+ truthy(orchestrator.rechatContext(s,contextRequest));eq(orchestrator.rechatContext(s,contextRequest),false)
+ eq(#b.submitted[2].payload.context.targetState.inventory.items,#freshItems)
+ if #freshItems>0 then eq(b.submitted[2].payload.context.targetState.inventory.items[1].record_id,'new_dagger') end
  eq(#b.submitted,2);eq(b.submitted[2].payload.ui_source,'lorkhan_rechat')
  eq(b.submitted[2].payload.context.rechat.rechat_depth,1);eq(b.submitted[2].payload.context.rechat.origin_turn_id,UUID.turn)
  eq(b.submitted[2].payload.context.rechat.origin_line,'Hello.')
@@ -527,6 +549,7 @@ test('Close rechat preserves its group through one correlated continuation',func
  eq(participantStates[2].state,'active');eq(participantStates[3].state,'busy')
  eq(s.rechat.requestInFlight,true)
  eq(s.rechat.originTurnId,UUID.turn)
+ end
 end)
 test('rechat cancels when the previous speaker is freshly busy',function()
  local b=fake.bridge() local s
@@ -561,6 +584,11 @@ test('rechat probe ignores an unproven compatibility fallback',function()
  orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,activity='idle',conversation_state='active',
   conversation_state_proven=false,probe_id=UUID.message})
  eq(s.rechatEligibility.states[key],nil)
+ s.rechat={chainId=UUID.message,cancelled=false}
+ s.rechatEligibility={pendingArgs={},chainId=UUID.message,elapsed=0}
+ eq(orchestrator.pollRechatEligibility(s,0.5),false);truthy(s.rechatEligibility)
+ eq(orchestrator.pollRechatEligibility(s,0.5),false);eq(s.rechatEligibility,nil);truthy(s.rechat.cancelled)
+
 end)
 test('multi-speaker media plays in dialogue order without overlap',function()
  local b=fake.bridge() local sent={}

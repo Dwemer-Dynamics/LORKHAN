@@ -949,18 +949,49 @@ local function submitPlaybackRechat(state,probe)
         or not protocol.isUuid(metadata.turn_id) then chain.cancelled=true return false end
     local args=util.copy(state.rechatSeed)
     for key,value in pairs(metadata) do args[key]=value end
-    chain.depth=chain.depth+1
-    args.input_key='rechat:'..chain.chainId..':'..tostring(chain.depth)
+    local nextDepth=chain.depth+1
+    args.input_key='rechat:'..chain.chainId..':'..tostring(nextDepth)
     args.text='Continue the active conversation naturally. Address the previous speaker or listener directly and do not repeat prior dialogue.'
     args.ui_source='lorkhan_rechat'
     args.rechatAudience=rechatAudience
-    args.context=args.context or {}
+    args.context={}
     args.context.rechat={speaker=util.copy(chain.lastSpeaker),listener_hint=util.copy(chain.lastAddressee),
-        rechat_target_hint=util.copy(chain.targetHint),origin_line=chain.originLine,rechat_depth=chain.depth,
+        rechat_target_hint=util.copy(chain.targetHint),origin_line=chain.originLine,rechat_depth=nextDepth,
         chain_id=chain.chainId,origin_turn_id=chain.originTurnId,participant_states=participantStates}
+    probe.pendingArgs=args
+    probe.sessionId=state.sessionId;probe.generation=state.generation
+    probe.chainId=chain.chainId;probe.depth=nextDepth;probe.target=util.copy(state.conversation.target)
+    probe.originTurnId=state.conversation.turn.turnId
+    probe.elapsed=0
+    state.rechatEligibility=probe
+    state.emit('LORKHAN_RECHAT_CONTEXT_REQUEST',{request_id=probe.probeId,session_id=probe.sessionId,
+        generation=probe.generation,chain_id=probe.chainId,depth=probe.depth,target=util.copy(probe.target)})
+    return true
+end
+
+-- A continuation must capture the current target again after playback, never reuse its seed inventory.
+function M.rechatContext(state,event)
+    local probe=state.rechatEligibility
+    local chain=state.rechat
+    if type(event)~='table' or not probe or not probe.pendingArgs or not chain
+        or event.request_id~=probe.probeId or event.session_id~=probe.sessionId
+        or event.generation~=probe.generation or event.chain_id~=probe.chainId or event.depth~=probe.depth
+        or state.sessionId~=probe.sessionId or state.generation~=probe.generation
+        or chain.chainId~=probe.chainId or chain.depth+1~=probe.depth or chain.cancelled or chain.requestInFlight
+        or not identity.same(event.target,probe.target) or not identity.same(state.conversation.target,probe.target)
+        or not state.conversation.turn or not state.conversation.turn.terminal
+        or state.conversation.turn.turnId~=probe.originTurnId or not responseQueue.idle(state.responseQueue)
+        or (state.settings and state.settings.behavior or {}).rechat~=true
+        or type(event.context)~='table' then return false end
+    state.rechatEligibility=nil
+    local args=probe.pendingArgs
+    local rechat=args.context.rechat
+    args.context=util.copy(event.context)
+    args.context.rechat=rechat
+    chain.depth=probe.depth
     local submitted,reason=M.submitText(state,args)
     if not submitted then chain.cancelled=true print('[LORKHAN] rechat rejected: '..tostring(reason)) return false end
-    state.emit('LORKHAN_RECHAT',{status='queued',chain_id=chain.chainId,depth=chain.depth,turn_id=metadata.turn_id})
+    state.emit('LORKHAN_RECHAT',{status='queued',chain_id=chain.chainId,depth=chain.depth,turn_id=args.turn_id})
     return true
 end
 
@@ -1010,6 +1041,13 @@ function M.pollRechatEligibility(state,dt)
     local probe=state.rechatEligibility
     if not probe then return false end
     probe.elapsed=probe.elapsed+(tonumber(dt) or 0)
+    if probe.pendingArgs then
+        if probe.elapsed>=1 then
+            state.rechatEligibility=nil
+            if state.rechat and state.rechat.chainId==probe.chainId then state.rechat.cancelled=true end
+        end
+        return false
+    end
     local complete=true
     for key in pairs(probe.expected) do if probe.states[key]==nil then complete=false break end end
     if not complete and probe.elapsed<0.5 then return false end

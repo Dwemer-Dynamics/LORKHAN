@@ -2004,6 +2004,16 @@ return {
             if type(event)~='table' or type(event.actors)~='table' then return end
             for _,actor in ipairs(event.actors) do submitAutoActorProfile({actor=actor}) end
         end,
+        LORKHAN_RECHAT_CONTEXT_REQUEST=function(event)
+            local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
+            if type(event)~='table' or not session or event.session_id~=session.session_id
+                or event.generation~=session.generation or not identity.validate(event.target) then return end
+            -- Capture this exact requested actor, not the UI selection or the previous speaker.
+            local snapshot=conversationContext(event.target)
+            send('LORKHAN_RECHAT_CONTEXT',{request_id=event.request_id,session_id=event.session_id,
+                generation=event.generation,chain_id=event.chain_id,depth=event.depth,
+                target=event.target,context=snapshot})
+        end,
         LORKHAN_AUTONOMY_CONTEXT_REQUEST=function(event)
             if type(event)~='table' or type(event.actor)~='table' then return end
             local prompts={
