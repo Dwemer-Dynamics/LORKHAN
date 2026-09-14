@@ -174,6 +174,21 @@ local function observationWitnesses(origin,modules,excluded)
 end
 
 -- Convert a native successful cast into nearby observed facts, never a claim that its target was hit.
+function M.resurrectionObservation(event,modules)
+    modules=modules or loaded()
+    if type(event)~='table' or not modules.self or not event.actor then return nil,'resurrection_unavailable' end
+    local ok,payload=pcall(function()
+        local actor=M.identity(event.actor,modules)
+        if not actor or not sameSpace(event.actor.cell,modules.self.cell) then return nil end
+        local distance=(event.actor.position-modules.self.position):length()
+        if distance~=distance or distance>2048 then return nil end
+        return require('scripts.LORKHAN.protocol').actorResurrected({actor=actor,game_time=event.gameTime,
+            calendar=event.calendar,audience=observationWitnesses(event.actor,modules,{actor})})
+    end)
+    if not ok or not payload then return nil,'resurrection_unavailable' end
+    return payload
+end
+
 function M.spellCastObservation(event,modules)
     modules=modules or loaded()
     if type(event)~='table' or not modules.self or not event.caster then return nil,'spell_event_unavailable' end
@@ -377,7 +392,14 @@ local function nearbyActorContext(maxDistance, modules)
         for key,value in pairs(candidate.identity) do row[key]=value end
         row.distance=math.floor(candidate.distance+0.5)
         row.available=candidate.available~=false
+        row.dead=candidate.dead==true
         row.hostile=candidate.hostile==true
+        local bridge=M.bridge()
+        local status=actor and bridge and bridge.actorConversationState and safe(bridge.actorConversationState,actor)
+        if type(status)=='table' then
+            row.busy=status.state~='active'
+            if status.state=='inactive' then row.available=false end
+        end
         row.equipment=actor and equipment(actor,modules) or {}
         result[#result+1]=row
         if #result>=12 then break end
@@ -762,7 +784,59 @@ local function nearbyObjects(maxDistance, modules)
     return result
 end
 
-function M.playerContext(target, modules)
+-- Preserve exact registered item instances for typed transfers; never merge enchanted/scripted copies by record.
+function M.actionItems(target, modules, observedActors)
+    modules=modules or loaded()
+    local rows,seen={},{}
+    local actorType=modules.types and modules.types.Actor
+    local function append(item,location,owner)
+        if #rows>=128 then return end
+        local ok,row=pcall(function()
+            local id=item.id
+            if type(id)~='string' or #id>19 or not id:match('^@?0x[0-9a-f]+$') or seen[id]
+                or type(item.recordId)~='string' or #item.recordId<1 or #item.recordId>256
+                or type(item.count)~='number' or item.count<1 or item.count>2147483647 or item.count%1~=0 then return nil end
+            local name=objectDisplayName(item)
+            if type(name)~='string' or #name<1 or #name>256 then return nil end
+            return {item_id=id,record_id=item.recordId,name=name,count=item.count,location=location,owner=owner}
+        end)
+        if ok and row then rows[#rows+1]=row;seen[row.item_id]=true end
+    end
+    local sources={}
+    if observedActors then
+        local count=math.min(12,#observedActors)
+        for index=1,count do
+            local owner=observedActors[index]
+            if owner.kind=='npc' or owner.kind=='creature' then
+                local object=M.resolve(owner,modules)
+                sources[#sources+1]={object=object,owner=object and M.identity(object,modules),
+                    location='actor_inventory',limit=math.floor(96/math.max(1,count))}
+            end
+        end
+    else sources[1]={object=target and M.resolve(target,modules),owner=target,location='actor_inventory',limit=48} end
+    sources[#sources+1]={object=modules.self,owner=M.identity(modules.self,modules),location='player_inventory',limit=observedActors and 24 or 48}
+    for _,source in ipairs(sources) do
+        if source.object and source.owner then
+            local inventorySource=actorType and safe(actorType.inventory,source.object)
+            local items=inventorySource and safe(inventorySource.getAll,inventorySource)
+            local limit=#rows+source.limit
+            for _,item in ipairs(items or {}) do
+                if #rows>=limit then break end
+                append(item,source.location,source.owner)
+            end
+        end
+    end
+    for _,item in ipairs(modules.nearby and modules.nearby.items or {}) do
+        local visible=safe(function()
+            return modules.self and sameSpace(item.cell,modules.self.cell) and item.position
+                and (item.position-modules.self.position):length()<=2048
+        end)
+        if visible then append(item,'ground',nil) end
+    end
+    return rows
+end
+
+function M.playerContext(target, modules, observeAllActors)
     modules=modules or loaded()
     local playerIdentity=M.identity(modules.self,modules)
     local targetObject=target and M.resolve(target,modules) or nil
@@ -781,7 +855,7 @@ function M.playerContext(target, modules)
     local regionRecord=regionId and modules.core and modules.core.regions and modules.core.regions.records
         and modules.core.regions.records[regionId] or nil
     return {player=playerIdentity,target=target,nearbyActors=actors,nearbyObjects=nearbyObjects(2048,modules),
-        followers=followers,
+        followers=followers,action_items=M.actionItems(target,modules,observeAllActors and actors or nil),
         inventory=inventory(modules.self,modules),activeEffects=effects(modules.self,modules),journal=journal(modules.self,modules),
         books=recentBooks,
         contentFiles=contentFiles,
@@ -1000,6 +1074,24 @@ function M.playAnimation(parameters)
     if not modules.animation.hasGroup(modules.self,parameters.group) then return nil,'animation_group_unavailable' end
     modules.animation.playQueued(modules.self,parameters.group,{loops=0,speed=1})
     return true,'animation_started'
+end
+
+-- Change only this actor's draw state and observe it; a committed attack can refuse the setter.
+function M.sheatheWeapon(modules)
+    modules=modules or loaded()
+    local actorType=modules.types and modules.types.Actor
+    local nothing=actorType and actorType.STANCE and actorType.STANCE.Nothing
+    if not modules.self or nothing==nil or type(actorType.getStance)~='function'
+        or type(actorType.setStance)~='function' then return nil,'stance_interface_unavailable' end
+    local before=safe(actorType.getStance,modules.self)
+    if before==nil then return nil,'stance_observation_failed' end
+    if before==nothing then return true,'weapon_already_sheathed',{stance='nothing'} end
+    local ok=pcall(actorType.setStance,modules.self,nothing)
+    if not ok then return nil,'engine_rejected_sheathe' end
+    local after=safe(actorType.getStance,modules.self)
+    if after==nil then return nil,'stance_observation_failed' end
+    if after~=nothing then return nil,'weapon_sheathe_busy' end
+    return true,'weapon_sheathed',{stance='nothing'}
 end
 
 function M.useItem(parameters)

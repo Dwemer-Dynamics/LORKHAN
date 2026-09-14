@@ -165,6 +165,12 @@ end
 function M.captureSpellCast(state,event,session,reader,submit,now)
     return captureObservation(state,'spellCaptures',event,session,reader,submit,now)
 end
+function M.captureResurrection(state,event,session,reader,submit,now)
+    return captureObservation(state,'resurrections',event,session,reader,submit,now)
+end
+function M.flushResurrections(state,session,submit,now)
+    return flushObservations(state,'resurrections',session,submit,now)
+end
 function M.flushSpellCasts(state,session,submit,now)
     return flushObservations(state,'spellCaptures',session,submit,now)
 end

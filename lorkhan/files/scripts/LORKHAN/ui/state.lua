@@ -34,6 +34,8 @@ local BACK_ROUTES={
 local DEFAULT_ORIGIN='actor-tools'
 
 M.MODES=MODES
+M.EXECUTION_MODES={{key='standard',label='Standard'},{key='narrator',label='Narrator'},
+    {key='director',label='Director'},{key='cheat',label='Cheat'}}
 M.SHORTCUTS=SHORTCUTS
 M.MOODS=MOODS
 M.MOOD_DIRECTION_LIMIT=MOOD_DIRECTION_LIMIT
@@ -45,7 +47,7 @@ function M.new(policy)
     return {visible=false, status='offline', target=nil, audience={}, nearby={}, agents={}, input='', transcript={}, subtitle=nil,
         diagnostics=nil, lastCorrelation=nil, mode='Standard',panel='conversation',actionView='root',actionPage=1,actionSlot=nil,
         historyPage=1,panelOrigin=DEFAULT_ORIGIN,
-        mood='None',moodDirection='',
+        mood='None',moodDirection='',executionMode='standard',
         -- turnMode/turnPrefix stay nil until a typed prefix is previewed; they never replace `mode`.
         pendingTargetAction=nil,
         statusHudVisible=false,policy=util.copy(policy or {})}

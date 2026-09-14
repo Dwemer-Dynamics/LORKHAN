@@ -1,0 +1,21 @@
+diff --git a/apps/openmw/mwworld/esmstore.cpp b/apps/openmw/mwworld/esmstore.cpp
+index 3e9858d06430271a343250ad3e9c57668229a9fe..559a0a4d872c2324ee4032219c4eca1697666dff 100644
+--- a/apps/openmw/mwworld/esmstore.cpp
++++ b/apps/openmw/mwworld/esmstore.cpp
+@@ -1,3 +1,4 @@
++#include <components/files/conversion.hpp>
+ #include "esmstore.hpp"
+ 
+ #include <algorithm>
+@@ -448,6 +449,11 @@
+             else
+             {
+                 RecordId id = it->second->load(esm);
++                if (recName == ESM::REC_NPC_ || recName == ESM::REC_CREA)
++                {
++                    auto& records = recName == ESM::REC_CREA ? mCreatureRecordProvenance : mNpcRecordProvenance;
++                    records[id.mId].observe(Files::pathToUnicodeString(esm.getName().filename()));
++                }
+                 if (id.mIsDeleted)
+                 {
+                     it->second->eraseStatic(id.mId);

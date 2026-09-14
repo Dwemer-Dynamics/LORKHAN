@@ -126,7 +126,7 @@ struct ProtocolIdentity {
 };
 
 enum class ActionIntentKind { ai_follow, ai_stop, conversation_end, ai_approach, ai_wait, ai_travel, ai_escort, ai_face, ai_wander, animation_play,
-    combat_start, combat_stop, inspect_report, inventory_inspect, item_equip, item_unequip, item_use };
+    combat_start, combat_stop, weapon_sheathe, inspect_report, inventory_inspect, item_equip, item_unequip, item_use, item_give, item_take, item_pickup, gold_give, gold_take, service_barter, service_training, service_spells, service_travel, service_spellmaking, service_enchanting, service_repair, spell_cast };
 struct ActionIntent {
     ActionId action;
     TurnId turn;
@@ -148,6 +148,7 @@ struct ActionIntent {
     std::optional<bool> followupActionsAllowed;
     std::optional<std::uint32_t> followupDepth;
     std::string expiresAt;
+    std::uint32_t transferCount{};
 };
 
 struct TurnAcceptedEventPayload {};
@@ -243,8 +244,22 @@ struct CanonicalResponse {
 
 struct ResponseCompleteEventPayload { CanonicalResponse response; };
 
+struct DirectorInstructionsEventPayload {
+    struct Instruction {
+        MessageId instruction;
+        ProtocolIdentity actor;
+        ProtocolIdentity recipient;
+        std::string text;
+        std::string sceneNote;
+    };
+    MessageId plan;
+    TurnId originTurn;
+    std::string expiresAt;
+    std::vector<Instruction> instructions;
+};
+
 using ProtocolEventPayload = std::variant<TurnAcceptedEventPayload, DialogueDeltaEventPayload, DialogueCompleteEventPayload,
-    ActionIntentEventPayload, ResponseCompleteEventPayload, TurnCompleteEventPayload, TurnCancelledEventPayload,
+    ActionIntentEventPayload, DirectorInstructionsEventPayload, ResponseCompleteEventPayload, TurnCompleteEventPayload, TurnCancelledEventPayload,
     TurnFailedEventPayload, SttTranscriptEventPayload, SttFailedEventPayload,
     SpeechReadyEventPayload>;
 
@@ -253,6 +268,7 @@ enum class ProtocolEventType {
     dialogue_delta,
     dialogue_complete,
     action_intent,
+    director_instructions,
     response_complete,
     turn_complete,
     turn_cancelled,
@@ -473,6 +489,7 @@ struct DebugCommandResultAcceptedResponse {
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 // Validate the bounded observation before it can enter the native transport queue.
 [[nodiscard]] Result<void> validateItemPickupPayload(std::string_view body, json::ParseLimits limits = {});
+[[nodiscard]] Result<void> validateActorResurrectedPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateSpellCastPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateInventoryPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(

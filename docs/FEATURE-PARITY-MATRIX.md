@@ -1,5 +1,9 @@
 # LORKHAN feature parity and completion matrix
 
+Current outstanding work and corrected exclusions: `RANGROO/LorkhanServer/docs/CURRENT-PARITY-PLAN.md`.
+The detailed rows below include historical implementation decisions; GLOBAL/native action ownership
+is no longer limited to the original actor-local API audit.
+
 The implementation ledger copies these rows and attaches evidence. `Keep` means required; `Adapt`
 means the user outcome remains but implementation is OpenMW-native; `Defer` has a defined later gate;
 `Exclude` is a closed decision.

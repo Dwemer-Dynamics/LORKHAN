@@ -1,0 +1,14 @@
+diff --git a/apps/openmw/mwgui/dialogue.hpp b/apps/openmw/mwgui/dialogue.hpp
+index beeb87b5b9686ae45d71292081f09193aa77112d..820e47cbb95d6bcfd725246bfa9be9835798ea51 100644
+--- a/apps/openmw/mwgui/dialogue.hpp
++++ b/apps/openmw/mwgui/dialogue.hpp
+@@ -142,6 +142,9 @@
+ 
+         void onTradeComplete();
+ 
++        // Select only an offered vanilla service, retaining greeting, choice and refusal handling.
++        std::string_view selectLorkhanService(const MWWorld::Ptr& actor, MWBase::DialogueManager::ServiceType service);
++
+         bool exit() override;
+ 
+         void notifyLinkClicked(TypesetBook::InteractiveId link);

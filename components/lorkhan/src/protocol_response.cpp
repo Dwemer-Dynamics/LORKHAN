@@ -507,17 +507,22 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
         && name.value() != "ai.approach" && name.value() != "ai.wait"
         && name.value() != "ai.travel" && name.value() != "ai.escort" && name.value() != "ai.face"
         && name.value() != "ai.wander" && name.value() != "combat.start"
-        && name.value() != "combat.stop" && name.value() != "animation.play"
+        && name.value() != "combat.stop" && name.value() != "weapon.sheathe" && name.value() != "animation.play"
         && name.value() != "item.equip" && name.value() != "item.unequip"
-        && name.value() != "item.use" && name.value() != "inspect.report" && name.value() != "inventory.inspect"))
+        && name.value() != "item.use" && name.value() != "item.give" && name.value() != "item.take"
+        && name.value() != "item.pickup" && name.value() != "gold.give" && name.value() != "gold.take" && name.value() != "inspect.report" && name.value() != "inventory.inspect"
+        && name.value() != "service.barter" && name.value() != "service.training" && name.value() != "service.spells" && name.value() != "service.travel" && name.value() != "service.spellmaking" && name.value() != "service.enchanting" && name.value() != "service.repair" && name.value() != "spell.cast" ))
         return invalidSchemaValue<ActionIntent>("unknown action intent name");
     if (!tier) return invalidSchemaValue<ActionIntent>(tier.error().message);
     if (((name.value() == "inspect.report" || name.value() == "inventory.inspect") && tier.value() != 0)
         || ((name.value() == "combat.start" || name.value() == "item.equip"
-            || name.value() == "item.unequip" || name.value() == "item.use") && tier.value() != 2)
+            || name.value() == "item.unequip" || name.value() == "item.use" || name.value() == "item.give"
+            || name.value() == "item.take" || name.value() == "item.pickup" || name.value() == "gold.give"
+            || name.value() == "gold.take" || name.value() == "spell.cast") && tier.value() != 2)
         || (name.value() != "inspect.report" && name.value() != "inventory.inspect" && name.value() != "combat.start"
             && name.value() != "item.equip" && name.value() != "item.unequip"
-            && name.value() != "item.use" && tier.value() != 1))
+            && name.value() != "item.use" && name.value() != "item.give" && name.value() != "item.take"
+            && name.value() != "item.pickup" && name.value() != "gold.give" && name.value() != "gold.take" && name.value() != "spell.cast" && tier.value() != 1))
         return invalidSchemaValue<ActionIntent>("action intent tier mismatch");
     if (!expiresAt) return invalidSchemaValue<ActionIntent>(expiresAt.error().message);
     std::string displayName;
@@ -563,6 +568,7 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     if (!parameters)
         return invalidSchemaValue<ActionIntent>("action intent parameters mismatch");
     ActionIntentKind intentKind = ActionIntentKind::inspect_report;
+    std::uint32_t transferCount = 0;
     std::uint32_t followDistance = 0;
     std::uint32_t wanderDistance = 0;
     std::uint32_t wanderDurationSeconds = 0;
@@ -631,6 +637,35 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     } else if (name.value() == "combat.stop") {
         if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("combat.stop parameters must be empty");
         intentKind = ActionIntentKind::combat_stop;
+    } else if (name.value() == "spell.cast") {
+        if (!hasExactly(*parameters, {"spell_id"})) return invalidSchemaValue<ActionIntent>("spell.cast parameters mismatch");
+        auto spell = requireString(*parameters, "spell_id", 1, 256);
+        if (!spell || spell.value().empty()) return invalidSchemaValue<ActionIntent>("invalid spell id");
+        stringParameter = spell.value(); intentKind = ActionIntentKind::spell_cast;
+    } else if (name.value() == "service.barter") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("service parameters must be empty");
+        intentKind = ActionIntentKind::service_barter;
+    } else if (name.value() == "service.training") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("service parameters must be empty");
+        intentKind = ActionIntentKind::service_training;
+    } else if (name.value() == "service.spells") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("service parameters must be empty");
+        intentKind = ActionIntentKind::service_spells;
+    } else if (name.value() == "service.travel") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("service parameters must be empty");
+        intentKind = ActionIntentKind::service_travel;
+    } else if (name.value() == "service.spellmaking") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("service parameters must be empty");
+        intentKind = ActionIntentKind::service_spellmaking;
+    } else if (name.value() == "service.enchanting") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("service parameters must be empty");
+        intentKind = ActionIntentKind::service_enchanting;
+    } else if (name.value() == "service.repair") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("service parameters must be empty");
+        intentKind = ActionIntentKind::service_repair;
+    } else if (name.value() == "weapon.sheathe") {
+        if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("weapon.sheathe parameters must be empty");
+        intentKind = ActionIntentKind::weapon_sheathe;
     } else if (name.value() == "animation.play") {
         if (!hasExactly(*parameters, {"group"})) return invalidSchemaValue<ActionIntent>("animation.play parameters mismatch");
         auto group = requireString(*parameters, "group");
@@ -668,18 +703,49 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
             return invalidSchemaValue<ActionIntent>("invalid item record id");
         intentKind = ActionIntentKind::item_use;
         stringParameter = std::move(recordId).value();
+    } else if (name.value() == "item.give" || name.value() == "item.take" || name.value() == "item.pickup") {
+        const bool pickup = name.value() == "item.pickup";
+        if (!hasExactly(*parameters, pickup ? std::initializer_list<std::string_view>{"item_id"}
+                                          : std::initializer_list<std::string_view>{"item_id", "count"}))
+            return invalidSchemaValue<ActionIntent>("item transfer parameters mismatch");
+        auto item = requireString(*parameters, "item_id", 3, 19);
+        if (!item) return invalidSchemaValue<ActionIntent>("item transfer ID missing");
+        std::string_view text = item.value();
+        if (text.starts_with("@")) text.remove_prefix(1);
+        if (!text.starts_with("0x") || text.size() < 3 || text.size() > 18
+            || !std::all_of(text.begin() + 2, text.end(), [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }))
+            return invalidSchemaValue<ActionIntent>("item transfer ID must be an exact observed object ID");
+        if (!pickup) {
+            auto count = requireUnsigned(*parameters, "count", 1000, 1);
+            if (!count) return invalidSchemaValue<ActionIntent>("item transfer count out of range");
+            transferCount = static_cast<std::uint32_t>(count.value());
+        }
+        stringParameter = std::move(item).value();
+        intentKind = pickup ? ActionIntentKind::item_pickup
+            : name.value() == "item.give" ? ActionIntentKind::item_give : ActionIntentKind::item_take;
+    } else if (name.value() == "gold.give" || name.value() == "gold.take") {
+        if (!hasExactly(*parameters, {"amount"})) return invalidSchemaValue<ActionIntent>("gold transfer parameters mismatch");
+        auto amount = requireUnsigned(*parameters, "amount", 100000, 1);
+        if (!amount) return invalidSchemaValue<ActionIntent>("gold transfer amount out of range");
+        transferCount = static_cast<std::uint32_t>(amount.value());
+        intentKind = name.value() == "gold.give" ? ActionIntentKind::gold_give : ActionIntentKind::gold_take;
     } else if (!hasExactly(*parameters, {})) {
         return invalidSchemaValue<ActionIntent>(name.value() + " parameters must be empty");
     } else if (name.value() == "inventory.inspect") {
         intentKind = ActionIntentKind::inventory_inspect;
     }
 
+    if ((intentKind == ActionIntentKind::item_give || intentKind == ActionIntentKind::item_take
+            || intentKind == ActionIntentKind::item_pickup || intentKind == ActionIntentKind::gold_give
+            || intentKind == ActionIntentKind::gold_take || intentKind == ActionIntentKind::spell_cast) && confirmationRequired != true)
+        return invalidSchemaValue<ActionIntent>("transfer requires explicit confirmation");
+
     return Result<ActionIntent>::success({ActionId(std::move(action).value()),
         TurnId(std::move(turn).value()), std::move(actor).value(), std::move(target).value(),
         intentKind, followDistance, wanderDistance, wanderDurationSeconds, std::move(stringParameter),
         std::move(secondaryStringParameter),destinationX,destinationY,destinationZ,std::move(destinationCell),
         std::move(displayName), confirmationRequired, followupEnabled, followupActionsAllowed, followupDepth,
-        std::move(expiresAt).value()});
+        std::move(expiresAt).value(), transferCount});
 }
 
 Result<ClientSettings> parseClientSettings(const json::Value& value)
@@ -994,6 +1060,38 @@ Result<ProtocolEvent> parseEvent(const json::Value& value, const SessionId& resp
         if (!intent) return invalidSchemaValue<ProtocolEvent>(intent.error().message);
         event.type = ProtocolEventType::action_intent;
         event.payload = ActionIntentEventPayload{std::move(intent).value()};
+    } else if (type.value() == "director.instructions") {
+        if (!hasExactly(*payload, {"plan_id", "origin_turn_id", "expires_at", "instructions"}))
+            return invalidSchemaValue<ProtocolEvent>("director instruction payload fields mismatch");
+        auto plan = requireUuid(*payload, "plan_id");
+        auto origin = requireUuid(*payload, "origin_turn_id");
+        auto expiry = requireTimestamp(*payload, "expires_at");
+        const auto* rowsValue = json::find(*payload, "instructions");
+        const auto* rows = rowsValue ? rowsValue->array() : nullptr;
+        if (!plan || !origin || origin.value() != correlation.value().turn.value() || !expiry
+            || !rows || rows->empty() || rows->size() > 3)
+            return invalidSchemaValue<ProtocolEvent>("director instruction scope or bounds mismatch");
+        DirectorInstructionsEventPayload instructions{MessageId(plan.value()), TurnId(origin.value()), expiry.value(), {}};
+        std::set<std::string> ids;
+        std::set<std::pair<std::uint64_t, std::uint64_t>> actors;
+        for (const auto& instructionValue : *rows) {
+            const auto* row = instructionValue.object();
+            if (!row || !hasExactly(*row, {"instruction_id", "actor", "recipient", "instruction", "scene_note"}))
+                return invalidSchemaValue<ProtocolEvent>("director instruction fields mismatch");
+            auto id = requireUuid(*row, "instruction_id");
+            auto actor = parseIdentity(*json::find(*row, "actor"));
+            auto recipient = parseIdentity(*json::find(*row, "recipient"));
+            auto instruction = requireString(*row, "instruction", 1, 2000);
+            auto note = requireString(*row, "scene_note", 0, 1000);
+            if (!id || !actor || !recipient || !instruction || !note
+                || (actor.value().kind != "npc" && actor.value().kind != "creature")
+                || !ids.insert(id.value()).second
+                || !actors.emplace(actor.value().refnumContentFile, actor.value().refnumIndex).second)
+                return invalidSchemaValue<ProtocolEvent>("director instruction identity, uniqueness or text mismatch");
+            instructions.instructions.push_back({MessageId(id.value()), actor.value(), recipient.value(), instruction.value(), note.value()});
+        }
+        event.type = ProtocolEventType::director_instructions;
+        event.payload = std::move(instructions);
     } else if (type.value() == "response.complete") {
         auto response = parseCanonicalResponse(*payloadValue, correlation.value());
         if (!response) return invalidSchemaValue<ProtocolEvent>(response.error().message);
@@ -1449,6 +1547,28 @@ Result<void> validateSpellCastPayload(std::string_view body, json::ParseLimits l
     return Result<void>::success();
 }
 
+// Capture only physical resurrection observations with bounded, distinct nearby witnesses.
+Result<void> validateActorResurrectedPayload(std::string_view body, json::ParseLimits limits)
+{
+    auto parsed=json::parse(body,limits);if(!parsed)return Result<void>::failure(parsed.error());
+    const auto* object=parsed.value().object();
+    if(!object||!hasExactly(*object,{"actor","audience","game_time"},{"calendar"}))return invalidSchema("resurrection fields mismatch");
+    auto actor=parseIdentity(*json::find(*object,"actor"));
+    if(!actor||(actor.value().kind!="player"&&actor.value().kind!="npc"&&actor.value().kind!="creature"))return invalidSchema("invalid resurrection actor");
+    if(!requireNumber(*object,"game_time",0,9007199254740991.0))return invalidSchema("invalid resurrection time");
+    if(const auto* calendar=json::find(*object,"calendar");calendar&&!validObservationCalendar(*calendar))return invalidSchema("invalid resurrection calendar");
+    const auto* audience=json::find(*object,"audience")->array();
+    if(!audience||audience->size()>12)return invalidSchema("invalid resurrection audience");
+    std::set<std::pair<std::uint64_t,std::uint64_t>> references;
+    for(const auto& value:*audience){
+        auto witness=parseIdentity(value);
+        if(!witness||(witness.value().kind!="npc"&&witness.value().kind!="creature")
+            ||!references.emplace(witness.value().refnumContentFile,witness.value().refnumIndex).second)
+            return invalidSchema("invalid resurrection witness");
+    }
+    return Result<void>::success();
+}
+
 Result<void> validateInventoryPayload(std::string_view body, json::ParseLimits limits)
 {
     auto parsed = json::parse(body, limits);
@@ -1499,7 +1619,7 @@ Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(
     if (!request) return invalidSchemaValue<GameDataAcceptedResponse>(request.error().message);
     if (!session) return invalidSchemaValue<GameDataAcceptedResponse>(session.error().message);
     if (!generation) return invalidSchemaValue<GameDataAcceptedResponse>(generation.error().message);
-    if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile" && type.value() != "inventory" && type.value() != "spell_cast" && type.value() != "item_pickup"
+    if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile" && type.value() != "inventory" && type.value() != "spell_cast" && type.value() != "actor_resurrected" && type.value() != "item_pickup"
         &&type.value()!="automatic_diary"&&type.value()!="rpg_event"&&type.value()!="bored_event"&&type.value()!="quest_event"))
         return invalidSchemaValue<GameDataAcceptedResponse>("game-data type mismatch");
     if (!duplicate) return invalidSchemaValue<GameDataAcceptedResponse>(duplicate.error().message);

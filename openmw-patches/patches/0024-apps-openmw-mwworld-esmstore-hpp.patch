@@ -1,0 +1,36 @@
+diff --git a/apps/openmw/mwworld/esmstore.hpp b/apps/openmw/mwworld/esmstore.hpp
+index 6e3dccfd8732bfe6772dbfdbe0768f5cd255607e..9e31ee8a00e2b6d48fe6eba271225c7509bde6d6 100644
+--- a/apps/openmw/mwworld/esmstore.hpp
++++ b/apps/openmw/mwworld/esmstore.hpp
+@@ -1,5 +1,7 @@
+ #ifndef OPENMW_MWWORLD_ESMSTORE_H
+ #define OPENMW_MWWORLD_ESMSTORE_H
++
++#include <lorkhan/record_provenance.hpp>
+ 
+ #include <filesystem>
+ #include <memory>
+@@ -163,6 +165,8 @@
+         std::unique_ptr<ESMStoreImp> mStoreImp;
+ 
+         std::unordered_map<ESM::RefId, int> mRefCount;
++        std::unordered_map<ESM::RefId, lorkhan::RecordProvenance> mNpcRecordProvenance;
++        std::unordered_map<ESM::RefId, lorkhan::RecordProvenance> mCreatureRecordProvenance;
+ 
+         std::vector<StoreBase*> mStores;
+         std::vector<DynamicStore*> mDynamicStores;
+@@ -202,6 +206,14 @@
+         int find(const ESM::RefId& id) const;
+ 
+         int findStatic(const ESM::RefId& id) const;
++
++        // Static record contributors, distinct from a placed reference's content origin.
++        const lorkhan::RecordProvenance* actorRecordProvenance(const ESM::RefId& id, bool creature) const
++        {
++            const auto& records = creature ? mCreatureRecordProvenance : mNpcRecordProvenance;
++            const auto it = records.find(id);
++            return it == records.end() ? nullptr : &it->second;
++        }
+ 
+         ESMStore();
+         ~ESMStore();

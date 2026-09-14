@@ -125,7 +125,8 @@
                   "type": "object"
                 }
               ]
-            },            "text": {
+            },
+            "text": {
               "maxLength": 16384,
               "minLength": 1,
               "type": "string"
@@ -189,6 +190,18 @@
         },
         "ui_source": {
           "type": "string"
+        },
+        "execution_mode": {
+          "type": "string",
+          "enum": [
+            "standard",
+            "narrator",
+            "director",
+            "cheat"
+          ]
+        },
+        "director_instruction_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
         }
       },
       "required": [

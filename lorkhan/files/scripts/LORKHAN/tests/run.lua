@@ -395,6 +395,29 @@ test('automatic diary candidates keep timer sleep and wait actors bounded',funct
  invalid,invalidReason=protocol.automaticDiary({trigger='wait',game_time=123.5,actors={npc,npc}})
  eq(invalid,nil);eq(invalidReason,'duplicate_automatic_diary_actor')
 end)
+test('transfer queue waits for persisted receipts and freezes the committed outcome across retries',function()
+ local transfers=require('scripts.LORKHAN.transfer_actions')
+ local outcome={status='pending'};local receipt={status='not_submitted'}
+ local submitted={};local finished={};local cancelled={}
+ local bridge={executeTransfer=function()return outcome end,cancelTransfer=function(id)cancelled[#cancelled+1]=id end,
+  transferReceiptStatus=function()return receipt end,utcNow=function()return '2026-07-19T20:00:00Z' end,
+  submitActionResult=function(result)submitted[#submitted+1]=result;receipt={status='pending'};return UUID.request end}
+ local queue=transfers.new(bridge,function(event)finished[#finished+1]=event end)
+ local command={name='item.give',action_id=UUID.action or UUID.message,message_id=UUID.message,request_id=UUID.request,
+  turn_id=UUID.turn,session_id=UUID.session,generation=7,actor=npc,confirmation_required=false}
+ eq(transfers.enqueue(queue,command),nil);command.confirmation_required=true;truthy(transfers.enqueue(queue,command))
+ transfers.pump(queue,UUID.session,7,0);eq(#submitted,0);eq(#finished,0)
+ outcome={status='succeeded',reason_code='item_transferred',observed={count=2}}
+ transfers.pump(queue,UUID.session,7,1);eq(#submitted,1);eq(#finished,0)
+ receipt={status='failed'};outcome={status='cancelled'}
+ transfers.pump(queue,UUID.session,7,4);eq(#submitted,2)
+ eq(submitted[1],submitted[2]);eq(submitted[2].status,'succeeded');eq(submitted[2].observed.count,2)
+ receipt={status='accepted'};transfers.pump(queue,UUID.session,7,5);eq(#finished,1)
+ transfers.pump(queue,UUID.session,7,6);eq(#finished,1)
+ truthy(transfers.enqueue(queue,command));transfers.cancel(queue,npc);eq(#cancelled,1)
+ transfers.pump(queue,UUID.session,8,7);eq(#finished,1);eq(next(queue.pending),nil)
+end)
+
 test('identity registry refuses substitution and ambiguity',function()
  local r=identity.Registry() local one={} truthy(r:activate(npc,one)); eq(r:activate(npc,{}),nil)
  local clone=fake.identity('npc','fargoth',9);eq(r:resolve(clone),nil);eq(r:resolve(npc),one)
@@ -498,6 +521,11 @@ test('Close rechat preserves its group through one correlated continuation',func
  end)
  s.settings={behavior={rechat=true,rechatMaxDepth=2},presentation={ttsVolumeBoost=3}}
  s.dialogueMode='Close'
+ local provenanceCalls=0
+ b.actorRecordProvenance=function(actor)
+  truthy(actor);provenanceCalls=provenanceCalls+1
+  return {state='complete',record_id=npc.record_id,files={'Morrowind.esm','Override.esp'},winning_file='Override.esp'}
+ end
  orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
  orchestrator.activate(s,enemy,{});orchestrator.activate(s,busy,{})
  truthy(conversation.setTarget(s.conversation,npc))
@@ -508,6 +536,8 @@ test('Close rechat preserves its group through one correlated continuation',func
   content_fingerprint='sha256:'..string.rep('a',64),text='Hello.',input_key='player:1',language='en-US',
   speaker=playerId,context={targetState={inventory={items={{record_id='old_dagger',count=1}},total=1,truncated=false}}},capabilities={'dialogue.text','speech.say'},recent_action_results={},ui_source='lorkhan_text'}))
  local dialogue=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Greetings.'});dialogue.message_id=UUID.message
+ eq(provenanceCalls,1);eq(b.submitted[1].payload.context.targetState.recordProvenance.winning_file,'Override.esp')
+ b.actorRecordProvenance=function()error('record unavailable')end
  local descriptor={media_id='00000000-0000-4000-8000-000000000005',dialogue_message_id=UUID.message,
   sha256=string.rep('a',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
  b.results={responseEvent(1,{dialogueLine(0,UUID.message,npc,playerId,'Greetings.',true,true)},1),dialogue,
@@ -533,6 +563,7 @@ test('Close rechat preserves its group through one correlated continuation',func
  eq(orchestrator.rechatContext(s,contextRequest),false);s.conversation.turn.turnId=origin
  truthy(orchestrator.rechatContext(s,contextRequest));eq(orchestrator.rechatContext(s,contextRequest),false)
  eq(#b.submitted[2].payload.context.targetState.inventory.items,#freshItems)
+ eq(b.submitted[2].payload.context.targetState.recordProvenance.state,'unavailable')
  if #freshItems>0 then eq(b.submitted[2].payload.context.targetState.inventory.items[1].record_id,'new_dagger') end
  eq(#b.submitted,2);eq(b.submitted[2].payload.ui_source,'lorkhan_rechat')
  eq(b.submitted[2].payload.context.rechat.rechat_depth,1);eq(b.submitted[2].payload.context.rechat.origin_turn_id,UUID.turn)
@@ -798,15 +829,26 @@ test('ending conversation releases only owned packages and reports cleanup failu
  result=actor.execute(state,intent,{},authority);eq(result.status,'rejected')
 end)
 test('typed player action request remains inside the strict turn envelope',function()
- local dto,reason=protocol.turn({message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,
+ local args={message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,
   installation_id='00000000-0000-4000-8000-000000000010',profile_id='00000000-0000-4000-8000-000000000011',
   playthrough_id='00000000-0000-4000-8000-000000000012',session_id=UUID.session,generation=1,runtime_generation=3,
   created_at='2026-08-01T00:00:00Z',platform='windows',content_fingerprint='sha256:'..string.rep('a',64),
   text='Attack the mudcrab',language='en-US',mood={kind='angry'},speaker=playerId,target=npc,audience={npc},context={},capabilities={'action.combat.start'},
-  ui_source='lorkhan_action_menu',action_request={name='combat.start',tier=2,parameters={},target=enemy}})
+  ui_source='lorkhan_action_menu',action_request={name='combat.start',tier=2,parameters={},target=enemy}}
+ local dto,reason=protocol.turn(args)
  truthy(dto,reason);eq(dto.payload.action_request.name,'combat.start');eq(dto.payload.action_request.target.record_id,'mudcrab')
  eq(dto.payload.input.mood.kind,'angry')
  eq(dto.runtime_generation,3)
+ for _,mode in ipairs({'standard','narrator','director','cheat'}) do
+  args.execution_mode=mode
+  dto,reason=protocol.turn(args);truthy(dto,reason);eq(dto.payload.execution_mode,mode)
+ end
+ args.execution_mode='console'
+ dto,reason=protocol.turn(args);eq(dto,nil);eq(reason,'invalid_execution_mode')
+ args.execution_mode='standard';args.director_instruction_id=UUID.message
+ dto,reason=protocol.turn(args);truthy(dto,reason);eq(dto.payload.director_instruction_id,UUID.message)
+ args.execution_mode='director'
+ dto,reason=protocol.turn(args);eq(dto,nil);eq(reason,'invalid_director_instruction')
  dto,reason=protocol.turn({message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,
   installation_id='00000000-0000-4000-8000-000000000010',profile_id='00000000-0000-4000-8000-000000000011',
   playthrough_id='00000000-0000-4000-8000-000000000012',session_id=UUID.session,generation=1,runtime_generation=3,
@@ -814,6 +856,38 @@ test('typed player action request remains inside the strict turn envelope',funct
   text='Bad',language='en-US',speaker=playerId,target=npc,audience={npc},context={},capabilities={},
   ui_source='lorkhan_action_menu',action_request={name='../run',tier=1,parameters={}}})
  eq(dto,nil);eq(reason,'invalid_action_request')
+end)
+test('Director children request fresh context and fence identity, order and expiry',function()
+ local director=require('scripts.LORKHAN.director')
+ local seed={turn_id=UUID.turn,speaker=playerId,text='stage a scene',execution_mode='director',mood={kind='angry'}}
+ local row={instruction_id=UUID.message,actor=npc,recipient=playerId,instruction='Greet the visitor.',scene_note='A brief meeting.'}
+ local plan=director.receive(event(1,'director.instructions',1,{plan_id=UUID.request,origin_turn_id=UUID.turn,
+  expires_at='2026-09-14T00:05:00Z',instructions={row}}),seed)
+ truthy(plan)
+ local bridge={utcNow=function()return '2026-09-14T00:00:00Z' end,
+  nextTurnMetadata=function()return {message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn} end}
+ eq(director.next(plan,bridge,UUID.session,1,false),nil)
+ local request=director.next(plan,bridge,UUID.session,1,true);truthy(request);eq(request.target.record_id,npc.record_id)
+ eq(director.next(plan,bridge,UUID.session,1,true),nil)
+ local reply={request_id=request.request_id,session_id=UUID.session,generation=1,
+  instruction_id=row.instruction_id,target=enemy,context={action_items={}}}
+ eq(director.context(plan,reply),nil)
+ reply.target=npc;reply.context.action_items={{item_id='@0x12'}}
+ local args=director.context(plan,reply);truthy(args);eq(args.execution_mode,'standard');eq(args.mood,nil)
+ eq(args.context.action_items[1].item_id,'@0x12');eq(args.director_instruction_id,row.instruction_id)
+ eq(director.context(plan,reply),nil)
+ director.next(plan,bridge,UUID.session,1,true);truthy(plan.complete)
+ plan.complete=nil;plan.expiresAt='2026-09-13T23:59:59Z'
+ eq(director.next(plan,bridge,UUID.session,1,true),nil);truthy(plan.cancelled)
+end)
+test('resurrection observations preserve actor and calendar without inventing a spell',function()
+ local args={actor=npc,audience={enemy},game_time=20,calendar={year=427,month=0,day=1,hour=12}}
+ local payload,reason=protocol.actorResurrected(args);truthy(payload,reason)
+ eq(payload.actor.record_id,'fargoth');eq(payload.spell_id,nil);eq(payload.calendar.year,427)
+ args.audience={npc};eq(protocol.actorResurrected(args),nil)
+ args.audience={};args.game_time=-1;eq(protocol.actorResurrected(args),nil)
+ args.game_time=20;args.actor=fake.identity('narrator','lorkhan:narrator',0)
+ eq(protocol.actorResurrected(args),nil)
 end)
 test('NPC manager uses exact references and verifies deferred movement with save-backed Return',function()
  local manager=require('scripts.LORKHAN.npc_manager')
@@ -1568,6 +1642,15 @@ test('safe movement and combat actions enforce tiers and bounds',function()
  intent.action_id='bad-wander';intent.parameters.distance=2049;local ok,reason=actions.validate(state,intent,authority);eq(ok,nil);eq(reason,'invalid_wander_distance')
  intent.parameters={};intent.name='combat.start';intent.tier=1;intent.action_id='combat';ok,reason=actions.validate(state,intent,authority);eq(ok,nil);eq(reason,'invalid_action_tier')
  intent.tier=2;mapped=actions.validate(state,intent,authority);eq(mapped.name,'combat.start')
+ intent.name='weapon.sheathe';intent.tier=1;intent.action_id='sheathe'
+ eq(actions.validate(state,intent,authority),nil)
+ local sheathState=actor.new(npc,2,{'action.weapon.sheathe'});local called=0
+ local sheathAdapter={sheatheWeapon=function()called=called+1;return true,'weapon_sheathed',{stance='nothing'}end}
+ local result=actor.execute(sheathState,intent,sheathAdapter,authority)
+ eq(result.status,'succeeded');eq(result.observed.stance,'nothing');eq(called,1)
+ actor.execute(sheathState,intent,sheathAdapter,authority);eq(called,1)
+ intent.action_id='bad-sheathe';intent.parameters={force=true}
+ eq(actions.validate(sheathState.actions,intent,authority),nil)
 end)
 test('inventory inspect, approach, and bounded wait use owned API-129 actions',function()
  local registry=identity.Registry();registry:activate(npc,{});registry:activate(playerId,{})
@@ -1735,6 +1818,18 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
  local sword={recordId='iron_dagger',id='sword',count=2,contentFile='Morrowind.esm',
   type={record=function()return{name='Iron Dagger',value=10,health=100}end}}
  local robe={recordId='robe',id='robe',count=1,type={record=function()return{name='Robe',value=20}end}}
+ local firstCopy={recordId='enchanted_ring',id='@0x1234567890abcdef',count=1,
+  type={record=function()return{name='Enchanted Ring'}end}}
+ local secondCopy={recordId='enchanted_ring',id='@0x1234567890abcdee',count=2,type=firstCopy.type}
+ modules.types.Actor.inventory=function(owner)return {getAll=function()return owner==object and {firstCopy,secondCopy} or {} end}end
+ local oldGround=modules.nearby.items
+ modules.nearby.items={{id='0x1234567890abcdef',recordId='ring',count=1,type=firstCopy.type,
+  cell=modules.self.cell,position=modules.self.position}}
+ local transferable=openmwAdapter.actionItems(mapped,modules)
+ eq(#transferable,3);eq(transferable[1].item_id,'@0x1234567890abcdef')
+ eq(transferable[2].item_id,'@0x1234567890abcdee');eq(transferable[2].count,2)
+ eq(transferable[1].owner.record_id,mapped.record_id);eq(transferable[3].location,'ground')
+ eq(transferable[3].owner,nil);modules.nearby.items=oldGround
  modules.types.Actor.inventory=function()return {getAll=function()return{sword,robe}end}end
  modules.types.Actor.getEquipment=function()return{[1]=sword}end
  modules.types.Item={itemData=function(item)if item==sword then return{condition=50}end return{}end}
@@ -1746,6 +1841,18 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
  local _,reordered=openmwAdapter.inventoryObservation(mapped,modules);eq(signature,reordered)
  robe.type.record=function()return{name='Robe'}end
  eq(openmwAdapter.inventoryObservation(mapped,modules),nil)
+ local stance=1;local changes=0
+ modules.types.Actor.STANCE={Nothing=0}
+ modules.types.Actor.getStance=function()return stance end
+ modules.types.Actor.setStance=function(_,value)stance=value;changes=changes+1 end
+ truthy(openmwAdapter.sheatheWeapon(modules));eq(stance,0);eq(changes,1)
+ truthy(openmwAdapter.sheatheWeapon(modules));eq(changes,1)
+ stance=1;modules.types.Actor.setStance=function()end
+ local sheathed,sheatheReason=openmwAdapter.sheatheWeapon(modules)
+ eq(sheathed,nil);eq(sheatheReason,'weapon_sheathe_busy')
+ modules.types.Actor.setStance=function()error('engine rejected')end
+ sheathed,sheatheReason=openmwAdapter.sheatheWeapon(modules)
+ eq(sheathed,nil);eq(sheatheReason,'engine_rejected_sheathe')
  modules.types.Actor.inventory=function()return {getAll=function()return{}end}end
  payload,signature=openmwAdapter.inventoryObservation(mapped,modules);eq(#payload.items,0);eq(signature,'')
  modules.types.Actor.inventory=function()return nil end

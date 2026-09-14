@@ -1,3 +1,4 @@
+#include <lorkhan/record_provenance.hpp>
 #include "lorkhan/actions.hpp"
 #include "lorkhan/bridge_service.hpp"
 #include "lorkhan/events.hpp"
@@ -364,6 +365,12 @@ void testAcceptedProtocolResponses()
     CHECK(!lorkhan::validateItemPickupPayload(pickupPrefix + ",\"audience\":[" + protocolIdentity() + "," + protocolIdentity() + "]}"));
     const std::string castPrefix = "{\"caster\":" + protocolIdentity() + R"(,"spell_id":"firebite","spell_name":"Firebite","game_time":100)";
     CHECK(lorkhan::validateSpellCastPayload(castPrefix + "}"));
+    const auto resurrection=std::string("{\"actor\":")+protocolIdentity()+",\"audience\":[],\"game_time\":1}";
+    CHECK(lorkhan::validateActorResurrectedPayload(resurrection));
+    auto invalidResurrection=resurrection;invalidResurrection.insert(1,"\"command\":\"resurrect\",");
+    CHECK(!lorkhan::validateActorResurrectedPayload(invalidResurrection));
+    CHECK(!lorkhan::validateActorResurrectedPayload("{\"actor\":{},\"audience\":[],\"game_time\":1}"));
+
     CHECK(lorkhan::validateSpellCastPayload(castPrefix + R"(,"calendar":{"year":427,"month":8,"day":16,"hour":12.5}})"));
     CHECK(lorkhan::validateItemPickupPayload(pickupPrefix + R"(,"calendar":{"year":427,"month":8,"day":16,"hour":12.5}})"));
     CHECK(!lorkhan::validateSpellCastPayload(castPrefix + R"(,"calendar":{"year":427,"month":12,"day":16,"hour":12}})"));
@@ -686,6 +693,81 @@ void testProtocolEventResponses()
         const auto* end = std::get_if<lorkhan::ActionIntentEventPayload>(&ended.value().events[1].payload);
         CHECK(end && end->intent.kind == lorkhan::ActionIntentKind::conversation_end);
     }
+    auto sheatheJson = parityActionsJson;
+    sheatheJson.replace(approachName, std::string("ai.approach").size(), "weapon.sheathe");
+    const auto sheathed = lorkhan::parseEventsResponse(sheatheJson, jsonHeaders);
+    CHECK(sheathed && sheathed.value().events.size() == 3);
+    if (sheathed && sheathed.value().events.size() == 3) {
+        const auto* action = std::get_if<lorkhan::ActionIntentEventPayload>(&sheathed.value().events[1].payload);
+        CHECK(action && action->intent.kind == lorkhan::ActionIntentKind::weapon_sheathe);
+    }
+    for (const auto& [name,parameters]:std::vector<std::pair<std::string,std::string>>{
+        {"item.give",R"({"item_id":"@0x123","count":2})"}, {"item.take",R"({"item_id":"0x12","count":1000})"},
+        {"item.pickup",R"({"item_id":"@0xffffffffffffffff"})"}, {"gold.give",R"({"amount":100000})"}, {"gold.take",R"({"amount":1})"}}) {
+        auto wire=parityActionsJson;wire.replace(approachName,std::string("ai.approach").size(),name);
+        const auto tierPosition=wire.find("\"tier\":1",approachName);CHECK(tierPosition!=std::string::npos);
+        wire.replace(tierPosition,std::string("\"tier\":1").size(),"\"tier\":2,\"confirmation_required\":true");
+        const auto paramsPosition=wire.find("\"parameters\":{}",approachName);CHECK(paramsPosition!=std::string::npos);
+        wire.replace(paramsPosition,std::string("\"parameters\":{}").size(),"\"parameters\":"+parameters);
+        CHECK(lorkhan::parseEventsResponse(wire,jsonHeaders));
+        auto noApproval=wire;const auto approval=noApproval.find("\"confirmation_required\":true",approachName);
+        noApproval.replace(approval,std::string("\"confirmation_required\":true").size(),"\"confirmation_required\":false");
+        CHECK(!lorkhan::parseEventsResponse(noApproval,jsonHeaders));
+        auto unknown=wire;const auto parametersStart=unknown.find("\"parameters\":{",approachName);
+        unknown.insert(parametersStart+std::string("\"parameters\":{").size(),"\"script\":\"bad\",");
+        CHECK(!lorkhan::parseEventsResponse(unknown,jsonHeaders));
+        auto missingApproval=wire;
+        missingApproval.erase(approval,std::string("\"confirmation_required\":true,").size());
+        CHECK(!lorkhan::parseEventsResponse(missingApproval,jsonHeaders));
+        for(const auto& invalidParameters: name.starts_with("gold.")
+            ? std::vector<std::string>{R"({"amount":0})",R"({"amount":100001})"}
+            : name=="item.pickup" ? std::vector<std::string>{R"({"item_id":"player"})",R"({"item_id":"@0xABC"})"}
+            : std::vector<std::string>{R"({"item_id":"0x12","count":0})",R"({"item_id":"0x12","count":1001})"}) {
+            auto invalid=wire;
+            invalid.replace(paramsPosition,std::string("\"parameters\":").size()+parameters.size(),"\"parameters\":"+invalidParameters);
+            CHECK(!lorkhan::parseEventsResponse(invalid,jsonHeaders));
+        }
+    }
+    for(const char* name:{"service.barter","service.training","service.spells","service.travel","service.spellmaking","service.enchanting","service.repair"}){
+        auto wire=parityActionsJson;wire.replace(approachName,std::string("ai.approach").size(),name);
+        CHECK(lorkhan::parseEventsResponse(wire,jsonHeaders));
+        auto invalid=wire;const auto position=invalid.find("\"parameters\":{}",approachName);
+        invalid.replace(position,std::string("\"parameters\":{}").size(),"\"parameters\":{\"purchase\":true}");
+        CHECK(!lorkhan::parseEventsResponse(invalid,jsonHeaders));
+    }
+    {
+        auto wire=parityActionsJson;wire.replace(approachName,std::string("ai.approach").size(),"spell.cast");
+        const auto tier=wire.find("\"tier\":1",approachName);
+        wire.replace(tier,std::string("\"tier\":1").size(),"\"tier\":2,\"confirmation_required\":true");
+        const auto params=wire.find("\"parameters\":{}",approachName);
+        wire.replace(params,std::string("\"parameters\":{}").size(),"\"parameters\":{\"spell_id\":\"fire bite\"}");
+        CHECK(lorkhan::parseEventsResponse(wire,jsonHeaders));
+        auto denied=wire;const auto approval=denied.find("\"confirmation_required\":true",approachName);
+        denied.replace(approval,std::string("\"confirmation_required\":true").size(),"\"confirmation_required\":false");
+        CHECK(!lorkhan::parseEventsResponse(denied,jsonHeaders));
+        auto empty=wire;empty.replace(empty.find("fire bite",params),std::string("fire bite").size(),"");
+        CHECK(!lorkhan::parseEventsResponse(empty,jsonHeaders));
+    }
+    const std::string directorInstruction=R"({"instruction_id":"01900000-0000-7000-8000-000000000040","actor":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"recipient":{"kind":"player","record_id":"player","refnum":{"index":1,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Player"},"instruction":"Greet the traveler.","scene_note":""})";
+    const std::string directorPrefix=R"({"schema":"lorkhan.events.v1","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"next_after":1,"events":[{"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-19T20:00:01Z","type":"director.instructions","payload":{"plan_id":"01900000-0000-7000-8000-000000000039","origin_turn_id":"01900000-0000-7000-8000-000000000005","expires_at":"2026-07-19T20:01:00Z","instructions":[)";
+    const std::string directorSuffix=R"(]}}],"autonomy":[]})";
+    auto directed=lorkhan::parseEventsResponse(directorPrefix+directorInstruction+directorSuffix,jsonHeaders);
+    CHECK(directed&&directed.value().events.size()==1);
+    if(directed){
+        const auto* plan=std::get_if<lorkhan::DirectorInstructionsEventPayload>(&directed.value().events[0].payload);
+        CHECK(plan&&plan->instructions.size()==1&&plan->instructions[0].text=="Greet the traveler.");
+    }
+    CHECK(!lorkhan::parseEventsResponse(directorPrefix+directorSuffix,jsonHeaders));
+    CHECK(!lorkhan::parseEventsResponse(directorPrefix+directorInstruction+","+directorInstruction+directorSuffix,jsonHeaders));
+    auto secondDirector=directorInstruction;secondDirector.replace(secondDirector.find("000000000040"),12,"000000000041");
+    CHECK(!lorkhan::parseEventsResponse(directorPrefix+directorInstruction+","+secondDirector+directorSuffix,jsonHeaders));
+    auto playerDirector=directorInstruction;playerDirector.replace(playerDirector.find("\"kind\":\"npc\""),12,"\"kind\":\"player\"");
+    CHECK(!lorkhan::parseEventsResponse(directorPrefix+playerDirector+directorSuffix,jsonHeaders));
+    auto invalidSheathe = sheatheJson;
+    const auto sheatheParams = invalidSheathe.find("\"parameters\":{}", approachName);
+    CHECK(sheatheParams != std::string::npos);
+    invalidSheathe.replace(sheatheParams, std::string("\"parameters\":{}").size(), "\"parameters\":{\"force\":true}");
+    CHECK(!lorkhan::parseEventsResponse(invalidSheathe, jsonHeaders));
 }
 
 void testQueue()
@@ -736,6 +818,13 @@ void testEvents()
 
 void testActions()
 {
+    lorkhan::ActionCommitGate beforeConfirmation;
+    CHECK(beforeConfirmation.cancel()); CHECK(!beforeConfirmation.queue()); CHECK(!beforeConfirmation.begin());
+    lorkhan::ActionCommitGate pending;
+    CHECK(pending.queue()); CHECK(!pending.queue()); CHECK(pending.cancel()); CHECK(!pending.begin());
+    lorkhan::ActionCommitGate committed;
+    CHECK(committed.queue()); CHECK(committed.begin()); CHECK(!committed.begin()); CHECK(!committed.cancel());
+    committed.finish(); CHECK(!committed.queue()); CHECK(!committed.begin()); CHECK(!committed.cancel());
     const auto follow = lorkhan::validateAiFollow(192);
     CHECK(follow && follow.value().distance == 192);
     CHECK(!lorkhan::validateAiFollow(0));
@@ -926,6 +1015,19 @@ void testVoiceCapturePrimitives()
 #endif
 }
 
+void testRecordProvenance()
+{
+    lorkhan::RecordProvenance record;
+    record.observe("Morrowind.esm"); record.observe("Patch.esp"); record.observe("Patch.esp");
+    CHECK(record.complete && record.files.size() == 2 && record.winningFile == "Patch.esp");
+    for (int i = 0; i < 130; ++i) record.observe("Override" + std::to_string(i) + ".esp");
+    CHECK(!record.complete && record.files.size() == 128 && record.winningFile == "Override129.esp");
+    record.observe("../private.esp"); CHECK(record.winningFile.empty() && !record.complete);
+    record.observe("unsafe:mod.esp"); CHECK(record.winningFile.empty());
+    record.observe("bad\nmod.esp"); CHECK(record.winningFile.empty());
+    record.observe("Final.esp"); CHECK(!record.complete && record.winningFile == "Final.esp");
+}
+
 void testConcurrency()
 {
     auto state = std::make_shared<TransportState>();
@@ -952,7 +1054,7 @@ void testConcurrency()
 
 int main()
 {
-    testUtf8(); testUrls(); testHeaders(); testJson(); testProtocolResponses(); testAcceptedProtocolResponses();
+    testRecordProvenance(); testUtf8(); testUrls(); testHeaders(); testJson(); testProtocolResponses(); testAcceptedProtocolResponses();
     testProtocolEventResponses(); testQueue(); testLifecycleAndCancellation();
     testEvents(); testActions(); testPairingToken(); testMedia(); testBridgeDialogueDeliveryValidation();
     testBridge(); testConcurrency(); testVoiceCapturePrimitives();

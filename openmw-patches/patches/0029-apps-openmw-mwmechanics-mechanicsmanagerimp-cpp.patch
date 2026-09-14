@@ -1,0 +1,19 @@
+diff --git a/apps/openmw/mwmechanics/mechanicsmanagerimp.cpp b/apps/openmw/mwmechanics/mechanicsmanagerimp.cpp
+index 91eec7eb623c3480e75192be65237ad36a5d9765..0b143dc984aa147c789ec8487515c012b91a3a9e 100644
+--- a/apps/openmw/mwmechanics/mechanicsmanagerimp.cpp
++++ b/apps/openmw/mwmechanics/mechanicsmanagerimp.cpp
+@@ -24,6 +24,7 @@
+ 
+ #include "../mwbase/dialoguemanager.hpp"
+ #include "../mwbase/environment.hpp"
++#include "../mwbase/luamanager.hpp"
+ #include "../mwbase/soundmanager.hpp"
+ #include "../mwbase/statemanager.hpp"
+ #include "../mwbase/windowmanager.hpp"
+@@ -1915,5 +1916,6 @@
+         {
+             stats.resurrect();
+             mActors.resurrect(ptr);
++            if (!stats.isDead()) MWBase::Environment::get().getLuaManager()->onLorkhanActorResurrected(ptr);
+         }
+     }

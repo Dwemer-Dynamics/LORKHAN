@@ -33,6 +33,7 @@ function M.validate(state, intent, authority)
         ['ai.wander']={capability='action.ai.wander',tier=1},
         ['combat.start']={capability='action.combat.start',tier=2},
         ['combat.stop']={capability='action.combat.stop',tier=1},
+        ['weapon.sheathe']={capability='action.weapon.sheathe',tier=1},
         ['animation.play']={capability='action.animation.play',tier=1},
         ['item.equip']={capability='action.item.equip',tier=2},
         ['item.unequip']={capability='action.item.unequip',tier=2},

@@ -1,5 +1,9 @@
 # OpenMW Lua API 129 action parity audit
 
+Historical audit. Current plan: `RANGROO/LorkhanServer/docs/CURRENT-PARITY-PLAN.md` (2026-09-13).
+Its GLOBAL/native reassessment supersedes the actor-local-only exclusions below; feasible transfers,
+pickup, services, casting and sheathing are being implemented with actual terminal receipts.
+
 Audited 2026-08-09 against the frozen CHIM `005df4c1fda5ff195dc14a674fe71b11542be4df`,
 HerikaServer `c973f5c8fde2d01cb8211be3d5f96d1783663da4`, Dialectic
 `5cd2817a6733acbe25ca21bdfb716ed64617f5f8`, and DialecticServer

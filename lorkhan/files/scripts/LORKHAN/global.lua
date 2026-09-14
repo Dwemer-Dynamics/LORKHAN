@@ -8,6 +8,8 @@ local worldOk,world=pcall(require,'openmw.world')
 local worldUtilOk,worldUtil=pcall(require,'openmw.util')
 local npcManager=require('scripts.LORKHAN.npc_manager')
 local diaryBooks=require('scripts.LORKHAN.diary_books')
+local transferActions=require('scripts.LORKHAN.transfer_actions')
+local transfers
 local npcControls=npcManager.new({core=core,world=world,types=types,util=worldUtil})
 local state
 local pendingPlayerEvents={}
@@ -45,6 +47,10 @@ local function flushPlayerEvents(player)
 end
 
 local function sendActor(actor,name,payload)
+    if transfers and name=='LORKHAN_ACTOR_ACTION' and transferActions.names[payload.name] then
+        return transferActions.enqueue(transfers,payload)
+    end
+    if transfers and name=='LORKHAN_ACTOR_STOP' then transferActions.cancel(transfers,actor) end
     local object=state and state.registry:resolve(actor)
     if not object or not object.sendEvent then return nil,'actor_inactive' end
     object:sendEvent(name,payload)
@@ -64,6 +70,11 @@ local function manageActor(actor,generation)
     return nil,'actor_script_unavailable'
 end
 state=orchestrator.new(bridge,emit,sendActor,manageActor)
+transfers=transferActions.new(bridge,function(event)
+    local queued,reason=orchestrator.actionResult(state,event)
+    emit('LORKHAN_ACTION_STATUS',{name=event.action_name,status=event.result.status,
+        reason=event.result.reason_code,submitted=true,queue_completed=queued==true,queue_reason=reason})
+end)
 local diaries=diaryBooks.new(bridge,function(actor) return state.registry:resolve(actor) end)
 local configuredSession
 local morrowindMonths={'Morning Star','Sun\'s Dawn','First Seed','Rain\'s Hand','Second Seed','Midyear',
@@ -370,6 +381,8 @@ return {
             flushPlayerEvents(object)
         end,
         onUpdate=function(dt)
+            transferActions.pump(transfers,state.sessionId,state.generation,
+                core and core.getRealTime and core.getRealTime() or 0)
             local result=npcManager.poll(npcControls,state.sessionId,state.generation,core and core.getRealTime and core.getRealTime() or 0)
             if result then emit('LORKHAN_DEBUG_COMMAND_RESULT',result) end
             finishLoadedSave()
@@ -417,6 +430,7 @@ return {
         end,
     },
     eventHandlers={
+        LORKHAN_DIRECTOR_CONTEXT=function(event) orchestrator.directorContext(state,event) end,
         LORKHAN_RECHAT_CONTEXT=function(event)
             enrichWorldCalendar(event)
             orchestrator.rechatContext(state,event)

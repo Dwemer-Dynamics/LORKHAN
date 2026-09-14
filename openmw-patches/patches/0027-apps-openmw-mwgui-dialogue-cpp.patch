@@ -1,0 +1,43 @@
+diff --git a/apps/openmw/mwgui/dialogue.cpp b/apps/openmw/mwgui/dialogue.cpp
+index 7f2ec6e972fd201f47813d049dc1c4618b4f088e..5ffe33ae453ecd728ba945b893af1bb9a7326eee 100644
+--- a/apps/openmw/mwgui/dialogue.cpp
++++ b/apps/openmw/mwgui/dialogue.cpp
+@@ -406,6 +406,38 @@
+         {
+             MWBase::Environment::get().getWindowManager()->removeGuiMode(GM_Dialogue);
+         }
++    }
++
++    std::string_view DialogueWindow::selectLorkhanService(
++        const MWWorld::Ptr& actor, MWBase::DialogueManager::ServiceType service)
++    {
++        const auto windows = MWBase::Environment::get().getWindowManager();
++        if (mPtr != actor || mPtr.isEmpty() || windows->getMode() != GM_Dialogue
++            || mGoodbye || MWBase::Environment::get().getDialogueManager()->isInChoice())
++            return "dialogue_blocked";
++        const int services = mPtr.getClass().getServices(mPtr);
++        const char* setting = nullptr;
++        MWGui::GuiMode expected = GM_Dialogue;
++        using D = MWBase::DialogueManager;
++        switch (service)
++        {
++            case D::Barter: if (services & ESM::NPC::AllItems) setting = "sBarter", expected = GM_Barter; break;
++            case D::Training: if (services & ESM::NPC::Training) setting = "sServiceTrainingTitle", expected = GM_Training; break;
++            case D::Spells: if (services & ESM::NPC::Spells) setting = "sSpells", expected = GM_SpellBuying; break;
++            case D::Spellmaking: if (services & ESM::NPC::Spellmaking) setting = "sSpellmakingMenuTitle", expected = GM_SpellCreation; break;
++            case D::Enchanting: if (services & ESM::NPC::Enchanting) setting = "sEnchanting", expected = GM_Enchanting; break;
++            case D::Repair: if (services & ESM::NPC::Repair) setting = "sRepair", expected = GM_MerchantRepair; break;
++            case D::Travel:
++                if ((mPtr.getType() == ESM::NPC::sRecordId && !mPtr.get<ESM::NPC>()->mBase->getTransport().empty())
++                    || (mPtr.getType() == ESM::Creature::sRecordId && !mPtr.get<ESM::Creature>()->mBase->getTransport().empty()))
++                    setting = "sTravel", expected = GM_Travel;
++                break;
++            default: break;
++        }
++        if (!setting) return "service_unavailable";
++        const auto& gmst = MWBase::Environment::get().getESMStore()->get<ESM::GameSetting>();
++        onSelectListItem(gmst.find(setting)->mValue.getString(), 0);
++        return windows->getMode() == expected ? "opened" : "service_refused";
+     }
+ 
+     void DialogueWindow::onSelectListItem(const std::string& topic, int /*id*/)

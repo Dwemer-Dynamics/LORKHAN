@@ -45,6 +45,7 @@ function M.snapshot(source)
         world = util.copy(source.world or {}),
         playerState = util.copy(source.playerState or {}),
         targetState = util.copy(source.targetState or {}),
+        action_items = util.arrayCopy(source.action_items or {},128),
         capabilities = util.copy(source.capabilities or {}),
         unavailable = util.copy(source.unavailable or {}),
         rechat = source.rechat and util.copy(source.rechat) or nil,
@@ -58,6 +59,7 @@ function M.snapshot(source)
         p99CollectionMs = snapshot.collectionTiming.p99Ms,
         collectionSamples = snapshot.collectionTiming.samples}
     if snapshot.budget.truncated then
+        snapshot.action_items = {}
         snapshot.nearbyObjects.items = {}
         snapshot.nearbyObjects.truncated = snapshot.nearbyObjects.total > 0
         snapshot.inventory.items = {}

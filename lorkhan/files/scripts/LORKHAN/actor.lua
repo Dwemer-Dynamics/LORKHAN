@@ -28,6 +28,7 @@ local engine={
     equipItem=function(target,parameters) return adapter.equipItem(parameters) end,
     unequipItem=function(target,parameters) return adapter.unequipItem(parameters) end,
     useItem=function(target,parameters) return adapter.useItem(parameters) end,
+    sheatheWeapon=function() return adapter.sheatheWeapon() end,
     playSpeech=function(mediaId,actorIdentity,subtitle,volumeBoost) return adapter.playSpeech(mediaId,subtitle,volumeBoost) end,
     isSpeechActive=function() return adapter.isSpeechActive() end,
     stopSpeech=function() adapter.stopSpeech() end,

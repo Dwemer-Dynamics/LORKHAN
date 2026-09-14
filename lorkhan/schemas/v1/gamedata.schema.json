@@ -45,6 +45,9 @@
           "maxLength": 128,
           "minLength": 1,
           "type": "string"
+        },
+        "record_provenance": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/record_provenance"
         }
       },
       "required": [
@@ -769,6 +772,111 @@
           }
         }
       ]
+    },
+    "record_provenance": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "files",
+            "record_id",
+            "winning_file"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "complete",
+                "truncated"
+              ]
+            },
+            "files": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 128,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[^/\\\\:\\u0000-\\u001f\\u007f]+$"
+              }
+            },
+            "record_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "winning_file": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[^/\\\\:\\u0000-\\u001f\\u007f]+$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "files"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "dynamic",
+                "unavailable"
+              ]
+            },
+            "files": {
+              "type": "array",
+              "maxItems": 0,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[^/\\\\:\\u0000-\\u001f\\u007f]+$"
+              }
+            },
+            "record_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        }
+      ]
+    },
+    "actor_resurrected": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "actor",
+        "game_time"
+      ],
+      "properties": {
+        "game_time": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "audience": {
+          "type": "array",
+          "maxItems": 12,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+          }
+        },
+        "calendar": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/observation_calendar"
+        },
+        "actor": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+        }
+      }
     }
   },
   "additionalProperties": false,
@@ -828,6 +936,9 @@
         },
         {
           "$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/item_pickup"
+        },
+        {
+          "$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/actor_resurrected"
         }
       ]
     },
@@ -863,7 +974,8 @@
         "bored_event",
         "quest_event",
         "spell_cast",
-        "item_pickup"
+        "item_pickup",
+        "actor_resurrected"
       ],
       "type": "string"
     }

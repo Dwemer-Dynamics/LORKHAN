@@ -135,6 +135,17 @@ function M.turn(args)
     local payload={input=input, speaker=util.copy(args.speaker),
         target=util.copy(args.target), audience=util.arrayCopy(args.audience), context=util.copy(args.context),
         recent_action_results=util.arrayCopy(args.recent_action_results or {}), ui_source=args.ui_source}
+    if args.execution_mode~=nil then
+        if args.execution_mode~='standard' and args.execution_mode~='narrator'
+            and args.execution_mode~='director' and args.execution_mode~='cheat' then return nil,'invalid_execution_mode' end
+        payload.execution_mode=args.execution_mode
+    end
+    if args.director_instruction_id~=nil then
+        if not M.isUuid(args.director_instruction_id) or (args.execution_mode or 'standard')~='standard' then
+            return nil,'invalid_director_instruction'
+        end
+        payload.director_instruction_id=args.director_instruction_id
+    end
     if args.action_request~=nil then
         local request=args.action_request
         if type(request)~='table' or type(request.name)~='string' or not request.name:match('^[a-z][a-z0-9_.]*$')
@@ -196,6 +207,22 @@ local function validObservationCalendar(calendar)
 end
 
 -- A successful cast is an observation; an optional target is not a confirmed spell impact.
+function M.actorResurrected(args)
+    if type(args)~='table' or not identity.validate(args.actor) or args.actor.kind=='narrator'
+        or not validObservationCalendar(args.calendar) then return nil,'invalid_resurrection_actor' end
+    if type(args.game_time)~='number' or args.game_time~=args.game_time or args.game_time<0
+        or args.game_time>9007199254740991 then return nil,'invalid_resurrection_time' end
+    local audience={};local seen={[identity.key(args.actor)]=true}
+    if type(args.audience or {})~='table' or #(args.audience or {})>12 then return nil,'invalid_resurrection_audience' end
+    for _,actor in ipairs(args.audience or {}) do
+        if not identity.validate(actor) or (actor.kind~='npc' and actor.kind~='creature')
+            or seen[identity.key(actor)] then return nil,'invalid_resurrection_audience' end
+        seen[identity.key(actor)]=true;audience[#audience+1]=util.copy(actor)
+    end
+    return {actor=util.copy(args.actor),audience=audience,game_time=args.game_time,
+        calendar=args.calendar and util.copy(args.calendar) or nil}
+end
+
 function M.spellCast(args)
     if type(args)=='table' and not validObservationCalendar(args.calendar) then return nil,'invalid_spell_calendar' end
     if type(args)~='table' or not identity.validate(args.caster)

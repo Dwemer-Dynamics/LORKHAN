@@ -2,6 +2,7 @@ local constants=require('scripts.LORKHAN.constants')
 local agentRegistry=require('scripts.LORKHAN.agent_registry')
 local context=require('scripts.LORKHAN.context')
 local conversation=require('scripts.LORKHAN.conversation')
+local director=require('scripts.LORKHAN.director')
 local identity=require('scripts.LORKHAN.identity')
 local protocol=require('scripts.LORKHAN.protocol')
 local playerInput=require('scripts.LORKHAN.player_input')
@@ -354,6 +355,33 @@ local function narratorIdentity(state)
         display_name=type(narrator.name)=='string' and narrator.name~='' and narrator.name or 'The Narrator'}
 end
 
+-- Synthetic modes must return to the user's world target, including the intentional no-target state.
+local function restoreModeTarget(state,target)
+    if target and target.kind~='narrator' and state.registry:resolve(target) then
+        conversation.setTarget(state.conversation,target)
+    else conversation.clearTarget(state.conversation) end
+end
+
+-- Late capture failures must not replace a newer selection, session, or active turn.
+local function restoreVoiceTarget(state,pending)
+    if not pending or (pending.execution_mode~='director' and pending.execution_mode~='narrator')
+        or pending.session_id~=state.sessionId or pending.generation~=state.generation
+        or not pending.selectedTargetPresent or not identity.same(state.conversation.target,pending.target)
+        or state.conversation.turn and not state.conversation.turn.terminal then return end
+    restoreModeTarget(state,pending.selectedTarget)
+end
+
+-- Correlated terminal paths share restoration, including transport failures outside the event lane.
+local function restoreTurnTarget(state,turnId)
+    local saved=state.modeRestore
+    if not saved or saved.turn_id~=turnId then return end
+    state.modeRestore=nil
+    if saved.session_id==state.sessionId and saved.generation==state.generation
+        and identity.same(state.conversation.target,saved.syntheticTarget) then
+        restoreModeTarget(state,saved.target)
+    end
+end
+
 -- Temporarily target the player-local narrator while preserving the user's world-actor target.
 local function requestNarrator(state,kind,contextActor,observedText)
     local narrator=state.settings and state.settings.narrator or {}
@@ -493,7 +521,7 @@ function M.runAutonomy(state,elapsed)
     end
     local behavior=state.settings and state.settings.behavior or {}
     local turn=state.conversation.turn
-    local busy=state.disabled or state.hardHalted or not state.sessionId or not responseQueue.idle(state.responseQueue)
+    local busy=state.disabled or state.hardHalted or not state.sessionId or state.directorPlan~=nil or not responseQueue.idle(state.responseQueue)
         or (turn and not turn.terminal) or state.pendingVoice~=nil or state.openMic==true
     if busy then autonomy.idleSeconds=0 return false end
     local narrator=state.settings and state.settings.narrator or {}
@@ -596,8 +624,14 @@ function M.startVoice(state,args)
     if state.disabled or state.hardHalted then return nil,'lorkhan_disabled' end
     if not state.bridge or not state.bridge.startVoiceCapture then return nil,'voice_capture_unavailable' end
     if state.conversation.turn and not state.conversation.turn.terminal then return nil,'turn_in_flight' end
-    if not state.conversation.target then return nil,'target_required' end
     if not args or not identity.validate(args.speaker) then return nil,'invalid_speaker' end
+    local selectedTarget=args.target or state.conversation.target
+    if args.execution_mode=='director' or args.execution_mode=='narrator' then
+        conversation.setTarget(state.conversation,narratorIdentity(state))
+    elseif args.target and identity.validate(args.target) and state.registry:resolve(args.target) then
+        conversation.setTarget(state.conversation,args.target)
+    end
+    if not state.conversation.target then return nil,'target_required' end
     local sensitivity=math.max(100,math.min(5000,math.floor(tonumber(args.vad_sensitivity) or 700)))
     local endDelay=math.max(500,math.min(5000,math.floor(tonumber(args.end_delay_ms) or 900)))
     local deviceId=math.max(-1,math.min(31,math.floor(tonumber(args.recording_device) or -1)))
@@ -609,12 +643,17 @@ function M.startVoice(state,args)
     print('[LORKHAN] voice capture configuration: device_id='..tostring(deviceId)..' device='..deviceName..
         ' automatic='..tostring(args.automatic==true)..' threshold='..tostring(sensitivity)..' end_delay_ms='..tostring(endDelay))
     local started,reason=state.bridge.startVoiceCapture(args.automatic==true,sensitivity,endDelay,deviceId)
-    if not started then return nil,reason or 'voice_capture_failed' end
+    if not started then
+        if args.execution_mode=='director' or args.execution_mode=='narrator' then restoreModeTarget(state,selectedTarget) end
+        return nil,reason or 'voice_capture_failed'
+    end
     state.pendingVoice={speaker=util.copy(args.speaker),target=util.copy(state.conversation.target),
+        selectedTarget=selectedTarget and util.copy(selectedTarget) or nil,selectedTargetPresent=true,
         target_key=identity.key(state.conversation.target),session_id=state.sessionId,generation=state.generation,
         context=util.copy(args.context or {}),language=args.language or 'en-US',
         capabilities=util.arrayCopy(args.capabilities or {}),recent_action_results=util.arrayCopy(args.recent_action_results or {}),
-        ui_source=args.ui_source or 'lorkhan_voice',dialogueMode=args.dialogueMode,mood=util.copy(args.mood),continuous=args.continuous==true}
+        ui_source=args.ui_source or 'lorkhan_voice',dialogueMode=args.dialogueMode,mood=util.copy(args.mood),
+        execution_mode=args.execution_mode,continuous=args.continuous==true}
     state.emit('LORKHAN_VOICE_STATUS',{status=args.automatic and 'listening' or 'recording',continuous=args.continuous==true})
     return true
 end
@@ -635,7 +674,9 @@ end
 
 function M.disableOpenMic(state)
     state.openMic=false state.openMicRequested=false
-    if state.pendingVoice and state.pendingVoice.continuous then state.bridge.cancelVoiceCapture();state.pendingVoice=nil end
+    if state.pendingVoice and state.pendingVoice.continuous then
+        state.bridge.cancelVoiceCapture();restoreVoiceTarget(state,state.pendingVoice);state.pendingVoice=nil
+    end
     state.emit('LORKHAN_VOICE_STATUS',{status='open mic off'});return true
 end
 
@@ -643,12 +684,13 @@ function M.muteOpenMic(state)
     if not state.openMic then return nil,'open_mic_disabled' end
     state.openMicRequested=false
     if state.pendingVoice and state.pendingVoice.continuous then
-        state.bridge.cancelVoiceCapture();state.pendingVoice=nil
+        state.bridge.cancelVoiceCapture();restoreVoiceTarget(state,state.pendingVoice);state.pendingVoice=nil
     end
     state.emit('LORKHAN_VOICE_STATUS',{status='open mic muted',continuous=true});return true
 end
 
 function M.pollOpenMic(state)
+    if state.directorPlan then return false end
     if not state.openMic or state.openMicRequested or state.pendingVoice or next(state.pendingStt) then return false end
     if state.conversation.turn and not state.conversation.turn.terminal then return false end
     if not state.conversation.target or not state.registry:resolve(state.conversation.target) then
@@ -673,7 +715,8 @@ function M.pollVoice(state)
         local metadata,reason=state.bridge.submitCapturedStt(state.pendingVoice.language)
         if not metadata then
             print('[LORKHAN] captured voice submission failed: '..tostring(reason or 'stt_submit_failed'))
-            state.emit('LORKHAN_VOICE_STATUS',{status='failed',reason=reason or 'stt_submit_failed'});state.pendingVoice=nil;return false
+            state.emit('LORKHAN_VOICE_STATUS',{status='failed',reason=reason or 'stt_submit_failed'})
+            restoreVoiceTarget(state,state.pendingVoice);state.pendingVoice=nil;return false
         end
         state.pendingStt[metadata.request_id]=state.pendingVoice;state.pendingVoice=nil
         print('[LORKHAN] captured voice submitted for transcription: '..tostring(metadata.request_id))
@@ -690,7 +733,7 @@ function M.pollVoice(state)
             ' rms='..tostring(status.rms_amplitude))
         state.emit('LORKHAN_VOICE_STATUS',{status='failed',reason=status.error or status.state,continuous=continuous});if continuous then state.openMic=false end
     end
-    state.pendingVoice=nil;return false
+    restoreVoiceTarget(state,state.pendingVoice);state.pendingVoice=nil;return false
 end
 
 function M.addAudience(state,candidate)
@@ -729,35 +772,61 @@ function M.submitText(state,args)
             or state.conversation.turn and not state.conversation.turn.terminal then return nil,'rpg_busy' end
     end
     local isRechat=args.ui_source=='lorkhan_rechat'
+    local isDirectorChild=args.ui_source=='lorkhan_director_child' and args.director_instruction_id~=nil
     local isActionFollowup=args.ui_source=='lorkhan_action_followup'
+    if isRechat or isActionFollowup then args.execution_mode='standard';args.director_instruction_id=nil end
     local isAutonomy=({lorkhan_auto_greeting=true,lorkhan_auto_boredom=true,
         lorkhan_auto_combat_bark=true,lorkhan_narrator_welcome=true,lorkhan_narrator_random=true,
         lorkhan_narrator_boredom=true,lorkhan_narrator_quest=true,lorkhan_narrator_book=true})[args.ui_source]==true
     if isAutonomy then
+        if state.directorPlan then return nil,'director_busy' end
         state.autonomy.pending=nil state.autonomy.pendingSeconds=0 state.autonomy.idleSeconds=0
         if not responseQueue.idle(state.responseQueue)
             or state.conversation.turn and not state.conversation.turn.terminal then return nil,'autonomy_busy' end
     end
-    local isContinuation=isRechat or isActionFollowup or isAutonomy
+    local isContinuation=isRechat or isActionFollowup or isAutonomy or isDirectorChild
     if not isContinuation then
+        state.directorPlan=nil state.directorSeed=nil
         state.rechat=nil state.rechatEligibility=nil
         if not responseQueue.idle(state.responseQueue) then cancelResponseLane(state,'superseded_by_player',true) end
         local targetKey=identity.key(state.conversation.target)
         if targetKey then state.autonomy.interacted[targetKey]=true end
     end
+    local modeTarget
+    local syntheticMode=args.execution_mode=='narrator' or args.execution_mode=='director'
+    if syntheticMode then
+        modeTarget=args.selectedTargetPresent and args.selectedTarget or args.target or state.conversation.target
+        if args.selectedTargetPresent and not args.selectedTarget then modeTarget=nil end
+        if args.speaker.kind~='player' then return nil,'execution_mode_not_allowed' end
+        conversation.setTarget(state.conversation,narratorIdentity(state))
+    elseif not isContinuation and args.target then
+        if not identity.validate(args.target) or not state.registry:resolve(args.target) then return nil,'target_inactive' end
+        conversation.setTarget(state.conversation,args.target)
+    end
     local requestId=args.request_id
     local turnId=args.turn_id
     local ok,reason=conversation.begin(state.conversation,requestId,turnId,args.input_key or args.text)
-    if not ok then return nil,reason end
+    if not ok then
+        if syntheticMode then restoreModeTarget(state,modeTarget) end
+        return nil,reason
+    end
     local parsed,parseReason=playerInput.parse(args.text)
-    if not parsed then state.conversation.turn=nil return nil,parseReason end
+    if not parsed then
+        state.conversation.turn=nil
+        if syntheticMode then restoreModeTarget(state,modeTarget) end
+        return nil,parseReason
+    end
     args.text=parsed.text
     local requestedMode=args.dialogueMode
     local mode=({Standard=true,Whisper=true,Close=true,Shout=true})[requestedMode] and requestedMode
         or (({Standard=true,Whisper=true,Close=true,Shout=true})[state.dialogueMode] and state.dialogueMode or 'Standard')
     if parsed.mode then mode=parsed.mode end
     local mood,moodReason=playerInput.validateMood(args.mood)
-    if moodReason then state.conversation.turn=nil return nil,moodReason end
+    if moodReason then
+        state.conversation.turn=nil
+        if syntheticMode then restoreModeTarget(state,modeTarget) end
+        return nil,moodReason
+    end
     local audience={}
     local audienceKeys={}
     local selectedAudience=state.conversation.audience
@@ -790,6 +859,16 @@ function M.submitText(state,args)
         end
     end
     args.context=args.context or {}
+    -- Only GLOBAL's native loaded-record observation may supply Required Mods evidence.
+    -- Re-read for each target/turn; player snapshots and continuation seeds can be stale.
+    args.context.targetState=type(args.context.targetState)=='table' and args.context.targetState or {}
+    local provenance={state='unavailable',files={}}
+    local targetObject=state.conversation.target and state.registry:resolve(state.conversation.target)
+    if targetObject and state.bridge.actorRecordProvenance then
+        local ok,observed=pcall(state.bridge.actorRecordProvenance,targetObject)
+        if ok and type(observed)=='table' then provenance=observed end
+    end
+    args.context.targetState.recordProvenance=provenance
     args.context.audience=audience
     args.context.dialogueMode=mode
     args.context.recentVanillaDialogue=util.arrayCopy(state.recentVanillaDialogue or {},constants.MAX_RECENT_VANILLA_DIALOGUE)
@@ -801,14 +880,26 @@ function M.submitText(state,args)
         content_fingerprint=args.content_fingerprint,text=args.text,language=args.language,input_kind=args.input_kind,mood=mood,
         speaker=args.speaker,target=state.conversation.target,audience=audience,context=context.snapshot(args.context),
         capabilities=args.capabilities,recent_action_results=args.recent_action_results,ui_source=args.ui_source,
-        action_request=args.action_request})
-    if not dto then state.conversation.turn=nil return nil,buildReason end
+        action_request=args.action_request,execution_mode=args.execution_mode,
+        director_instruction_id=args.director_instruction_id})
+    if not dto then
+        state.conversation.turn=nil
+        if syntheticMode then restoreModeTarget(state,modeTarget) end
+        return nil,buildReason
+    end
     local submitted,nativeReason=state.bridge.submitTurn(dto)
-    if not submitted then state.conversation.turn=nil return nil,nativeReason end
+    if not submitted then
+        state.conversation.turn=nil
+        if syntheticMode then restoreModeTarget(state,modeTarget) end
+        return nil,nativeReason
+    end
+    if syntheticMode then state.modeRestore={target=modeTarget,turn_id=turnId,generation=state.generation,
+        session_id=state.sessionId,syntheticTarget=util.copy(state.conversation.target)} end
+    if args.execution_mode=='director' then state.directorSeed=util.copy(args) end
     if (args.ui_source=='lorkhan_rpg_event' or args.ui_source=='lorkhan_quest_event') then state.autonomy.rpgCooldownSeconds=60 end
     state.autonomy.activeTurnTarget=util.copy(state.conversation.target)
     state.autonomy.activeTurnSource=args.ui_source
-    if not isContinuation then
+    if not isContinuation and args.execution_mode~='director' then
         args.dialogueMode=mode
         args.mood=nil
         state.rechatSeed=util.copy(args)
@@ -817,14 +908,15 @@ function M.submitText(state,args)
             targetHint=util.copy(state.conversation.target),cancelled=false,requestInFlight=false}
     elseif isRechat and state.rechat then
         state.rechat.requestInFlight=true
-    elseif isActionFollowup then
+    elseif isActionFollowup or isDirectorChild or args.execution_mode=='director' then
         state.rechat=nil state.rechatEligibility=nil
     elseif isAutonomy then
         state.rechat=nil state.rechatSeed=nil state.rechatEligibility=nil
     end
     state.recentVanillaDialogue={}
     state.emit('LORKHAN_TURN',{status='queued',message_id=args.message_id,request_id=requestId,turn_id=turnId,
-        created_at=args.created_at})
+        created_at=args.created_at,execution_mode=args.execution_mode,
+        director_text=args.execution_mode=='director' and args.text or nil})
     return requestId
 end
 
@@ -994,6 +1086,20 @@ local function submitPlaybackRechat(state,probe)
 end
 
 -- A continuation must capture the current target again after playback, never reuse its seed inventory.
+function M.directorContext(state,event)
+    local plan=state.directorPlan
+    if not plan or plan.sessionId~=state.sessionId or plan.generation~=state.generation
+        or not state.conversation.turn or not state.conversation.turn.terminal
+        or not responseQueue.idle(state.responseQueue) then return false end
+    local args=director.context(plan,event)
+    if not args then return false end
+    if not state.registry:resolve(args.target) then plan.cancelled=true return false end
+    conversation.setTarget(state.conversation,args.target)
+    local submitted,reason=M.submitText(state,args)
+    if not submitted then plan.cancelled=true;state.emit('LORKHAN_STATUS',{status='Director stopped',reason=reason}) end
+    return submitted~=nil
+end
+
 function M.rechatContext(state,event)
     local probe=state.rechatEligibility
     local chain=state.rechat
@@ -1118,6 +1224,7 @@ local function applyTransportFailure(state,event)
         session_id=state.sessionId,generation=state.generation,
         payload={status='failed',code=turn.reason}}
     emitInbound(state,'LORKHAN_EVENT',failed)
+    restoreTurnTarget(state,turn.turnId)
     finishAutonomyTurn(state,false)
     print('[LORKHAN] response turn terminal: transport.failure '..tostring(turn.turnId))
     return true
@@ -1149,7 +1256,8 @@ function M.poll(state)
             if event.type=='stt.transcript' or event.type=='stt.failed' then
                 local pending=state.pendingStt[event.request_id];state.pendingStt[event.request_id]=nil
                 local fenced=pending and pending.session_id==state.sessionId and pending.generation==state.generation
-                    and pending.target_key==identity.key(state.conversation.target) and state.registry:resolve(pending.target)
+                    and pending.target_key==identity.key(state.conversation.target)
+                    and (pending.target.kind=='narrator' or state.registry:resolve(pending.target))
                 if event.type=='stt.transcript' and fenced and (not pending.continuous or state.openMic) then
                     local metadata=state.bridge.nextTurnMetadata and state.bridge.nextTurnMetadata() or {}
                     for key,value in pairs(metadata) do pending[key]=value end
@@ -1160,10 +1268,12 @@ function M.poll(state)
                     state.emit('LORKHAN_VOICE_STATUS',{status=submitted and 'queued' or 'failed',reason=submitReason,
                         request_id=submitted,continuous=pending.continuous==true})
                 elseif event.type=='stt.failed' then
+                    restoreVoiceTarget(state,pending)
                     if pending and pending.continuous then state.openMic=false end
                     state.emit('LORKHAN_VOICE_STATUS',{status='failed',reason=event.payload.code,
                         continuous=pending and pending.continuous==true})
                 else
+                    restoreVoiceTarget(state,pending)
                     if pending and pending.continuous then state.openMic=false end
                     state.emit('LORKHAN_VOICE_STATUS',{status='failed',reason=pending and 'stale_voice_context' or 'stt_context_missing',
                         continuous=pending and pending.continuous==true})
@@ -1186,6 +1296,9 @@ function M.poll(state)
                     laneOk,laneReason=responseQueue.attachMedia(state.responseQueue,event)
                 elseif event.type=='action.intent' then
                     laneOk,laneReason=responseQueue.attachAction(state.responseQueue,event)
+                elseif event.type=='director.instructions' then
+                    state.directorPlan=director.receive(event,state.directorSeed)
+                    laneOk=state.directorPlan~=nil;laneReason='invalid_director_plan'
                 end
                 if not laneOk then applied=false applyReason=laneReason
                 else
@@ -1201,6 +1314,7 @@ function M.poll(state)
                     end
                     emitInbound(state,'LORKHAN_EVENT',event)
                     if event.type=='turn.complete' or event.type=='turn.failed' or event.type=='turn.cancelled' then
+                        restoreTurnTarget(state,event.turn_id)
                         if state.rechat then state.rechat.requestInFlight=false end
                         finishAutonomyTurn(state,event.type=='turn.complete')
                         print('[LORKHAN] response turn terminal: '..tostring(event.type)..' '..tostring(event.turn_id))
@@ -1219,6 +1333,16 @@ function M.poll(state)
         end
     end
     pumpResponseQueue(state)
+    local directorRequest=director.next(state.directorPlan,state.bridge,state.sessionId,state.generation,
+        state.conversation.turn and state.conversation.turn.terminal and responseQueue.idle(state.responseQueue))
+    if directorRequest then state.emit('LORKHAN_DIRECTOR_CONTEXT_REQUEST',directorRequest) end
+    if state.directorPlan and (state.directorPlan.complete or state.directorPlan.cancelled) then
+        local previous=state.directorPlan.seed.selectedTarget or state.directorPlan.seed.target
+        if state.directorPlan.sessionId==state.sessionId and state.directorPlan.generation==state.generation then
+            restoreModeTarget(state,previous)
+        end
+        state.directorPlan=nil state.directorSeed=nil
+    end
     submitActionFollowup(state)
     if responseQueue.consumeRechat(state.responseQueue) then startPlaybackRechatProbe(state) end
     return accepted

@@ -11,6 +11,8 @@ end
 
 function M.execute(state, command, adapter, authority)
     if not state.attached then return nil,'actor_detached' end
+    -- Receipt retries must not repeat a completed engine mutation.
+    if state.actions.results[command.action_id] then return nil,'terminal_result_exists' end
     authority.actor=state.identity authority.generation=state.generation
     local accepted, reason=actions.validate(state.actions,command,authority)
     if not accepted then return actions.result(state.actions,command.action_id,'rejected',reason,{}) end
@@ -61,6 +63,7 @@ function M.execute(state, command, adapter, authority)
         ['ai.follow']='followSelf',['ai.approach']='approachSelf',['ai.wait']='waitSelf',
         ['ai.travel']='travelSelf',['ai.escort']='escortSelf',['ai.wander']='wanderSelf',['combat.start']='startCombat',
         ['animation.play']='playAnimation',['item.equip']='equipItem',['item.unequip']='unequipItem',['item.use']='useItem',
+        ['weapon.sheathe']='sheatheWeapon',
     }
     local method=handler[accepted.name]
     if type(adapter[method])~='function' then return actions.result(state.actions,accepted.action_id,'failed','action_unavailable',{}) end

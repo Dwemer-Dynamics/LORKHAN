@@ -19,3 +19,9 @@ patches/0020-apps-openmw-mwgui-itemmodel-cpp.patch
 patches/0021-apps-openmw-mwgui-itemmodel-hpp.patch
 patches/0022-apps-openmw-mwgui-inventoryitemmodel-hpp.patch
 patches/0023-apps-openmw-mwgui-containeritemmodel-hpp.patch
+patches/0024-apps-openmw-mwworld-esmstore-hpp.patch
+patches/0025-apps-openmw-mwworld-esmstore-cpp.patch
+patches/0026-apps-openmw-mwgui-dialogue-hpp.patch
+patches/0027-apps-openmw-mwgui-dialogue-cpp.patch
+patches/0028-apps-openmw-mwworld-worldimp-cpp.patch
+patches/0029-apps-openmw-mwmechanics-mechanicsmanagerimp-cpp.patch

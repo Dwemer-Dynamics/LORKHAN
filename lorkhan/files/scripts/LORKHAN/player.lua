@@ -69,6 +69,7 @@ local lastTalkToggleAt=-1
 local pendingTextSubmit=false
 local awaitingTextQueue=false
 local pendingHistory
+local pendingDirectorInput
 local pendingControlPanel
 -- Panels whose contents are owned by the server, so an in-flight controls request has to settle
 -- before they can show the player anything new.
@@ -108,13 +109,17 @@ state.ui.autoChat=playerInputSettings and playerInputSettings:get('autoChat')==t
 local function send(name,payload) if core and core.sendGlobalEvent then core.sendGlobalEvent(name,payload) end end
 local CAPABILITIES={'dialogue.text','speech.say','speech.listen','action.ai.follow','action.ai.stop','action.conversation.end',
     'action.ai.approach','action.ai.wait','action.ai.travel','action.ai.escort','action.ai.face','action.ai.wander',
-    'action.combat.start','action.combat.stop','action.inspect.report','action.inventory.inspect',
+    'action.combat.start','action.combat.stop','action.weapon.sheathe','action.inspect.report','action.inventory.inspect',
     'action.animation.play','action.item.equip','action.item.unequip','action.item.use',
+    'action.item.give','action.item.take','action.item.pickup','action.gold.give','action.gold.take',
+    'action.service.barter','action.service.training','action.service.spells','action.service.travel',
+    'action.service.spellmaking','action.service.enchanting','action.service.repair',
+    'action.spell.cast',
     'action.confirmation','action.result-followup'}
 
 local function conversationContext(target)
     local started=core and core.getRealTime and core.getRealTime() or nil
-    local snapshot=adapter.playerContext(target)
+    local snapshot=adapter.playerContext(target,nil,state.ui.executionMode=='narrator')
     local activities={}
     for _,status in pairs(actorActivities) do activities[#activities+1]=status end
     table.sort(activities,function(left,right) return identity.key(left.actor)<identity.key(right.actor) end)
@@ -138,6 +143,7 @@ local function voicePayload(uiSource)
     local snapshot=conversationContext(state.ui.target);snapshot.dialogueMode=state.ui.mode
     return {speaker=adapter.identity(self),target=state.ui.target,context=snapshot,language='en-US',capabilities=CAPABILITIES,
         recent_action_results={},ui_source=uiSource,dialogueMode=state.ui.mode,mood=uiState.moodSelection(state.ui),
+        execution_mode=state.ui.executionMode,
         vad_sensitivity=tonumber(behaviorSettings and behaviorSettings:get('openMicSensitivity')) or 700,
         end_delay_ms=tonumber(behaviorSettings and behaviorSettings:get('openMicEndDelayMs')) or 900,
         recording_device=math.floor(tonumber(behaviorSettings and behaviorSettings:get('recordingDevice')) or -1)}
@@ -606,7 +612,10 @@ local applySettings
 local chooseTarget
 
 local function queueTypedTurn(args,speechAlreadyPlayed)
-    if not speechAlreadyPlayed then startPlayerSpeech(args.speaker,args.text) end
+    if args.execution_mode=='director' then pendingDirectorInput={text=args.text} end
+    if not speechAlreadyPlayed and args.execution_mode~='director' and args.execution_mode~='cheat' then
+        startPlayerSpeech(args.speaker,args.text)
+    end
     send('LORKHAN_SUBMIT_TEXT',args)
     pendingHistory={speaker=args.speaker,text=args.text}
     awaitingTextQueue=true
@@ -654,7 +663,7 @@ local function submitText()
         render()
         return false
     end
-    if not state.ui.target then
+    if not state.ui.target and state.ui.executionMode~='director' and state.ui.executionMode~='narrator' then
         pendingTextSubmit=true
         state.ui.status='finding actor target'
         print('[LORKHAN] text submit waiting for actor target')
@@ -667,10 +676,11 @@ local function submitText()
     local effectiveMode=parsed.mode or state.ui.mode
     context.dialogueMode=effectiveMode
     local args={text=parsed.text,language='en-US',speaker=speaker,dialogueMode=effectiveMode,
+        execution_mode=state.ui.executionMode,target=state.ui.target,
         mood=uiState.moodSelection(state.ui),
         context=context,capabilities=CAPABILITIES,
         recent_action_results={},ui_source='lorkhan_text'}
-    if state.ui.autoChat then
+    if state.ui.autoChat and state.ui.executionMode~='director' and state.ui.executionMode~='cheat' then
         if not nativeOk or not native or not native.requestPlayerAutochat then
             state.ui.status='Auto Chat unavailable' render() return false
         end
@@ -1459,6 +1469,14 @@ render=function()
     elseif state.ui.panel=='modes' then
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Dialogue Mode',textSize=20,
             textColor=util.color.rgb(0.95,0.9,0.82)}}
+        for _,entry in ipairs(uiState.EXECUTION_MODES) do
+            local selected=entry.key==state.ui.executionMode
+            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=entry.label..(selected and ' [active]' or ''),textSize=18,
+                textColor=selected and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(188/255,157/255,90/255)},
+                events={mouseClick=adapter.callback(function() state.ui.executionMode=entry.key render() end)}}
+        end
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Hearing distance',textSize=18,
+            textColor=util.color.rgb(0.95,0.9,0.82)}}
         local descriptions={
             Standard='Selected group plus managed actors inside normal hearing distance.',
             Whisper='Private turn to the selected target only.',
@@ -1550,7 +1568,7 @@ local function handlePushToTalk(held,source)
             print('[LORKHAN] push-to-talk blocked by another UI mode via '..tostring(source))
             return
         end
-        if not state.ui.target then
+        if not state.ui.target and state.ui.executionMode~='director' and state.ui.executionMode~='narrator' then
             print('[LORKHAN] push-to-talk needs a target; starting target selection via '..tostring(source))
             chooseTarget(2048)
             return
@@ -1869,6 +1887,9 @@ return {
             if nativeOk and native.submitSpellCast and native.sessionInfo then
                 player.flushSpellCasts(state,native.sessionInfo(),native.submitSpellCast,core.getRealTime())
             end
+            if nativeOk and native.submitActorResurrected and native.sessionInfo then
+                player.flushResurrections(state,native.sessionInfo(),native.submitActorResurrected,core.getRealTime())
+            end
             flushActorProfiles(dt)
             flushAutomaticDiaries(dt)
             local elapsed=tonumber(dt) or 0
@@ -1985,6 +2006,10 @@ return {
             if not nativeOk or not native.submitItemPickup or not native.sessionInfo then return end
             player.captureItemPickup(state,event,native.sessionInfo(),adapter.itemPickupObservation,native.submitItemPickup,core.getRealTime())
         end,
+        LorkhanActorResurrected=function(event)
+            if not nativeOk or not native.submitActorResurrected or not native.sessionInfo then return end
+            player.captureResurrection(state,event,native.sessionInfo(),adapter.resurrectionObservation,native.submitActorResurrected,core.getRealTime())
+        end,
         LorkhanSpellCast=function(event)
             if not nativeOk or not native.submitSpellCast or not native.sessionInfo then return end
             player.captureSpellCast(state,event,native.sessionInfo(),adapter.spellCastObservation,native.submitSpellCast,core.getRealTime())
@@ -2029,6 +2054,14 @@ return {
         LORKHAN_INVENTORY_OBSERVE=function(event)
             if not nativeOk or not native.submitInventory or not native.sessionInfo then return end
             player.observeInventory(state,event,native.sessionInfo(),adapter.inventoryObservation,native.submitInventory,core.getRealTime())
+        end,
+        LORKHAN_DIRECTOR_CONTEXT_REQUEST=function(event)
+            local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
+            if type(event)~='table' or not session or event.session_id~=session.session_id
+                or event.generation~=session.generation or not identity.validate(event.target) then return end
+            send('LORKHAN_DIRECTOR_CONTEXT',{request_id=event.request_id,session_id=event.session_id,
+                generation=event.generation,instruction_id=event.instruction_id,target=event.target,
+                context=conversationContext(event.target)})
         end,
         LORKHAN_RECHAT_CONTEXT_REQUEST=function(event)
             local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
@@ -2105,9 +2138,13 @@ return {
             if openMicEnabled and not openMicMuted and state.ui.target then send('LORKHAN_OPEN_MIC_CONTEXT',voicePayload('lorkhan_open_mic')) end
         end,
         LORKHAN_TURN=function(event)
+            if event.status=='queued' and event.execution_mode=='director' and type(event.director_text)=='string' then
+                pendingDirectorInput={text=event.director_text,request_id=event.request_id}
+            end
             if not awaitingTextQueue then return end
             awaitingTextQueue=false
             if event.status=='queued' then
+                if event.execution_mode=='director' and pendingDirectorInput then pendingDirectorInput.request_id=event.request_id end
                 if pendingHistory then player.queued(state,pendingHistory.speaker,pendingHistory.text,event) end
                 pendingHistory=nil
                 state.ui.input=''
@@ -2117,6 +2154,9 @@ return {
                 leaveUiMode()
                 print('[LORKHAN] text message accepted; chat closed')
             else
+                if pendingDirectorInput then
+                    state.ui.input=pendingDirectorInput.text;state.ui.executionMode='director';pendingDirectorInput=nil
+                end
                 state.ui.status='message failed: '..tostring(event.reason or 'unknown')
                 turnActive=false
                 stopPlayerSpeech()
@@ -2210,6 +2250,13 @@ return {
             render()
         end,
         LORKHAN_EVENT=function(event)
+            if pendingDirectorInput and event.request_id==pendingDirectorInput.request_id then
+                if event.type=='turn.accepted' then state.ui.executionMode='standard' end
+                if event.type=='turn.complete' then pendingDirectorInput=nil
+                elseif event.type=='turn.failed' then
+                    state.ui.input=pendingDirectorInput.text;state.ui.executionMode='director';pendingDirectorInput=nil
+                elseif event.type=='turn.cancelled' then pendingDirectorInput=nil end
+            end
             if event.type=='turn.accepted' then turnActive=true end
             if event.type=='turn.complete' or event.type=='turn.failed' or event.type=='turn.cancelled' then
                 turnActive=false
