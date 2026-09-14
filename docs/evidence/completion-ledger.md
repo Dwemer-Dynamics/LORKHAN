@@ -79,6 +79,19 @@ checklist remains deliberately unclaimed.
   return through edited UI provenance. No new provider request is made by materialization.
 - Native text handling accounts for TES3 trailing-tag layout and literal game-variable markers.
 - 85 Lua tests and 1265 PHP checks pass; 124 protocol files match across both repositories.
-- Windows Release engine, native bridge and Beast loopback tests pass. Full database regression
-  and local deployment verification are pending.
+- Windows Release engine, native bridge and Beast loopback tests pass. Full integration, SQL
+  backup/import/restore, migration replay and durable jobs pass against fresh factory110
+  (183 relations, 1698 columns).
   No game launch, paid provider call, or in-game reading/save-load proof has been performed.
+
+- Local deployment verified: schema110, all920 server runtime files and30 client data files
+  match source; health succeeds, private paths403, unauthenticated sessions401. Configuration,
+  credential and voice contents preserved. Core/NPC Physical Diary controls visually reviewed
+  and toggled without saving; settings remain unchanged. Existing Default Diary LLM is Disabled.
+- Engine SHA256: 575E1773656718C87038E946DB7438A7A03FA6F17788FF1369A3804EFCC6A1B5.
+  Native overlay refreshed to the maintained/built binding;23 clean-pin patches and10patch tests pass.
+- Server rollback: /var/backups/lorkhanserver-code.1ILb9c; live database backup:
+  /var/backups/lorkhanserver-before-physical-diary-20260913.dump.
+  Client rollback: %TEMP%/lorkhan-physical-diary-de5d33ebcb2d4ce0bc20bf834186cee2.
+- No game or paid provider was invoked. Physical reading, dropping/trading, and save/load behavior
+  still require in-game acceptance. This checkpoint completes physical diary implementation only.
