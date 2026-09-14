@@ -12,3 +12,10 @@ patches/0013-apps-openmw-mwlua-luamanagerimp-cpp.patch
 patches/0014-apps-openmw-mwbase-luamanager-hpp.patch
 patches/0015-apps-openmw-mwlua-luamanagerimp-hpp.patch
 patches/0016-apps-openmw-mwmechanics-spellcasting-cpp.patch
+patches/0017-apps-openmw-mwworld-actiontake-cpp.patch
+patches/0018-apps-openmw-mwworld-actionharvest-cpp.patch
+patches/0019-apps-openmw-mwgui-inventorywindow-cpp.patch
+patches/0020-apps-openmw-mwgui-itemmodel-cpp.patch
+patches/0021-apps-openmw-mwgui-itemmodel-hpp.patch
+patches/0022-apps-openmw-mwgui-inventoryitemmodel-hpp.patch
+patches/0023-apps-openmw-mwgui-containeritemmodel-hpp.patch

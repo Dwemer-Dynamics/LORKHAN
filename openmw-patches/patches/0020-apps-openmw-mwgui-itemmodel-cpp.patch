@@ -1,0 +1,31 @@
+diff --git a/apps/openmw/mwgui/itemmodel.cpp b/apps/openmw/mwgui/itemmodel.cpp
+index 6e8e4f8912..81dcc6b307 100644
+--- a/apps/openmw/mwgui/itemmodel.cpp
++++ b/apps/openmw/mwgui/itemmodel.cpp
+@@ -6,3 +6,7 @@
+ #include "../mwbase/environment.hpp"
++#include "../mwbase/luamanager.hpp"
+ #include "../mwbase/mechanicsmanager.hpp"
++#include "../mwbase/windowmanager.hpp"
++#include "../mwbase/world.hpp"
++#include <limits>
+ 
+@@ -59,7 +63,15 @@ namespace MWGui
+     {
++        const MWWorld::Ptr source = lorkhanPickupSource();
+         removeItem(item, count);
+         // If we removed the entire stack we can transfer it instead of creating a copy with a different RefNum
+-        if (item.mBase.getCellRef().getCount() == 0)
+-            return otherModel->addItem(item, count, allowAutoEquip);
+-        return otherModel->copyItem(item, count, allowAutoEquip);
++        const MWWorld::Ptr received = item.mBase.getCellRef().getCount() == 0
++            ? otherModel->addItem(item, count, allowAutoEquip) : otherModel->copyItem(item, count, allowAutoEquip);
++        const auto window = MWBase::Environment::get().getWindowManager();
++        const MWWorld::Ptr player = MWBase::Environment::get().getWorld()->getPlayerPtr();
++        if (!received.isEmpty() && !source.isEmpty() && source != player && count > 0
++            && count <= static_cast<std::size_t>(std::numeric_limits<int>::max())
++            && otherModel->usesContainer(player) && window->containsMode(GM_Container)
++            && !window->containsMode(GM_Barter))
++            MWBase::Environment::get().getLuaManager()->onLorkhanItemPickup(player, received, static_cast<int>(count), source);
++        return received;
+     }

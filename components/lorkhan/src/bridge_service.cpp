@@ -223,6 +223,8 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
             || !isCanonicalUtcTimestamp(gamedata->observedAt))
             return Result<void>::failure(makeError(ErrorCode::invalid_argument,
                 "game-data correlation is invalid"));
+        if (gamedata->type == GameDataType::item_pickup)
+            return validateItemPickupPayload(gamedata->serializedPayload);
         if (gamedata->type == GameDataType::spell_cast)
             return validateSpellCastPayload(gamedata->serializedPayload);
         if (gamedata->type == GameDataType::inventory)

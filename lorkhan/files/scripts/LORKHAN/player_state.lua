@@ -129,14 +129,14 @@ function M.observeInventory(state,event,session,reader,submit,now)
     return true
 end
 
--- Retry only this live session's bounded immutable cast observations; no model turn is scheduled.
-function M.captureSpellCast(state,event,session,reader,submit,now)
+-- Retry only this live session's bounded immutable observations; no model turn is scheduled.
+local function captureObservation(state,queueKey,event,session,reader,submit,now)
     if type(event)~='table' or type(session)~='table' or event.sessionId~=session.session_id
         or event.generation~=session.generation or type(submit)~='function' then return false end
-    local queue=state.spellCaptures
+    local queue=state[queueKey]
     if not queue or queue.session_id~=session.session_id or queue.generation~=session.generation then
         queue={session_id=session.session_id,generation=session.generation,items={},nextAttemptAt=now}
-        state.spellCaptures=queue
+        state[queueKey]=queue
     end
     local payload=reader(event)
     if not payload then return false end
@@ -146,11 +146,11 @@ function M.captureSpellCast(state,event,session,reader,submit,now)
     return true
 end
 
-function M.flushSpellCasts(state,session,submit,now)
-    local queue=state.spellCaptures
+local function flushObservations(state,queueKey,session,submit,now)
+    local queue=state[queueKey]
     if not queue then return false end
     if not session or session.session_id~=queue.session_id or session.generation~=queue.generation then
-        state.spellCaptures=nil;return false
+        state[queueKey]=nil;return false
     end
     if #queue.items==0 or now<queue.nextAttemptAt or type(submit)~='function' then return false end
     queue.nextAttemptAt=now+0.1
@@ -160,6 +160,19 @@ function M.flushSpellCasts(state,session,submit,now)
     if submit(item.payload) then table.remove(queue.items,1);return true end
     if item.attempts>=20 then table.remove(queue.items,1) end
     return false
+end
+
+function M.captureSpellCast(state,event,session,reader,submit,now)
+    return captureObservation(state,'spellCaptures',event,session,reader,submit,now)
+end
+function M.flushSpellCasts(state,session,submit,now)
+    return flushObservations(state,'spellCaptures',session,submit,now)
+end
+function M.captureItemPickup(state,event,session,reader,submit,now)
+    return captureObservation(state,'itemPickups',event,session,reader,submit,now)
+end
+function M.flushItemPickups(state,session,submit,now)
+    return flushObservations(state,'itemPickups',session,submit,now)
 end
 
 return M

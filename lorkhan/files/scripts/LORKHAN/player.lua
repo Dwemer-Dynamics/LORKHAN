@@ -1863,6 +1863,9 @@ return {
             updatePlayerSpeech()
             updateMenuDialogueSpeech()
             flushCapturedDialogue(dt)
+            if nativeOk and native.submitItemPickup and native.sessionInfo then
+                player.flushItemPickups(state,native.sessionInfo(),native.submitItemPickup,core.getRealTime())
+            end
             if nativeOk and native.submitSpellCast and native.sessionInfo then
                 player.flushSpellCasts(state,native.sessionInfo(),native.submitSpellCast,core.getRealTime())
             end
@@ -1977,6 +1980,10 @@ return {
             submitDebugResult(pendingGlobalDebugCommand.command,event.status or 'failed',
                 event.reason_code or 'global_command_failed',event.observed or {})
             pendingGlobalDebugCommand=nil
+        end,
+        LorkhanItemPickup=function(event)
+            if not nativeOk or not native.submitItemPickup or not native.sessionInfo then return end
+            player.captureItemPickup(state,event,native.sessionInfo(),adapter.itemPickupObservation,native.submitItemPickup,core.getRealTime())
         end,
         LorkhanSpellCast=function(event)
             if not nativeOk or not native.submitSpellCast or not native.sessionInfo then return end

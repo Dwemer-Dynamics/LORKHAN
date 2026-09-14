@@ -1472,7 +1472,7 @@ namespace MWLua
             }
 
             static std::vector<std::string> capabilities()
-            { return { "context.spell_cast.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.conversation.end", "action.ai.follow", "action.ai.stop",
+            { return { "context.item_pickup.v1", "context.spell_cast.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.conversation.end", "action.ai.follow", "action.ai.stop",
                 "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
                 "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" }; }
@@ -1633,7 +1633,7 @@ namespace MWLua
             api["version"] = std::string(lorkhan::kClientVersion);
             api["capabilities"] = [lua] {
                 sol::table result(lua, sol::create); std::size_t index = 1;
-            for (const auto& capability : std::vector<std::string>{ "context.spell_cast.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session",
+            for (const auto& capability : std::vector<std::string>{ "context.item_pickup.v1", "context.spell_cast.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session",
                 "action.ai.follow", "action.ai.stop", "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
                 "action.combat.start", "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip",
                 "action.item.use", "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" })
@@ -1656,6 +1656,9 @@ namespace MWLua
             api["submitTurn"] = [lua](sol::table dto) { return client().submitTurn(lua, std::move(dto)); };
             api["submitCapturedDialogue"] = [lua](sol::table payload) {
                 return client().submitCapturedDialogue(lua, std::move(payload));
+            };
+            api["submitItemPickup"] = [lua](sol::table payload) {
+                return client().submitGameData(lua, lorkhan::GameDataType::item_pickup, std::move(payload));
             };
             api["submitSpellCast"] = [lua](sol::table payload) {
                 return client().submitGameData(lua, lorkhan::GameDataType::spell_cast, std::move(payload));

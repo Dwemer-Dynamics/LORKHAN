@@ -912,6 +912,46 @@ test('successful spell observations stay bounded and never cross capture session
  args.audience={enemy,enemy};eq(protocol.spellCast(args),nil)
  args.audience={};for i=1,13 do args.audience[i]=enemy end;eq(protocol.spellCast(args),nil)
 end)
+test('standalone observation calendars preserve capture time and reject invalid dates',function()
+ local cast={caster=npc,spell_id='fireball',spell_name='Fireball',game_time=123}
+ local pickup={player=playerId,item_record_id='gold_001',item_name='Gold',count=1,unit_value=1,
+  game_time=123,source_kind='world'}
+ for _,sample in ipairs({{cast,protocol.spellCast},{pickup,protocol.itemPickup}}) do
+  local args,validate=sample[1],sample[2]
+  eq(validate(args).calendar,nil)
+  args.calendar={year=427,month=1,day=28,hour=23.123456}
+  local result=validate(args);eq(result.calendar.hour,23.123456);eq(result.calendar.month,1)
+  args.calendar.hour=0;eq(result.calendar.hour,23.123456)
+  for _,invalid in ipairs({{year=427,month=1,day=29,hour=0},{year=427,month=12,day=1,hour=0},
+   {year=0,month=0,day=1,hour=0},{year=427,month=0,day=1,hour=24},
+   {year=427,month=0,day=1,hour=0/0},{year=427,month=0,day=1.5,hour=0},
+   {year=427,month=0,day=1,hour=0,extra=true}}) do
+   args.calendar=invalid;eq(validate(args),nil)
+  end
+ end
+end)
+
+test('item pickups preserve exact native counts and source text with session-owned retries',function()
+ local playerState=require('scripts.LORKHAN.player_state') local state={}
+ local session={session_id=UUID.session,generation=1};local event={sessionId=UUID.session,generation=1}
+ local args={player=playerId,item_record_id='gold_001',item_name='Gold',count=100,unit_value=1,
+  game_time=123,source_kind='container',source={record_id='chest_01',display_name='Small Chest'},audience={npc}}
+ local function reader()return protocol.itemPickup(args)end
+ local attempts=0;local accept=false
+ local function submit(payload)attempts=attempts+1;eq(payload.count,100);eq(payload.unit_value,1);return accept end
+ truthy(playerState.captureItemPickup(state,event,session,reader,submit,0));eq(#state.itemPickups.items,1)
+ accept=true;truthy(playerState.flushItemPickups(state,session,submit,0.1));eq(#state.itemPickups.items,0)
+ local payload=protocol.itemPickup(args);eq(payload.source.display_name,'Small Chest');eq(#payload.audience,1)
+ args.source=nil;args.source_kind='world';eq(protocol.itemPickup(args).source,nil)
+ args.count=0;eq(protocol.itemPickup(args),nil);args.count=100
+ args.unit_value=-1;eq(protocol.itemPickup(args),nil);args.unit_value=1
+ event.generation=2;eq(playerState.captureItemPickup(state,event,session,reader,submit,1),false)
+ event.generation=1;accept=false
+ for _=1,32 do truthy(playerState.captureItemPickup(state,event,session,reader,submit,1)) end
+ eq(playerState.captureItemPickup(state,event,session,reader,submit,1),false)
+ local before=attempts;eq(playerState.flushItemPickups(state,{session_id=UUID.session,generation=2},submit,2),false)
+ eq(attempts,before);eq(state.itemPickups,nil)
+end)
 test('inventory observations are changed-only bounded and fenced from failed reads and sessions',function()
  local state={} local playerState=require('scripts.LORKHAN.player_state')
  local session={session_id=UUID.session,generation=1}
@@ -1711,8 +1751,10 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
  modules.types.Actor.inventory=function()return nil end
  eq(openmwAdapter.playerContext(mapped,modules).targetState.inventory,nil)
  eq(openmwAdapter.inventoryObservation(mapped,modules),nil)
- local cast={caster=object,target=playerTarget,spellId='fireball',spellName='Fireball',gameTime=123}
+ local cast={caster=object,target=playerTarget,spellId='fireball',spellName='Fireball',gameTime=123,
+  calendar={year=427,month=0,day=1,hour=9.123456}}
  local observation=openmwAdapter.spellCastObservation(cast,modules)
+ eq(observation.calendar.hour,9.123456);eq(observation.calendar.month,0)
  eq(observation.caster.record_id,'fargoth');eq(observation.target.kind,'player');eq(observation.game_time,123)
  local oldPosition=object.position;object.position=vector(0,3000,0)
  eq(openmwAdapter.spellCastObservation(cast,modules),nil);object.position=oldPosition
@@ -1732,6 +1774,19 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
  creatureObject.cell={isExterior=true,gridX=-2,gridY=-9}
  observation=openmwAdapter.spellCastObservation(cast,modules);eq(#observation.audience,1)
  cast.gameTime=math.huge;eq(openmwAdapter.spellCastObservation(cast,modules),nil)
+ object.position=vector(0,300,0);creatureObject.position=vector(0,3000,0)
+ local pickup={player=playerTarget,itemRecordId='gold_001',itemName='Gold',count=100,unitValue=1,
+  gameTime=123,sourceKind='container',source={recordId='chest_01',displayName='Small Chest'},
+  calendar={year=427,month=11,day=31,hour=8.654321}}
+ local acquired=openmwAdapter.itemPickupObservation(pickup,modules)
+ eq(acquired.calendar.hour,8.654321);eq(acquired.calendar.month,11)
+ eq(acquired.source.record_id,'chest_01');eq(acquired.count,100);eq(acquired.unit_value,1)
+ eq(#acquired.audience,1);eq(acquired.audience[1].record_id,'fargoth')
+ object.cell={isExterior=false,name='Remote',id='remote'}
+ eq(#openmwAdapter.itemPickupObservation(pickup,modules).audience,0)
+ pickup.source=nil;pickup.sourceKind='world';eq(openmwAdapter.itemPickupObservation(pickup,modules).source,nil)
+ pickup.count=-1;eq(openmwAdapter.itemPickupObservation(pickup,modules),nil)
+
 end)
 
 io.write(string.format('%d tests, %d failures\n',tests,failures))

@@ -1,0 +1,8 @@
+diff --git a/apps/openmw/mwgui/inventoryitemmodel.hpp b/apps/openmw/mwgui/inventoryitemmodel.hpp
+index 636d3be557..dfd60a7c29 100644
+--- a/apps/openmw/mwgui/inventoryitemmodel.hpp
++++ b/apps/openmw/mwgui/inventoryitemmodel.hpp
+@@ -26,2 +26,3 @@ namespace MWGui
+         bool usesContainer(const MWWorld::Ptr& container) override;
++        MWWorld::Ptr lorkhanPickupSource() const override { return mActor; }
+ 

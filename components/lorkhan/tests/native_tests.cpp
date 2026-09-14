@@ -343,8 +343,29 @@ void testAcceptedProtocolResponses()
         R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"actor_profile","duplicate":false})",
         jsonHeaders);
     CHECK(actorProfile && actorProfile.value().type == "actor_profile");
+    auto pickupPlayer = protocolIdentity(); pickupPlayer.replace(pickupPlayer.find("npc"), 3, "player");
+    const std::string pickupPrefix = "{\"player\":" + pickupPlayer + R"(,"item_record_id":"gold_001","item_name":"Gold","count":500,"unit_value":1,"game_time":100,"source_kind":"world")";
+    CHECK(lorkhan::validateItemPickupPayload(pickupPrefix + "}"));
+    CHECK(lorkhan::validateItemPickupPayload(pickupPrefix + R"(,"source":{"record_id":"chest","display_name":"Chest"}})"));
+    CHECK(!lorkhan::validateItemPickupPayload(pickupPrefix + R"(,"source":{"record_id":"chest","display_name":"Chest","actor":true}})"));
+    auto badPickup = pickupPrefix; badPickup.replace(badPickup.find(":500"), 4, ":0");
+    CHECK(!lorkhan::validateItemPickupPayload(badPickup + "}"));
+    auto badKindPickup = pickupPrefix; badKindPickup.replace(badKindPickup.find("world"), 5, "barter");
+    CHECK(!lorkhan::validateItemPickupPayload(badKindPickup + "}"));
+    CHECK(!lorkhan::validateItemPickupPayload(pickupPrefix + R"(,"code":"additem"})"));
+    CHECK(lorkhan::validateItemPickupPayload(pickupPrefix + ",\"audience\":[" + protocolIdentity() + "]}"));
+    CHECK(!lorkhan::validateItemPickupPayload(pickupPrefix + ",\"audience\":[" + protocolIdentity() + "," + protocolIdentity() + "]}"));
     const std::string castPrefix = "{\"caster\":" + protocolIdentity() + R"(,"spell_id":"firebite","spell_name":"Firebite","game_time":100)";
     CHECK(lorkhan::validateSpellCastPayload(castPrefix + "}"));
+    CHECK(lorkhan::validateSpellCastPayload(castPrefix + R"(,"calendar":{"year":427,"month":8,"day":16,"hour":12.5}})"));
+    CHECK(lorkhan::validateItemPickupPayload(pickupPrefix + R"(,"calendar":{"year":427,"month":8,"day":16,"hour":12.5}})"));
+    CHECK(!lorkhan::validateSpellCastPayload(castPrefix + R"(,"calendar":{"year":427,"month":12,"day":16,"hour":12}})"));
+    CHECK(!lorkhan::validateItemPickupPayload(pickupPrefix + R"(,"calendar":{"year":427,"month":12,"day":16,"hour":12}})"));
+    CHECK(!lorkhan::validateSpellCastPayload(castPrefix + R"(,"calendar":{"year":427,"month":1,"day":30,"hour":12}})"));
+    CHECK(!lorkhan::validateItemPickupPayload(pickupPrefix + R"(,"calendar":{"year":427,"month":1,"day":30,"hour":12}})"));
+    CHECK(!lorkhan::validateSpellCastPayload(castPrefix + R"(,"calendar":{"year":427,"month":1,"day":3}})"));
+    CHECK(!lorkhan::validateItemPickupPayload(pickupPrefix + R"(,"calendar":{"year":427,"month":1,"day":3}})"));
+
     CHECK(lorkhan::validateSpellCastPayload(castPrefix + ",\"audience\":[" + protocolIdentity() + "]}"));
     CHECK(!lorkhan::validateSpellCastPayload(castPrefix + ",\"audience\":[" + protocolIdentity() + "," + protocolIdentity() + "]}"));
     CHECK(!lorkhan::validateSpellCastPayload(castPrefix + R"(,"audience":[{}]})"));

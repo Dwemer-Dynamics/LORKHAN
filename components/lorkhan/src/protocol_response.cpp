@@ -1360,14 +1360,68 @@ Result<PlayerAutochatReadyResponse> parsePlayerAutochatReadyResponse(
         std::move(text).value()});
 }
 
+// Share the loaded-save calendar bounds for immutable observation timestamps.
+static bool validObservationCalendar(const json::Value& value)
+{
+    const auto* object = value.object();
+    if (!object || !hasExactly(*object, {"year", "month", "day", "hour"})) return false;
+    auto year = requireUnsigned(*object, "year", 9999, 1);
+    auto month = requireUnsigned(*object, "month", 11);
+    auto day = requireUnsigned(*object, "day", 31, 1);
+    auto hour = requireNumber(*object, "hour", 0, 24);
+    return year && month && day && hour && LoadedSaveCalendar{static_cast<int>(year.value()),
+        static_cast<int>(month.value()), static_cast<int>(day.value()), hour.value()}.valid();
+}
+
+// Validate copied successful-transfer metadata, never a model-supplied item operation.
+Result<void> validateItemPickupPayload(std::string_view body, json::ParseLimits limits)
+{
+    auto parsed = json::parse(body, limits);
+    if (!parsed) return Result<void>::failure(parsed.error());
+    const auto* object = parsed.value().object();
+    if (!object || !hasExactly(*object, {"player", "item_record_id", "item_name", "count", "unit_value", "game_time", "source_kind"}, {"source", "audience", "calendar"}))
+        return invalidSchema("item pickup fields mismatch");
+    if (const auto* calendar = json::find(*object, "calendar"); calendar && !validObservationCalendar(*calendar))
+        return invalidSchema("observation calendar is invalid");
+    auto player = parseIdentity(*json::find(*object, "player"));
+    if (!player || player.value().kind != "player") return invalidSchema("item pickup requires player identity");
+    auto kind = requireString(*object, "source_kind", 1, 16);
+    if (!kind || (kind.value() != "world" && kind.value() != "container" && kind.value() != "actor"))
+        return invalidSchema("item pickup source kind is invalid");
+    if (!requireString(*object, "item_record_id", 1, 256) || !requireString(*object, "item_name", 1, 256)
+        || !requireUnsigned(*object, "count", 2147483647, 1) || !requireUnsigned(*object, "unit_value", 2147483647)
+        || !requireNumber(*object, "game_time", 0, 9007199254740991.0))
+        return invalidSchema("item pickup values exceed bounds");
+    if (const auto* value = json::find(*object, "source")) {
+        const auto* source = value->object();
+        if (!source || !hasExactly(*source, {"record_id", "display_name"})
+            || !requireString(*source, "record_id", 1, 256) || !requireString(*source, "display_name", 1, 256))
+            return invalidSchema("item pickup source descriptor is invalid");
+    }
+    if (const auto* value = json::find(*object, "audience")) {
+        const auto* audience = value->array();
+        if (!audience || audience->size() > 12) return invalidSchema("item pickup audience exceeds bounds");
+        std::set<std::pair<std::uint64_t, std::uint64_t>> references;
+        for (const auto& entry : *audience) {
+            auto actor = parseIdentity(entry);
+            if (!actor || (actor.value().kind != "player" && actor.value().kind != "npc" && actor.value().kind != "creature")
+                || !references.emplace(actor.value().refnumContentFile, actor.value().refnumIndex).second)
+                return invalidSchema("item pickup audience identity is invalid or duplicated");
+        }
+    }
+    return Result<void>::success();
+}
+
 // Keep successful-cast observations closed and bounded before enqueueing transport work.
 Result<void> validateSpellCastPayload(std::string_view body, json::ParseLimits limits)
 {
     auto parsed = json::parse(body, limits);
     if (!parsed) return Result<void>::failure(parsed.error());
     const auto* object = parsed.value().object();
-    if (!object || !hasExactly(*object, {"caster", "spell_id", "spell_name", "game_time"}, {"target", "audience"}))
+    if (!object || !hasExactly(*object, {"caster", "spell_id", "spell_name", "game_time"}, {"target", "audience", "calendar"}))
         return invalidSchema("spell cast fields mismatch");
+    if (const auto* calendar = json::find(*object, "calendar"); calendar && !validObservationCalendar(*calendar))
+        return invalidSchema("observation calendar is invalid");
     auto caster = parseIdentity(*json::find(*object, "caster"));
     if (!caster || (caster.value().kind != "player" && caster.value().kind != "npc" && caster.value().kind != "creature"))
         return invalidSchema("spell caster must be a physical actor");
@@ -1444,7 +1498,7 @@ Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(
     if (!request) return invalidSchemaValue<GameDataAcceptedResponse>(request.error().message);
     if (!session) return invalidSchemaValue<GameDataAcceptedResponse>(session.error().message);
     if (!generation) return invalidSchemaValue<GameDataAcceptedResponse>(generation.error().message);
-    if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile" && type.value() != "inventory" && type.value() != "spell_cast"
+    if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile" && type.value() != "inventory" && type.value() != "spell_cast" && type.value() != "item_pickup"
         &&type.value()!="automatic_diary"&&type.value()!="rpg_event"&&type.value()!="bored_event"&&type.value()!="quest_event"))
         return invalidSchemaValue<GameDataAcceptedResponse>("game-data type mismatch");
     if (!duplicate) return invalidSchemaValue<GameDataAcceptedResponse>(duplicate.error().message);

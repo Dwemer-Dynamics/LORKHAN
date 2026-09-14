@@ -179,8 +179,25 @@ function M.capturedDialogue(args)
         audience=util.arrayCopy(args.audience),text=args.text,topic=args.topic,game_time=args.game_time}
 end
 
+-- Preserve capture-time calendar facts; never derive them from delayed delivery time.
+local function validObservationCalendar(calendar)
+    if calendar==nil then return true end
+    if type(calendar)~='table' then return false end
+    for key in pairs(calendar) do
+        if key~='year' and key~='month' and key~='day' and key~='hour' then return false end
+    end
+    for _,field in ipairs({'year','month','day'}) do
+        if type(calendar[field])~='number' or calendar[field]%1~=0 then return false end
+    end
+    local days={31,28,31,30,31,30,31,31,30,31,30,31}
+    return calendar.year>=1 and calendar.year<=9999 and calendar.month>=0 and calendar.month<=11
+        and calendar.day>=1 and calendar.day<=days[calendar.month+1]
+        and type(calendar.hour)=='number' and calendar.hour==calendar.hour and calendar.hour>=0 and calendar.hour<24
+end
+
 -- A successful cast is an observation; an optional target is not a confirmed spell impact.
 function M.spellCast(args)
+    if type(args)=='table' and not validObservationCalendar(args.calendar) then return nil,'invalid_spell_calendar' end
     if type(args)~='table' or not identity.validate(args.caster)
         or not ({player=true,npc=true,creature=true})[args.caster.kind]
         or (args.target~=nil and (not identity.validate(args.target) or args.target.kind=='narrator')) then
@@ -204,7 +221,45 @@ function M.spellCast(args)
         end
     end
     return {caster=util.copy(args.caster),target=args.target and util.copy(args.target) or nil,audience=audience,
-        spell_id=args.spell_id,spell_name=args.spell_name,game_time=args.game_time}
+        spell_id=args.spell_id,spell_name=args.spell_name,game_time=args.game_time,
+        calendar=args.calendar and util.copy(args.calendar) or nil}
+end
+
+-- Only a completed native pickup supplies these values; inventory differences are not acquisition evidence.
+function M.itemPickup(args)
+    if type(args)=='table' and not validObservationCalendar(args.calendar) then return nil,'invalid_pickup_calendar' end
+    if type(args)~='table' or not identity.validate(args.player) or args.player.kind~='player' then
+        return nil,'invalid_pickup_player'
+    end
+    for _,field in ipairs({'item_record_id','item_name'}) do
+        if type(args[field])~='string' or #args[field]<1 or #args[field]>256 then return nil,'invalid_pickup_item' end
+    end
+    if type(args.count)~='number' or args.count%1~=0 or args.count<1 or args.count>2147483647
+        or type(args.unit_value)~='number' or args.unit_value%1~=0 or args.unit_value<0 or args.unit_value>2147483647
+        or type(args.game_time)~='number' or args.game_time~=args.game_time or args.game_time<0 or args.game_time>9007199254740991
+        or not ({world=true,container=true,actor=true})[args.source_kind] then return nil,'invalid_pickup_observation' end
+    local source
+    if args.source~=nil then
+        if type(args.source)~='table' then return nil,'invalid_pickup_source' end
+        for _,field in ipairs({'record_id','display_name'}) do
+            if type(args.source[field])~='string' or #args.source[field]<1 or #args.source[field]>256 then return nil,'invalid_pickup_source' end
+        end
+        source={record_id=args.source.record_id,display_name=args.source.display_name}
+    end
+    local audience
+    if args.audience~=nil then
+        if type(args.audience)~='table' or #args.audience>12 then return nil,'invalid_pickup_audience' end
+        audience={};local seen={[identity.key(args.player)]=true}
+        for _,actor in ipairs(args.audience) do
+            if not identity.validate(actor) or (actor.kind~='npc' and actor.kind~='creature') then return nil,'invalid_pickup_audience' end
+            local key=identity.key(actor)
+            if seen[key] then return nil,'duplicate_pickup_audience' end
+            seen[key]=true;audience[#audience+1]=util.copy(actor)
+        end
+    end
+    return {player=util.copy(args.player),item_record_id=args.item_record_id,item_name=args.item_name,
+        count=args.count,unit_value=args.unit_value,game_time=args.game_time,source_kind=args.source_kind,
+        source=source,audience=audience,calendar=args.calendar and util.copy(args.calendar) or nil}
 end
 
 -- Validate the actor snapshot that materializes a profile after successful automatic activation.

@@ -1,5 +1,5 @@
 diff --git a/apps/openmw/mwlua/luamanagerimp.cpp b/apps/openmw/mwlua/luamanagerimp.cpp
-index c9c3934422..78c1d3d5c4 100644
+index c9c3934422..564139ed4a 100644
 --- a/apps/openmw/mwlua/luamanagerimp.cpp
 +++ b/apps/openmw/mwlua/luamanagerimp.cpp
 @@ -1,4 +1,5 @@
@@ -8,7 +8,12 @@ index c9c3934422..78c1d3d5c4 100644
  
  #include <filesystem>
  
-@@ -15,6 +16,7 @@
+@@ -12,9 +13,12 @@
+ #include <components/debug/debuglog.hpp>
+ 
+ #include <components/esm/luascripts.hpp>
++#include <components/esm/defs.hpp>
++#include <lorkhan/types.hpp>
  #include <components/esm3/esmreader.hpp>
  #include <components/esm3/esmwriter.hpp>
  
@@ -16,7 +21,7 @@ index c9c3934422..78c1d3d5c4 100644
  #include <components/settings/values.hpp>
  
  #include <components/l10n/manager.hpp>
-@@ -28,7 +30,10 @@
+@@ -28,7 +32,10 @@
  #include "../mwrender/bonegroup.hpp"
  #include "../mwrender/postprocessor.hpp"
  
@@ -27,26 +32,74 @@ index c9c3934422..78c1d3d5c4 100644
  #include "../mwworld/esmstore.hpp"
  #include "../mwworld/player.hpp"
  #include "../mwworld/ptr.hpp"
-@@ -247,6 +252,7 @@ namespace MWLua
+@@ -247,6 +254,8 @@ namespace MWLua
              asLocal(ptr)->statsNextFrame();
  
          mLuaEvents.finalizeEventBatch();
 +        mLorkhanSpellCastCount = 0;
++        mLorkhanItemPickupCount = 0;
  
          MWWorld::DateTimeManager& timeManager = *MWBase::Environment::get().getWorld()->getTimeManager();
          if (!timeManager.isPaused())
-@@ -389,6 +395,7 @@ namespace MWLua
+@@ -389,6 +398,8 @@ namespace MWLua
          MWBase::Environment::get().getWorld()->getPostProcessor()->disableDynamicShaders();
          mActiveLocalScripts.clear();
          mLuaEvents.clear();
 +        mLorkhanSpellCastCount = 0;
++        mLorkhanItemPickupCount = 0;
          mEngineEvents.clear();
          mInputEvents.clear();
          mMenuInputEvents.clear();
-@@ -486,6 +493,27 @@ namespace MWLua
+@@ -486,6 +497,85 @@ namespace MWLua
          mLuaEvents.addLocalEvent({ getId(actor), "Died", {} });
      }
  
++    // Observe only completed player transfers, copying item/source text before Lua handles the event.
++    void LuaManager::onLorkhanItemPickup(const MWWorld::Ptr& player, const MWWorld::Ptr& item,
++        int count, const MWWorld::Ptr& source)
++    {
++        if (mPlayer.isEmpty() || player != mPlayer || item.isEmpty() || count <= 0
++            || mLorkhanItemPickupCount >= 64) return;
++        const std::string recordId = item.getCellRef().getRefId().serializeText();
++        const std::string name{item.getClass().getName(item)};
++        const int value = item.getClass().getValue(item);
++        if (recordId.empty() || recordId.size() > 256 || name.empty() || name.size() > 256 || value < 0) return;
++        mLua.protectedCall([&](LuaUtil::LuaView& view) {
++            const auto scope = lorkhanObservationScope();
++            if (!scope) return;
++            ++mLorkhanItemPickupCount;
++            sol::table data = view.newTable();
++            data["player"] = LObject(player);
++            data["itemRecordId"] = recordId; data["itemName"] = name;
++            data["count"] = count; data["unitValue"] = value;
++            data["sourceKind"] = source.isEmpty() ? "world" : source.getClass().isActor() ? "actor" : "container";
++            if (!source.isEmpty()) {
++                const std::string sourceId = source.getCellRef().getRefId().serializeText();
++                const std::string sourceName{source.getClass().getName(source)};
++                if (!sourceId.empty() && sourceId.size() <= 256 && !sourceName.empty() && sourceName.size() <= 256) {
++                    sol::table descriptor = view.newTable();
++                    descriptor["recordId"] = sourceId; descriptor["displayName"] = sourceName;
++                    data["source"] = descriptor;
++                }
++            }
++            const auto timeManager = MWBase::Environment::get().getWorld()->getTimeManager();
++            data["gameTime"] = timeManager->getGameTime();
++            const auto stamp = timeManager->getEpochTimeStamp();
++            const lorkhan::LoadedSaveCalendar captured{stamp.mYear, stamp.mMonth, stamp.mDay, stamp.mGameHour};
++            if (captured.valid())
++            {
++                sol::table calendar = view.newTable();
++                calendar["year"] = captured.year;
++                calendar["month"] = captured.month;
++                calendar["day"] = captured.day;
++                calendar["hour"] = captured.hour;
++                data["calendar"] = calendar;
++            }
++            data["sessionId"] = scope->sessionId; data["generation"] = scope->generation;
++            sendLocalEvent(mPlayer, "LorkhanItemPickup", data);
++        });
++    }
++
 +    // Copy a successful cast into the existing bounded-per-frame local event lane.
 +    void LuaManager::onLorkhanSpellCast(const MWWorld::Ptr& caster, const MWWorld::Ptr& target,
 +        const std::string& spellId, const std::string& spellName)
@@ -62,7 +115,19 @@ index c9c3934422..78c1d3d5c4 100644
 +            data["caster"] = LObject(caster);
 +            if (!target.isEmpty() && target.getClass().isActor()) data["target"] = LObject(target);
 +            data["spellId"] = spellId; data["spellName"] = spellName;
-+            data["gameTime"] = MWBase::Environment::get().getWorld()->getTimeManager()->getGameTime();
++            const auto timeManager = MWBase::Environment::get().getWorld()->getTimeManager();
++            data["gameTime"] = timeManager->getGameTime();
++            const auto stamp = timeManager->getEpochTimeStamp();
++            const lorkhan::LoadedSaveCalendar captured{stamp.mYear, stamp.mMonth, stamp.mDay, stamp.mGameHour};
++            if (captured.valid())
++            {
++                sol::table calendar = view.newTable();
++                calendar["year"] = captured.year;
++                calendar["month"] = captured.month;
++                calendar["day"] = captured.day;
++                calendar["hour"] = captured.hour;
++                data["calendar"] = calendar;
++            }
 +            data["sessionId"] = scope->sessionId; data["generation"] = scope->generation;
 +            sendLocalEvent(mPlayer, "LorkhanSpellCast", data);
 +        });
@@ -71,7 +136,7 @@ index c9c3934422..78c1d3d5c4 100644
      void LuaManager::onDialogueResponse(
          const MWWorld::Ptr& actor, const ESM::DialInfo& info, const ESM::Dialogue& record)
      {
-@@ -504,6 +532,13 @@ namespace MWLua
+@@ -504,6 +594,13 @@ namespace MWLua
                  data["type"] = "voice";
              data["infoId"] = info.mId.serializeText();
              data["recordId"] = record.mId.serializeText();

@@ -1,28 +1,35 @@
 {
-  "description": "Successful actor spell cast observation without an inferred target",
+  "description": "Successful player item transfer with source description",
   "instance": {
     "game": "tes3",
     "generation": 12,
     "installation_id": "10000000-0000-4000-8000-000000000001",
     "observed_at": "2026-08-09T18:00:03Z",
     "payload": {
-      "caster": {
+      "player": {
         "cell": {
           "kind": "interior",
           "name": "Balmora"
         },
         "content_file": "Morrowind.esm",
-        "display_name": "Fargoth",
-        "kind": "npc",
-        "record_id": "fargoth",
+        "display_name": "Player",
+        "kind": "player",
+        "record_id": "player",
         "refnum": {
           "content_file": 0,
           "index": 16384
         }
       },
-      "spell_id": "fireball",
-      "spell_name": "Fireball",
+      "item_record_id": "misc_test_item",
+      "item_name": "Test item",
+      "count": 2,
+      "unit_value": 250,
       "game_time": 43210.5,
+      "source_kind": "container",
+      "source": {
+        "record_id": "test_chest",
+        "display_name": "Chest"
+      },
       "calendar": {
         "year": 427,
         "month": 8,
@@ -35,7 +42,7 @@
     "runtime_generation": 4,
     "schema": "lorkhan.gamedata.v1",
     "session_id": "10000000-0000-4000-8000-000000000005",
-    "type": "spell_cast"
+    "type": "item_pickup"
   },
   "schema": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json"
 }

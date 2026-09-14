@@ -430,7 +430,14 @@
         "components/lua/scriptscontainer.cpp",
         "apps/openmw/mwbase/luamanager.hpp",
         "apps/openmw/mwlua/luamanagerimp.hpp",
-        "apps/openmw/mwmechanics/spellcasting.cpp"
+        "apps/openmw/mwmechanics/spellcasting.cpp",
+        "apps/openmw/mwworld/actiontake.cpp",
+        "apps/openmw/mwworld/actionharvest.cpp",
+        "apps/openmw/mwgui/inventorywindow.cpp",
+        "apps/openmw/mwgui/itemmodel.cpp",
+        "apps/openmw/mwgui/itemmodel.hpp",
+        "apps/openmw/mwgui/inventoryitemmodel.hpp",
+        "apps/openmw/mwgui/containeritemmodel.hpp"
       ],
       "source_repository": "https://gitlab.com/OpenMW/openmw.git",
       "source_commit": "f4bec41444214a7903bebd178389ca22ca13f646",

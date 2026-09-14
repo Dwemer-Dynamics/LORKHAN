@@ -1,0 +1,11 @@
+diff --git a/apps/openmw/mwgui/containeritemmodel.hpp b/apps/openmw/mwgui/containeritemmodel.hpp
+index 08ab7e74b4..0ff3412e77 100644
+--- a/apps/openmw/mwgui/containeritemmodel.hpp
++++ b/apps/openmw/mwgui/containeritemmodel.hpp
+@@ -37,2 +37,6 @@ namespace MWGui
+         bool usesContainer(const MWWorld::Ptr& container) override;
++        MWWorld::Ptr lorkhanPickupSource() const override
++        {
++            return !mTrading && mItemSources.size() == 1 ? mItemSources.front().first : MWWorld::Ptr();
++        }
+ 

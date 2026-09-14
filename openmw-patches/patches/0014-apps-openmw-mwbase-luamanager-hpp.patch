@@ -1,13 +1,11 @@
 diff --git a/apps/openmw/mwbase/luamanager.hpp b/apps/openmw/mwbase/luamanager.hpp
-index bddfc3079a..2011a61080 100644
+index bddfc3079a..1f4e6f3aba 100644
 --- a/apps/openmw/mwbase/luamanager.hpp
 +++ b/apps/openmw/mwbase/luamanager.hpp
-@@ -94,6 +94,8 @@ namespace MWBase
-         virtual void onDialogueResponse(
-             const MWWorld::Ptr& actor, const ESM::DialInfo& info, const ESM::Dialogue& record)
+@@ -96,2 +96,6 @@ namespace MWBase
              = 0;
++        virtual void onLorkhanItemPickup(const MWWorld::Ptr& player, const MWWorld::Ptr& item,
++            int count, const MWWorld::Ptr& source) = 0;
 +        virtual void onLorkhanSpellCast(const MWWorld::Ptr& caster, const MWWorld::Ptr& target,
 +            const std::string& spellId, const std::string& spellName) = 0;
          virtual void questUpdated(const ESM::RefId& questId, int stage) = 0;
-         // `arg` is either forwarded from MWGui::pushGuiMode or empty
-         virtual void uiModeChanged(const MWWorld::Ptr& arg) = 0;

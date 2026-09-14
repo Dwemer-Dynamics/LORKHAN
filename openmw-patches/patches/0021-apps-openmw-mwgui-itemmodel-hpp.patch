@@ -1,0 +1,13 @@
+diff --git a/apps/openmw/mwgui/itemmodel.hpp b/apps/openmw/mwgui/itemmodel.hpp
+index dd094e8272..034b71daac 100644
+--- a/apps/openmw/mwgui/itemmodel.hpp
++++ b/apps/openmw/mwgui/itemmodel.hpp
+@@ -75,2 +75,4 @@ namespace MWGui
+         virtual bool usesContainer(const MWWorld::Ptr& container) = 0;
++        // Resolve only the native transfer source; default excludes non-inventory service models.
++        virtual MWWorld::Ptr lorkhanPickupSource() const { return {}; }
+ 
+@@ -110,2 +112,3 @@ namespace MWGui
+         bool usesContainer(const MWWorld::Ptr& container) override;
++        MWWorld::Ptr lorkhanPickupSource() const override { return mSourceModel->lorkhanPickupSource(); }
+ 

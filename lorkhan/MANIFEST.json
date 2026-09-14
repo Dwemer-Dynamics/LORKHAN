@@ -67,6 +67,11 @@
       "sha256": "d3c75b1552339d2b5fec9419190835fff4aea66850de53d1a294cb36e6aed9a1"
     },
     {
+      "bytes": 1205,
+      "path": "lorkhan/fixtures/v1/invalid/gamedata-item-pickup-zero-count.json",
+      "sha256": "d63cb1a2afe0e6936e866c179f7593b4618429bcd5812f5597c64791c1514421"
+    },
+    {
       "bytes": 1345,
       "path": "lorkhan/fixtures/v1/invalid/gamedata-rpg-player-responder.json",
       "sha256": "a5785b063430027b634aa17dedbf4c463afd2401d17f7bd3d2f7d2ed7171cd63"
@@ -277,6 +282,11 @@
       "sha256": "a0d8de9e40c22fafa8fd44cec06e580444f0f7e86ee50f33d8cc107145a1ccfb"
     },
     {
+      "bytes": 1324,
+      "path": "lorkhan/fixtures/v1/valid/gamedata-item-pickup.json",
+      "sha256": "2ea94737f3fd45a2246f300422c98500942a1f623855cce1c46d6ecf4b046cec"
+    },
+    {
       "bytes": 952,
       "path": "lorkhan/fixtures/v1/valid/gamedata-morrowind.json",
       "sha256": "3a117b195a4b8be68fe46311a095c806f624cfbf60122b46448f684e46f97d9e"
@@ -292,9 +302,9 @@
       "sha256": "5ccf17b6bcaf0b24c562551235b936fe33fb9690199c182edcc0b3f2459a043c"
     },
     {
-      "bytes": 1041,
+      "bytes": 1150,
       "path": "lorkhan/fixtures/v1/valid/gamedata-spell-cast.json",
-      "sha256": "83203eddf1197cb497c257ffdc6ae17995d4cd0e3e67fa87bf9958331764f07a"
+      "sha256": "a1aa4ec5f9d6083a7e8c6226c052996cf631e90cbd72d34c7e7fcb7863fe53eb"
     },
     {
       "bytes": 165,
@@ -472,9 +482,9 @@
       "sha256": "66fb9b333958f5db965e5530e5f26e806947a490cde1e0dc435c2abe25628993"
     },
     {
-      "bytes": 17152,
+      "bytes": 21988,
       "path": "lorkhan/schemas/v1/gamedata.schema.json",
-      "sha256": "1e8365d6bcaa1c57c1a34ae6c6e22d17087ede4936e86f2c4f1a1406afb348e0"
+      "sha256": "f0b1fbe126082b5e6313ec25902b89b9f9c1d7ebaedb2cd954e2079aae97681f"
     },
     {
       "bytes": 295,

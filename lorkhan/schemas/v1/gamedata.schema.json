@@ -570,8 +570,205 @@
           "items": {
             "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
           }
+        },
+        "calendar": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/observation_calendar"
         }
       }
+    },
+    "item_pickup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "player",
+        "item_record_id",
+        "item_name",
+        "count",
+        "unit_value",
+        "game_time",
+        "source_kind"
+      ],
+      "properties": {
+        "player": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+        },
+        "item_record_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "item_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "unit_value": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "game_time": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "source_kind": {
+          "type": "string",
+          "enum": [
+            "world",
+            "container",
+            "actor"
+          ]
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "record_id",
+            "display_name"
+          ],
+          "properties": {
+            "record_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "display_name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        },
+        "audience": {
+          "type": "array",
+          "maxItems": 12,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+          }
+        },
+        "calendar": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/observation_calendar"
+        }
+      }
+    },
+    "observation_calendar": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "year",
+            "month",
+            "day",
+            "hour"
+          ],
+          "properties": {
+            "year": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9999
+            },
+            "month": {
+              "type": "integer",
+              "enum": [
+                1
+              ]
+            },
+            "day": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 28
+            },
+            "hour": {
+              "type": "number",
+              "minimum": 0,
+              "exclusiveMaximum": 24
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "year",
+            "month",
+            "day",
+            "hour"
+          ],
+          "properties": {
+            "year": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9999
+            },
+            "month": {
+              "type": "integer",
+              "enum": [
+                3,
+                5,
+                8,
+                10
+              ]
+            },
+            "day": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            },
+            "hour": {
+              "type": "number",
+              "minimum": 0,
+              "exclusiveMaximum": 24
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "year",
+            "month",
+            "day",
+            "hour"
+          ],
+          "properties": {
+            "year": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9999
+            },
+            "month": {
+              "type": "integer",
+              "enum": [
+                0,
+                2,
+                4,
+                6,
+                7,
+                9,
+                11
+              ]
+            },
+            "day": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 31
+            },
+            "hour": {
+              "type": "number",
+              "minimum": 0,
+              "exclusiveMaximum": 24
+            }
+          }
+        }
+      ]
     }
   },
   "additionalProperties": false,
@@ -628,6 +825,9 @@
         },
         {
           "$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/spell_cast"
+        },
+        {
+          "$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/item_pickup"
         }
       ]
     },
@@ -662,7 +862,8 @@
         "rpg_event",
         "bored_event",
         "quest_event",
-        "spell_cast"
+        "spell_cast",
+        "item_pickup"
       ],
       "type": "string"
     }

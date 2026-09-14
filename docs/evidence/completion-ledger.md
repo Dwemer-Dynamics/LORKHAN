@@ -45,3 +45,22 @@ pushed server tree with zero rsync differences. Browser checks covered the princ
 and Control Panel routes at 1920x1080, 1440x900, 1280x720, 390x844, and 375x667 without horizontal
 overflow. This is current automated/build/deployment evidence only; the supplied minimal GOTY gameplay
 checklist remains deliberately unclaimed.
+
+## 2026-09-13 observed spell and pickup context
+
+- Successful native casts and player item acquisitions feed immutable source events,
+  scoped event history, and prompt context. No observation schedules a model turn.
+- Spell targets are cast targets, not hit confirmations. Pickups report transferred
+  quantity with canonical inventory gold units; cancelled transfers, barter, crafting,
+  and console/script additions are excluded.
+- Detect Magic Events defaults on. Item Pickup Detection Value defaults to 500 total
+  gold. Global/Core/NPC overrides and existing category/blacklist filters affect
+  prompt inclusion; original event records are retained.
+- Capture-time calendars use existing zero-based Morrowind months. Loaded-save
+  rollback suppresses dated future observations and retires unanchored prior-session
+  spell/pickup evidence from active context. Original sources remain immutable.
+- Automated Lua and protocol checks pass (81 Lua cases; 38 schemas, 77 fixtures,
+  115 paired files). Live gameplay and paid-provider checks have not been performed.
+- Further audit: published automatic NPC profile revisions still need save rollback.
+  Physical diary book materialization is absent and requires reconciling the closed
+  game-mutation boundary before implementation; it is not supplied by diary generation.

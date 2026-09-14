@@ -1,0 +1,12 @@
+diff --git a/apps/openmw/mwgui/inventorywindow.cpp b/apps/openmw/mwgui/inventorywindow.cpp
+index 9c50d4104b..78b183971e 100644
+--- a/apps/openmw/mwgui/inventorywindow.cpp
++++ b/apps/openmw/mwgui/inventorywindow.cpp
+@@ -21,2 +21,3 @@
+ #include "../mwbase/environment.hpp"
++#include "../mwbase/luamanager.hpp"
+ #include "../mwbase/inputmanager.hpp"
+@@ -844,2 +845,3 @@ namespace MWGui
+         MWBase::Environment::get().getWorld()->deleteObject(object);
++        MWBase::Environment::get().getLuaManager()->onLorkhanItemPickup(player, newObject, count, MWWorld::Ptr());
+ 

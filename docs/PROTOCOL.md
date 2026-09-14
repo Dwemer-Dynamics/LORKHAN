@@ -313,3 +313,31 @@ Inventory observations have no recorded game calendar. Consumers use only the
 current exact session/generation/playthrough and never carry them across a loaded
 save. Current-turn observed inventory, including an empty list, wins over fallback.
 Deploy the paired server schema before a client that emits the optional fields.
+
+### Successful spell and pickup observations
+
+`gamedata` types `spell_cast` and `item_pickup` record bounded successful engine
+observations without scheduling a model turn. Native capture and Lua delivery retain
+the originating session and generation; stale observations are discarded. At most
+twelve nearby witnesses are attached. Witnesses describe proximity, not line of sight.
+
+Spell observations contain the caster, spell ID/name, game time, and optional cast
+target. A target is not proof of a hit. Failed or scripted casts are not captured.
+Pickup observations contain the player, item ID/name, transferred count, unit gold
+value, game time, and source kind (`world`, `container`, or `actor`). Optional source
+ID/name is descriptive text only, never an actor routing identity. Successful normal
+world pickups, container/actor transfers, and harvesting are supported; barter,
+crafting, console/script additions, and cancelled transfers are not pickup observations.
+Gold is normalized once to its acquired inventory quantity and canonical unit value.
+
+The server retains original observations and projects `spellcast`, `npcspellcast`,
+and `itemfound` event history. Scoped conversation context respects the existing
+Infoaction category, location/item/magic blacklists, Detect Magic Events (default on),
+and Item Pickup Detection Value (default 500 total gold, count times unit value).
+Global, Core, and NPC overrides affect prompt inclusion; they do not erase event logs.
+
+New observations also carry the capture-time calendar using the existing loaded-save
+shape (zero-based month). Loading an earlier save retires observations at or beyond
+its cutoff while preserving earlier dated observations. Legacy undated spell/pickup
+records are retained as evidence but cannot cross session boundaries into context;
+the DaysPassed clock is never guessed to be an absolute calendar timestamp.
