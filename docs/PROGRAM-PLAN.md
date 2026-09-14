@@ -56,7 +56,7 @@ is a deterministic gate, not an open design question.
 | D14 | Protocol is `lorkhan.*.v1`, strict JSON envelopes plus bounded event polling. It retains SYNTH request/action-result semantics but uses TES3/OpenMW identity. |
 | D15 | One game profile has one server playthrough and session. Group dialogue supports many active characters; network multiplayer is out of scope. |
 | D16 | No `.omwaddon` is needed initially. Original records/content are a separately gated later deliverable. |
-| D17 | Model actions are a typed allowlist with read-only and mutation tiers. No arbitrary console, Lua, MWScript, record creation, file path, or URL. |
+| D17 | Model actions are a typed allowlist with read-only and mutation tiers. No arbitrary console, Lua, MWScript, record creation, file path, or URL. The user-approved physical diary exception is defined in PROTOCOL.md. |
 | D18 | Modified OpenMW runtime/source distribution follows GPLv3 obligations; server licensing/provenance is audited from the final Synthserver seed before release. |
 | D19 | No Bethesda data, voices, saves, or third-party assets enter Git, CI, Azure, or release packages. Users provide legal Morrowind GOTY data locally. |
 | D20 | OpenMW upgrades are explicit new pins with API/patch/save/mod-list matrices. A 0.51 save may not be treated as downgrade-safe. |

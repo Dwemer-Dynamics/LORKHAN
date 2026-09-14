@@ -47,6 +47,11 @@
       "sha256": "bf50260599e5f50e9a37190e24c284108d991248f6240b10bca0466dfa46b946"
     },
     {
+      "bytes": 1095,
+      "path": "lorkhan/fixtures/v1/invalid/diary-book-record-property.json",
+      "sha256": "1029ad5a2ab5e80e8e5c560f1cf08401c6f66cb8b0b786b43ba1c503c7cd139f"
+    },
+    {
       "bytes": 462,
       "path": "lorkhan/fixtures/v1/invalid/events-excluded-autonomy.json",
       "sha256": "47c031a1f714d5d01c1350ab8b7d8bf89d02075cb8bf32666213b44572017e38"
@@ -245,6 +250,26 @@
       "bytes": 960,
       "path": "lorkhan/fixtures/v1/valid/dialogue-delivery-result.json",
       "sha256": "08db592ceacda1eb011b1720b43277f39e45abbdc18bebaba2625241a1d4a95a"
+    },
+    {
+      "bytes": 415,
+      "path": "lorkhan/fixtures/v1/valid/diary-book-query.json",
+      "sha256": "6a2b8d9c3c3f450d748c0ba130a13813079260a7fc6d7cb2ec51d0bf6890a6b4"
+    },
+    {
+      "bytes": 558,
+      "path": "lorkhan/fixtures/v1/valid/diary-book-result-accepted.json",
+      "sha256": "db900fc9c8a46967f98f0e7189dd30f5aa8eea2b47ffa962b84c97057bec923d"
+    },
+    {
+      "bytes": 722,
+      "path": "lorkhan/fixtures/v1/valid/diary-book-result.json",
+      "sha256": "554f7d16d37fb6feaf48bb891e79f9e87e75904867e221c6f767d19a96a0088e"
+    },
+    {
+      "bytes": 1059,
+      "path": "lorkhan/fixtures/v1/valid/diary-book.json",
+      "sha256": "2480a7b55445b84a8ad631a48b93af2aee867be58dba3e3edd98d7c7a21e058a"
     },
     {
       "bytes": 334,
@@ -460,6 +485,26 @@
       "bytes": 1470,
       "path": "lorkhan/schemas/v1/dialogue-delivery-result.schema.json",
       "sha256": "f11514d29c05c6f44bbc8a5b1d10c31079de8c9a34610d65db78c222f617c984"
+    },
+    {
+      "bytes": 886,
+      "path": "lorkhan/schemas/v1/diary-book-query.schema.json",
+      "sha256": "6e6ac32c06c0dea4de0d311bdce2135dd54b1074841e0dff60a0991e9bdc427c"
+    },
+    {
+      "bytes": 1241,
+      "path": "lorkhan/schemas/v1/diary-book-result-accepted.schema.json",
+      "sha256": "85262aec7d172676add1ab7437ae2ea79173459d2c9388ff1e45ca6999412e89"
+    },
+    {
+      "bytes": 1806,
+      "path": "lorkhan/schemas/v1/diary-book-result.schema.json",
+      "sha256": "83756ebbc5344af67c8144fcc689ae270e0c1c90749359eba77d442089635e21"
+    },
+    {
+      "bytes": 2110,
+      "path": "lorkhan/schemas/v1/diary-book.schema.json",
+      "sha256": "9782bfaf11de4a88504283c8a7f2489818cebe48fe0a11aa87f5b15f85e38237"
     },
     {
       "bytes": 1930,

@@ -409,6 +409,21 @@ struct ControlsResponse {
     std::optional<SettingsEditor> settingsEditor{};
 };
 
+struct DiaryBookResponse {
+    struct Book { MessageId delivery; MessageId book; ProtocolIdentity target;
+        std::string title; std::string content; std::string contentHash; };
+    MessageId message; RequestId request; SessionId session; Generation generation;
+    std::optional<Book> book;
+};
+struct DiaryBookResultAcceptedResponse {
+    MessageId message; RequestId request; MessageId delivery; SessionId session; Generation generation;
+    DebugCommandResultStatus status{DebugCommandResultStatus::failed}; bool duplicate{};
+};
+[[nodiscard]] Result<DiaryBookResponse> parseDiaryBookResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<DiaryBookResultAcceptedResponse> parseDiaryBookResultAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+
 struct DebugCommandResponse {
     using Parameter = std::variant<bool, std::int64_t, double, std::string, ProtocolIdentity>;
     struct Command {

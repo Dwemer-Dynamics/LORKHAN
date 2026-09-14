@@ -1,3 +1,4 @@
+#include "lorkhan/voice_capture.hpp"
 #include "lorkhan/protocol_response.hpp"
 
 #include <algorithm>
@@ -1697,6 +1698,70 @@ Result<ControlsResponse> parseControlsResponse(
         parsed.settingsEditor=std::move(result);
     }
     return Result<ControlsResponse>::success(std::move(parsed));
+}
+
+Result<DiaryBookResponse> parseDiaryBookResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits)
+{
+    auto object=parseObject(body,headers,"lorkhan.diary-book.v1",limits);
+    if(!object)return Result<DiaryBookResponse>::failure(object.error());
+    if(!hasExactly(object.value(),{"schema","message_id","request_id","session_id","generation","book"}))
+        return invalidSchemaValue<DiaryBookResponse>("diary book response fields mismatch");
+    auto message=requireUuid(object.value(),"message_id");auto request=requireUuid(object.value(),"request_id");
+    auto session=requireUuid(object.value(),"session_id");auto generation=requireUnsigned(object.value(),"generation",kMaximumProtocolInteger,0);
+    if(!message)return invalidSchemaValue<DiaryBookResponse>(message.error().message);
+    if(!request)return invalidSchemaValue<DiaryBookResponse>(request.error().message);
+    if(!session)return invalidSchemaValue<DiaryBookResponse>(session.error().message);
+    if(!generation)return invalidSchemaValue<DiaryBookResponse>(generation.error().message);
+    DiaryBookResponse parsed{MessageId(std::move(message).value()),RequestId(std::move(request).value()),
+        SessionId(std::move(session).value()),Generation(generation.value()),std::nullopt};
+    const auto* value=json::find(object.value(),"book");
+    if(value->isNull())return Result<DiaryBookResponse>::success(std::move(parsed));
+    const auto* book=value->object();
+    if(!book||!hasExactly(*book,{"delivery_id","book_id","target","title","content","content_hash"}))
+        return invalidSchemaValue<DiaryBookResponse>("diary book fields mismatch");
+    auto delivery=requireUuid(*book,"delivery_id");auto id=requireUuid(*book,"book_id");
+    auto target=parseIdentity(*json::find(*book,"target"));
+    auto title=requireString(*book,"title",1,128);auto content=requireString(*book,"content",1,8192);
+    auto hash=requireString(*book,"content_hash",64,64);
+    if(!delivery||!id||!target||!title||!content||!hash)
+        return invalidSchemaValue<DiaryBookResponse>("invalid diary book payload");
+    if(target.value().kind!="npc"&&target.value().kind!="creature")
+        return invalidSchemaValue<DiaryBookResponse>("diary target must be NPC or creature");
+    const auto validText=[](const std::string& text){return std::none_of(text.begin(),text.end(),[](unsigned char c){return c==127||(c<32&&c!='\n'&&c!='\r'&&c!='\t');});};
+    if(!validText(title.value())||title.value().find_first_of("\r\n\t")!=std::string::npos||!validText(content.value())
+        ||std::count_if(content.value().begin(),content.value().end(),[](unsigned char c){return (c&0xc0)!=0x80;})>2048
+        ||sha256Hex(std::as_bytes(std::span(content.value().data(),content.value().size())))!=hash.value())
+        return invalidSchemaValue<DiaryBookResponse>("diary content hash or text is invalid");
+    parsed.book=DiaryBookResponse::Book{MessageId(delivery.value()),MessageId(id.value()),target.value(),title.value(),content.value(),hash.value()};
+    return Result<DiaryBookResponse>::success(std::move(parsed));
+}
+
+Result<DiaryBookResultAcceptedResponse> parseDiaryBookResultAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits)
+{
+    auto object=parseObject(body,headers,"lorkhan.diary-book-result.accepted.v1",limits);
+    if(!object)return Result<DiaryBookResultAcceptedResponse>::failure(object.error());
+    if(!hasExactly(object.value(),{"schema","message_id","request_id","delivery_id","session_id","generation","status","duplicate"}))
+        return invalidSchemaValue<DiaryBookResultAcceptedResponse>("diary book result fields mismatch");
+    auto message=requireUuid(object.value(),"message_id");auto request=requireUuid(object.value(),"request_id");
+    auto delivery=requireUuid(object.value(),"delivery_id");auto session=requireUuid(object.value(),"session_id");
+    auto generation=requireUnsigned(object.value(),"generation",kMaximumProtocolInteger,0);auto status=requireString(object.value(),"status",1,16);
+    auto duplicate=requireBoolean(object.value(),"duplicate");
+    if(!message)return invalidSchemaValue<DiaryBookResultAcceptedResponse>(message.error().message);
+    if(!request)return invalidSchemaValue<DiaryBookResultAcceptedResponse>(request.error().message);
+    if(!delivery)return invalidSchemaValue<DiaryBookResultAcceptedResponse>(delivery.error().message);
+    if(!session)return invalidSchemaValue<DiaryBookResultAcceptedResponse>(session.error().message);
+    if(!generation)return invalidSchemaValue<DiaryBookResultAcceptedResponse>(generation.error().message);
+    if(!status)return invalidSchemaValue<DiaryBookResultAcceptedResponse>(status.error().message);
+    if(!duplicate)return invalidSchemaValue<DiaryBookResultAcceptedResponse>(duplicate.error().message);
+    if(status.value()!="succeeded"&&status.value()!="failed")
+        return invalidSchemaValue<DiaryBookResultAcceptedResponse>("unknown diary result status");
+    const auto mapped=status.value()=="succeeded"?DebugCommandResultStatus::succeeded
+        :status.value()=="failed"?DebugCommandResultStatus::failed:DebugCommandResultStatus::rejected;
+    return Result<DiaryBookResultAcceptedResponse>::success({MessageId(std::move(message).value()),
+        RequestId(std::move(request).value()),MessageId(std::move(delivery).value()),SessionId(std::move(session).value()),
+        Generation(generation.value()),mapped,duplicate.value()});
 }
 
 Result<DebugCommandResponse> parseDebugCommandResponse(

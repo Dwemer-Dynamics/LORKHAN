@@ -165,3 +165,9 @@ GLOBAL handler load/player readiness. No game was launched; in-game proof remain
 outstanding. Existing unrelated foundation/provenance failures are not waived by
 these focused results. Temp evidence: dragon-windows-build.txt and WSL
 /tmp/dragon-global-lua.txt.
+
+
+## Approved physical diary exception
+
+See PROTOCOL.md, Physical NPC diary books. Only authenticated completed diary snapshots may
+create or update their fixed mundane book record. No general record API is added.

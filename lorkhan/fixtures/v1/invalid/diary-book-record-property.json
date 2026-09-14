@@ -1,0 +1,33 @@
+{
+  "description": "Physical diaries reject record properties",
+  "instance": {
+    "schema": "lorkhan.diary-book.v1",
+    "message_id": "00000000-0000-4000-8000-000000000040",
+    "request_id": "00000000-0000-4000-8000-000000000041",
+    "session_id": "00000000-0000-4000-8000-000000000007",
+    "generation": 7,
+    "book": {
+      "delivery_id": "00000000-0000-4000-8000-000000000042",
+      "book_id": "00000000-0000-4000-8000-000000000043",
+      "target": {
+        "cell": {
+          "kind": "interior",
+          "name": "Balmora"
+        },
+        "content_file": "Morrowind.esm",
+        "display_name": "Player",
+        "kind": "npc",
+        "record_id": "player",
+        "refnum": {
+          "content_file": 0,
+          "index": 16384
+        }
+      },
+      "title": "Fargoth's Diary",
+      "content": "I wrote about today in Balmora.",
+      "content_hash": "2b95b1d49768775d44f2bb976a0ce7d4815cae7bbfbdf83e97683b67aebb125c",
+      "script": "arbitrary"
+    }
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/diary-book.schema.json"
+}

@@ -1789,5 +1789,106 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
 
 end)
 
+test('diary book delivery waits for native completion and retries only its correlated receipt',function()
+ local diaries=require('scripts.LORKHAN.diary_books')
+ local book={delivery_id=UUID.message,book_id=UUID.turn,target=support.copy(npc),title='Fargoth diary',
+  content='An unexpected visitor.',content_hash=string.rep('a',64)}
+ local queries,created,receipts=0,0,{}
+ local object={} local materialized=false local accepted=false
+ local bridge={
+  requestDiaryBook=function()queries=queries+1;return UUID.request end,
+  pumpDiaryBook=function()return {book=book} end,
+  materializeDiaryBook=function(actor,delivery)eq(actor,object);eq(delivery,book.delivery_id);created=created+1;return true end,
+  diaryBookStatus=function(delivery)eq(delivery,book.delivery_id);return materialized and {status='succeeded'} or {pending=true} end,
+  submitDiaryBookResult=function(delivery,status,reason)
+   receipts[#receipts+1]={delivery=delivery,status=status,reason=reason};return UUID.request
+  end,
+  pumpDiaryBookResult=function()return {ok=accepted} end,cancelDiaryBook=function()end,
+ }
+ local state=diaries.new(bridge,function(target)eq(identity.key(target),identity.key(npc));return object end)
+ diaries.pump(state,UUID.session,3,0);diaries.pump(state,UUID.session,3,1)
+ eq(queries,1);eq(created,1);eq(#receipts,0)
+ diaries.pump(state,UUID.session,3,2);eq(#receipts,0)
+ materialized=true;diaries.pump(state,UUID.session,3,3);eq(#receipts,0)
+ diaries.pump(state,UUID.session,3,4);eq(#receipts,1);eq(receipts[1].status,'succeeded');eq(receipts[1].reason,nil)
+ diaries.pump(state,UUID.session,3,5);diaries.pump(state,UUID.session,3,6);eq(#receipts,1)
+ diaries.pump(state,UUID.session,3,7);eq(#receipts,2);eq(created,1);eq(queries,1)
+ accepted=true;diaries.pump(state,UUID.session,3,8);eq(state.phase,nil)
+ diaries.pump(state,UUID.session,3,9);eq(queries,1)
+end)
+
+test('diary book orchestration fences stale scopes and refuses missing or malformed recipients',function()
+ local diaries=require('scripts.LORKHAN.diary_books')
+ local original={delivery_id=UUID.message,book_id=UUID.turn,target=support.copy(npc),title='Diary',
+  content='A day in Seyda Neen.',content_hash=string.rep('b',64)}
+ local book=support.copy(original) local found=false local created=0 local results={}
+ local bridge={requestDiaryBook=function()return UUID.request end,pumpDiaryBook=function()return {book=book} end,
+  materializeDiaryBook=function()created=created+1;return true end,
+  diaryBookStatus=function()return {status='succeeded'} end,
+  submitDiaryBookResult=function(delivery,status,reason)results[#results+1]={delivery,status,reason};return UUID.request end,
+  pumpDiaryBookResult=function()return {ok=true} end,cancelDiaryBook=function()end}
+ local state=diaries.new(bridge,function()return found and {} or nil end)
+ diaries.pump(state,UUID.session,1,0);diaries.pump(state,UUID.session,1,1);diaries.pump(state,UUID.session,1,2)
+ eq(created,0);eq(results[1][2],'failed');eq(results[1][3],'target_unavailable')
+ diaries.reset(state);found=true
+ diaries.pump(state,UUID.session,1,3);diaries.pump(state,UUID.session,1,4);eq(created,1)
+ -- A load abandons the pending native result; it cannot acknowledge success in the new scope.
+ diaries.pump(state,UUID.session,2,5);eq(#results,1);eq(state.phase,'query')
+ diaries.pump(state,UUID.session,2,6,true);eq(state.phase,nil);eq(#results,1)
+ for _,invalid in ipairs({{title=string.rep('x',129)},{content=string.rep('x',8193)},
+   {content_hash=string.rep('g',64)},{target=playerId},{delivery_id='not-an-id'}}) do
+  diaries.reset(state);book=support.copy(original)
+  for key,value in pairs(invalid) do book[key]=value end
+  diaries.pump(state,UUID.session,3,10);diaries.pump(state,UUID.session,3,11)
+  eq(state.phase,nil);eq(created,1);eq(#results,1)
+ end
+end)
+
+test('diary receipt retries are bounded and unsupported clients are inert',function()
+ local diaries=require('scripts.LORKHAN.diary_books')
+ local attempts=0
+ local bridge={requestDiaryBook=function()return UUID.request end,
+  pumpDiaryBook=function()return {book={delivery_id=UUID.message,book_id=UUID.turn,target=npc,title='Diary',
+   content='Today.',content_hash=string.rep('a',64)}} end,
+  materializeDiaryBook=function()return true end,diaryBookStatus=function()return {status='succeeded'} end,
+  submitDiaryBookResult=function()attempts=attempts+1;return nil,'busy' end,pumpDiaryBookResult=function()return {ok=false} end,
+  cancelDiaryBook=function()end}
+ local state=diaries.new(bridge,function()return {} end)
+ diaries.pump(state,UUID.session,1,0);diaries.pump(state,UUID.session,1,1);diaries.pump(state,UUID.session,1,2)
+ for index=1,6 do diaries.pump(state,UUID.session,1,index*10) end
+ eq(attempts,5);eq(state.phase,nil)
+ local unsupported=diaries.new({},function()error('must not resolve')end)
+ diaries.pump(unsupported,UUID.session,1,1);eq(unsupported.phase,nil)
+end)
+
+test('diary phase deadlines and exceptions cancel native callbacks without invented completion',function()
+ local diaries=require('scripts.LORKHAN.diary_books')
+ for _,mode in ipairs({'query_hung','materializing_hung','materializing_error','materializing_invalid','receipt_hung'}) do
+  local cancelled=0 local receipts=0 local mutated=0 local callbacks={}
+  local bridge={requestDiaryBook=function()return UUID.request end,
+   pumpDiaryBook=function()
+    if mode=='query_hung' then return {pending=true} end
+    return {book={delivery_id=UUID.message,book_id=UUID.turn,target=npc,title='Diary',content='Today.',content_hash=string.rep('a',64)}}
+   end,
+   materializeDiaryBook=function()callbacks[1]=function()mutated=mutated+1 end;return true end,
+   diaryBookStatus=function()
+    if mode=='materializing_error' then error('status failed') end
+    if mode=='materializing_invalid' then return nil end
+    if mode=='materializing_hung' then return {pending=true} end
+    return {status='succeeded'}
+   end,
+   submitDiaryBookResult=function()receipts=receipts+1;return UUID.request end,
+   pumpDiaryBookResult=function()return {pending=true} end,
+   cancelDiaryBook=function()cancelled=cancelled+1;callbacks={} end}
+  local state=diaries.new(bridge,function()return {} end)
+  diaries.pump(state,UUID.session,1,0);diaries.pump(state,UUID.session,1,1)
+  diaries.pump(state,UUID.session,1,2)
+  if mode=='receipt_hung' then diaries.pump(state,UUID.session,1,3) end
+  if state.phase then diaries.pump(state,UUID.session,1,34) end
+  eq(state.phase,nil);eq(cancelled,1);eq(#callbacks,0);eq(mutated,0)
+  eq(receipts,mode=='receipt_hung' and 1 or 0)
+ end
+end)
+
 io.write(string.format('%d tests, %d failures\n',tests,failures))
 if failures>0 then os.exit(1) end

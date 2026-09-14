@@ -1,0 +1,76 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "lorkhan.diary-book.v1"
+    },
+    "message_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "request_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "session_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "generation": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+    },
+    "book": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "delivery_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "book_id": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+            },
+            "target": {
+              "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "content": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "content_hash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "delivery_id",
+            "book_id",
+            "target",
+            "title",
+            "content",
+            "content_hash"
+          ]
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "message_id",
+    "request_id",
+    "session_id",
+    "generation",
+    "book"
+  ],
+  "$id": "https://lorkhan.invalid/schemas/v1/diary-book.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

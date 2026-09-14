@@ -19,6 +19,11 @@
 #include "../mwmechanics/aisequence.hpp"
 #include "../mwmechanics/creaturestats.hpp"
 #include "../mwworld/class.hpp"
+#include "../mwworld/esmstore.hpp"
+#include "../mwworld/containerstore.hpp"
+#include "../mwworld/manualref.hpp"
+#include <components/esm3/loadbook.hpp>
+#include <components/esm3/loadcrea.hpp>
 
 #include "luamanagerimp.hpp"
 #include "objectvariant.hpp"
@@ -460,6 +465,12 @@ namespace MWLua
                 std::optional<lorkhan::RequestId> request;
                 std::optional<lorkhan::CanonicalMediaDescriptor> media;
             };
+            struct PlayerAutochatState {
+                std::string state;
+                std::string text;
+                std::string reason;
+                std::optional<lorkhan::RequestId> request;
+            };
 
         public:
             NativeClient()
@@ -594,8 +605,15 @@ namespace MWLua
                     narrator["context_visibility"] = settings.narrator.contextVisibility;
                     narrator["inline_mode"] = settings.narrator.inlineMode;
                     narrator["welcome_events"] = settings.narrator.welcomeEvents;
+                    narrator["welcome_cooldown_minutes"] = settings.narrator.welcomeCooldownMinutes;
                     narrator["random_events"] = settings.narrator.randomEvents;
+                    narrator["random_chance_percent"] = settings.narrator.randomChancePercent;
+                    narrator["random_cooldown_rounds"] = settings.narrator.randomCooldownRounds;
+                    narrator["bored_events"] = settings.narrator.boredEvents;
+                    narrator["bored_chance_percent"] = settings.narrator.boredChancePercent;
                     narrator["quest_events"] = settings.narrator.questEvents;
+                    narrator["quest_chance_percent"] = settings.narrator.questChancePercent;
+                    narrator["quest_cooldown_minutes"] = settings.narrator.questCooldownMinutes;
                     narrator["book_events"] = settings.narrator.bookEvents;
                     presentation["show_status_hud"] = settings.presentation.showStatusHud;
                     presentation["transcript_rows"] = settings.presentation.transcriptRows;
@@ -661,20 +679,12 @@ namespace MWLua
                 {
                     const lorkhan::RequestId request(uuid());
                     const std::string serialized = toJson(sol::make_object(lua, payload));
-                    if((type==lorkhan::GameDataType::rpg_event||type==lorkhan::GameDataType::bored_event||type==lorkhan::GameDataType::quest_event)&&m_rpgRequests.size()>=32)
-                        return failure(lua,"rpg_event_queue_full");
                     lorkhan::OutboundRequest outbound{request, *m_session, m_service->generation(),
                         lorkhan::RequestKind::gamedata,
                         lorkhan::GameDataRequest{m_config->installation, m_config->playthrough, request,
                             m_service->generation(), utcNow(), type, serialized}};
                     auto accepted = m_service->enqueue(std::move(outbound));
                     if (!accepted) return failure(lua, accepted.error().message);
-                    if(type==lorkhan::GameDataType::rpg_event)
-                        m_rpgRequests.emplace(request.value(),std::make_pair(payload.get<std::string>("kind"),payload.get<std::string>("text")));
-                    if(type==lorkhan::GameDataType::quest_event)
-                        m_rpgRequests.emplace(request.value(),std::make_pair("quest_event",payload.get<std::string>("text")));
-                    if(type==lorkhan::GameDataType::bored_event)
-                        m_rpgRequests.emplace(request.value(),std::make_pair("bored_event", ""));
                     return success(lua, request.value());
                 }
                 catch (const std::exception& error) { return failure(lua, error.what()); }
@@ -695,7 +705,12 @@ namespace MWLua
                 return submitGameData(lua, lorkhan::GameDataType::actor_profile, std::move(payload));
             }
 
-            std::tuple<sol::object, sol::object> requestControls(sol::state_view lua, sol::table target,bool includeSettingsEditor=false)
+            std::tuple<sol::object, sol::object> submitAutomaticDiary(sol::state_view lua, sol::table payload)
+            {
+                return submitGameData(lua, lorkhan::GameDataType::automatic_diary, std::move(payload));
+            }
+
+            std::tuple<sol::object, sol::object> requestControls(sol::state_view lua, sol::table target)
             {
                 if (!ready()) return failure(lua, "bridge_not_ready");
                 if (m_controlsRequest) return failure(lua, "controls_request_pending");
@@ -704,7 +719,7 @@ namespace MWLua
                     const lorkhan::MessageId message(uuid());
                     lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),
                         lorkhan::RequestKind::controls_query,lorkhan::ControlsQueryRequest{message,
-                            {request,*m_session,m_service->generation()},toJson(sol::make_object(lua,target)),includeSettingsEditor}};
+                            {request,*m_session,m_service->generation()},toJson(sol::make_object(lua,target))}};
                     auto accepted=m_service->enqueue(std::move(outbound));
                     if(!accepted)return failure(lua,accepted.error().message);
                     m_controlsRequest=request;m_controlsError.clear();
@@ -744,6 +759,158 @@ namespace MWLua
                 catch(const std::exception& error){return failure(lua,error.what());}
             }
 
+            void cancelDiaryBook()
+            {
+                ++m_diarySerial;
+                if(m_service){if(m_diaryRequest)(void)m_service->cancel(*m_diaryRequest);
+                    if(m_diaryReceipt)(void)m_service->cancel(*m_diaryReceipt);}
+                m_diaryRequest.reset();m_diaryReceipt.reset();m_diaryBook.reset();m_diaryReceiptDto.reset();m_diaryPending=false;
+                m_diaryState.clear();m_diaryReason.clear();m_diaryError.clear();m_diaryReceiptOk=false;
+            }
+
+            std::tuple<sol::object,sol::object> requestDiaryBook(sol::state_view lua)
+            {
+                if(!ready())return failure(lua,"not_ready");
+                if(m_diaryRequest||m_diaryReceipt||m_diaryPending)return failure(lua,"diary_request_pending");
+                try {
+                    lorkhan::RequestId request(uuid());lorkhan::MessageId message(uuid());
+                    lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),
+                        lorkhan::RequestKind::diary_book_query,lorkhan::DiaryBookQueryRequest{message,
+                            {request,*m_session,m_service->generation()}}};
+                    auto sent=m_service->enqueue(std::move(outbound));if(!sent)return failure(lua,sent.error().message);
+                    m_diaryRequest=request;m_diaryBook.reset();m_diaryReceiptDto.reset();m_diaryError.clear();m_diaryState.clear();
+                    return success(lua,request.value());
+                }catch(const std::exception& e){return failure(lua,e.what());}
+            }
+
+            bool settleDiaryResult(const lorkhan::InboundResult& result)
+            {
+                if(m_diaryRequest&&result.request==*m_diaryRequest){
+                    m_diaryRequest.reset();m_diaryBook.reset();
+                    if(result.kind==lorkhan::ResponseKind::diary_book){
+                        auto parsed=lorkhan::parseDiaryBookResponse(result.payload,jsonHeaders());
+                        if(parsed)m_diaryBook=std::move(parsed).value().book;
+                        else m_diaryError=parsed.error().message;
+                    }else m_diaryError="diary_query_failed";
+                    return true;
+                }
+                if(m_diaryReceipt&&result.request==*m_diaryReceipt){
+                    m_diaryReceipt.reset();m_diaryReceiptOk=result.kind==lorkhan::ResponseKind::completed;
+                    if(!m_diaryReceiptOk)m_diaryError="diary_receipt_failed";
+                    return true;
+                }
+                return false;
+            }
+
+            sol::table pumpDiaryBook(sol::state_view lua,bool receipt=false)
+            {
+                if(m_service&&(m_diaryRequest||m_diaryReceipt)&&m_deferredResults.size()+kControlsPumpBatch<=kDeferredResultCapacity){
+                    for(auto& result:m_service->poll(kControlsPumpBatch)){
+                        if(settleDiaryResult(result)){++m_resultsSeen;continue;}
+                        m_deferredResults.push_back(std::move(result));
+                    }
+                }
+                sol::table result(lua,sol::create);result["pending"]=receipt?m_diaryReceipt.has_value():m_diaryRequest.has_value();
+                if(!m_diaryError.empty())result["error"]=m_diaryError;
+                if(receipt)result["ok"]=m_diaryReceiptOk;
+                else if(m_diaryBook){sol::table book(lua,sol::create);
+                    book["delivery_id"]=m_diaryBook->delivery.value();book["book_id"]=m_diaryBook->book.value();
+                    book["target"]=identityTable(lua,m_diaryBook->target);book["title"]=m_diaryBook->title;
+                    book["content"]=m_diaryBook->content;book["content_hash"]=m_diaryBook->contentHash;result["book"]=book;}
+                return result;
+            }
+
+            // A retained authenticated DTO is the only source of book content and recipient identity.
+            std::tuple<sol::object,sol::object> materializeDiaryBook(sol::state_view lua,LuaManager* manager,
+                const GObject& actor,const std::string& delivery)
+            {
+                if(!ready()||!m_diaryBook||m_diaryBook->delivery.value()!=delivery)return failure(lua,"invalid_payload");
+                if(m_diaryPending||!m_diaryState.empty())return success(lua,delivery);
+                const auto book=*m_diaryBook;const auto scope=*observationScope();const auto serial=m_diarySerial;
+                m_diaryPending=true;m_diaryReason.clear();
+                manager->addAction([this,actor,book,scope,serial] {
+                    if(serial!=m_diarySerial||!ready()||m_session->value()!=scope.sessionId||generation()!=scope.generation)return;
+                    m_diaryPending=false;m_diaryState="failed";m_diaryReason="record_creation_failed";
+                    try {
+                        const auto& recipient=actor.ptr();const auto& ref=recipient.getCellRef().getRefNum();
+                        const bool creature=recipient.getType()==ESM::Creature::sRecordId;
+                        if((!creature&&recipient.getType()!=ESM::NPC::sRecordId)
+                            ||book.target.kind!=(creature?"creature":"npc")
+                            ||recipient.getCellRef().getRefId().serializeText()!=book.target.recordId
+                            ||ref.mIndex!=book.target.refnumIndex||ref.mContentFile!=book.target.refnumContentFile){
+                            m_diaryReason="target_mismatch";return;}
+                        if(recipient.getCellRef().getCount()<=0){m_diaryReason="target_unavailable";return;}
+                        auto store=MWBase::Environment::get().getESMStore();
+                        auto& books=store->getWritable<ESM::Book>();
+                        const auto id=ESM::RefId::stringRefId("lorkhan_diary_"+book.book.value());
+                        const auto* existing=books.search(id);
+                        const std::string marker="<!-- LORKHAN diary "+book.book.value()+" -->";
+                        if((!existing&&store->find(id)!=0)||(existing&&(!books.isDynamic(id)
+                            ||!existing->mScript.empty()||!existing->mEnchant.empty()||existing->mData.mSkillId!=-1
+                            ||existing->mData.mValue!=0||existing->mText.rfind(marker,0)!=0))){
+                            m_diaryReason="book_unavailable";return;}
+                        ESM::Book record;record.blank();record.mId=id;record.mName=book.title;
+                        record.mData.mWeight=1.f;record.mData.mSkillId=-1;
+                        if(existing){record.mModel=existing->mModel;record.mIcon=existing->mIcon;}
+                        else {
+                            // Use a mundane installed book's assets, never an asset path from the server.
+                            for(const auto& candidate:books){
+                                if(!books.isDynamic(candidate.mId)&&!candidate.mModel.empty()&&!candidate.mIcon.empty()
+                                    &&candidate.mData.mIsScroll==0&&candidate.mScript.empty()&&candidate.mEnchant.empty()){
+                                    record.mModel=candidate.mModel;record.mIcon=candidate.mIcon;break;}
+                            }
+                            if(record.mModel.empty()){m_diaryReason="book_unavailable";return;}
+                        }
+                        record.mText=marker;
+                        for(char c:book.content){switch(c){case '&':record.mText+='&';break;
+                            case '<':record.mText+='[';break;case '>':record.mText+=']';break;
+                            case '%':record.mText+="%<!-- -->";break;case '^':record.mText+="^<!-- -->";break;
+                            case '\n':record.mText+="<BR>";break;case '\r':break;default:record.mText+=c;}}
+                        record.mText+="<BR>"; // TES3 book layout hides text beyond its final paragraph tag.
+                        if(existing&&existing->mText==record.mText&&existing->mName==record.mName){
+                            m_diaryState="succeeded";m_diaryReason.clear();return;}
+                        // Dynamic records are serialized by ESMStore and survive dropping, trading and save/load.
+                        store->overrideRecord(record);
+                        if(!existing){
+                            try {MWWorld::ManualRef item(*store,id);
+                                recipient.getClass().getContainerStore(recipient).add(item.getPtr(),1,false);}
+                            catch(...){books.erase(id);m_diaryReason="inventory_update_failed";return;}
+                        }
+                        m_diaryState="succeeded";m_diaryReason.clear();
+                    }catch(const std::exception&){/* Return bounded failure without leaking game paths. */}
+                });
+                return success(lua,delivery);
+            }
+
+            sol::table diaryBookStatus(sol::state_view lua,const std::string& delivery) const
+            {
+                sol::table result(lua,sol::create);result["pending"]=m_diaryPending;
+                if(!m_diaryBook||m_diaryBook->delivery.value()!=delivery){result["status"]="failed";result["reason_code"]="invalid_payload";}
+                else {if(!m_diaryState.empty())result["status"]=m_diaryState;if(!m_diaryReason.empty())result["reason_code"]=m_diaryReason;}
+                return result;
+            }
+
+            std::tuple<sol::object,sol::object> submitDiaryBookResult(sol::state_view lua,const std::string& delivery,
+                const std::string& status,sol::optional<std::string> reason)
+            {
+                if(!ready()||!m_diaryBook||m_diaryBook->delivery.value()!=delivery)return failure(lua,"invalid_payload");
+                if(m_diaryReceipt)return failure(lua,"diary_receipt_pending");
+                if(status!="succeeded"&&status!="failed")return failure(lua,"invalid_payload");
+                if(m_diaryPending||(status=="succeeded"&&m_diaryState!="succeeded"))return failure(lua,"invalid_payload");
+                if(!m_diaryState.empty()&&(status!=m_diaryState||reason.value_or("")!=m_diaryReason))return failure(lua,"invalid_payload");
+                try {lorkhan::RequestId request(uuid());lorkhan::MessageId message(uuid());
+                    if(!m_diaryReceiptDto)m_diaryReceiptDto=lorkhan::DiaryBookResultRequest{message,{request,*m_session,m_service->generation()},m_diaryBook->delivery,
+                        m_diaryBook->book,m_diaryBook->contentHash,status=="succeeded"?lorkhan::DebugCommandResultStatus::succeeded
+                        :lorkhan::DebugCommandResultStatus::failed,reason.value_or(""),utcNow()};
+                    if(m_diaryReceiptDto->reasonCode!=reason.value_or("")
+                        ||(m_diaryReceiptDto->status==lorkhan::DebugCommandResultStatus::succeeded)!=(status=="succeeded"))return failure(lua,"invalid_payload");
+                    auto receipt=*m_diaryReceiptDto;receipt.correlation.request=request;
+                    lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),lorkhan::RequestKind::diary_book_result,std::move(receipt)};
+                    auto sent=m_service->enqueue(std::move(outbound));if(!sent)return failure(lua,sent.error().message);
+                    m_diaryReceipt=request;m_diaryReceiptOk=false;m_diaryError.clear();return success(lua,request.value());
+                }catch(const std::exception& e){return failure(lua,e.what());}
+            }
+
             std::tuple<sol::object,sol::object> requestDebugCommand(sol::state_view lua)
             {
                 if(!ready())return failure(lua,"bridge_not_ready");
@@ -777,31 +944,6 @@ namespace MWLua
                 }catch(const std::exception& error){return failure(lua,error.what());}
             }
 
-            // Edits are restricted to the server-advertised field and revision, never a Lua URL or document.
-            std::tuple<sol::object,sol::object> updateSetting(sol::state_view lua,const std::string& scope,
-                const std::string& key,const std::string& value,const std::string& changeToken,sol::table target)
-            {
-                if(!ready())return failure(lua,"bridge_not_ready");
-                if(m_controlsRequest)return failure(lua,"controls_request_pending");
-                if(!m_controls||!m_controls->settingsEditor||m_controls->settingsEditor->changeToken!=changeToken)
-                    return failure(lua,"settings_snapshot_stale");
-                bool advertised=false;
-                for(const auto& section:m_controls->settingsEditor->sections)if(section.scope==scope)
-                    for(const auto& field:section.fields)if(field.key==key)advertised=true;
-                if(!advertised)return failure(lua,"setting_not_available");
-                try{
-                    const lorkhan::RequestId request(uuid());const lorkhan::MessageId message(uuid());
-                    lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),
-                        lorkhan::RequestKind::controls_select,lorkhan::ControlsSelectRequest{message,
-                            {request,*m_session,m_service->generation()},utcNow(),lorkhan::SessionControlKind::setting,
-                            std::nullopt,std::nullopt,toJson(sol::make_object(lua,target)),
-                            lorkhan::SettingSelection{scope,key,value,changeToken}}};
-                    auto accepted=m_service->enqueue(std::move(outbound));
-                    if(!accepted)return failure(lua,accepted.error().message);
-                    m_controlsRequest=request;m_controlsError.clear();return success(lua,request.value());
-                }catch(const std::exception& error){return failure(lua,error.what());}
-            }
-
             sol::object sessionControls(sol::state_view lua) const
             {
                 if(!m_controls)return sol::make_object(lua,sol::nil);
@@ -831,8 +973,17 @@ namespace MWLua
                 memory["recent_turn_limit"]=snapshot.memory.recentTurnLimit;memory["knowledge_limit"]=snapshot.memory.knowledgeLimit;
                 narrator["enabled"]=snapshot.narrator.enabled;narrator["name"]=snapshot.narrator.name;
                 narrator["context_visibility"]=snapshot.narrator.contextVisibility;narrator["inline_mode"]=snapshot.narrator.inlineMode;
-                narrator["welcome_events"]=snapshot.narrator.welcomeEvents;narrator["random_events"]=snapshot.narrator.randomEvents;
-                narrator["quest_events"]=snapshot.narrator.questEvents;narrator["book_events"]=snapshot.narrator.bookEvents;
+                narrator["welcome_events"]=snapshot.narrator.welcomeEvents;
+                narrator["welcome_cooldown_minutes"]=snapshot.narrator.welcomeCooldownMinutes;
+                narrator["random_events"]=snapshot.narrator.randomEvents;
+                narrator["random_chance_percent"]=snapshot.narrator.randomChancePercent;
+                narrator["random_cooldown_rounds"]=snapshot.narrator.randomCooldownRounds;
+                narrator["bored_events"]=snapshot.narrator.boredEvents;
+                narrator["bored_chance_percent"]=snapshot.narrator.boredChancePercent;
+                narrator["quest_events"]=snapshot.narrator.questEvents;
+                narrator["quest_chance_percent"]=snapshot.narrator.questChancePercent;
+                narrator["quest_cooldown_minutes"]=snapshot.narrator.questCooldownMinutes;
+                narrator["book_events"]=snapshot.narrator.bookEvents;
                 safety["actions_enabled"]=snapshot.safety.actionsEnabled;safety["allow_hostile"]=snapshot.safety.allowHostile;
                 safety["allow_creatures"]=snapshot.safety.allowCreatures;
                 settings["behavior"]=behavior;settings["memory"]=memory;settings["narrator"]=narrator;settings["safety"]=safety;
@@ -841,27 +992,6 @@ namespace MWLua
                 for(const auto&[key,source]:snapshot.sourceMap)sources[key]=source;
                 effective["settings"]=settings;effective["routing"]=routing;effective["source_map"]=sources;
                 result["effective_settings"]=effective;
-                if(m_controls->settingsEditor){
-                    sol::table editor(lua,sol::create),sections(lua,sol::create);
-                    editor["change_token"]=m_controls->settingsEditor->changeToken;
-                    std::size_t sectionIndex=0;
-                    for(const auto& section:m_controls->settingsEditor->sections){
-                        sol::table sectionRow(lua,sol::create),fields(lua,sol::create);
-                        sectionRow["scope"]=section.scope;sectionRow["label"]=section.label;
-                        std::size_t fieldIndex=0;
-                        for(const auto& field:section.fields){sol::table row(lua,sol::create),choices(lua,sol::create);
-                            row["key"]=field.key;row["label"]=field.label;row["kind"]=field.kind;row["value"]=field.value;
-                            if(field.minimum)row["minimum"]=*field.minimum;if(field.maximum)row["maximum"]=*field.maximum;
-                            std::size_t choiceIndex=0;for(const auto&[value,label]:field.choices){
-                                sol::table choice(lua,sol::create);choice["value"]=value;choice["label"]=label;
-                                choices[++choiceIndex]=choice;
-                            }
-                            row["choices"]=choices;fields[++fieldIndex]=row;
-                        }
-                        sectionRow["fields"]=fields;sections[++sectionIndex]=sectionRow;
-                    }
-                    editor["sections"]=sections;result["settings_editor"]=editor;
-                }
                 for(std::size_t index=0;index<m_controls->modelSlots.size();++index){const auto& slot=m_controls->modelSlots[index];
                     sol::table row(lua,sol::create);row["key"]=slot.key;row["label"]=slot.label;row["available"]=slot.available;
                     if(slot.configurationId)row["configuration_id"]=*slot.configurationId;
@@ -921,69 +1051,6 @@ namespace MWLua
                 }catch(const std::exception& error){return failure(lua,error.what());}
             }
 
-            // Books resolve the narrator on the server; Lua cannot impersonate an NPC or choose a provider.
-            std::tuple<sol::object,sol::object> requestBookReadAloud(sol::state_view lua,const std::string& bookId,
-                const std::string& title,const std::string& text)
-            {
-                if(!ready())return failure(lua,"bridge_not_ready");
-                try{
-                    if(m_menuDialogues.size()>=32)return failure(lua,"speech_queue_full");
-                    if(m_pollRequest){static_cast<void>(m_service->cancel(*m_pollRequest));m_pollRequest.reset();}
-                    const lorkhan::RequestId request(uuid());const lorkhan::MessageId message(uuid());
-                    lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),
-                        lorkhan::RequestKind::book_read_aloud,lorkhan::BookReadAloudRequest{message,
-                            {request,*m_session,m_service->generation()},utcNow(),bookId,title,text}};
-                    auto accepted=m_service->enqueue(std::move(outbound));
-                    if(!accepted)return failure(lua,accepted.error().message);
-                    m_menuDialogues.emplace(request.value(),MenuDialogueState{"requesting",{},request,{}});
-                    return success(lua,request.value());
-                }catch(const std::exception& error){return failure(lua,error.what());}
-            }
-
-            // Process only owned speech/media while paused; unrelated results retain their arrival order.
-            bool settlePausedSpeech(const lorkhan::InboundResult& result)
-            {
-                for(auto&[unused,dialogue]:m_menuDialogues){
-                    static_cast<void>(unused);
-                    bool matches=dialogue.request&&*dialogue.request==result.request;
-                    auto media=dialogue.media?m_media.find(dialogue.media->media.value()):m_media.end();
-                    matches=matches||(media!=m_media.end()&&media->second.request&&*media->second.request==result.request);
-                    if(!matches)continue;
-                    if(result.kind==lorkhan::ResponseKind::menu_dialogue_ready){
-                        auto parsed=lorkhan::parseMenuDialogueTtsReadyResponse(result.payload,jsonHeaders());
-                        if(parsed)prepareMenuDialogueMedia(dialogue,parsed.value().media);
-                        else{dialogue.state="failed";dialogue.reason=parsed.error().message;dialogue.request.reset();}
-                    }else if(result.kind==lorkhan::ResponseKind::media_ready&&media!=m_media.end()){
-                        media->second.state="ready";media->second.reason.clear();media->second.request.reset();
-                        for(auto&[otherId,other]:m_menuDialogues){
-                            static_cast<void>(otherId);
-                            if(other.media&&other.media->media.value()==result.payload){
-                                other.state="ready";other.reason.clear();other.request.reset();
-                            }
-                        }
-                    }else{
-                        dialogue.state="failed";dialogue.reason=result.failure?result.failure->message:"speech_request_cancelled";
-                        dialogue.request.reset();
-                    }
-                    return true;
-                }
-                return false;
-            }
-
-            void pumpMenuDialogueTts()
-            {
-                if(!m_service||m_menuDialogues.empty())return;
-                for(auto iterator=m_deferredResults.begin();iterator!=m_deferredResults.end();){
-                    if(settlePausedSpeech(*iterator)){++m_resultsSeen;iterator=m_deferredResults.erase(iterator);}
-                    else ++iterator;
-                }
-                if(m_deferredResults.size()+kControlsPumpBatch>kDeferredResultCapacity)return;
-                for(auto& result:m_service->poll(kControlsPumpBatch)){
-                    if(settlePausedSpeech(result)){++m_resultsSeen;continue;}
-                    m_deferredResults.push_back(std::move(result));
-                }
-            }
-
             bool cancelMenuDialogueTts(const std::optional<std::string>& requestId=std::nullopt)
             {
                 bool cancelled=false;
@@ -1017,6 +1084,48 @@ namespace MWLua
                 sol::table result(lua,sol::create);result["state"]=dialogue.state;
                 if(!dialogue.reason.empty())result["reason"]=dialogue.reason;
                 if(dialogue.media)result["media_id"]=dialogue.media->media.value();
+                return sol::make_object(lua,result);
+            }
+
+            std::tuple<sol::object, sol::object> requestPlayerAutochat(sol::state_view lua,
+                sol::table player,sol::table target,const std::string& intent)
+            {
+                if(!ready())return failure(lua,"bridge_not_ready");
+                try{
+                    if(intent.empty()||intent.size()>16U*1024U)throw std::runtime_error("invalid_player_autochat_intent");
+                    if(!m_playerAutochats.empty())return failure(lua,"player_autochat_busy");
+                    if(m_pollRequest){static_cast<void>(m_service->cancel(*m_pollRequest));m_pollRequest.reset();}
+                    const lorkhan::RequestId request(uuid());const lorkhan::MessageId message(uuid());
+                    lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),
+                        lorkhan::RequestKind::player_autochat,lorkhan::PlayerAutochatRequest{message,
+                            {request,*m_session,m_service->generation()},utcNow(),
+                            toJson(sol::make_object(lua,player)),toJson(sol::make_object(lua,target)),intent}};
+                    auto accepted=m_service->enqueue(std::move(outbound));
+                    if(!accepted)return failure(lua,accepted.error().message);
+                    m_playerAutochats.emplace(request.value(),PlayerAutochatState{"requesting",{}, {},request});
+                    return success(lua,request.value());
+                }catch(const std::exception& error){return failure(lua,error.what());}
+            }
+
+            bool cancelPlayerAutochat(const std::optional<std::string>& requestId=std::nullopt)
+            {
+                bool cancelled=false;
+                for(auto iterator=m_playerAutochats.begin();iterator!=m_playerAutochats.end();){
+                    if(requestId&&iterator->first!=*requestId){++iterator;continue;}
+                    if(iterator->second.request&&m_service)static_cast<void>(m_service->cancel(*iterator->second.request));
+                    iterator=m_playerAutochats.erase(iterator);cancelled=true;
+                    if(requestId)break;
+                }
+                return cancelled;
+            }
+
+            sol::object playerAutochatStatus(sol::state_view lua,const std::string& requestId) const
+            {
+                const auto found=m_playerAutochats.find(requestId);
+                if(found==m_playerAutochats.end())return sol::make_object(lua,sol::nil);
+                sol::table result(lua,sol::create);result["state"]=found->second.state;
+                if(!found->second.text.empty())result["text"]=found->second.text;
+                if(!found->second.reason.empty())result["reason"]=found->second.reason;
                 return sol::make_object(lua,result);
             }
 
@@ -1194,6 +1303,23 @@ namespace MWLua
                 return true;
             }
 
+            // Settle the single player rewrite request without consuming unrelated global-lane results.
+            bool settlePlayerAutochatResult(const lorkhan::InboundResult& result)
+            {
+                const auto found=m_playerAutochats.find(result.request.value());
+                if(found==m_playerAutochats.end()||!found->second.request)return false;
+                found->second.request.reset();
+                if(result.kind==lorkhan::ResponseKind::player_autochat_ready){
+                    auto parsed=lorkhan::parsePlayerAutochatReadyResponse(result.payload,jsonHeaders());
+                    if(parsed){found->second.state="ready";found->second.text=parsed.value().text;found->second.reason.clear();}
+                    else{found->second.state="failed";found->second.reason=parsed.error().message;}
+                }else if(result.kind==lorkhan::ResponseKind::failure){
+                    found->second.state="failed";
+                    found->second.reason=result.failure?result.failure->message:"transport_failure";
+                }else{found->second.state="failed";found->second.reason="unexpected_player_autochat_response";}
+                return true;
+            }
+
             // The Interact overlay owns Interface UI mode and pauses simulation, so the GLOBAL Lua lane
             // that drives poll stops running while a server-owned controls panel is open. Player onFrame
             // keeps running every frame, so this settles only the in-flight controls response. Every
@@ -1248,6 +1374,20 @@ namespace MWLua
                 return status;
             }
 
+            sol::table pumpPlayerAutochat(sol::state_view lua)
+            {
+                sol::table status(lua,sol::create);bool settled=false;
+                if(m_service&&!m_playerAutochats.empty()
+                    &&m_deferredResults.size()+kControlsPumpBatch<=kDeferredResultCapacity){
+                    for(auto& result:m_service->poll(kControlsPumpBatch)){
+                        if(settlePlayerAutochatResult(result)){++m_resultsSeen;settled=true;continue;}
+                        m_deferredResults.push_back(std::move(result));
+                    }
+                }
+                status["settled"]=settled;status["pending"]=!m_playerAutochats.empty();
+                return status;
+            }
+
             sol::table poll(sol::state_view lua, std::size_t maximum)
             {
                 sol::table output(lua, sol::create);
@@ -1262,19 +1402,9 @@ namespace MWLua
                 for (auto& result : results)
                 {
                     ++m_resultsSeen;
-                    const auto rpg=m_rpgRequests.find(result.request.value());
-                    if(rpg!=m_rpgRequests.end()){
-                        auto accepted=lorkhan::parseGameDataAcceptedResponse(result.payload,jsonHeaders());
-                        if(accepted&&!accepted.value().duplicate&&(accepted.value().commentRequested||rpg->second.first=="bored_event")){
-                            sol::table event(lua,sol::create);event["type"]=rpg->second.first=="bored_event"?"bored.decision":(rpg->second.first=="quest_event"?"quest.comment":"rpg.comment");
-                            event["comment_requested"]=accepted.value().commentRequested;
-                            event["request_id"]=result.request.value();event["session_id"]=accepted.value().session.value();
-                            event["generation"]=accepted.value().generation.value();
-                            event["kind"]=rpg->second.first;event["text"]=rpg->second.second;output[outIndex++]=event;
-                        }
-                        m_rpgRequests.erase(rpg);continue;
-                    }
                     if (settleDebugResult(result)) continue;
+                    if (settleDiaryResult(result)) continue;
+                    if (settlePlayerAutochatResult(result)) continue;
                     if (result.kind == lorkhan::ResponseKind::failure)
                     {
                         const auto failedTurn=m_turnRequests.find(result.request.value());
@@ -1399,9 +1529,11 @@ namespace MWLua
                 auto result = m_service->cancelGeneration(lorkhan::Generation(generation));
                 if (!result) return false;
                 cancelMenuDialogueTts();
-                m_rpgRequests.clear();
+                cancelPlayerAutochat();
                 m_session.reset(); m_clientSettings.reset(); m_configRevision.clear();
                 m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();
+                m_diaryRequest.reset();m_diaryReceipt.reset();m_diaryBook.reset();m_diaryReceiptDto.reset();m_diaryPending=false;
+                m_diaryState.clear();m_diaryReason.clear();m_diaryError.clear();m_diaryReceiptOk=false;
                 m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_turnRequests.clear();m_controlsError.clear();m_debugError.clear();
                 m_loadedSave=loadedSave;m_waitingLoadedCalendar=loadedSave;m_loadedCalendar.reset();beginSession();
                 m_status = "connecting";
@@ -1500,7 +1632,7 @@ namespace MWLua
             }
 
             static std::vector<std::string> capabilities()
-            { return { "context.item_pickup.v1", "context.spell_cast.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.conversation.end", "action.ai.follow", "action.ai.stop",
+            { return { "diary.books.v1", "context.item_pickup.v1", "context.spell_cast.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.conversation.end", "action.ai.follow", "action.ai.stop",
                 "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
                 "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" }; }
@@ -1628,6 +1760,12 @@ namespace MWLua
             std::optional<lorkhan::RequestId> m_controlsRequest;
             std::optional<lorkhan::ControlsResponse> m_controls;
             std::string m_controlsError;
+            std::optional<lorkhan::RequestId> m_diaryRequest,m_diaryReceipt;
+            std::optional<lorkhan::DiaryBookResponse::Book> m_diaryBook;
+            std::optional<lorkhan::DiaryBookResultRequest> m_diaryReceiptDto;
+            std::uint64_t m_diarySerial{};
+            bool m_diaryPending{},m_diaryReceiptOk{};
+            std::string m_diaryState,m_diaryReason,m_diaryError;
             std::optional<lorkhan::RequestId> m_debugRequest;
             std::optional<lorkhan::DebugCommandResponse::Command> m_debugCommand;
             std::string m_debugError;
@@ -1639,7 +1777,7 @@ namespace MWLua
             std::chrono::steady_clock::time_point m_nextPoll{};
             std::map<std::string, MediaState> m_media;
             std::map<std::string, MenuDialogueState> m_menuDialogues;
-            std::map<std::string,std::pair<std::string,std::string>> m_rpgRequests;
+            std::map<std::string, PlayerAutochatState> m_playerAutochats;
             std::string m_status{"unconfigured"};
             std::string m_error;
             std::uint64_t m_resultsSeen{};
@@ -1655,13 +1793,13 @@ namespace MWLua
             return instance;
         }
 
-        sol::object makePackage(sol::state_view lua, LuaManager* luaManager)
+        sol::object makePackage(sol::state_view lua, LuaManager* luaManager, bool global)
         {
             sol::table api(lua, sol::create);
             api["version"] = std::string(lorkhan::kClientVersion);
             api["capabilities"] = [lua] {
                 sol::table result(lua, sol::create); std::size_t index = 1;
-            for (const auto& capability : std::vector<std::string>{ "context.item_pickup.v1", "context.spell_cast.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session",
+            for (const auto& capability : std::vector<std::string>{ "diary.books.v1", "context.item_pickup.v1", "context.spell_cast.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session",
                 "action.ai.follow", "action.ai.stop", "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
                 "action.combat.start", "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip",
                 "action.item.use", "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" })
@@ -1698,29 +1836,26 @@ namespace MWLua
                 return client().submitActorProfile(lua, std::move(payload));
             };
             api["submitAutomaticDiary"] = [lua](sol::table payload) {
-                return client().submitGameData(lua,lorkhan::GameDataType::automatic_diary,std::move(payload));
+                return client().submitAutomaticDiary(lua, std::move(payload));
             };
-            api["submitQuestEvent"] = [lua](sol::table payload) {
-                return client().submitGameData(lua,lorkhan::GameDataType::quest_event,std::move(payload));
-            };
-            api["submitBoredEvent"] = [lua](sol::table payload) {
-                return client().submitGameData(lua,lorkhan::GameDataType::bored_event,std::move(payload));
-            };
-            api["submitRpgEvent"] = [lua](sol::table payload) {
-                return client().submitGameData(lua,lorkhan::GameDataType::rpg_event,std::move(payload));
-            };
-            api["requestSessionControls"] = [lua](sol::table target,sol::optional<bool> includeSettingsEditor) {
-                return client().requestControls(lua,std::move(target),includeSettingsEditor.value_or(false));
-            };
+            api["requestSessionControls"] = [lua](sol::table target) { return client().requestControls(lua,std::move(target)); };
             api["selectSessionControl"] = [lua](const std::string& kind,sol::optional<std::string> selection,sol::table target) {
                 return client().selectControl(lua,kind,std::move(selection),std::move(target));
             };
             api["sessionControls"] = [lua] { return client().sessionControls(lua); };
-            api["updateSessionSetting"] = [lua](const std::string& scope,const std::string& key,
-                const std::string& value,const std::string& changeToken,sol::table target) {
-                return client().updateSetting(lua,scope,key,value,changeToken,std::move(target));
-            };
             api["pumpSessionControls"] = [lua] { return client().pumpSessionControls(lua); };
+            api["pumpPlayerAutochat"] = [lua] { return client().pumpPlayerAutochat(lua); };
+            if(global){
+                api["cancelDiaryBook"]=[]{client().cancelDiaryBook();};
+                api["requestDiaryBook"]=[lua]{return client().requestDiaryBook(lua);};
+                api["pumpDiaryBook"]=[lua]{return client().pumpDiaryBook(lua);};
+                api["pumpDiaryBookResult"]=[lua]{return client().pumpDiaryBook(lua,true);};
+                api["materializeDiaryBook"]=[lua,luaManager](const GObject& actor,const std::string& delivery){
+                    return client().materializeDiaryBook(lua,luaManager,actor,delivery);};
+                api["diaryBookStatus"]=[lua](const std::string& delivery){return client().diaryBookStatus(lua,delivery);};
+                api["submitDiaryBookResult"]=[lua](const std::string& delivery,const std::string& status,sol::optional<std::string> reason){
+                    return client().submitDiaryBookResult(lua,delivery,status,reason);};
+            }
             api["requestDebugCommand"] = [lua] { return client().requestDebugCommand(lua); };
             api["pumpDebugCommand"] = [lua] { return client().pumpDebugCommand(lua); };
             api["submitDebugCommandResult"] = [lua](const std::string& commandId,const std::string& status,
@@ -1748,13 +1883,16 @@ namespace MWLua
             api["mediaStatus"] = [lua](const std::string& id) { return client().mediaStatus(lua, id); };
             api["requestMenuDialogueTts"] = [lua](sol::table actor,const std::string& text) {
                 return client().requestMenuDialogueTts(lua,std::move(actor),text); };
-            api["requestBookReadAloud"] = [lua](const std::string& bookId,const std::string& title,const std::string& text) {
-                return client().requestBookReadAloud(lua,bookId,title,text); };
-            api["pumpMenuDialogueTts"] = [] { client().pumpMenuDialogueTts(); };
             api["cancelMenuDialogueTts"] = [](sol::optional<std::string> requestId) {
                 return client().cancelMenuDialogueTts(requestId ? std::optional<std::string>(*requestId) : std::nullopt); };
             api["menuDialogueTtsStatus"] = [lua](const std::string& requestId) {
                 return client().menuDialogueTtsStatus(lua,requestId); };
+            api["requestPlayerAutochat"] = [lua](sol::table player,sol::table target,const std::string& intent) {
+                return client().requestPlayerAutochat(lua,std::move(player),std::move(target),intent); };
+            api["cancelPlayerAutochat"] = [](sol::optional<std::string> requestId) {
+                return client().cancelPlayerAutochat(requestId ? std::optional<std::string>(*requestId) : std::nullopt); };
+            api["playerAutochatStatus"] = [lua](const std::string& requestId) {
+                return client().playerAutochatStatus(lua,requestId); };
             api["playSpeech"] = [lua, luaManager](const std::string& id, const sol::object& actor,
                                     sol::optional<std::string> subtitle, sol::optional<float> volumeBoost) {
                 return client().playSpeech(lua, id, actor, subtitle.value_or(""), volumeBoost.value_or(3.f), luaManager);
@@ -1788,7 +1926,7 @@ namespace MWLua
     {
         if (context.mType == Context::Menu || context.mType == Context::Load)
             throw std::logic_error("openmw.lorkhan is unavailable in menu and load contexts");
-        return makePackage(context.sol(), context.mLuaManager);
+        return makePackage(context.sol(), context.mLuaManager, context.mType == Context::Global);
     }
 
     sol::object initLorkhanCustomPackageLoader(const Context& context)
@@ -1798,7 +1936,7 @@ namespace MWLua
         return sol::make_object(context.sol(), [lua = context.mLua, luaManager = context.mLuaManager](sol::table hiddenData) -> sol::object {
             LuaUtil::ScriptId id = hiddenData[LuaUtil::ScriptsContainer::sScriptIdKey];
             if (!lua->getConfiguration().isCustomScript(id.mIndex)) return sol::nil;
-            return makePackage(hiddenData.lua_state(), luaManager);
+            return makePackage(hiddenData.lua_state(), luaManager, false);
         });
     }
 }

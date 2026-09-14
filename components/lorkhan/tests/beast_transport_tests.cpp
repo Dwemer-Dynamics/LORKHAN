@@ -335,6 +335,37 @@ void testHealthAndWirePolicy()
     CHECK(result && result.value().kind == lorkhan::ResponseKind::status);
 }
 
+void testDiaryBookWire()
+{
+    OneShotServer server([](const CapturedRequest& request,tcp::socket& socket){
+        CHECK(request.target==std::string(kBasePath)+"/diary-books/query");
+        CHECK(request.body.find("lorkhan.diary-book.query.v1")!=std::string::npos);
+        sendJson(socket,200,std::string(R"({"schema":"lorkhan.diary-book.v1","message_id":")")+kMessage
+            +R"(","request_id":")"+kRequest+R"(","session_id":")"+kSession+R"(","generation":7,"book":null})");
+    });
+    lorkhan::BeastTransport transport(url(server.port()),lorkhan::InstallationId(kInstallation),token(),cacheRoot());
+    lorkhan::OutboundRequest query{lorkhan::RequestId(kRequest),lorkhan::SessionId(kSession),lorkhan::Generation(7),
+        lorkhan::RequestKind::diary_book_query,lorkhan::DiaryBookQueryRequest{lorkhan::MessageId(kMessage),
+            {lorkhan::RequestId(kRequest),lorkhan::SessionId(kSession),lorkhan::Generation(7)}}};
+    auto result=transport.execute(query,{});CHECK(result&&result.value().kind==lorkhan::ResponseKind::diary_book);
+    for(bool mismatch:{false,true}){
+        OneShotServer receiptServer([mismatch](const CapturedRequest& request,tcp::socket& socket){
+            CHECK(request.target==std::string(kBasePath)+"/diary-book-results");CHECK(request.idempotency==kMessage);
+            CHECK(request.body.find("\"reason_code\":null")!=std::string::npos);
+            sendJson(socket,200,std::string(R"({"schema":"lorkhan.diary-book-result.accepted.v1","message_id":")")+kMessage
+                +R"(","request_id":")"+kRequest+R"(","session_id":")"+kSession+R"(","generation":7,"delivery_id":")"
+                +(mismatch?kTurn:kAction)+R"(","status":"succeeded","duplicate":false})");
+        });
+        lorkhan::BeastTransport receiptTransport(url(receiptServer.port()),lorkhan::InstallationId(kInstallation),token(),cacheRoot());
+        lorkhan::OutboundRequest receipt{lorkhan::RequestId(kRequest),lorkhan::SessionId(kSession),lorkhan::Generation(7),
+            lorkhan::RequestKind::diary_book_result,lorkhan::DiaryBookResultRequest{lorkhan::MessageId(kMessage),
+                {lorkhan::RequestId(kRequest),lorkhan::SessionId(kSession),lorkhan::Generation(7)},
+                lorkhan::MessageId(kAction),lorkhan::MessageId(kTurn),std::string(64,'a'),
+                lorkhan::DebugCommandResultStatus::succeeded,"","2026-09-13T00:00:00Z"}};
+        auto receiptResult=receiptTransport.execute(receipt,{});CHECK(static_cast<bool>(receiptResult)==!mismatch);
+    }
+}
+
 void testSessionTurnAndCorrelation()
 {
     for (int loaded = 0; loaded < 3; ++loaded) {
@@ -1044,6 +1075,7 @@ int main(int argc, char** argv)
         return EXIT_SUCCESS;
     }
 
+    testDiaryBookWire();
     testHealthAndWirePolicy();
     testSessionTurnAndCorrelation();
     testEventsInterruptionActionAndDelete();

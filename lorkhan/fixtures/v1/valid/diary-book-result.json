@@ -1,0 +1,17 @@
+{
+  "description": "Typed physical NPC diary diary-book-result",
+  "instance": {
+    "schema": "lorkhan.diary-book-result.v1",
+    "message_id": "00000000-0000-4000-8000-000000000040",
+    "request_id": "00000000-0000-4000-8000-000000000041",
+    "session_id": "00000000-0000-4000-8000-000000000007",
+    "generation": 7,
+    "delivery_id": "00000000-0000-4000-8000-000000000042",
+    "book_id": "00000000-0000-4000-8000-000000000043",
+    "content_hash": "2b95b1d49768775d44f2bb976a0ce7d4815cae7bbfbdf83e97683b67aebb125c",
+    "status": "succeeded",
+    "reason_code": null,
+    "completed_at": "2026-09-13T12:00:00Z"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/diary-book-result.schema.json"
+}

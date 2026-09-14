@@ -341,3 +341,33 @@ shape (zero-based month). Loading an earlier save retires observations at or bey
 its cutoff while preserving earlier dated observations. Legacy undated spell/pickup
 records are retained as evidence but cannot cross session boundaries into context;
 the DaysPassed clock is never guessed to be an absolute calendar timestamp.
+
+
+## Physical NPC diary books (2026-09-13)
+
+The user approved a narrow exception to the record-creation boundary for physical NPC diaries.
+This does not authorize model-selected record properties, scripts, console commands, paths, assets,
+or arbitrary record creation. No content addon or bundled game asset is introduced.
+
+The opt-in Core Profile/NPC setting `diary.materialize_enabled` is labelled **Physical Diary**.
+The server selects completed generated diary entries for the exact NPC/creature and playthrough,
+combines the latest five into a bounded plain-text book, and excludes invalidated future sources.
+Player and Narrator profiles are excluded. Editing a generated entry updates its book contents.
+
+Clients advertise `diary.books.v1`. Authenticated `POST /diary-books/query` returns a nullable
+`lorkhan.diary-book.v1` delivery, correlated by request/session/generation. A stable book UUID
+identifies one NPC/playthrough diary; a delivery UUID identifies the current content snapshot.
+Titles are bounded to 128 UTF-8 bytes; content to 2048 characters and 8192 UTF-8 bytes, with a
+SHA-256 content hash. `POST /diary-book-results` records only correlated terminal execution results.
+An accepted HTTP request is not evidence that a book was created.
+
+The native client retains the authenticated snapshot and exposes only typed diary materialization.
+The exact NPC reference is checked again on the main thread. A deterministic saved dynamic book
+record is created once and updated in place, including when its inventory item has moved or been
+dropped. Book properties are fixed by native code; visuals reuse an installed mundane book. Text is
+neutralized for the TES3 book parser, including literal game-variable markers.
+Loading an older save allows the eligible current snapshot to be reconciled without a global
+server receipt incorrectly claiming that the book still exists in that save.
+
+This exception is separate from the deferred original content-addon deliverable. In-game reading,
+movement, dropping, and save/reload acceptance require user testing; builds do not prove gameplay.

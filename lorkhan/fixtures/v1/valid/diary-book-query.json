@@ -1,0 +1,11 @@
+{
+  "description": "Typed physical NPC diary diary-book-query",
+  "instance": {
+    "schema": "lorkhan.diary-book.query.v1",
+    "message_id": "00000000-0000-4000-8000-000000000040",
+    "request_id": "00000000-0000-4000-8000-000000000041",
+    "session_id": "00000000-0000-4000-8000-000000000007",
+    "generation": 7
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/diary-book-query.schema.json"
+}

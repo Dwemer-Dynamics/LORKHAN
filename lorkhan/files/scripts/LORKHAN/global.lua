@@ -7,6 +7,7 @@ local typesOk,types=pcall(require,'openmw.types')
 local worldOk,world=pcall(require,'openmw.world')
 local worldUtilOk,worldUtil=pcall(require,'openmw.util')
 local npcManager=require('scripts.LORKHAN.npc_manager')
+local diaryBooks=require('scripts.LORKHAN.diary_books')
 local npcControls=npcManager.new({core=core,world=world,types=types,util=worldUtil})
 local state
 local pendingPlayerEvents={}
@@ -63,6 +64,7 @@ local function manageActor(actor,generation)
     return nil,'actor_script_unavailable'
 end
 state=orchestrator.new(bridge,emit,sendActor,manageActor)
+local diaries=diaryBooks.new(bridge,function(actor) return state.registry:resolve(actor) end)
 local configuredSession
 local morrowindMonths={'Morning Star','Sun\'s Dawn','First Seed','Rain\'s Hand','Second Seed','Midyear',
     'Sun\'s Height','Last Seed','Hearthfire','Frostfall','Sun\'s Dusk','Evening Star'}
@@ -336,6 +338,7 @@ end
 return {
     engineHandlers={
         onNewGame=function()
+            diaryBooks.reset(diaries)
             pendingLoadedSave=false
             pendingPlayerEvents={}
             npcManager.load(npcControls,nil)
@@ -344,6 +347,7 @@ return {
             flushPlayerEvents()
         end,
         onLoad=function(data)
+            diaryBooks.reset(diaries)
             pendingLoadedSave=type(bridge.finishLoadedSave)=='function'
             pendingPlayerEvents={}
             orchestrator.load(state,data)
@@ -403,6 +407,8 @@ return {
                 orchestrator.configureSession(state,session.session_id)
             end
             if state.events then orchestrator.poll(state) end
+            diaryBooks.pump(diaries,state.sessionId,state.generation,
+                core and core.getRealTime and core.getRealTime() or 0,state.disabled or state.hardHalted)
             orchestrator.pollRechatEligibility(state,BRIDGE_POLL_INTERVAL)
             orchestrator.pollInventoryObservations(state,BRIDGE_POLL_INTERVAL)
             orchestrator.runAutonomy(state,BRIDGE_POLL_INTERVAL)

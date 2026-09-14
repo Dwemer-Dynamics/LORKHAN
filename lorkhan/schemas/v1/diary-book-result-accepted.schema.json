@@ -1,0 +1,47 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "lorkhan.diary-book-result.accepted.v1"
+    },
+    "message_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "request_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "session_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "generation": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+    },
+    "delivery_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "succeeded",
+        "failed"
+      ]
+    },
+    "duplicate": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema",
+    "message_id",
+    "request_id",
+    "session_id",
+    "generation",
+    "delivery_id",
+    "status",
+    "duplicate"
+  ],
+  "$id": "https://lorkhan.invalid/schemas/v1/diary-book-result-accepted.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

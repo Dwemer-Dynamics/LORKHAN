@@ -19,6 +19,11 @@
 #include "../mwmechanics/aisequence.hpp"
 #include "../mwmechanics/creaturestats.hpp"
 #include "../mwworld/class.hpp"
+#include "../mwworld/esmstore.hpp"
+#include "../mwworld/containerstore.hpp"
+#include "../mwworld/manualref.hpp"
+#include <components/esm3/loadbook.hpp>
+#include <components/esm3/loadcrea.hpp>
 
 #include "luamanagerimp.hpp"
 #include "objectvariant.hpp"
@@ -754,6 +759,158 @@ namespace MWLua
                 catch(const std::exception& error){return failure(lua,error.what());}
             }
 
+            void cancelDiaryBook()
+            {
+                ++m_diarySerial;
+                if(m_service){if(m_diaryRequest)(void)m_service->cancel(*m_diaryRequest);
+                    if(m_diaryReceipt)(void)m_service->cancel(*m_diaryReceipt);}
+                m_diaryRequest.reset();m_diaryReceipt.reset();m_diaryBook.reset();m_diaryReceiptDto.reset();m_diaryPending=false;
+                m_diaryState.clear();m_diaryReason.clear();m_diaryError.clear();m_diaryReceiptOk=false;
+            }
+
+            std::tuple<sol::object,sol::object> requestDiaryBook(sol::state_view lua)
+            {
+                if(!ready())return failure(lua,"not_ready");
+                if(m_diaryRequest||m_diaryReceipt||m_diaryPending)return failure(lua,"diary_request_pending");
+                try {
+                    lorkhan::RequestId request(uuid());lorkhan::MessageId message(uuid());
+                    lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),
+                        lorkhan::RequestKind::diary_book_query,lorkhan::DiaryBookQueryRequest{message,
+                            {request,*m_session,m_service->generation()}}};
+                    auto sent=m_service->enqueue(std::move(outbound));if(!sent)return failure(lua,sent.error().message);
+                    m_diaryRequest=request;m_diaryBook.reset();m_diaryReceiptDto.reset();m_diaryError.clear();m_diaryState.clear();
+                    return success(lua,request.value());
+                }catch(const std::exception& e){return failure(lua,e.what());}
+            }
+
+            bool settleDiaryResult(const lorkhan::InboundResult& result)
+            {
+                if(m_diaryRequest&&result.request==*m_diaryRequest){
+                    m_diaryRequest.reset();m_diaryBook.reset();
+                    if(result.kind==lorkhan::ResponseKind::diary_book){
+                        auto parsed=lorkhan::parseDiaryBookResponse(result.payload,jsonHeaders());
+                        if(parsed)m_diaryBook=std::move(parsed).value().book;
+                        else m_diaryError=parsed.error().message;
+                    }else m_diaryError="diary_query_failed";
+                    return true;
+                }
+                if(m_diaryReceipt&&result.request==*m_diaryReceipt){
+                    m_diaryReceipt.reset();m_diaryReceiptOk=result.kind==lorkhan::ResponseKind::completed;
+                    if(!m_diaryReceiptOk)m_diaryError="diary_receipt_failed";
+                    return true;
+                }
+                return false;
+            }
+
+            sol::table pumpDiaryBook(sol::state_view lua,bool receipt=false)
+            {
+                if(m_service&&(m_diaryRequest||m_diaryReceipt)&&m_deferredResults.size()+kControlsPumpBatch<=kDeferredResultCapacity){
+                    for(auto& result:m_service->poll(kControlsPumpBatch)){
+                        if(settleDiaryResult(result)){++m_resultsSeen;continue;}
+                        m_deferredResults.push_back(std::move(result));
+                    }
+                }
+                sol::table result(lua,sol::create);result["pending"]=receipt?m_diaryReceipt.has_value():m_diaryRequest.has_value();
+                if(!m_diaryError.empty())result["error"]=m_diaryError;
+                if(receipt)result["ok"]=m_diaryReceiptOk;
+                else if(m_diaryBook){sol::table book(lua,sol::create);
+                    book["delivery_id"]=m_diaryBook->delivery.value();book["book_id"]=m_diaryBook->book.value();
+                    book["target"]=identityTable(lua,m_diaryBook->target);book["title"]=m_diaryBook->title;
+                    book["content"]=m_diaryBook->content;book["content_hash"]=m_diaryBook->contentHash;result["book"]=book;}
+                return result;
+            }
+
+            // A retained authenticated DTO is the only source of book content and recipient identity.
+            std::tuple<sol::object,sol::object> materializeDiaryBook(sol::state_view lua,LuaManager* manager,
+                const GObject& actor,const std::string& delivery)
+            {
+                if(!ready()||!m_diaryBook||m_diaryBook->delivery.value()!=delivery)return failure(lua,"invalid_payload");
+                if(m_diaryPending||!m_diaryState.empty())return success(lua,delivery);
+                const auto book=*m_diaryBook;const auto scope=*observationScope();const auto serial=m_diarySerial;
+                m_diaryPending=true;m_diaryReason.clear();
+                manager->addAction([this,actor,book,scope,serial] {
+                    if(serial!=m_diarySerial||!ready()||m_session->value()!=scope.sessionId||generation()!=scope.generation)return;
+                    m_diaryPending=false;m_diaryState="failed";m_diaryReason="record_creation_failed";
+                    try {
+                        const auto& recipient=actor.ptr();const auto& ref=recipient.getCellRef().getRefNum();
+                        const bool creature=recipient.getType()==ESM::Creature::sRecordId;
+                        if((!creature&&recipient.getType()!=ESM::NPC::sRecordId)
+                            ||book.target.kind!=(creature?"creature":"npc")
+                            ||recipient.getCellRef().getRefId().serializeText()!=book.target.recordId
+                            ||ref.mIndex!=book.target.refnumIndex||ref.mContentFile!=book.target.refnumContentFile){
+                            m_diaryReason="target_mismatch";return;}
+                        if(recipient.getCellRef().getCount()<=0){m_diaryReason="target_unavailable";return;}
+                        auto store=MWBase::Environment::get().getESMStore();
+                        auto& books=store->getWritable<ESM::Book>();
+                        const auto id=ESM::RefId::stringRefId("lorkhan_diary_"+book.book.value());
+                        const auto* existing=books.search(id);
+                        const std::string marker="<!-- LORKHAN diary "+book.book.value()+" -->";
+                        if((!existing&&store->find(id)!=0)||(existing&&(!books.isDynamic(id)
+                            ||!existing->mScript.empty()||!existing->mEnchant.empty()||existing->mData.mSkillId!=-1
+                            ||existing->mData.mValue!=0||existing->mText.rfind(marker,0)!=0))){
+                            m_diaryReason="book_unavailable";return;}
+                        ESM::Book record;record.blank();record.mId=id;record.mName=book.title;
+                        record.mData.mWeight=1.f;record.mData.mSkillId=-1;
+                        if(existing){record.mModel=existing->mModel;record.mIcon=existing->mIcon;}
+                        else {
+                            // Use a mundane installed book's assets, never an asset path from the server.
+                            for(const auto& candidate:books){
+                                if(!books.isDynamic(candidate.mId)&&!candidate.mModel.empty()&&!candidate.mIcon.empty()
+                                    &&candidate.mData.mIsScroll==0&&candidate.mScript.empty()&&candidate.mEnchant.empty()){
+                                    record.mModel=candidate.mModel;record.mIcon=candidate.mIcon;break;}
+                            }
+                            if(record.mModel.empty()){m_diaryReason="book_unavailable";return;}
+                        }
+                        record.mText=marker;
+                        for(char c:book.content){switch(c){case '&':record.mText+='&';break;
+                            case '<':record.mText+='[';break;case '>':record.mText+=']';break;
+                            case '%':record.mText+="%<!-- -->";break;case '^':record.mText+="^<!-- -->";break;
+                            case '\n':record.mText+="<BR>";break;case '\r':break;default:record.mText+=c;}}
+                        record.mText+="<BR>"; // TES3 book layout hides text beyond its final paragraph tag.
+                        if(existing&&existing->mText==record.mText&&existing->mName==record.mName){
+                            m_diaryState="succeeded";m_diaryReason.clear();return;}
+                        // Dynamic records are serialized by ESMStore and survive dropping, trading and save/load.
+                        store->overrideRecord(record);
+                        if(!existing){
+                            try {MWWorld::ManualRef item(*store,id);
+                                recipient.getClass().getContainerStore(recipient).add(item.getPtr(),1,false);}
+                            catch(...){books.erase(id);m_diaryReason="inventory_update_failed";return;}
+                        }
+                        m_diaryState="succeeded";m_diaryReason.clear();
+                    }catch(const std::exception&){/* Return bounded failure without leaking game paths. */}
+                });
+                return success(lua,delivery);
+            }
+
+            sol::table diaryBookStatus(sol::state_view lua,const std::string& delivery) const
+            {
+                sol::table result(lua,sol::create);result["pending"]=m_diaryPending;
+                if(!m_diaryBook||m_diaryBook->delivery.value()!=delivery){result["status"]="failed";result["reason_code"]="invalid_payload";}
+                else {if(!m_diaryState.empty())result["status"]=m_diaryState;if(!m_diaryReason.empty())result["reason_code"]=m_diaryReason;}
+                return result;
+            }
+
+            std::tuple<sol::object,sol::object> submitDiaryBookResult(sol::state_view lua,const std::string& delivery,
+                const std::string& status,sol::optional<std::string> reason)
+            {
+                if(!ready()||!m_diaryBook||m_diaryBook->delivery.value()!=delivery)return failure(lua,"invalid_payload");
+                if(m_diaryReceipt)return failure(lua,"diary_receipt_pending");
+                if(status!="succeeded"&&status!="failed")return failure(lua,"invalid_payload");
+                if(m_diaryPending||(status=="succeeded"&&m_diaryState!="succeeded"))return failure(lua,"invalid_payload");
+                if(!m_diaryState.empty()&&(status!=m_diaryState||reason.value_or("")!=m_diaryReason))return failure(lua,"invalid_payload");
+                try {lorkhan::RequestId request(uuid());lorkhan::MessageId message(uuid());
+                    if(!m_diaryReceiptDto)m_diaryReceiptDto=lorkhan::DiaryBookResultRequest{message,{request,*m_session,m_service->generation()},m_diaryBook->delivery,
+                        m_diaryBook->book,m_diaryBook->contentHash,status=="succeeded"?lorkhan::DebugCommandResultStatus::succeeded
+                        :lorkhan::DebugCommandResultStatus::failed,reason.value_or(""),utcNow()};
+                    if(m_diaryReceiptDto->reasonCode!=reason.value_or("")
+                        ||(m_diaryReceiptDto->status==lorkhan::DebugCommandResultStatus::succeeded)!=(status=="succeeded"))return failure(lua,"invalid_payload");
+                    auto receipt=*m_diaryReceiptDto;receipt.correlation.request=request;
+                    lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),lorkhan::RequestKind::diary_book_result,std::move(receipt)};
+                    auto sent=m_service->enqueue(std::move(outbound));if(!sent)return failure(lua,sent.error().message);
+                    m_diaryReceipt=request;m_diaryReceiptOk=false;m_diaryError.clear();return success(lua,request.value());
+                }catch(const std::exception& e){return failure(lua,e.what());}
+            }
+
             std::tuple<sol::object,sol::object> requestDebugCommand(sol::state_view lua)
             {
                 if(!ready())return failure(lua,"bridge_not_ready");
@@ -1246,6 +1403,7 @@ namespace MWLua
                 {
                     ++m_resultsSeen;
                     if (settleDebugResult(result)) continue;
+                    if (settleDiaryResult(result)) continue;
                     if (settlePlayerAutochatResult(result)) continue;
                     if (result.kind == lorkhan::ResponseKind::failure)
                     {
@@ -1374,6 +1532,8 @@ namespace MWLua
                 cancelPlayerAutochat();
                 m_session.reset(); m_clientSettings.reset(); m_configRevision.clear();
                 m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();
+                m_diaryRequest.reset();m_diaryReceipt.reset();m_diaryBook.reset();m_diaryReceiptDto.reset();m_diaryPending=false;
+                m_diaryState.clear();m_diaryReason.clear();m_diaryError.clear();m_diaryReceiptOk=false;
                 m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_turnRequests.clear();m_controlsError.clear();m_debugError.clear();
                 m_loadedSave=loadedSave;m_waitingLoadedCalendar=loadedSave;m_loadedCalendar.reset();beginSession();
                 m_status = "connecting";
@@ -1472,7 +1632,7 @@ namespace MWLua
             }
 
             static std::vector<std::string> capabilities()
-            { return { "context.item_pickup.v1", "context.spell_cast.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.conversation.end", "action.ai.follow", "action.ai.stop",
+            { return { "diary.books.v1", "context.item_pickup.v1", "context.spell_cast.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.conversation.end", "action.ai.follow", "action.ai.stop",
                 "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
                 "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" }; }
@@ -1600,6 +1760,12 @@ namespace MWLua
             std::optional<lorkhan::RequestId> m_controlsRequest;
             std::optional<lorkhan::ControlsResponse> m_controls;
             std::string m_controlsError;
+            std::optional<lorkhan::RequestId> m_diaryRequest,m_diaryReceipt;
+            std::optional<lorkhan::DiaryBookResponse::Book> m_diaryBook;
+            std::optional<lorkhan::DiaryBookResultRequest> m_diaryReceiptDto;
+            std::uint64_t m_diarySerial{};
+            bool m_diaryPending{},m_diaryReceiptOk{};
+            std::string m_diaryState,m_diaryReason,m_diaryError;
             std::optional<lorkhan::RequestId> m_debugRequest;
             std::optional<lorkhan::DebugCommandResponse::Command> m_debugCommand;
             std::string m_debugError;
@@ -1627,13 +1793,13 @@ namespace MWLua
             return instance;
         }
 
-        sol::object makePackage(sol::state_view lua, LuaManager* luaManager)
+        sol::object makePackage(sol::state_view lua, LuaManager* luaManager, bool global)
         {
             sol::table api(lua, sol::create);
             api["version"] = std::string(lorkhan::kClientVersion);
             api["capabilities"] = [lua] {
                 sol::table result(lua, sol::create); std::size_t index = 1;
-            for (const auto& capability : std::vector<std::string>{ "context.item_pickup.v1", "context.spell_cast.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session",
+            for (const auto& capability : std::vector<std::string>{ "diary.books.v1", "context.item_pickup.v1", "context.spell_cast.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session",
                 "action.ai.follow", "action.ai.stop", "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
                 "action.combat.start", "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip",
                 "action.item.use", "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" })
@@ -1679,6 +1845,17 @@ namespace MWLua
             api["sessionControls"] = [lua] { return client().sessionControls(lua); };
             api["pumpSessionControls"] = [lua] { return client().pumpSessionControls(lua); };
             api["pumpPlayerAutochat"] = [lua] { return client().pumpPlayerAutochat(lua); };
+            if(global){
+                api["cancelDiaryBook"]=[]{client().cancelDiaryBook();};
+                api["requestDiaryBook"]=[lua]{return client().requestDiaryBook(lua);};
+                api["pumpDiaryBook"]=[lua]{return client().pumpDiaryBook(lua);};
+                api["pumpDiaryBookResult"]=[lua]{return client().pumpDiaryBook(lua,true);};
+                api["materializeDiaryBook"]=[lua,luaManager](const GObject& actor,const std::string& delivery){
+                    return client().materializeDiaryBook(lua,luaManager,actor,delivery);};
+                api["diaryBookStatus"]=[lua](const std::string& delivery){return client().diaryBookStatus(lua,delivery);};
+                api["submitDiaryBookResult"]=[lua](const std::string& delivery,const std::string& status,sol::optional<std::string> reason){
+                    return client().submitDiaryBookResult(lua,delivery,status,reason);};
+            }
             api["requestDebugCommand"] = [lua] { return client().requestDebugCommand(lua); };
             api["pumpDebugCommand"] = [lua] { return client().pumpDebugCommand(lua); };
             api["submitDebugCommandResult"] = [lua](const std::string& commandId,const std::string& status,
@@ -1749,7 +1926,7 @@ namespace MWLua
     {
         if (context.mType == Context::Menu || context.mType == Context::Load)
             throw std::logic_error("openmw.lorkhan is unavailable in menu and load contexts");
-        return makePackage(context.sol(), context.mLuaManager);
+        return makePackage(context.sol(), context.mLuaManager, context.mType == Context::Global);
     }
 
     sol::object initLorkhanCustomPackageLoader(const Context& context)
@@ -1759,7 +1936,7 @@ namespace MWLua
         return sol::make_object(context.sol(), [lua = context.mLua, luaManager = context.mLuaManager](sol::table hiddenData) -> sol::object {
             LuaUtil::ScriptId id = hiddenData[LuaUtil::ScriptsContainer::sScriptIdKey];
             if (!lua->getConfiguration().isCustomScript(id.mIndex)) return sol::nil;
-            return makePackage(hiddenData.lua_state(), luaManager);
+            return makePackage(hiddenData.lua_state(), luaManager, false);
         });
     }
 }

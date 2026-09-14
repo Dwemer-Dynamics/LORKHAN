@@ -65,5 +65,20 @@ checklist remains deliberately unclaimed.
   from the leased job. Save rollback appends a restoration revision while preserving
   manual/locked/Narrator/player/unknown-history boundaries. Revision numbers never
   move backwards, and an earlier subsequent load can follow restored ancestry.
-- Physical diary book materialization awaits an explicit exception to the closed
-  game-record creation boundary; it is not supplied by web diary generation.
+- The user approved the physical-diary-only record exception on 2026-09-13.
+  The implementation and its current proof are recorded in the checkpoint below.
+
+
+## 2026-09-13 physical NPC diaries
+
+- User-approved diary-only record exception; no arbitrary commands or general record creation.
+- Physical Diary is opt-in in Core Profiles and NPC overrides, with inheritance and preset support.
+- Typed capability-gated query/result delivery uses one stable book per NPC/playthrough. Saved
+  dynamic records update in place; logical receipt retries preserve idempotence.
+- Latest five completed generated entries supply bounded text; invalidated source jobs cannot
+  return through edited UI provenance. No new provider request is made by materialization.
+- Native text handling accounts for TES3 trailing-tag layout and literal game-variable markers.
+- 85 Lua tests and 1265 PHP checks pass; 124 protocol files match across both repositories.
+- Windows Release engine, native bridge and Beast loopback tests pass. Full database regression
+  and local deployment verification are pending.
+  No game launch, paid provider call, or in-game reading/save-load proof has been performed.

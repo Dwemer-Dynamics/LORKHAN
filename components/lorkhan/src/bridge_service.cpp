@@ -53,6 +53,8 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         || (request.kind == RequestKind::stt) != std::holds_alternative<SttRequest>(request.payload)
         || (request.kind == RequestKind::controls_query) != std::holds_alternative<ControlsQueryRequest>(request.payload)
         || (request.kind == RequestKind::controls_select) != std::holds_alternative<ControlsSelectRequest>(request.payload)
+        || (request.kind == RequestKind::diary_book_query) != std::holds_alternative<DiaryBookQueryRequest>(request.payload)
+        || (request.kind == RequestKind::diary_book_result) != std::holds_alternative<DiaryBookResultRequest>(request.payload)
         || (request.kind == RequestKind::debug_command_query) != std::holds_alternative<DebugCommandQueryRequest>(request.payload)
         || (request.kind == RequestKind::debug_command_result) != std::holds_alternative<DebugCommandResultRequest>(request.payload)
         || (request.kind == RequestKind::menu_dialogue_tts) != std::holds_alternative<MenuDialogueTtsRequest>(request.payload)
@@ -164,6 +166,28 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
                 "controls-select correlation or selection is invalid"));
         auto target = parseProtocolIdentity(controls->serializedTarget);
         if (!target) return Result<void>::failure(target.error());
+    }
+    if(const auto* debug=std::get_if<DiaryBookQueryRequest>(&request.payload)){
+        if(!validId(debug->message)||!validId(debug->correlation.request)||!validId(debug->correlation.session)
+            ||debug->correlation.request!=request.id||debug->correlation.session!=request.session
+            ||debug->correlation.generation!=request.generation)
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,"diary-book query correlation is invalid"));
+    }
+    if(const auto* debug=std::get_if<DiaryBookResultRequest>(&request.payload)){
+        if(!validId(debug->message)||!validId(debug->correlation.request)||!validId(debug->correlation.session)
+            ||!validId(debug->delivery)||debug->correlation.request!=request.id
+            ||debug->correlation.session!=request.session||debug->correlation.generation!=request.generation
+            ||!isCanonicalUtcTimestamp(debug->completedAt)||debug->reasonCode.size()>128)
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,"diary-book result correlation is invalid"));
+        if(!validId(debug->book)||debug->contentHash.size()!=64
+            ||!std::all_of(debug->contentHash.begin(),debug->contentHash.end(),[](char c){return (c>='0'&&c<='9')||(c>='a'&&c<='f');})
+            ||debug->status==DebugCommandResultStatus::rejected
+            ||(debug->status==DebugCommandResultStatus::failed&&debug->reasonCode!="target_unavailable"
+                &&debug->reasonCode!="target_mismatch"&&debug->reasonCode!="book_unavailable"
+                &&debug->reasonCode!="record_creation_failed"&&debug->reasonCode!="inventory_update_failed"
+                &&debug->reasonCode!="invalid_payload")
+            ||(debug->status==DebugCommandResultStatus::succeeded&&!debug->reasonCode.empty()))
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,"invalid diary receipt"));
     }
     if(const auto* debug=std::get_if<DebugCommandQueryRequest>(&request.payload)){
         if(!validId(debug->message)||!validId(debug->correlation.request)||!validId(debug->correlation.session)

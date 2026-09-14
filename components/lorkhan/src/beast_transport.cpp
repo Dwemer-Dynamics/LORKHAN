@@ -587,6 +587,30 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
             }
             break;
         }
+        case RequestKind::diary_book_query: {
+            const auto* debug=std::get_if<DiaryBookQueryRequest>(&request.payload);if(!debug)break;
+            wire.method=http::verb::post;wire.target=route("/diary-books/query");wire.expectedStatus=200;
+            wire.body="{\"schema\":\"lorkhan.diary-book.query.v1\",\"message_id\":"+escapeJson(debug->message.value())
+                +",\"request_id\":"+escapeJson(debug->correlation.request.value())
+                +",\"session_id\":"+escapeJson(debug->correlation.session.value())
+                +",\"generation\":"+std::to_string(debug->correlation.generation.value())+"}";
+            break;
+        }
+        case RequestKind::diary_book_result: {
+            const auto* debug=std::get_if<DiaryBookResultRequest>(&request.payload);if(!debug)break;
+            const char* status=debug->status==DebugCommandResultStatus::succeeded?"succeeded"
+                :debug->status==DebugCommandResultStatus::failed?"failed":"rejected";
+            wire.method=http::verb::post;wire.target=route("/diary-book-results");wire.expectedStatus=200;
+            wire.idempotencyKey=debug->message.value();
+            wire.body="{\"schema\":\"lorkhan.diary-book-result.v1\",\"message_id\":"+escapeJson(debug->message.value())
+                +",\"request_id\":"+escapeJson(debug->correlation.request.value())
+                +",\"delivery_id\":"+escapeJson(debug->delivery.value())
+                +",\"session_id\":"+escapeJson(debug->correlation.session.value())
+                +",\"generation\":"+std::to_string(debug->correlation.generation.value())
+                +",\"status\":"+escapeJson(status)+",\"reason_code\":"+(debug->reasonCode.empty()?"null":escapeJson(debug->reasonCode))
+                +",\"book_id\":"+escapeJson(debug->book.value())+",\"content_hash\":"+escapeJson(debug->contentHash)+",\"completed_at\":"+escapeJson(debug->completedAt)+"}";
+            break;
+        }
         case RequestKind::debug_command_query: {
             const auto* debug=std::get_if<DebugCommandQueryRequest>(&request.payload);if(!debug)break;
             wire.method=http::verb::post;wire.target=route("/debug-commands/query");wire.expectedStatus=200;
@@ -869,6 +893,25 @@ Result<InboundResult> validateResponse(const OutboundRequest& request, const Wir
                     "controls-select response correlation mismatch"));
             kind = ResponseKind::controls;
             break;
+        }
+        case RequestKind::diary_book_query: {
+            const auto& sent=std::get<DiaryBookQueryRequest>(request.payload);
+            auto parsed=parseDiaryBookResponse(response.body(),headers);
+            if(!parsed)return Result<InboundResult>::failure(parsed.error());
+            if(parsed.value().message!=sent.message||parsed.value().request!=sent.correlation.request
+                ||parsed.value().session!=sent.correlation.session||parsed.value().generation!=sent.correlation.generation)
+                return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,"debug-command response correlation mismatch"));
+            kind=ResponseKind::diary_book;break;
+        }
+        case RequestKind::diary_book_result: {
+            const auto& sent=std::get<DiaryBookResultRequest>(request.payload);
+            auto parsed=parseDiaryBookResultAcceptedResponse(response.body(),headers);
+            if(!parsed)return Result<InboundResult>::failure(parsed.error());
+            if(parsed.value().message!=sent.message||parsed.value().request!=sent.correlation.request
+                ||parsed.value().delivery!=sent.delivery||parsed.value().session!=sent.correlation.session
+                ||parsed.value().generation!=sent.correlation.generation||parsed.value().status!=sent.status)
+                return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,"debug-command result correlation mismatch"));
+            kind=ResponseKind::completed;break;
         }
         case RequestKind::debug_command_query: {
             const auto& sent=std::get<DebugCommandQueryRequest>(request.payload);

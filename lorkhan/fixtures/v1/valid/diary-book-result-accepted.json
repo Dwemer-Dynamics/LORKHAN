@@ -1,0 +1,14 @@
+{
+  "description": "Typed physical NPC diary diary-book-result-accepted",
+  "instance": {
+    "schema": "lorkhan.diary-book-result.accepted.v1",
+    "message_id": "00000000-0000-4000-8000-000000000040",
+    "request_id": "00000000-0000-4000-8000-000000000041",
+    "session_id": "00000000-0000-4000-8000-000000000007",
+    "generation": 7,
+    "delivery_id": "00000000-0000-4000-8000-000000000042",
+    "status": "succeeded",
+    "duplicate": false
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/diary-book-result-accepted.schema.json"
+}
