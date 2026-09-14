@@ -114,7 +114,9 @@ local CAPABILITIES={'dialogue.text','speech.say','speech.listen','action.ai.foll
     'action.item.give','action.item.take','action.item.pickup','action.gold.give','action.gold.take',
     'action.service.barter','action.service.training','action.service.spells','action.service.travel',
     'action.service.spellmaking','action.service.enchanting','action.service.repair',
-    'action.spell.cast',
+    'action.spell.cast','action.item.create','action.gold.create','action.actor.spawn',
+    'action.actor.teleport_to_player','action.player.teleport','action.actor.restore',
+    'action.actor.resurrect','action.actor.kill',
     'action.confirmation','action.result-followup'}
 
 local function conversationContext(target)
@@ -143,7 +145,7 @@ local function voicePayload(uiSource)
     local snapshot=conversationContext(state.ui.target);snapshot.dialogueMode=state.ui.mode
     return {speaker=adapter.identity(self),target=state.ui.target,context=snapshot,language='en-US',capabilities=CAPABILITIES,
         recent_action_results={},ui_source=uiSource,dialogueMode=state.ui.mode,mood=uiState.moodSelection(state.ui),
-        execution_mode=state.ui.executionMode,
+        execution_mode=state.ui.executionMode,selectedTargetPresent=true,selectedTarget=state.ui.target,
         vad_sensitivity=tonumber(behaviorSettings and behaviorSettings:get('openMicSensitivity')) or 700,
         end_delay_ms=tonumber(behaviorSettings and behaviorSettings:get('openMicEndDelayMs')) or 900,
         recording_device=math.floor(tonumber(behaviorSettings and behaviorSettings:get('recordingDevice')) or -1)}
@@ -663,7 +665,7 @@ local function submitText()
         render()
         return false
     end
-    if not state.ui.target and state.ui.executionMode~='director' and state.ui.executionMode~='narrator' then
+    if not state.ui.target and state.ui.executionMode~='director' and state.ui.executionMode~='narrator' and state.ui.executionMode~='cheat' then
         pendingTextSubmit=true
         state.ui.status='finding actor target'
         print('[LORKHAN] text submit waiting for actor target')
@@ -676,7 +678,7 @@ local function submitText()
     local effectiveMode=parsed.mode or state.ui.mode
     context.dialogueMode=effectiveMode
     local args={text=parsed.text,language='en-US',speaker=speaker,dialogueMode=effectiveMode,
-        execution_mode=state.ui.executionMode,target=state.ui.target,
+        execution_mode=state.ui.executionMode,target=state.ui.target,selectedTargetPresent=true,selectedTarget=state.ui.target,
         mood=uiState.moodSelection(state.ui),
         context=context,capabilities=CAPABILITIES,
         recent_action_results={},ui_source='lorkhan_text'}
@@ -1504,6 +1506,23 @@ render=function()
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Confirm action: '..
             (state.ui.pendingAction.display_name or state.ui.pendingAction.name),textSize=17,
             textColor=util.color.rgb(218/255,187/255,120/255)}}
+        local pending=state.ui.pendingAction
+        local parameters=pending.parameters or {}
+        local details={'Target: '..displayName(pending.target)}
+        if parameters.record_id then details[#details+1]='Record: '..tostring(parameters.record_id) end
+        if parameters.count then details[#details+1]='Quantity: '..tostring(parameters.count) end
+        if parameters.amount then details[#details+1]='Gold: '..tostring(parameters.amount) end
+        if parameters.destination_id then details[#details+1]='Destination: '..tostring(parameters.destination_id) end
+        if pending.summary then details[#details+1]=tostring(pending.summary) end
+        local advanced=({['item.create']=true,['gold.create']=true,['actor.spawn']=true,
+            ['actor.teleport_to_player']=true,['player.teleport']=true,['actor.restore']=true,
+            ['actor.resurrect']=true,['actor.kill']=true})[pending.name]
+        if pending.name=='actor.kill' or pending.name=='actor.resurrect' then
+            details[#details+1]='Warning: this can break quests. Resurrection does not undo quest consequences.'
+        end
+        if advanced then details[#details+1]='Changes affect this save. Cancelling afterward does not undo them.' end
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=table.concat(details,'\n'),textSize=15,
+            textColor=util.color.rgb(0.88,0.85,0.78)}}
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Approve',textSize=16,textColor=util.color.rgb(0.45,0.9,0.45)},
             events={mouseClick=adapter.callback(function()
                 send('LORKHAN_CONFIRM_ACTION',{action_id=state.ui.pendingAction.action_id,approved=true})
@@ -1568,7 +1587,7 @@ local function handlePushToTalk(held,source)
             print('[LORKHAN] push-to-talk blocked by another UI mode via '..tostring(source))
             return
         end
-        if not state.ui.target and state.ui.executionMode~='director' and state.ui.executionMode~='narrator' then
+        if not state.ui.target and state.ui.executionMode~='director' and state.ui.executionMode~='narrator' and state.ui.executionMode~='cheat' then
             print('[LORKHAN] push-to-talk needs a target; starting target selection via '..tostring(source))
             chooseTarget(2048)
             return

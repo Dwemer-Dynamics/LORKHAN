@@ -371,3 +371,35 @@ server receipt incorrectly claiming that the book still exists in that save.
 
 This exception is separate from the deferred original content-addon deliverable. In-game reading,
 movement, dropping, and save/reload acceptance require user testing; builds do not prove gameplay.
+
+## Approved advanced Cheat/Narrator actions
+
+The user approved this bounded authority extension after the schema117 parity build. It permits
+instances of existing loaded item/NPC/creature records, gold creation, verified player/actor
+teleportation, living actor vitals restoration, selected dead actor resurrection and selected actor
+killing. It does not permit new record definitions, arbitrary scripts/console commands, deletion,
+model-provided coordinates, paths or URLs. No Rapport dependency or expanded follower framework.
+
+Actions: item.create (count1..100), gold.create (amount1..100000), actor.spawn (count1..4),
+actor.teleport_to_player, player.teleport, actor.restore, actor.resurrect, actor.kill.
+Each action has tier2 and mandatory one-intent player confirmation. Follow-up actions are disabled.
+Only explicit player text or push-to-talk in Cheat/Narrator mode can expose them; open microphone,
+Rechat, automatic dialogue and Director children cannot inherit this authority. The world executor
+is the exact current player identity, never an NPC policy or the body of the Narrator.
+
+Native submitTurn overwrites context.advanced_actions from the loaded game catalog using the
+explicit request text. Up to16 item,16 actor and16 destination candidates are frozen per turn.
+The model chooses only those IDs; destination IDs resolve to frozen native positions, not model
+coordinates. No full catalog is transmitted, no background scan or new provider call is added.
+
+Approval displays the exact target and parameters plus frozen record/destination labels. Kill and
+resurrection warn about quest consequences. Completed mutations are not promised reversible.
+Native code validates live exact references/state again, executes once on the main thread, and
+retains a terminal receipt so retries never duplicate spawning. Save/session changes cancel pending
+work, while committed results cannot be rewritten into cancellation. Player death is not permitted.
+
+Automated protocol, Lua and server integration checks cover all eight actions, strict approval, frozen candidates, rejected requests and duplicate replay. Server schema 118 is locally deployed. Windows Release build, native bridge and Beast loopback tests passed. The engine and all 32 client data files were deployed locally with matching SHA256 hashes; no in-game execution is claimed.
+
+Record names accept simple plural forms (rat/rats, robe/robes), without fuzzy matching. Ambiguous record names require an exact loaded record ID. Actor spawning creates instances only; dynamically generated actors are not yet addressable for AI profiles or later LORKHAN actions under the existing v1 identity contract. Vanilla game interaction is unaffected.
+
+Client deployment engine SHA256: 923123E3FC9E937B901606E928128911AF5605CF1A46D54FB6A28A13162B70D9. Server tests: 1421 checks plus integration, migrations/jobs and factory restore checks. Lua: 90 tests. Protocol: 42 schemas and 93 fixtures. OpenMW: all 29 declared source hashes and 10 patch fixtures passed.

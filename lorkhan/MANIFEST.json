@@ -32,6 +32,21 @@
       "sha256": "ca94a22df3ef7e2546934fa064f8d4b5877e23091b3791f3432eccce447451b1"
     },
     {
+      "bytes": 1257,
+      "path": "lorkhan/fixtures/v1/invalid/action-intent-advanced-excess-count.json",
+      "sha256": "b3c98010e26a27e24db14d91a861403c6e34479cb6049167b3cecd39f7188bc6"
+    },
+    {
+      "bytes": 1261,
+      "path": "lorkhan/fixtures/v1/invalid/action-intent-advanced-no-confirmation.json",
+      "sha256": "071125ef82e56f3813855fe057ece668b1591c494bc19c099e644a391a6f249f"
+    },
+    {
+      "bytes": 1259,
+      "path": "lorkhan/fixtures/v1/invalid/action-intent-advanced-npc-executor.json",
+      "sha256": "9f4ce97cf004380bc578a0835de66420401d6c54469bee8c1a17ec6acaed8e24"
+    },
+    {
       "bytes": 1105,
       "path": "lorkhan/fixtures/v1/invalid/action-intent-conversation-end-parameters.json",
       "sha256": "daa0fdee0b77a09f074d5a860d64ffb8ba3e7cf82dcc46467d2f7ec7f0f641af"
@@ -47,9 +62,9 @@
       "sha256": "bf50260599e5f50e9a37190e24c284108d991248f6240b10bca0466dfa46b946"
     },
     {
-      "bytes": 1095,
+      "bytes": 1062,
       "path": "lorkhan/fixtures/v1/invalid/diary-book-record-property.json",
-      "sha256": "1029ad5a2ab5e80e8e5c560f1cf08401c6f66cb8b0b786b43ba1c503c7cd139f"
+      "sha256": "d78b7aafe7c8c1141465884d2d1b8d37525d8f3503034aba6554f29278662bbf"
     },
     {
       "bytes": 462,
@@ -157,6 +172,31 @@
       "sha256": "70c489c876f06f9b97b97b0680f764f6799902599ec9f88bf40ec0271b8dcd94"
     },
     {
+      "bytes": 1212,
+      "path": "lorkhan/fixtures/v1/valid/action-intent-actor-kill.json",
+      "sha256": "eded26f4d4c3a896cda91e256d14c14aaec02444ef08d3b9a8ae1aba7d5f2100"
+    },
+    {
+      "bytes": 1219,
+      "path": "lorkhan/fixtures/v1/valid/action-intent-actor-restore.json",
+      "sha256": "fd8d76991de5415a03d841a9f0db59c677e6eacaee7c5d07ee77ebbfb85644e8"
+    },
+    {
+      "bytes": 1227,
+      "path": "lorkhan/fixtures/v1/valid/action-intent-actor-resurrect.json",
+      "sha256": "2f0060f108e5ca55b184cb397ef3838fb21d26263f332840ec2c0317c72becf7"
+    },
+    {
+      "bytes": 1263,
+      "path": "lorkhan/fixtures/v1/valid/action-intent-actor-spawn.json",
+      "sha256": "257973031a51de31e64252ca20f84625ba70bc0482469ef942b37387a4776e28"
+    },
+    {
+      "bytes": 1254,
+      "path": "lorkhan/fixtures/v1/valid/action-intent-actor-teleport_to_player.json",
+      "sha256": "171d6559e91331f6e33dd1e9ae09464bd78dafcf07479181dc010b8f73638502"
+    },
+    {
       "bytes": 930,
       "path": "lorkhan/fixtures/v1/valid/action-intent-ai-approach.json",
       "sha256": "8e7b0e688fc46dfb7adbaefabd611bb5c40643bf3182cf4f6a30389d1f219dc6"
@@ -172,6 +212,11 @@
       "sha256": "0f91fc5f635ee8a3ee951d734814f54ddc987bce04800e2c32944006010c06fa"
     },
     {
+      "bytes": 1238,
+      "path": "lorkhan/fixtures/v1/valid/action-intent-gold-create.json",
+      "sha256": "09cd791b6291a47f2eb3be85e0703185c160a5500e8fed33cd2fa561e0a16ca2"
+    },
+    {
       "bytes": 1048,
       "path": "lorkhan/fixtures/v1/valid/action-intent-inspect-report.json",
       "sha256": "b33bdaacbc8daef6f9bd4a115866af8cb649d1d7ba4df26b85b089fef53f9d70"
@@ -180,6 +225,16 @@
       "bytes": 942,
       "path": "lorkhan/fixtures/v1/valid/action-intent-inventory-inspect.json",
       "sha256": "cf485277846f2afd573ea41a417906a14955df716db156e50c785b9efc801a0b"
+    },
+    {
+      "bytes": 1275,
+      "path": "lorkhan/fixtures/v1/valid/action-intent-item-create.json",
+      "sha256": "738ffacee451a5f1acbe562dce7d3bfddfd941b0321dac715ea98a3f6fb9ee59"
+    },
+    {
+      "bytes": 1263,
+      "path": "lorkhan/fixtures/v1/valid/action-intent-player-teleport.json",
+      "sha256": "48f54b18be53c7d6e5fb414175706af2e090c68d9320430233ae696c3c26e233"
     },
     {
       "bytes": 955,
@@ -252,24 +307,24 @@
       "sha256": "08db592ceacda1eb011b1720b43277f39e45abbdc18bebaba2625241a1d4a95a"
     },
     {
-      "bytes": 415,
+      "bytes": 404,
       "path": "lorkhan/fixtures/v1/valid/diary-book-query.json",
-      "sha256": "6a2b8d9c3c3f450d748c0ba130a13813079260a7fc6d7cb2ec51d0bf6890a6b4"
+      "sha256": "2848f0545916c81e7b42752eeb34972126face49dc54577e1d763c88b9c6b2e8"
     },
     {
-      "bytes": 558,
+      "bytes": 544,
       "path": "lorkhan/fixtures/v1/valid/diary-book-result-accepted.json",
-      "sha256": "db900fc9c8a46967f98f0e7189dd30f5aa8eea2b47ffa962b84c97057bec923d"
+      "sha256": "1f084ce315d0a8eedb9aec35f39d7cae3bb72b3c247f9bcb2e19553d7387ff88"
     },
     {
-      "bytes": 722,
+      "bytes": 705,
       "path": "lorkhan/fixtures/v1/valid/diary-book-result.json",
-      "sha256": "554f7d16d37fb6feaf48bb891e79f9e87e75904867e221c6f767d19a96a0088e"
+      "sha256": "3479d4745acf099ba7716533acabe8d2142bdc3bb1fee747419c92af5adac7cf"
     },
     {
-      "bytes": 1059,
+      "bytes": 1027,
       "path": "lorkhan/fixtures/v1/valid/diary-book.json",
-      "sha256": "2480a7b55445b84a8ad631a48b93af2aee867be58dba3e3edd98d7c7a21e058a"
+      "sha256": "2338c1c6295da873b0d282ea31d032d48c8d621a66dda3f6419c2690be2d44b3"
     },
     {
       "bytes": 334,
@@ -412,9 +467,9 @@
       "sha256": "ed9a6501ff7e95631f777ac770f87313f2b717f816f60a1cc87eccb544ee8473"
     },
     {
-      "bytes": 43523,
+      "bytes": 62067,
       "path": "lorkhan/schemas/v1/action-intent.schema.json",
-      "sha256": "6e90117b4f7834f16dd25fd2a61865a9740927343b0a883fb9e7a6059fb2abfc"
+      "sha256": "48075b2b1397ce2147986d1471cb007220f2c59a3be3081e2e253aaf5e44277d"
     },
     {
       "bytes": 1157,
@@ -487,24 +542,24 @@
       "sha256": "f11514d29c05c6f44bbc8a5b1d10c31079de8c9a34610d65db78c222f617c984"
     },
     {
-      "bytes": 886,
+      "bytes": 855,
       "path": "lorkhan/schemas/v1/diary-book-query.schema.json",
-      "sha256": "6e6ac32c06c0dea4de0d311bdce2135dd54b1074841e0dff60a0991e9bdc427c"
+      "sha256": "f5001f2d8d94fe7117e7d6dcc817930ec9dd0f934dd2fd8490b4debbce2bfefe"
     },
     {
-      "bytes": 1241,
+      "bytes": 1194,
       "path": "lorkhan/schemas/v1/diary-book-result-accepted.schema.json",
-      "sha256": "85262aec7d172676add1ab7437ae2ea79173459d2c9388ff1e45ca6999412e89"
+      "sha256": "19dcc89f58becd7a86cc2c51b74a07e534b34a2e7fe6253e612f2bbb26efd68d"
     },
     {
-      "bytes": 1806,
+      "bytes": 1738,
       "path": "lorkhan/schemas/v1/diary-book-result.schema.json",
-      "sha256": "83756ebbc5344af67c8144fcc689ae270e0c1c90749359eba77d442089635e21"
+      "sha256": "44013359e454973161d587044bf7715ad415c8ea2e4b48d801dd98944e98220b"
     },
     {
-      "bytes": 2110,
+      "bytes": 2034,
       "path": "lorkhan/schemas/v1/diary-book.schema.json",
-      "sha256": "9782bfaf11de4a88504283c8a7f2489818cebe48fe0a11aa87f5b15f85e38237"
+      "sha256": "f9f9023764e30b5b32d85cda5bad00e63837c9fc7e2a7234b3145ddae30d33ff"
     },
     {
       "bytes": 1930,
@@ -617,9 +672,9 @@
       "sha256": "52ca2b7555cd4b11becf70373ce02dda7f58f72fd8780db4ea9f5c3043641c08"
     },
     {
-      "bytes": 7605,
+      "bytes": 10564,
       "path": "lorkhan/schemas/v1/turn.schema.json",
-      "sha256": "3e27e92a3ab41a651de28d0995c662e546d500f6018afcb7aceb3929abf00159"
+      "sha256": "5b4b674523c66cdc8de10e004d220252a5e6368a605c87763021778d780c322c"
     }
   ],
   "format": "lorkhan.protocol-manifest.v1",

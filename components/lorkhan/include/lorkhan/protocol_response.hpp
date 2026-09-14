@@ -126,7 +126,7 @@ struct ProtocolIdentity {
 };
 
 enum class ActionIntentKind { ai_follow, ai_stop, conversation_end, ai_approach, ai_wait, ai_travel, ai_escort, ai_face, ai_wander, animation_play,
-    combat_start, combat_stop, weapon_sheathe, inspect_report, inventory_inspect, item_equip, item_unequip, item_use, item_give, item_take, item_pickup, gold_give, gold_take, service_barter, service_training, service_spells, service_travel, service_spellmaking, service_enchanting, service_repair, spell_cast };
+    combat_start, combat_stop, weapon_sheathe, inspect_report, inventory_inspect, item_equip, item_unequip, item_use, item_give, item_take, item_pickup, gold_give, gold_take, service_barter, service_training, service_spells, service_travel, service_spellmaking, service_enchanting, service_repair, spell_cast, item_create, gold_create, actor_spawn, actor_teleport_to_player, player_teleport, actor_restore, actor_resurrect, actor_kill };
 struct ActionIntent {
     ActionId action;
     TurnId turn;

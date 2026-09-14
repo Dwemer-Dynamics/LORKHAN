@@ -9,6 +9,7 @@ local playerInput=require('scripts.LORKHAN.player_input')
 local responseQueue=require('scripts.LORKHAN.response_queue')
 local storage=require('scripts.LORKHAN.storage')
 local targeting=require('scripts.LORKHAN.targeting')
+local nativeActions=require('scripts.LORKHAN.transfer_actions')
 local util=require('scripts.LORKHAN.util')
 
 local M={}
@@ -91,6 +92,13 @@ local function reportQueuedAction(state,item,status,reason)
 end
 
 local function cancelResponseLane(state,reason,stopSpeech)
+    for _,item in ipairs(state.responseQueue.items) do
+        local command=item.intent
+        if command and nativeActions.advanced[command.name] and state.bridge.cancelAdvanced then
+            pcall(state.bridge.cancelAdvanced,command.action_id)
+            state.pendingConfirmations[command.action_id]=nil
+        end
+    end
     if stopSpeech then
         signalAllActors(state,'LORKHAN_ACTOR_STOP_SPEECH',reason)
         state.emit('LORKHAN_NARRATOR_STOP',{reason=reason})
@@ -364,7 +372,7 @@ end
 
 -- Late capture failures must not replace a newer selection, session, or active turn.
 local function restoreVoiceTarget(state,pending)
-    if not pending or (pending.execution_mode~='director' and pending.execution_mode~='narrator')
+    if not pending or (pending.execution_mode~='director' and pending.execution_mode~='narrator' and pending.execution_mode~='cheat')
         or pending.session_id~=state.sessionId or pending.generation~=state.generation
         or not pending.selectedTargetPresent or not identity.same(state.conversation.target,pending.target)
         or state.conversation.turn and not state.conversation.turn.terminal then return end
@@ -626,7 +634,10 @@ function M.startVoice(state,args)
     if state.conversation.turn and not state.conversation.turn.terminal then return nil,'turn_in_flight' end
     if not args or not identity.validate(args.speaker) then return nil,'invalid_speaker' end
     local selectedTarget=args.target or state.conversation.target
-    if args.execution_mode=='director' or args.execution_mode=='narrator' then
+    if args.selectedTargetPresent then selectedTarget=args.selectedTarget end
+    local syntheticMode=args.execution_mode=='director' or args.execution_mode=='narrator'
+        or (args.execution_mode=='cheat' and not selectedTarget)
+    if syntheticMode then
         conversation.setTarget(state.conversation,narratorIdentity(state))
     elseif args.target and identity.validate(args.target) and state.registry:resolve(args.target) then
         conversation.setTarget(state.conversation,args.target)
@@ -644,7 +655,7 @@ function M.startVoice(state,args)
         ' automatic='..tostring(args.automatic==true)..' threshold='..tostring(sensitivity)..' end_delay_ms='..tostring(endDelay))
     local started,reason=state.bridge.startVoiceCapture(args.automatic==true,sensitivity,endDelay,deviceId)
     if not started then
-        if args.execution_mode=='director' or args.execution_mode=='narrator' then restoreModeTarget(state,selectedTarget) end
+        if syntheticMode then restoreModeTarget(state,selectedTarget) end
         return nil,reason or 'voice_capture_failed'
     end
     state.pendingVoice={speaker=util.copy(args.speaker),target=util.copy(state.conversation.target),
@@ -792,11 +803,11 @@ function M.submitText(state,args)
         local targetKey=identity.key(state.conversation.target)
         if targetKey then state.autonomy.interacted[targetKey]=true end
     end
-    local modeTarget
+    local modeTarget=args.target or state.conversation.target
+    if args.selectedTargetPresent then modeTarget=args.selectedTarget end
     local syntheticMode=args.execution_mode=='narrator' or args.execution_mode=='director'
+        or (args.execution_mode=='cheat' and not modeTarget)
     if syntheticMode then
-        modeTarget=args.selectedTargetPresent and args.selectedTarget or args.target or state.conversation.target
-        if args.selectedTargetPresent and not args.selectedTarget then modeTarget=nil end
         if args.speaker.kind~='player' then return nil,'execution_mode_not_allowed' end
         conversation.setTarget(state.conversation,narratorIdentity(state))
     elseif not isContinuation and args.target then
@@ -893,6 +904,10 @@ function M.submitText(state,args)
         if syntheticMode then restoreModeTarget(state,modeTarget) end
         return nil,nativeReason
     end
+    state.advancedAuthority={turn_id=turnId,session_id=state.sessionId,generation=state.generation,
+        speaker=util.copy(args.speaker),allowed=not isContinuation and args.speaker.kind=='player'
+            and (args.execution_mode=='cheat' or args.execution_mode=='narrator')
+            and (args.ui_source=='lorkhan_text' or args.ui_source=='lorkhan_voice')}
     if syntheticMode then state.modeRestore={target=modeTarget,turn_id=turnId,generation=state.generation,
         session_id=state.sessionId,syntheticTarget=util.copy(state.conversation.target)} end
     if args.execution_mode=='director' then state.directorSeed=util.copy(args) end
@@ -1009,16 +1024,50 @@ local function pumpResponseQueue(state)
         else
             if item.status~='ready' or not item.intent then return end
             local command=item.intent
+            if nativeActions.advanced[command.name] then
+                local authority=state.advancedAuthority
+                local valid,reason=nativeActions.validateAdvanced(command)
+                if not valid or not authority or not authority.allowed or authority.turn_id~=command.turn_id
+                    or authority.session_id~=command.session_id or authority.generation~=command.generation
+                    or not identity.same(authority.speaker,command.actor) then
+                    if valid then
+                        responseQueue.markDispatched(state.responseQueue,item)
+                        local rejected=state.sendActor(command.actor,'LORKHAN_ACTOR_REJECT',command)
+                        if rejected then emitQueue(state) return end
+                    end
+                    reportQueuedAction(state,item,'failed',reason or 'advanced_action_not_explicit')
+                    responseQueue.failHead(state.responseQueue,reason or 'advanced_action_not_explicit')
+                    emitQueue(state)
+                    return pumpResponseQueue(state)
+                end
+            end
             local marked,markReason=responseQueue.markDispatched(state.responseQueue,item)
             if not marked then print('[LORKHAN] action dispatch rejected: '..tostring(markReason)) return end
             emitQueue(state)
             local confirmationRequired=command.confirmation_required
             if confirmationRequired==nil then confirmationRequired=command.tier>=2 end
             if confirmationRequired then
+                local summary
+                if nativeActions.advanced[command.name] then
+                    local ok,value=false,nil
+                    if type(state.bridge.advancedActionSummary)=='function' then
+                        ok,value=pcall(state.bridge.advancedActionSummary,command.action_id)
+                    end
+                    if not ok or type(value)~='string' or #value<1 or #value>2048 then
+                        local rejected=state.sendActor(command.actor,'LORKHAN_ACTOR_REJECT',command)
+                        if rejected then return end
+                        reportQueuedAction(state,item,'failed','advanced_summary_unavailable')
+                        responseQueue.failHead(state.responseQueue,'advanced_summary_unavailable')
+                        emitQueue(state)
+                        return pumpResponseQueue(state)
+                    end
+                    summary=value
+                end
                 state.pendingConfirmations[command.action_id]=util.copy(command)
                 emitInbound(state,'LORKHAN_ACTION_CONFIRMATION',{action_id=command.action_id,name=command.name,
                     display_name=command.display_name,
-                    actor=util.copy(command.actor),target=util.copy(command.target)})
+                    actor=util.copy(command.actor),target=util.copy(command.target),
+                    parameters=util.copy(command.parameters),summary=summary})
                 return
             end
             local sent,reason=state.sendActor(command.actor,'LORKHAN_ACTOR_ACTION',command)
@@ -1428,6 +1477,11 @@ end
 
 function M.haltActions(state,reason)
     reason=reason or 'halt_ai_actions'
+    for _,item in ipairs(state.responseQueue.items) do
+        if item.intent and nativeActions.advanced[item.intent.name] and state.bridge.cancelAdvanced then
+            pcall(state.bridge.cancelAdvanced,item.intent.action_id)
+        end
+    end
     signalAllActors(state,'LORKHAN_ACTOR_HALT_ACTIONS',reason)
     local active=state.responseQueue.active
     local cancelActive=active and active.kind=='action' and active.intent

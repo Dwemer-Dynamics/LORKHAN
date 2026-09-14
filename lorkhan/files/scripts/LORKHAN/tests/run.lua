@@ -418,6 +418,35 @@ test('transfer queue waits for persisted receipts and freezes the committed outc
  transfers.pump(queue,UUID.session,8,7);eq(#finished,1);eq(next(queue.pending),nil)
 end)
 
+test('advanced native queue validates exact shapes and uses retained cancellation receipts',function()
+ local transfers=require('scripts.LORKHAN.transfer_actions')
+ local variants={['item.create']={record_id='exquisite_robe_01',count=100},['gold.create']={amount=100000},
+  ['actor.spawn']={record_id='mudcrab',count=4},['actor.teleport_to_player']={},
+  ['player.teleport']={destination_id='cell:balmora'},['actor.restore']={},['actor.resurrect']={},['actor.kill']={}}
+ local command={name='item.create',actor=playerId,target=playerId,confirmation_required=true,tier=2,
+  parameters=variants['item.create'],action_id=uuid(173),message_id=UUID.message,request_id=UUID.request,
+  turn_id=UUID.turn,session_id=UUID.session,generation=1}
+ for name,params in pairs(variants) do
+  command.name=name;command.parameters=params
+  command.target=(name=='actor.teleport_to_player' or name=='actor.resurrect' or name=='actor.kill') and npc or playerId
+  truthy(transfers.validateAdvanced(command))
+  command.tier=1;eq(transfers.validateAdvanced(command),nil);command.tier=2
+  command.confirmation_required=false;eq(transfers.validateAdvanced(command),nil);command.confirmation_required=true
+  params.untrusted=true;eq(transfers.validateAdvanced(command),nil);params.untrusted=nil
+ end
+ command.name='actor.spawn';command.parameters={record_id='mudcrab',count=5};command.target=playerId
+ eq(transfers.validateAdvanced(command),nil);command.parameters.count=4
+ command.actor=npc;eq(transfers.validateAdvanced(command),nil);command.actor=playerId
+ local executed=0;local cancelled=0;local submitted=0;local finished=0;local receipt='not_submitted'
+ local bridge={executeAdvanced=function()executed=executed+1;return {status='cancelled',reason_code='user_rejected',observed={}} end,
+  cancelAdvanced=function()cancelled=cancelled+1 end,advancedReceiptStatus=function()return {status=receipt} end,
+  utcNow=function()return '2026-07-19T20:00:00Z' end,submitActionResult=function()submitted=submitted+1;return true end}
+ local queue=transfers.new(bridge,function()finished=finished+1 end)
+ truthy(transfers.enqueue(queue,command));transfers.cancel(queue,playerId);eq(cancelled,1)
+ transfers.pump(queue,UUID.session,1,0);eq(executed,1);eq(submitted,1);eq(finished,0)
+ receipt='accepted';transfers.pump(queue,UUID.session,1,1);eq(executed,1);eq(finished,1)
+end)
+
 test('identity registry refuses substitution and ambiguity',function()
  local r=identity.Registry() local one={} truthy(r:activate(npc,one)); eq(r:activate(npc,{}),nil)
  local clone=fake.identity('npc','fargoth',9);eq(r:resolve(clone),nil);eq(r:resolve(npc),one)
@@ -689,6 +718,49 @@ test('policy confirmation override and one result follow-up cross the ordered la
  local recent=b.submitted[2].payload.recent_action_results;eq(#recent,1);eq(recent[1].action_id,actionId)
  eq(#s.actionFollowups.pending,0);truthy(s.actionFollowups.seen[actionId])
 end)
+test('advanced actions require explicit player mode and a native confirmation summary',function()
+ for _,case in ipairs({{mode='cheat',source='lorkhan_text',allowed=true},
+  {mode='cheat',source='lorkhan_text',noTarget=true,allowed=true},
+  {mode='narrator',source='lorkhan_text',noTarget=true,allowed=true},
+  {mode='cheat',source='lorkhan_voice',allowed=true},
+  {mode='standard',source='lorkhan_text',allowed=false},
+  {mode='cheat',source='lorkhan_open_mic',allowed=false},
+  {mode='cheat',source='lorkhan_text',missingSummary=true,allowed=false}}) do
+  local b=fake.bridge();local sent={};local confirmations={};local cancelled=0
+  b.cancelAdvanced=function()cancelled=cancelled+1 end
+  if not case.missingSummary then b.advancedActionSummary=function()return 'Create 2 Exquisite Robes for Player.' end end
+  local s=orchestrator.new(b,function(name,payload)
+   if name=='LORKHAN_ACTION_CONFIRMATION' then confirmations[#confirmations+1]=payload end
+  end,function(_,name,payload)sent[#sent+1]={name=name,payload=payload};return true end)
+  orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+  truthy(conversation.setTarget(s.conversation,npc))
+  truthy(orchestrator.submitText(s,{message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,
+   installation_id=uuid(60),profile_id=uuid(61),playthrough_id=uuid(62),created_at='2026-07-19T20:00:00Z',
+   platform='windows',content_fingerprint='sha256:'..string.rep('a',64),text='Create two exquisite robes.',
+   input_key='player:create',language='en-US',speaker=playerId,context={},capabilities={'dialogue.text','action.item.create'},
+   recent_action_results={},ui_source=case.source,execution_mode=case.mode,
+   selectedTargetPresent=case.noTarget==true}))
+  if case.noTarget then eq(b.submitted[1].payload.target.kind,'narrator') end
+  local lineId=uuid(174);local actionId=uuid(175)
+  local intent={schema='lorkhan.action-intent.v1',action_id=actionId,request_id=UUID.request,turn_id=UUID.turn,
+   session_id=UUID.session,generation=1,name='item.create',tier=2,actor=playerId,target=playerId,
+   confirmation_required=true,parameters={record_id='exquisite_robe_01',count=2},expires_at='2026-07-19T21:00:00Z'}
+  local actionEvent=event(2,'action.intent',1,intent);actionEvent.message_id=lineId
+  b.results={responseEvent(1,{actionLine(0,lineId,playerId,playerId,'item.create',{'record_id=exquisite_robe_01','count=2'})},1),
+   actionEvent,event(3,'turn.complete',1,{status='complete'})}
+  orchestrator.poll(s)
+  if case.allowed then
+   eq(#sent,0)
+   eq(#confirmations,1);eq(confirmations[1].parameters.count,2)
+   eq(confirmations[1].summary,'Create 2 Exquisite Robes for Player.')
+   confirmations[1].parameters.count=100
+   truthy(orchestrator.confirmAction(s,actionId,true));eq(#sent,1);eq(sent[1].payload.parameters.count,2)
+   orchestrator.haltActions(s);eq(cancelled,1)
+  else eq(#confirmations,0);eq(next(s.pendingConfirmations),nil)
+   eq(#sent,1);eq(sent[1].name,'LORKHAN_ACTOR_REJECT') end
+ end
+end)
+
 test('halt actions cancels queued rolecommands and reports terminal receipts',function()
  local b=fake.bridge() local sent={}
  local s=orchestrator.new(b,nil,function(_,name,payload)table.insert(sent,{name=name,payload=payload})return true end)
@@ -1166,6 +1238,18 @@ test('spoken mood and selected mode survive transcription as typed protocol data
  local payload=b.submitted[1].payload
  eq(payload.input.kind,'stt');eq(payload.input.text,'Tell me more.');eq(payload.input.mood.kind,'playful')
  eq(payload.context.dialogueMode,'Close')
+ local cheatBridge=fake.bridge();local cheat=orchestrator.new(cheatBridge)
+ orchestrator.configureSession(cheat,UUID.session);orchestrator.activate(cheat,npc,{})
+ conversation.setTarget(cheat.conversation,npc)
+ truthy(orchestrator.startVoice(cheat,{speaker=playerId,context={},language='en-US',capabilities={'dialogue.text'},
+  execution_mode='cheat',selectedTargetPresent=true,ui_source='lorkhan_voice'}))
+ eq(cheat.pendingVoice.selectedTarget,nil);eq(cheat.conversation.target.kind,'narrator')
+ truthy(orchestrator.stopVoice(cheat));truthy(orchestrator.pollVoice(cheat))
+ cheatBridge.results={transcript};eq(orchestrator.poll(cheat),1)
+ eq(cheatBridge.submitted[1].payload.target.kind,'narrator');truthy(cheat.advancedAuthority.allowed)
+ local turn=cheat.conversation.turn
+ local terminal=event(2,'turn.complete',1,{status='complete'});terminal.request_id=turn.requestId;terminal.turn_id=turn.turnId
+ cheatBridge.results={terminal};eq(orchestrator.poll(cheat),1);eq(cheat.conversation.target,nil)
 end)
 test('auto-managed actors attacking the player are removed unless explicitly allowed',function()
  local b=fake.bridge() local detached=0 local combatEvents={}

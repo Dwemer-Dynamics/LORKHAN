@@ -503,7 +503,8 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     if (!turn) return invalidSchemaValue<ActionIntent>(turn.error().message);
     if (turn.value() != envelopeTurn.value())
         return invalidSchemaValue<ActionIntent>("action intent turn does not match event envelope");
-    if (!name || (name.value() != "ai.follow" && name.value() != "ai.stop" && name.value() != "conversation.end"
+    const bool advanced = name && (name.value() == "item.create" || name.value() == "gold.create" || name.value() == "actor.spawn" || name.value() == "actor.teleport_to_player" || name.value() == "player.teleport" || name.value() == "actor.restore" || name.value() == "actor.resurrect" || name.value() == "actor.kill");
+    if (!name || (!advanced && name.value() != "ai.follow" && name.value() != "ai.stop" && name.value() != "conversation.end"
         && name.value() != "ai.approach" && name.value() != "ai.wait"
         && name.value() != "ai.travel" && name.value() != "ai.escort" && name.value() != "ai.face"
         && name.value() != "ai.wander" && name.value() != "combat.start"
@@ -514,12 +515,12 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
         && name.value() != "service.barter" && name.value() != "service.training" && name.value() != "service.spells" && name.value() != "service.travel" && name.value() != "service.spellmaking" && name.value() != "service.enchanting" && name.value() != "service.repair" && name.value() != "spell.cast" ))
         return invalidSchemaValue<ActionIntent>("unknown action intent name");
     if (!tier) return invalidSchemaValue<ActionIntent>(tier.error().message);
-    if (((name.value() == "inspect.report" || name.value() == "inventory.inspect") && tier.value() != 0)
+    if ((advanced && tier.value() != 2) || ((name.value() == "inspect.report" || name.value() == "inventory.inspect") && tier.value() != 0)
         || ((name.value() == "combat.start" || name.value() == "item.equip"
             || name.value() == "item.unequip" || name.value() == "item.use" || name.value() == "item.give"
             || name.value() == "item.take" || name.value() == "item.pickup" || name.value() == "gold.give"
             || name.value() == "gold.take" || name.value() == "spell.cast") && tier.value() != 2)
-        || (name.value() != "inspect.report" && name.value() != "inventory.inspect" && name.value() != "combat.start"
+        || (!advanced && name.value() != "inspect.report" && name.value() != "inventory.inspect" && name.value() != "combat.start"
             && name.value() != "item.equip" && name.value() != "item.unequip"
             && name.value() != "item.use" && name.value() != "item.give" && name.value() != "item.take"
             && name.value() != "item.pickup" && name.value() != "gold.give" && name.value() != "gold.take" && name.value() != "spell.cast" && tier.value() != 1))
@@ -576,7 +577,40 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     std::string secondaryStringParameter;
     double destinationX=0,destinationY=0,destinationZ=0;
     std::string destinationCell;
-    if (name.value() == "ai.follow") {
+    if (advanced) {
+        if (confirmationRequired != true || actor.value().kind != "player")
+            return invalidSchemaValue<ActionIntent>("advanced action requires player authority and explicit confirmation");
+        if (target.value().kind != "player" && target.value().kind != "npc" && target.value().kind != "creature")
+            return invalidSchemaValue<ActionIntent>("advanced action requires a physical target");
+        if ((name.value()=="actor.kill"||name.value()=="actor.resurrect"||name.value()=="actor.teleport_to_player") && target.value().kind=="player")
+            return invalidSchemaValue<ActionIntent>("advanced action cannot affect player this way");
+        if ((name.value()=="actor.spawn"||name.value()=="gold.create"||name.value()=="player.teleport") && target.value().kind!="player")
+            return invalidSchemaValue<ActionIntent>("advanced action requires player target");
+        if (name.value() == "item.create" || name.value() == "actor.spawn") {
+            if (!hasExactly(*parameters, {"record_id", "count"})) return invalidSchemaValue<ActionIntent>("creation parameters mismatch");
+            auto id = requireString(*parameters, "record_id", 1, 256);
+            auto count = requireUnsigned(*parameters, "count", name.value() == "item.create" ? 100 : 4, 1);
+            if (!id || !count || id.value().find_first_of("/\\\r\n\t") != std::string::npos)
+                return invalidSchemaValue<ActionIntent>("invalid creation record or count");
+            stringParameter = id.value(); transferCount = static_cast<std::uint32_t>(count.value());
+            intentKind = name.value() == "item.create" ? ActionIntentKind::item_create : ActionIntentKind::actor_spawn;
+        } else if (name.value() == "gold.create") {
+            if (!hasExactly(*parameters, {"amount"})) return invalidSchemaValue<ActionIntent>("gold creation parameters mismatch");
+            auto amount = requireUnsigned(*parameters, "amount", 100000, 1);
+            if (!amount) return invalidSchemaValue<ActionIntent>("invalid gold amount");
+            transferCount = static_cast<std::uint32_t>(amount.value()); intentKind = ActionIntentKind::gold_create;
+        } else if (name.value() == "player.teleport") {
+            if (!hasExactly(*parameters, {"destination_id"})) return invalidSchemaValue<ActionIntent>("teleport parameters mismatch");
+            auto id = requireString(*parameters, "destination_id", 1, 64);
+            if (!id) return invalidSchemaValue<ActionIntent>("invalid destination");
+            stringParameter = id.value(); intentKind = ActionIntentKind::player_teleport;
+        } else {
+            if (!hasExactly(*parameters, {})) return invalidSchemaValue<ActionIntent>("advanced actor parameters must be empty");
+            intentKind = name.value() == "actor.teleport_to_player" ? ActionIntentKind::actor_teleport_to_player
+                : name.value() == "actor.restore" ? ActionIntentKind::actor_restore
+                : name.value() == "actor.resurrect" ? ActionIntentKind::actor_resurrect : ActionIntentKind::actor_kill;
+        }
+    } else if (name.value() == "ai.follow") {
         if (!hasExactly(*parameters, {"distance"}))
             return invalidSchemaValue<ActionIntent>("action intent parameters mismatch");
         auto distance = requireUnsigned(*parameters, "distance", 192, 192);

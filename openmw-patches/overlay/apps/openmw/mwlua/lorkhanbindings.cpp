@@ -15,6 +15,7 @@
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/mechanicsmanager.hpp"
+#include "../mwbase/luamanager.hpp"
 #include "../mwbase/soundmanager.hpp"
 #include "../mwmechanics/aisequence.hpp"
 #include "../mwmechanics/creaturestats.hpp"
@@ -25,6 +26,8 @@
 #include "../mwworld/worldmodel.hpp"
 #include "../mwworld/actiontake.hpp"
 #include "../mwworld/actiontalk.hpp"
+#include "../mwworld/actionteleport.hpp"
+#include <cctype>
 #include "../mwbase/windowmanager.hpp"
 #include "../mwgui/dialogue.hpp"
 #include "../mwworld/cell.hpp"
@@ -522,10 +525,21 @@ namespace MWLua
                 MWWorld::SafePtr object, owner;
                 int count{};
             };
+            struct AdvancedDestination {
+                std::string id, name;
+                ESM::RefId cell;
+                ESM::Position position{};
+                MWWorld::SafePtr actor;
+                bool actorTarget{};
+            };
             struct TransferSnapshot {
                 std::string session;
                 std::uint64_t generation{};
-                bool cancelled{};
+                bool cancelled{}, advanced{};
+                ESM::RefId playerCell;
+                std::vector<std::string> advancedItems, advancedActors, advancedExactRecords;
+                std::map<std::string,std::size_t> advancedItemNames, advancedActorNames;
+                std::vector<AdvancedDestination> destinations;
                 std::vector<TransferActor> actors;
                 std::vector<TransferItem> items;
             };
@@ -537,6 +551,9 @@ namespace MWLua
                 std::string status="awaiting_confirmation", reason;
                 std::string record;
                 int count{}, sourceCount{}, targetCount{};
+                std::vector<std::string> createdIds;
+                std::string destinationCell;
+                double x{},y{},z{};
                 std::optional<lorkhan::ActionResultRequest> receipt;
                 std::optional<lorkhan::RequestId> receiptRequest;
                 std::string receiptStatus="not_submitted", receiptReason;
@@ -845,10 +862,18 @@ namespace MWLua
                 result["spells"]=spells;return result;
             }
 
+            static bool advancedKind(lorkhan::ActionIntentKind kind)
+            {
+                using K=lorkhan::ActionIntentKind;
+                return kind==K::item_create||kind==K::gold_create||kind==K::actor_spawn
+                    ||kind==K::actor_teleport_to_player||kind==K::player_teleport||kind==K::actor_restore
+                    ||kind==K::actor_resurrect||kind==K::actor_kill;
+            }
+
             static bool transferKind(lorkhan::ActionIntentKind kind)
             {
                 using K=lorkhan::ActionIntentKind;
-                return kind==K::spell_cast||!serviceName(kind).empty()||kind==K::item_give||kind==K::item_take||kind==K::item_pickup||kind==K::gold_give||kind==K::gold_take;
+                return advancedKind(kind)||kind==K::spell_cast||!serviceName(kind).empty()||kind==K::item_give||kind==K::item_take||kind==K::item_pickup||kind==K::gold_give||kind==K::gold_take;
             }
 
             static bool sameTransferActor(const lorkhan::ProtocolIdentity& left,const lorkhan::ProtocolIdentity& right)
@@ -959,6 +984,7 @@ namespace MWLua
                     actionStates.add(row);
                 }
                 context["actorActionStates"]=actionStates;
+                captureAdvancedSnapshot(lua,payload,context,*snapshot);
                 sol::object list=context["action_items"];if(!list.is<sol::table>())return snapshot;
                 const auto rows=list.as<sol::table>();
                 for(std::size_t i=1;i<=std::min<std::size_t>(128,rows.size());++i){
@@ -993,6 +1019,100 @@ namespace MWLua
                     }catch(const std::exception&){/* Malformed or stale observations provide no mutation authority. */}
                 }
                 return snapshot;
+            }
+
+            // A bounded explicit text match selects existing loaded records, never arbitrary model IDs.
+            static bool advancedMention(const std::string& text,std::string name)
+            {
+                if(name.empty()||name.size()>256||text.size()>16000)return false;
+                const auto lower=[](unsigned char c){return static_cast<char>(std::tolower(c));};
+                std::transform(name.begin(),name.end(),name.begin(),lower);
+                for(auto offset=text.find(name);offset!=std::string::npos;offset=text.find(name,offset+1)){
+                    const auto word=[](unsigned char c){return std::isalnum(c)||c=='_'||c>=128;};
+                    if((offset==0||!word(text[offset-1]))&&(offset+name.size()==text.size()||!word(text[offset+name.size()])))return true;
+                }
+                return false;
+            }
+
+            template<class T>
+            static void advancedRecords(sol::state_view lua,const std::string& text,sol::table& rows,
+                TransferSnapshot& snapshot,const char* kind=nullptr)
+            {
+                auto& records=kind?snapshot.advancedActors:snapshot.advancedItems;
+                auto& names=kind?snapshot.advancedActorNames:snapshot.advancedItemNames;
+                for(const auto& record:MWBase::Environment::get().getESMStore()->get<T>()){
+                    const auto id=record.mId.serializeText();
+                    if(kind&&id=="player")continue;
+                    // Currency denominations normalize on insertion; use the dedicated gold action.
+                    if(!kind&&(id=="gold_001"||id=="gold_005"||id=="gold_010"||id=="gold_025"||id=="gold_100"))continue;
+                    if(id.empty()||id.size()>256||record.mName.empty()||record.mName.size()>256
+                        ||id.find_first_of("/\\\r\n\t")!=std::string::npos)continue;
+                    const bool exact=advancedMention(text,id);
+                    const bool nameMatch=advancedMention(text,record.mName)||advancedMention(text,record.mName+"s");
+                    if(!exact&&!nameMatch)continue;
+                    std::string name=record.mName;
+                    std::transform(name.begin(),name.end(),name.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
+                    if(records.size()>=16){if(names.contains(name))++names[name];continue;}
+                    if(std::find(records.begin(),records.end(),id)!=records.end())continue;
+                    ++names[name];if(exact)snapshot.advancedExactRecords.push_back(id);
+                    sol::table row(lua,sol::create);row["record_id"]=id;row["name"]=record.mName;
+                    if(kind)row["kind"]=kind;rows.add(row);records.push_back(id);
+                }
+            }
+
+            static void captureAdvancedSnapshot(sol::state_view lua,sol::table payload,sol::table context,TransferSnapshot& snapshot)
+            {
+                sol::table advanced(lua,sol::create),items(lua,sol::create),actors(lua,sol::create),destinations(lua,sol::create);
+                advanced["items"]=items;advanced["actors"]=actors;advanced["destinations"]=destinations;
+                context["advanced_actions"]=advanced;
+                const std::string mode=payload.get_or("execution_mode",std::string());
+                const std::string source=payload.get_or("ui_source",std::string());
+                if((mode!="cheat"&&mode!="narrator")||(source!="lorkhan_text"&&source!="lorkhan_voice"))return;
+                const auto input=payload.get<sol::object>("input");if(!input.is<sol::table>())return;
+                auto text=input.as<sol::table>().get_or("text",std::string());if(text.empty()||text.size()>16000)return;
+                std::transform(text.begin(),text.end(),text.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
+                const auto player=MWBase::Environment::get().getWorld()->getPlayerPtr();
+                if(player.isEmpty()||!player.isInCell()||player.getClass().getCreatureStats(player).isDead())return;
+                snapshot.advanced=true;snapshot.playerCell=player.getCell()->getCell()->getId();
+                advancedRecords<ESM::Armor>(lua,text,items,snapshot);
+                advancedRecords<ESM::Weapon>(lua,text,items,snapshot);
+                advancedRecords<ESM::Clothing>(lua,text,items,snapshot);
+                advancedRecords<ESM::Potion>(lua,text,items,snapshot);
+                advancedRecords<ESM::Ingredient>(lua,text,items,snapshot);
+                advancedRecords<ESM::Miscellaneous>(lua,text,items,snapshot);
+                advancedRecords<ESM::Book>(lua,text,items,snapshot);
+                advancedRecords<ESM::Apparatus>(lua,text,items,snapshot);
+                advancedRecords<ESM::Lockpick>(lua,text,items,snapshot);
+                advancedRecords<ESM::Probe>(lua,text,items,snapshot);
+                advancedRecords<ESM::Repair>(lua,text,items,snapshot);
+                advancedRecords<ESM::Light>(lua,text,items,snapshot);
+                advancedRecords<ESM::NPC>(lua,text,actors,snapshot,"npc");
+                advancedRecords<ESM::Creature>(lua,text,actors,snapshot,"creature");
+                const auto appendDestination=[&](AdvancedDestination destination){
+                    destination.id="destination:"+std::to_string(snapshot.destinations.size()+1);
+                    sol::table row(lua,sol::create);row["destination_id"]=destination.id;row["name"]=destination.name;
+                    destinations.add(row);snapshot.destinations.push_back(std::move(destination));
+                };
+                for(const auto& seen:snapshot.actors){
+                    if(snapshot.destinations.size()>=16)break;
+                    const auto ptr=seen.object.ptrOrEmpty();
+                    if(ptr.isEmpty()||ptr==player||!advancedMention(text,std::string(ptr.getClass().getName(ptr))))continue;
+                    appendDestination({{},std::string(ptr.getClass().getName(ptr)),ptr.getCell()->getCell()->getId(),
+                        ptr.getRefData().getPosition(),MWWorld::SafePtr(ptr),true});
+                }
+                const auto& cells=MWBase::Environment::get().getESMStore()->get<ESM::Cell>();
+                std::vector<std::string> cellNames;
+                for(std::size_t i=0;i<cells.getSize()&&snapshot.destinations.size()<16;++i){
+                    const auto* cell=cells.at(i);if(!cell||!advancedMention(text,cell->mName))continue;
+                    if(cell->mName.size()>256||std::find(cellNames.begin(),cellNames.end(),cell->mName)!=cellNames.end())continue;
+                    cellNames.push_back(cell->mName);ESM::Position position{};
+                    auto world=MWBase::Environment::get().getWorld();
+                    ESM::RefId cellId=world->findExteriorPosition(cell->mName,position);
+                    if(cellId.empty())cellId=world->findInteriorPosition(cell->mName,position);
+                    if(cellId.empty())continue;
+                    bool finite=true;for(int j=0;j<3;++j)finite=finite&&std::isfinite(position.pos[j])&&std::isfinite(position.rot[j]);
+                    if(finite)appendDestination({{},cell->mName,cellId,position,{}});
+                }
             }
 
             void retainTransfer(const lorkhan::ProtocolEvent& event)
@@ -1051,11 +1171,26 @@ namespace MWLua
                 }
                 result["status"]=record.status;if(!record.reason.empty())result["reason_code"]=record.reason;
                 if(!record.record.empty())observed["record_id"]=record.record;
-                if(!record.intent->stringParameter.empty())observed[record.intent->kind==lorkhan::ActionIntentKind::spell_cast?"spell_id":"item_id"]=record.intent->stringParameter;
-                if(record.status=="succeeded"){
-                    if(record.intent->kind==lorkhan::ActionIntentKind::spell_cast){observed["cast"]=true;}
-                    else if(const auto service=serviceName(record.intent->kind);!service.empty()){observed["service"]=std::string(service);observed["opened"]=true;}
-                    else {observed["count"]=record.count;observed["source_count"]=record.sourceCount;observed["target_count"]=record.targetCount;}
+                if(advancedKind(record.intent->kind)){
+                    if(record.count)observed["count"]=record.count;
+                    if(record.targetCount)observed["target_count"]=record.targetCount;
+                    if(!record.createdIds.empty()){sol::table ids(lua,sol::create);for(const auto& value:record.createdIds)ids.add(value);observed["created_ids"]=ids;}
+                    if(!record.destinationCell.empty()){
+                        observed["cell"]=record.destinationCell;observed["x"]=record.x;observed["y"]=record.y;observed["z"]=record.z;
+                    }
+                    if(record.status=="succeeded"){
+                        using K=lorkhan::ActionIntentKind;
+                        if(record.intent->kind==K::actor_restore)observed["restored"]=true;
+                        if(record.intent->kind==K::actor_resurrect)observed["dead"]=false;
+                        if(record.intent->kind==K::actor_kill)observed["dead"]=true;
+                    }
+                }else{
+                    if(!record.intent->stringParameter.empty())observed[record.intent->kind==lorkhan::ActionIntentKind::spell_cast?"spell_id":"item_id"]=record.intent->stringParameter;
+                    if(record.status=="succeeded"){
+                        if(record.intent->kind==lorkhan::ActionIntentKind::spell_cast){observed["cast"]=true;}
+                        else if(const auto service=serviceName(record.intent->kind);!service.empty()){observed["service"]=std::string(service);observed["opened"]=true;}
+                        else {observed["count"]=record.count;observed["source_count"]=record.sourceCount;observed["target_count"]=record.targetCount;}
+                    }
                 }
                 result["observed"]=observed;return result;
             }
@@ -1155,6 +1290,137 @@ namespace MWLua
                 return 1;
             }
 
+            static bool advancedRecordAllowed(const TransferSnapshot& snapshot,const std::string& id,bool actor)
+            {
+                const auto& records=actor?snapshot.advancedActors:snapshot.advancedItems;
+                if(std::find(records.begin(),records.end(),id)==records.end())return false;
+                if(std::find(snapshot.advancedExactRecords.begin(),snapshot.advancedExactRecords.end(),id)!=snapshot.advancedExactRecords.end())return true;
+                MWWorld::ManualRef record(*MWBase::Environment::get().getESMStore(),ESM::RefId::deserializeText(id),1);
+                std::string name(record.getPtr().getClass().getName(record.getPtr()));
+                std::transform(name.begin(),name.end(),name.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
+                const auto& names=actor?snapshot.advancedActorNames:snapshot.advancedItemNames;
+                const auto found=names.find(name);return found!=names.end()&&found->second==1;
+            }
+
+            // All model mutations resolve only the frozen current player, observed targets and loaded choices.
+            void commitAdvanced(TransferRecord& record,const TransferActor* actor,const TransferActor* target,const TransferActor* player)
+            {
+                using K=lorkhan::ActionIntentKind;const auto& intent=*record.intent;
+                record.reason="advanced_precondition_failed";
+                if(!record.snapshot->advanced||intent.confirmationRequired!=true||!actor||!target||!player
+                    ||actor->identity.kind!="player"||!sameTransferActor(actor->identity,player->identity))return;
+                auto world=MWBase::Environment::get().getWorld();
+                const auto playerPtr=player->object.ptrOrEmpty(),targetPtr=target->object.ptrOrEmpty();
+                if(playerPtr.isEmpty()||targetPtr.isEmpty()||playerPtr!=world->getPlayerPtr()
+                    ||!playerPtr.isInCell()||playerPtr.getCell()->getCell()->getId()!=record.snapshot->playerCell
+                    ||playerPtr.getClass().getCreatureStats(playerPtr).isDead()||!transferNear(playerPtr,targetPtr,2048))return;
+                if((intent.kind==K::actor_spawn||intent.kind==K::gold_create||intent.kind==K::player_teleport)&&targetPtr!=playerPtr)return;
+                auto& stats=targetPtr.getClass().getCreatureStats(targetPtr);
+                if(intent.kind==K::actor_resurrect){
+                    if(targetPtr==playerPtr||!stats.isDead())return;
+                    MWBase::Environment::get().getMechanicsManager()->resurrect(targetPtr);
+                    if(stats.isDead()){record.reason="resurrection_readback_failed";return;}
+                }else if(intent.kind==K::actor_kill){
+                    if(targetPtr==playerPtr||stats.isDead())return;
+                    auto health=stats.getHealth();health.setCurrent(0);stats.setHealth(health);
+                    if(!stats.isDead()){record.reason="death_readback_failed";return;}
+                }else{
+                    if(stats.isDead())return;
+                    if(intent.kind==K::actor_restore){
+                        for(int i=0;i<3;++i)if(!std::isfinite(stats.getDynamic(i).getModified())
+                            ||stats.getDynamic(i).getModified()<(i==0?1:0))return;
+                        for(int i=0;i<3;++i){auto value=stats.getDynamic(i);value.setCurrent(value.getModified());stats.setDynamic(i,value);}
+                        for(int i=0;i<3;++i)if(stats.getDynamic(i).getCurrent()!=stats.getDynamic(i).getModified()){
+                            record.reason="restore_readback_failed";return;
+                        }
+                    }else if(intent.kind==K::item_create||intent.kind==K::gold_create){
+                        const bool gold=intent.kind==K::gold_create;
+                        if(!gold&&!advancedRecordAllowed(*record.snapshot,intent.stringParameter,false)){record.reason="record_not_observed";return;}
+                        const auto id=ESM::RefId::deserializeText(gold?"gold_001":intent.stringParameter);
+                        const int count=static_cast<int>(intent.transferCount);
+                        if(count<1||count>(gold?100000:100))return;
+                        MWWorld::ManualRef existing(*MWBase::Environment::get().getESMStore(),id,1);
+                        if(!existing.getPtr().getClass().isItem(existing.getPtr()))return;
+                        auto& store=targetPtr.getClass().getContainerStore(targetPtr);const int before=store.count(id);
+                        if(before<0||before>std::numeric_limits<int>::max()-count)return;
+                        store.add(id,count);record.record=id.serializeText();record.count=count;record.targetCount=store.count(id);
+                        if(record.targetCount!=before+count){record.reason="creation_readback_failed";return;}
+                    }else if(intent.kind==K::actor_spawn){
+                        if(!advancedRecordAllowed(*record.snapshot,intent.stringParameter,true)){record.reason="record_not_observed";return;}
+                        if(intent.transferCount<1||intent.transferCount>4)return;
+                        const auto id=ESM::RefId::deserializeText(intent.stringParameter);
+                        MWWorld::ManualRef existing(*MWBase::Environment::get().getESMStore(),id,1);
+                        if(existing.getPtr().getType()!=ESM::NPC::sRecordId&&existing.getPtr().getType()!=ESM::Creature::sRecordId)return;
+                        record.record=intent.stringParameter;
+                        for(std::uint32_t i=0;i<intent.transferCount;++i){
+                            const auto created=world->safePlaceObject(existing.getPtr(),playerPtr,playerPtr.getCell(),i,128);
+                            if(created.isEmpty()||!created.isInCell()||!created.getClass().isActor()){
+                                record.reason="spawn_readback_failed";return;
+                            }
+                            MWBase::Environment::get().getWorldModel()->registerPtr(created);
+                            record.createdIds.push_back(created.getCellRef().getRefNum().toString());++record.count;
+                        }
+                    }else if(intent.kind==K::actor_teleport_to_player||intent.kind==K::player_teleport){
+                        ESM::RefId cell;ESM::Position position{};MWWorld::Ptr moving=targetPtr;
+                        if(intent.kind==K::actor_teleport_to_player){
+                            if(targetPtr==playerPtr)return;cell=playerPtr.getCell()->getCell()->getId();position=playerPtr.getRefData().getPosition();
+                            position.pos[0]+=96;
+                        }else{
+                            const AdvancedDestination* destination=nullptr;
+                            for(const auto& choice:record.snapshot->destinations)if(choice.id==intent.stringParameter)destination=&choice;
+                            if(!destination){record.reason="destination_not_observed";return;}
+                            cell=destination->cell;position=destination->position;
+                            if(destination->actorTarget){
+                                const auto seen=destination->actor.ptrOrEmpty();
+                                if(seen.isEmpty()||!transferNear(seen,playerPtr,2048)||seen.getClass().getCreatureStats(seen).isDead())return;
+                                cell=seen.getCell()->getCell()->getId();position=seen.getRefData().getPosition();position.pos[0]+=96;
+                            }
+                        }
+                        if(moving==playerPtr){
+                            MWWorld::ActionTeleport(cell,position,false).execute(moving);moving=world->getPlayerPtr();
+                        }else{
+                            moving.getClass().getCreatureStats(moving).land(false);
+                            moving.getClass().getCreatureStats(moving).setTeleported(true);
+                            moving=world->moveObject(moving,&MWBase::Environment::get().getWorldModel()->getCell(cell),position.asVec3(),true,true);
+                            MWBase::Environment::get().getLuaManager()->objectTeleported(moving);
+                        }
+                        world->adjustPosition(moving,false);
+                        if(moving.isEmpty()||!moving.isInCell()||moving.getCell()->getCell()->getId()!=cell){record.reason="teleport_readback_failed";return;}
+                        const auto actual=moving.getRefData().getPosition();double distance=0;
+                        for(int i=0;i<3;++i){const double delta=actual.pos[i]-position.pos[i];distance+=delta*delta;}
+                        if(!std::isfinite(distance)||distance>256.0*256.0){record.reason="teleport_readback_failed";return;}
+                        record.destinationCell=cell.serializeText();record.x=actual.pos[0];record.y=actual.pos[1];record.z=actual.pos[2];
+                    }else return;
+                }
+                record.status="succeeded";record.reason="advanced_action_completed";
+            }
+
+            std::string advancedActionSummary(const std::string& id) const
+            {
+                const auto found=m_transfers.find(id);if(found==m_transfers.end()||!found->second.snapshot)return {};
+                const auto& record=found->second;if(!advancedKind(record.intent->kind))return {};
+                if(record.intent->kind==lorkhan::ActionIntentKind::player_teleport){
+                    for(const auto& destination:record.snapshot->destinations)if(destination.id==record.intent->stringParameter)
+                        return "Destination: "+destination.name+" ("+destination.id+")";
+                }
+                if(record.intent->kind==lorkhan::ActionIntentKind::item_create||record.intent->kind==lorkhan::ActionIntentKind::actor_spawn){
+                    try{MWWorld::ManualRef ref(*MWBase::Environment::get().getESMStore(),ESM::RefId::deserializeText(record.intent->stringParameter),1);
+                        return "Create "+std::to_string(record.intent->transferCount)+" x "+std::string(ref.getPtr().getClass().getName(ref.getPtr()))
+                            +" ("+record.intent->stringParameter+")";}catch(const std::exception&){return {};}
+                }
+                using K=lorkhan::ActionIntentKind;
+                const auto target=transferActorPtr(record.intent->target);
+                const std::string name(target.isEmpty()?record.intent->target.recordId:target.getClass().getName(target));
+                if(name.size()>256)return {};
+                const auto kind=record.intent->kind;
+                if(kind==K::gold_create)return "Create "+std::to_string(record.intent->transferCount)+" gold for "+name;
+                if(kind==K::actor_restore)return "Restore health, magicka and fatigue for "+name;
+                if(kind==K::actor_resurrect)return "Resurrect "+name+". This may affect quests.";
+                if(kind==K::actor_kill)return "Kill "+name+". This may permanently break quests.";
+                if(kind==K::actor_teleport_to_player)return "Teleport "+name+" to the player.";
+                return {};
+            }
+
             // This action runs on the engine's main-thread action queue exactly once per retained intent.
             void commitTransfer(TransferRecord& record)
             {
@@ -1169,6 +1435,7 @@ namespace MWLua
                         if(sameTransferActor(observed.identity,intent.target))target=&observed;
                         if(observed.identity.kind=="player")player=&observed;
                     }
+                    if(advancedKind(intent.kind)){commitAdvanced(record,actor,target,player);return;}
                     if(!actor||!target||!player||actor->identity.kind=="player")return;
                     const auto actorPtr=actor->object.ptrOrEmpty();const auto targetPtr=target->object.ptrOrEmpty();
                     const auto playerPtr=player->object.ptrOrEmpty();
@@ -1822,7 +2089,7 @@ namespace MWLua
                             { correlated, *m_session, m_service->generation() },
                             lorkhan::ActionId(dto.get<std::string>("action_id")),
                             lorkhan::TurnId(dto.get<std::string>("turn_id")), status,
-                            dto.get<std::string>("reason_code"), dto.get<sol::table>("observed").size()==0?"{}":toJson(dto.get<sol::object>("observed")),
+                            dto.get<std::string>("reason_code"), dto.get<sol::table>("observed").begin()==dto.get<sol::table>("observed").end()?"{}":toJson(dto.get<sol::object>("observed")),
                             dto.get<std::string>("completed_at") } };
                     auto retained=m_transfers.find(dto.get<std::string>("action_id"));
                     if(retained!=m_transfers.end()){
@@ -2245,7 +2512,7 @@ namespace MWLua
             }
 
             static std::vector<std::string> capabilities()
-            { return { "diary.books.v1", "context.item_pickup.v1", "context.spell_cast.v1", "context.actor_resurrected.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.conversation.end", "action.ai.follow", "action.ai.stop",
+            { return { "diary.books.v1", "context.item_pickup.v1", "context.spell_cast.v1", "context.actor_resurrected.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.item.create", "action.gold.create", "action.actor.spawn", "action.actor.teleport_to_player", "action.player.teleport", "action.actor.restore", "action.actor.resurrect", "action.actor.kill", "action.conversation.end", "action.ai.follow", "action.ai.stop",
                 "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.weapon.sheathe", "action.item.give", "action.item.take", "action.item.pickup", "action.gold.give", "action.gold.take", "action.service.barter", "action.service.training", "action.service.spells", "action.service.travel", "action.service.spellmaking", "action.service.enchanting", "action.service.repair", "action.spell.cast", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
                 "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" }; }
@@ -2308,6 +2575,14 @@ namespace MWLua
                             case lorkhan::ActionIntentKind::service_spellmaking: name = "service.spellmaking"; tier = 1; break;
                             case lorkhan::ActionIntentKind::service_enchanting: name = "service.enchanting"; tier = 1; break;
                             case lorkhan::ActionIntentKind::spell_cast: name = "spell.cast"; tier = 2; break;
+                            case lorkhan::ActionIntentKind::item_create: name = "item.create"; tier = 2; break;
+                            case lorkhan::ActionIntentKind::gold_create: name = "gold.create"; tier = 2; break;
+                            case lorkhan::ActionIntentKind::actor_spawn: name = "actor.spawn"; tier = 2; break;
+                            case lorkhan::ActionIntentKind::actor_teleport_to_player: name = "actor.teleport_to_player"; tier = 2; break;
+                            case lorkhan::ActionIntentKind::player_teleport: name = "player.teleport"; tier = 2; break;
+                            case lorkhan::ActionIntentKind::actor_restore: name = "actor.restore"; tier = 2; break;
+                            case lorkhan::ActionIntentKind::actor_resurrect: name = "actor.resurrect"; tier = 2; break;
+                            case lorkhan::ActionIntentKind::actor_kill: name = "actor.kill"; tier = 2; break;
                             case lorkhan::ActionIntentKind::service_repair: name = "service.repair"; tier = 1; break;
 
                         }
@@ -2338,6 +2613,9 @@ namespace MWLua
                         if(item.kind==lorkhan::ActionIntentKind::item_give||item.kind==lorkhan::ActionIntentKind::item_take)
                             parameters["count"]=item.transferCount;
                         if(item.kind==lorkhan::ActionIntentKind::spell_cast)parameters["spell_id"]=item.stringParameter;
+                        if(item.kind==lorkhan::ActionIntentKind::item_create||item.kind==lorkhan::ActionIntentKind::actor_spawn){parameters["record_id"]=item.stringParameter;parameters["count"]=item.transferCount;}
+                        if(item.kind==lorkhan::ActionIntentKind::gold_create)parameters["amount"]=item.transferCount;
+                        if(item.kind==lorkhan::ActionIntentKind::player_teleport)parameters["destination_id"]=item.stringParameter;
                         if(item.kind==lorkhan::ActionIntentKind::gold_give||item.kind==lorkhan::ActionIntentKind::gold_take)
                             parameters["amount"]=item.transferCount;
                         payload["parameters"] = parameters;
@@ -2453,6 +2731,7 @@ namespace MWLua
             api["capabilities"] = [lua] {
                 sol::table result(lua, sol::create); std::size_t index = 1;
             for (const auto& capability : std::vector<std::string>{ "diary.books.v1", "context.item_pickup.v1", "context.spell_cast.v1", "context.actor_resurrected.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session",
+                "action.item.create", "action.gold.create", "action.actor.spawn", "action.actor.teleport_to_player", "action.player.teleport", "action.actor.restore", "action.actor.resurrect", "action.actor.kill",
                 "action.ai.follow", "action.ai.stop", "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
                 "action.combat.start", "action.combat.stop", "action.weapon.sheathe", "action.item.give", "action.item.take", "action.item.pickup", "action.gold.give", "action.gold.take", "action.service.barter", "action.service.training", "action.service.spells", "action.service.travel", "action.service.spellmaking", "action.service.enchanting", "action.service.repair", "action.spell.cast", "action.animation.play", "action.item.equip", "action.item.unequip",
                 "action.item.use", "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" })
@@ -2502,6 +2781,10 @@ namespace MWLua
             api["pumpSessionControls"] = [lua] { return client().pumpSessionControls(lua); };
             api["pumpPlayerAutochat"] = [lua] { return client().pumpPlayerAutochat(lua); };
             if(global){
+                api["executeAdvanced"]=[lua,luaManager](const std::string& id){return client().executeTransfer(lua,luaManager,id);};
+                api["cancelAdvanced"]=[](const std::string& id){client().cancelTransfer(id);};
+                api["advancedReceiptStatus"]=[lua](const std::string& id){return client().transferReceiptStatus(lua,id);};
+                api["advancedActionSummary"]=[](const std::string& id){return client().advancedActionSummary(id);};
                 api["executeTransfer"]=[lua,luaManager](const std::string& id){return client().executeTransfer(lua,luaManager,id);};
                 api["cancelTransfer"]=[](const std::string& id){client().cancelTransfer(id);};
                 api["transferReceiptStatus"]=[lua](const std::string& id){return client().transferReceiptStatus(lua,id);};

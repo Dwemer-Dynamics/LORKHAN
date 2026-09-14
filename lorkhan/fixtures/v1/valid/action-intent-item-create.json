@@ -1,0 +1,49 @@
+{
+  "description": "Explicitly confirmed advanced item.create",
+  "instance": {
+    "action_id": "00000000-0000-4000-8000-000000000020",
+    "actor": {
+      "cell": {
+        "name": "Balmora, Guild of Mages",
+        "kind": "interior"
+      },
+      "content_file": "Morrowind.esm",
+      "display_name": "Player",
+      "kind": "player",
+      "record_id": "player",
+      "refnum": {
+        "content_file": 0,
+        "index": 0
+      }
+    },
+    "confirmation_required": true,
+    "display_name": "item.create",
+    "expires_at": "2026-07-18T20:00:10Z",
+    "followup_enabled": false,
+    "followup_actions_allowed": false,
+    "followup_depth": 0,
+    "name": "item.create",
+    "parameters": {
+      "record_id": "exquisite_robe_01",
+      "count": 1
+    },
+    "schema": "lorkhan.action-intent.v1",
+    "target": {
+      "cell": {
+        "name": "Balmora, Guild of Mages",
+        "kind": "interior"
+      },
+      "content_file": "Morrowind.esm",
+      "display_name": "Player",
+      "kind": "player",
+      "record_id": "player",
+      "refnum": {
+        "content_file": 0,
+        "index": 0
+      }
+    },
+    "tier": 2,
+    "turn_id": "00000000-0000-4000-8000-000000000008"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/action-intent.schema.json"
+}

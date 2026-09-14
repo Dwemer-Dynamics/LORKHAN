@@ -1,0 +1,47 @@
+{
+  "description": "Explicitly confirmed advanced actor.kill",
+  "instance": {
+    "action_id": "00000000-0000-4000-8000-000000000020",
+    "actor": {
+      "cell": {
+        "name": "Balmora, Guild of Mages",
+        "kind": "interior"
+      },
+      "content_file": "Morrowind.esm",
+      "display_name": "Player",
+      "kind": "player",
+      "record_id": "player",
+      "refnum": {
+        "content_file": 0,
+        "index": 0
+      }
+    },
+    "confirmation_required": true,
+    "display_name": "actor.kill",
+    "expires_at": "2026-07-18T20:00:10Z",
+    "followup_enabled": false,
+    "followup_actions_allowed": false,
+    "followup_depth": 0,
+    "name": "actor.kill",
+    "parameters": {},
+    "schema": "lorkhan.action-intent.v1",
+    "target": {
+      "cell": {
+        "grid_x": -2,
+        "grid_y": -9,
+        "kind": "exterior"
+      },
+      "content_file": "Morrowind.esm",
+      "display_name": "Fargoth",
+      "kind": "npc",
+      "record_id": "fargoth",
+      "refnum": {
+        "content_file": 0,
+        "index": 112
+      }
+    },
+    "tier": 2,
+    "turn_id": "00000000-0000-4000-8000-000000000008"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/action-intent.schema.json"
+}

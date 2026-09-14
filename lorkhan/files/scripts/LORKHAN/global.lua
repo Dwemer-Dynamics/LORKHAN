@@ -47,6 +47,12 @@ local function flushPlayerEvents(player)
 end
 
 local function sendActor(actor,name,payload)
+    if transfers and name=='LORKHAN_ACTOR_REJECT' and transferActions.advanced[payload.name] then
+        -- Rejection uses the retained native action so a player executor needs no CUSTOM script.
+        local cancelled,cancelReason=pcall(bridge.cancelAdvanced,payload.action_id)
+        if not cancelled then return nil,tostring(cancelReason) end
+        return transferActions.enqueue(transfers,payload)
+    end
     if transfers and name=='LORKHAN_ACTOR_ACTION' and transferActions.names[payload.name] then
         return transferActions.enqueue(transfers,payload)
     end

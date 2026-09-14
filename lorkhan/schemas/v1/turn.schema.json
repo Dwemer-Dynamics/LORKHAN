@@ -60,7 +60,99 @@
         "context": {
           "$comment": "Deferred bounded context snapshot shape.",
           "maxProperties": 256,
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "advanced_actions": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "items": {
+                  "type": "array",
+                  "maxItems": 16,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "record_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      }
+                    },
+                    "required": [
+                      "record_id",
+                      "name"
+                    ]
+                  }
+                },
+                "actors": {
+                  "type": "array",
+                  "maxItems": 16,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "record_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      "kind": {
+                        "enum": [
+                          "npc",
+                          "creature"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "record_id",
+                      "name",
+                      "kind"
+                    ]
+                  }
+                },
+                "destinations": {
+                  "type": "array",
+                  "maxItems": 16,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "destination_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      }
+                    },
+                    "required": [
+                      "destination_id",
+                      "name"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "items",
+                "actors",
+                "destinations"
+              ]
+            }
+          }
         },
         "input": {
           "additionalProperties": false,

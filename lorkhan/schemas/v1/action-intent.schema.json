@@ -1677,6 +1677,729 @@
         "confirmation_required"
       ],
       "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        },
+        "actor": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/action-intent.schema.json#/$defs/player_actor"
+        },
+        "expires_at": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+        },
+        "confirmation_required": {
+          "type": "boolean",
+          "const": true
+        },
+        "display_name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "followup_enabled": {
+          "type": "boolean",
+          "const": false
+        },
+        "followup_actions_allowed": {
+          "type": "boolean",
+          "const": false
+        },
+        "followup_depth": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "const": "item.create"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "record_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "required": [
+            "record_id",
+            "count"
+          ]
+        },
+        "schema": {
+          "const": "lorkhan.action-intent.v1",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+        },
+        "tier": {
+          "type": "integer",
+          "const": 2
+        },
+        "turn_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        }
+      },
+      "required": [
+        "schema",
+        "action_id",
+        "turn_id",
+        "name",
+        "tier",
+        "actor",
+        "target",
+        "parameters",
+        "expires_at",
+        "confirmation_required"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        },
+        "actor": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/action-intent.schema.json#/$defs/player_actor"
+        },
+        "expires_at": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+        },
+        "confirmation_required": {
+          "type": "boolean",
+          "const": true
+        },
+        "display_name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "followup_enabled": {
+          "type": "boolean",
+          "const": false
+        },
+        "followup_actions_allowed": {
+          "type": "boolean",
+          "const": false
+        },
+        "followup_depth": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "const": "gold.create"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "amount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            }
+          },
+          "required": [
+            "amount"
+          ]
+        },
+        "schema": {
+          "const": "lorkhan.action-intent.v1",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+        },
+        "tier": {
+          "type": "integer",
+          "const": 2
+        },
+        "turn_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        }
+      },
+      "required": [
+        "schema",
+        "action_id",
+        "turn_id",
+        "name",
+        "tier",
+        "actor",
+        "target",
+        "parameters",
+        "expires_at",
+        "confirmation_required"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        },
+        "actor": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/action-intent.schema.json#/$defs/player_actor"
+        },
+        "expires_at": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+        },
+        "confirmation_required": {
+          "type": "boolean",
+          "const": true
+        },
+        "display_name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "followup_enabled": {
+          "type": "boolean",
+          "const": false
+        },
+        "followup_actions_allowed": {
+          "type": "boolean",
+          "const": false
+        },
+        "followup_depth": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "const": "actor.spawn"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "record_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4
+            }
+          },
+          "required": [
+            "record_id",
+            "count"
+          ]
+        },
+        "schema": {
+          "const": "lorkhan.action-intent.v1",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+        },
+        "tier": {
+          "type": "integer",
+          "const": 2
+        },
+        "turn_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        }
+      },
+      "required": [
+        "schema",
+        "action_id",
+        "turn_id",
+        "name",
+        "tier",
+        "actor",
+        "target",
+        "parameters",
+        "expires_at",
+        "confirmation_required"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        },
+        "actor": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/action-intent.schema.json#/$defs/player_actor"
+        },
+        "expires_at": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+        },
+        "confirmation_required": {
+          "type": "boolean",
+          "const": true
+        },
+        "display_name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "followup_enabled": {
+          "type": "boolean",
+          "const": false
+        },
+        "followup_actions_allowed": {
+          "type": "boolean",
+          "const": false
+        },
+        "followup_depth": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "const": "actor.teleport_to_player"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "schema": {
+          "const": "lorkhan.action-intent.v1",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+        },
+        "tier": {
+          "type": "integer",
+          "const": 2
+        },
+        "turn_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        }
+      },
+      "required": [
+        "schema",
+        "action_id",
+        "turn_id",
+        "name",
+        "tier",
+        "actor",
+        "target",
+        "parameters",
+        "expires_at",
+        "confirmation_required"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        },
+        "actor": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/action-intent.schema.json#/$defs/player_actor"
+        },
+        "expires_at": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+        },
+        "confirmation_required": {
+          "type": "boolean",
+          "const": true
+        },
+        "display_name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "followup_enabled": {
+          "type": "boolean",
+          "const": false
+        },
+        "followup_actions_allowed": {
+          "type": "boolean",
+          "const": false
+        },
+        "followup_depth": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "const": "player.teleport"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "destination_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "destination_id"
+          ]
+        },
+        "schema": {
+          "const": "lorkhan.action-intent.v1",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+        },
+        "tier": {
+          "type": "integer",
+          "const": 2
+        },
+        "turn_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        }
+      },
+      "required": [
+        "schema",
+        "action_id",
+        "turn_id",
+        "name",
+        "tier",
+        "actor",
+        "target",
+        "parameters",
+        "expires_at",
+        "confirmation_required"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        },
+        "actor": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/action-intent.schema.json#/$defs/player_actor"
+        },
+        "expires_at": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+        },
+        "confirmation_required": {
+          "type": "boolean",
+          "const": true
+        },
+        "display_name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "followup_enabled": {
+          "type": "boolean",
+          "const": false
+        },
+        "followup_actions_allowed": {
+          "type": "boolean",
+          "const": false
+        },
+        "followup_depth": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "const": "actor.restore"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "schema": {
+          "const": "lorkhan.action-intent.v1",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+        },
+        "tier": {
+          "type": "integer",
+          "const": 2
+        },
+        "turn_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        }
+      },
+      "required": [
+        "schema",
+        "action_id",
+        "turn_id",
+        "name",
+        "tier",
+        "actor",
+        "target",
+        "parameters",
+        "expires_at",
+        "confirmation_required"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        },
+        "actor": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/action-intent.schema.json#/$defs/player_actor"
+        },
+        "expires_at": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+        },
+        "confirmation_required": {
+          "type": "boolean",
+          "const": true
+        },
+        "display_name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "followup_enabled": {
+          "type": "boolean",
+          "const": false
+        },
+        "followup_actions_allowed": {
+          "type": "boolean",
+          "const": false
+        },
+        "followup_depth": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "const": "actor.resurrect"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "schema": {
+          "const": "lorkhan.action-intent.v1",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+        },
+        "tier": {
+          "type": "integer",
+          "const": 2
+        },
+        "turn_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        }
+      },
+      "required": [
+        "schema",
+        "action_id",
+        "turn_id",
+        "name",
+        "tier",
+        "actor",
+        "target",
+        "parameters",
+        "expires_at",
+        "confirmation_required"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        },
+        "actor": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/action-intent.schema.json#/$defs/player_actor"
+        },
+        "expires_at": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+        },
+        "confirmation_required": {
+          "type": "boolean",
+          "const": true
+        },
+        "display_name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "followup_enabled": {
+          "type": "boolean",
+          "const": false
+        },
+        "followup_actions_allowed": {
+          "type": "boolean",
+          "const": false
+        },
+        "followup_depth": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "const": "actor.kill"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "schema": {
+          "const": "lorkhan.action-intent.v1",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+        },
+        "tier": {
+          "type": "integer",
+          "const": 2
+        },
+        "turn_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        }
+      },
+      "required": [
+        "schema",
+        "action_id",
+        "turn_id",
+        "name",
+        "tier",
+        "actor",
+        "target",
+        "parameters",
+        "expires_at",
+        "confirmation_required"
+      ],
+      "type": "object"
     }
-  ]
+  ],
+  "$defs": {
+    "player_actor": {
+      "additionalProperties": false,
+      "properties": {
+        "cell": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "interior",
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "grid_x": {
+                  "type": "integer"
+                },
+                "grid_y": {
+                  "type": "integer"
+                },
+                "kind": {
+                  "const": "exterior",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "grid_x",
+                "grid_y"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "content_file": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "display_name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string",
+          "const": "player"
+        },
+        "record_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "refnum": {
+          "additionalProperties": false,
+          "properties": {
+            "content_file": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "index": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "index",
+            "content_file"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "kind",
+        "record_id",
+        "refnum",
+        "content_file",
+        "cell",
+        "display_name"
+      ],
+      "type": "object"
+    }
+  }
 }

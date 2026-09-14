@@ -728,6 +728,39 @@ void testProtocolEventResponses()
             CHECK(!lorkhan::parseEventsResponse(invalid,jsonHeaders));
         }
     }
+    for(const auto& [name,parameters]:std::vector<std::pair<std::string,std::string>>{
+        {"item.create",R"({"record_id":"test_item","count":100})"}, {"gold.create",R"({"amount":100000})"},
+        {"actor.spawn",R"({"record_id":"test_actor","count":4})"}, {"player.teleport",R"({"destination_id":"destination:1"})"},
+        {"actor.teleport_to_player","{}"}, {"actor.restore","{}"}, {"actor.resurrect","{}"}, {"actor.kill","{}"}}){
+        auto wire=parityActionsJson;wire.replace(approachName,std::string("ai.approach").size(),name);
+        const auto tier=wire.find("\"tier\":1",approachName);
+        wire.replace(tier,std::string("\"tier\":1").size(),"\"tier\":2,\"confirmation_required\":true");
+        const auto params=wire.find("\"parameters\":{}",approachName);
+        wire.replace(params,std::string("\"parameters\":{}").size(),"\"parameters\":"+parameters);
+        CHECK(!lorkhan::parseEventsResponse(wire,jsonHeaders)); // Only the player has advanced authority.
+        const auto actorStart=wire.find("\"actor\":",approachName),targetStart=wire.find("\"target\":",actorStart);
+        const auto targetEnd=wire.find(",\"parameters\":",targetStart);
+        const auto playerIdentity=wire.substr(targetStart+9,targetEnd-targetStart-9);
+        const auto npcIdentity=wire.substr(actorStart+8,targetStart-actorStart-9);
+        wire.replace(actorStart,targetStart-actorStart,"\"actor\":"+playerIdentity+",");
+        if(name=="actor.kill"||name=="actor.resurrect"||name=="actor.teleport_to_player"){
+            const auto position=wire.find("\"target\":",actorStart);
+            wire.replace(position+9,playerIdentity.size(),npcIdentity);
+        }
+        CHECK(lorkhan::parseEventsResponse(wire,jsonHeaders));
+        auto noApproval=wire;const auto approval=noApproval.find("\"confirmation_required\":true",approachName);
+        noApproval.replace(approval,std::string("\"confirmation_required\":true").size(),"\"confirmation_required\":false");
+        CHECK(!lorkhan::parseEventsResponse(noApproval,jsonHeaders));
+        auto wrongTier=wire;wrongTier.replace(wrongTier.find("\"tier\":2",approachName),8,"\"tier\":1");
+        CHECK(!lorkhan::parseEventsResponse(wrongTier,jsonHeaders));
+        auto arbitrary=wire;const auto position=arbitrary.find("\"parameters\":",approachName);
+        arbitrary.replace(position+13,parameters.size(),R"({"script":"bad"})");
+        CHECK(!lorkhan::parseEventsResponse(arbitrary,jsonHeaders));
+        if(name=="item.create"||name=="actor.spawn"||name=="gold.create"){
+            auto overflow=wire;const auto amount=overflow.find(name=="gold.create"?"100000":name=="item.create"?"100":"4",overflow.find("\"parameters\":",approachName));
+            overflow.insert(amount,"9");CHECK(!lorkhan::parseEventsResponse(overflow,jsonHeaders));
+        }
+    }
     for(const char* name:{"service.barter","service.training","service.spells","service.travel","service.spellmaking","service.enchanting","service.repair"}){
         auto wire=parityActionsJson;wire.replace(approachName,std::string("ai.approach").size(),name);
         CHECK(lorkhan::parseEventsResponse(wire,jsonHeaders));
