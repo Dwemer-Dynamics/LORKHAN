@@ -1,0 +1,21 @@
+diff --git a/apps/openmw/mwlua/luamanagerimp.hpp b/apps/openmw/mwlua/luamanagerimp.hpp
+index c1fe00d1f3..20c8f99b73 100644
+--- a/apps/openmw/mwlua/luamanagerimp.hpp
++++ b/apps/openmw/mwlua/luamanagerimp.hpp
+@@ -110,6 +110,8 @@ namespace MWLua
+         void questUpdated(const ESM::RefId& questId, int stage) override;
+         void uiModeChanged(const MWWorld::Ptr& arg) override;
+         void actorDied(const MWWorld::Ptr& actor) override;
++        void onLorkhanSpellCast(const MWWorld::Ptr& caster, const MWWorld::Ptr& target,
++            const std::string& spellId, const std::string& spellName) override;
+         void onDialogueResponse(
+             const MWWorld::Ptr& actor, const ESM::DialInfo& info, const ESM::Dialogue& record) override;
+ 
+@@ -230,6 +232,7 @@ namespace MWLua
+             sol::main_object mArg;
+         };
+         std::vector<CallbackWithData> mQueuedCallbacks;
++        std::size_t mLorkhanSpellCastCount = 0;
+ 
+         // Queued actions that should be done in main thread. Processed by applyQueuedChanges().
+         class DelayedAction

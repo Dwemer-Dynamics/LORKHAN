@@ -132,6 +132,61 @@ function M.dialogueResponse(event, modules)
         captured_game_time=gameTime}
 end
 
+-- Convert a native successful cast into nearby observed facts, never a claim that its target was hit.
+function M.spellCastObservation(event,modules)
+    modules=modules or loaded()
+    if type(event)~='table' or not modules.self or not event.caster then return nil,'spell_event_unavailable' end
+    local ok,payload=pcall(function()
+        local caster=M.identity(event.caster,modules)
+        if not caster then return nil end
+        local function sameSpace(left,right)
+            if not left or not right or left.isExterior~=right.isExterior then return false end
+            if left.isExterior then return left.worldSpaceId==right.worldSpaceId end
+            if left.id and right.id then return left.id==right.id end
+            return left.name==right.name
+        end
+        if caster.kind~='player' then
+            if not sameSpace(event.caster.cell,modules.self.cell) then return nil end
+            local distance=(event.caster.position-modules.self.position):length()
+            if distance~=distance or distance>2048 then return nil end
+        end
+        local target=event.target and M.identity(event.target,modules) or nil
+        local actorIdentity=require('scripts.LORKHAN.identity')
+        local seen={[actorIdentity.key(caster)]=true}
+        if target then seen[actorIdentity.key(target)]=true end
+        local witnesses={}
+        -- Keep only the nearest twelve from a bounded local actor scan, measured from the caster.
+        for index,witness in ipairs(modules.nearby and modules.nearby.actors or {}) do
+            if index>256 then break end
+            local candidateOk,candidate=pcall(function()
+                if not sameSpace(witness.cell,event.caster.cell) then return nil end
+                local distance=(witness.position-event.caster.position):length()
+                if distance~=distance or distance>2048 then return nil end
+                local actor=M.identity(witness,modules)
+                if not actor or (actor.kind~='npc' and actor.kind~='creature') then return nil end
+                local key=actorIdentity.key(actor)
+                if not key or seen[key] then return nil end
+                seen[key]=true
+                return {actor=actor,distance=distance,key=key}
+            end)
+            if candidateOk and candidate then
+                witnesses[#witnesses+1]=candidate
+                table.sort(witnesses,function(left,right)
+                    if left.distance~=right.distance then return left.distance<right.distance end
+                    return left.key<right.key
+                end)
+                if #witnesses>12 then table.remove(witnesses) end
+            end
+        end
+        local audience={}
+        for _,witness in ipairs(witnesses) do audience[#audience+1]=witness.actor end
+        return require('scripts.LORKHAN.protocol').spellCast({caster=caster,target=target,audience=audience,
+            spell_id=event.spellId,spell_name=event.spellName,game_time=event.gameTime})
+    end)
+    if not ok or not payload then return nil,'spell_observation_unavailable' end
+    return payload
+end
+
 function M.resolve(identity, modules)
     modules=modules or loaded()
     if not identity or not modules.core or not modules.nearby then return nil,'resolver_unavailable' end

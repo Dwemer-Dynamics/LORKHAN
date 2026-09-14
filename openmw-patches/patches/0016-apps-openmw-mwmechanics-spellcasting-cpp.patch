@@ -1,0 +1,22 @@
+diff --git a/apps/openmw/mwmechanics/spellcasting.cpp b/apps/openmw/mwmechanics/spellcasting.cpp
+index c7571c35ac..dceda34e61 100644
+--- a/apps/openmw/mwmechanics/spellcasting.cpp
++++ b/apps/openmw/mwmechanics/spellcasting.cpp
+@@ -10,6 +10,7 @@
+ 
+ #include "../mwbase/environment.hpp"
+ #include "../mwbase/mechanicsmanager.hpp"
++#include "../mwbase/luamanager.hpp"
+ #include "../mwbase/soundmanager.hpp"
+ #include "../mwbase/windowmanager.hpp"
+ #include "../mwbase/world.hpp"
+@@ -440,6 +441,9 @@ namespace MWMechanics
+ 
+         launchMagicBolt();
+ 
++        if (!mScriptedSpell && !mCaster.isEmpty() && mCaster.getClass().isActor())
++            MWBase::Environment::get().getLuaManager()->onLorkhanSpellCast(
++                mCaster, mTarget, spell->mId.serializeText(), spell->mName);
+         return true;
+     }
+ 

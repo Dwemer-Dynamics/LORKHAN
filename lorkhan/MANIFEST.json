@@ -72,6 +72,11 @@
       "sha256": "a5785b063430027b634aa17dedbf4c463afd2401d17f7bd3d2f7d2ed7171cd63"
     },
     {
+      "bytes": 992,
+      "path": "lorkhan/fixtures/v1/invalid/gamedata-spell-cast-missing-name.json",
+      "sha256": "3324d1601b4b178f1efd122387e37bde28461779b115d833b1e2b72a2b73ba95"
+    },
+    {
       "bytes": 561,
       "path": "lorkhan/fixtures/v1/invalid/gamedata-wrong-game.json",
       "sha256": "abdf4ed3fe1c3b400e8b001ea5b5235412e8115e83a3a8c3d880349cc1db9a0f"
@@ -287,6 +292,11 @@
       "sha256": "5ccf17b6bcaf0b24c562551235b936fe33fb9690199c182edcc0b3f2459a043c"
     },
     {
+      "bytes": 1041,
+      "path": "lorkhan/fixtures/v1/valid/gamedata-spell-cast.json",
+      "sha256": "83203eddf1197cb497c257ffdc6ae17995d4cd0e3e67fa87bf9958331764f07a"
+    },
+    {
       "bytes": 165,
       "path": "lorkhan/fixtures/v1/valid/health.json",
       "sha256": "b38c1e54b857a22c6388c5c0356567a7e193b3957f507847cb2a024fa63e5d64"
@@ -462,9 +472,9 @@
       "sha256": "66fb9b333958f5db965e5530e5f26e806947a490cde1e0dc435c2abe25628993"
     },
     {
-      "bytes": 15951,
+      "bytes": 17152,
       "path": "lorkhan/schemas/v1/gamedata.schema.json",
-      "sha256": "efdfb6a7e4cfa850ee63ec2f7567cff9576b3e179e28c40585ded3bb2c8269c8"
+      "sha256": "1e8365d6bcaa1c57c1a34ae6c6e22d17087ede4936e86f2c4f1a1406afb348e0"
     },
     {
       "bytes": 295,

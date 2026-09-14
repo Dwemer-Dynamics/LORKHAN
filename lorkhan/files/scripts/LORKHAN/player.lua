@@ -1863,6 +1863,9 @@ return {
             updatePlayerSpeech()
             updateMenuDialogueSpeech()
             flushCapturedDialogue(dt)
+            if nativeOk and native.submitSpellCast and native.sessionInfo then
+                player.flushSpellCasts(state,native.sessionInfo(),native.submitSpellCast,core.getRealTime())
+            end
             flushActorProfiles(dt)
             flushAutomaticDiaries(dt)
             local elapsed=tonumber(dt) or 0
@@ -1974,6 +1977,10 @@ return {
             submitDebugResult(pendingGlobalDebugCommand.command,event.status or 'failed',
                 event.reason_code or 'global_command_failed',event.observed or {})
             pendingGlobalDebugCommand=nil
+        end,
+        LorkhanSpellCast=function(event)
+            if not nativeOk or not native.submitSpellCast or not native.sessionInfo then return end
+            player.captureSpellCast(state,event,native.sessionInfo(),adapter.spellCastObservation,native.submitSpellCast,core.getRealTime())
         end,
         DialogueResponse=function(event)
             local response=adapter.dialogueResponse(event)

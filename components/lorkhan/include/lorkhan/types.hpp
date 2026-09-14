@@ -260,7 +260,7 @@ struct BookReadAloudRequest {
     std::string text;
 };
 
-enum class GameDataType { inventory, captured_dialogue, actor_profile, automatic_diary, rpg_event, bored_event, quest_event };
+enum class GameDataType { spell_cast, inventory, captured_dialogue, actor_profile, automatic_diary, rpg_event, bored_event, quest_event };
 
 struct GameDataRequest {
     InstallationId installation;

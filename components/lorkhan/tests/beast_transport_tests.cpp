@@ -584,6 +584,26 @@ void testSttAndDialogueDelivery()
         OneShotServer server([](const CapturedRequest& request, tcp::socket& socket) {
             CHECK(request.method == http::verb::post);
             CHECK(request.target == std::string(kBasePath) + "/gamedata");
+            CHECK(request.body.find("\"type\":\"spell_cast\"") != std::string::npos);
+            CHECK(request.body.find("\"record_id\":\"fargoth\"") != std::string::npos);
+            sendJson(socket, 202, std::string(R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":")")
+                + kRequest + R"(","session_id":")" + kSession
+                + R"(","generation":7,"type":"spell_cast","duplicate":false})");
+        });
+        lorkhan::OutboundRequest request{lorkhan::RequestId(kRequest), lorkhan::SessionId(kSession),
+            lorkhan::Generation(7), lorkhan::RequestKind::gamedata,
+            lorkhan::GameDataRequest{lorkhan::InstallationId(kInstallation), lorkhan::PlaythroughId(kPlaythrough),
+                lorkhan::RequestId(kRequest), lorkhan::Generation(7), "2026-07-19T20:00:02Z",
+                lorkhan::GameDataType::spell_cast,
+                R"({"caster":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"spell_id":"firebite","spell_name":"Firebite","game_time":100})"}};
+        lorkhan::BeastTransport transport(url(server.port()), lorkhan::InstallationId(kInstallation), token(), cacheRoot());
+        auto result = transport.execute(request, {});
+        CHECK(result && result.value().kind == lorkhan::ResponseKind::accepted);
+    }
+    {
+        OneShotServer server([](const CapturedRequest& request, tcp::socket& socket) {
+            CHECK(request.method == http::verb::post);
+            CHECK(request.target == std::string(kBasePath) + "/gamedata");
             CHECK(request.body.find("\"type\":\"automatic_diary\"") != std::string::npos);
             CHECK(request.body.find("\"trigger\":\"sleep\"") != std::string::npos);
             sendJson(socket, 202, std::string(R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":")")

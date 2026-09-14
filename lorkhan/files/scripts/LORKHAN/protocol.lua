@@ -179,6 +179,34 @@ function M.capturedDialogue(args)
         audience=util.arrayCopy(args.audience),text=args.text,topic=args.topic,game_time=args.game_time}
 end
 
+-- A successful cast is an observation; an optional target is not a confirmed spell impact.
+function M.spellCast(args)
+    if type(args)~='table' or not identity.validate(args.caster)
+        or not ({player=true,npc=true,creature=true})[args.caster.kind]
+        or (args.target~=nil and (not identity.validate(args.target) or args.target.kind=='narrator')) then
+        return nil,'invalid_spell_actor'
+    end
+    if type(args.spell_id)~='string' or #args.spell_id<1 or #args.spell_id>256
+        or type(args.spell_name)~='string' or #args.spell_name<1 or #args.spell_name>256
+        or type(args.game_time)~='number' or args.game_time~=args.game_time
+        or args.game_time<0 or args.game_time>9007199254740991 then return nil,'invalid_spell_observation' end
+    local audience
+    if args.audience~=nil then
+        if type(args.audience)~='table' or #args.audience>12 then return nil,'invalid_spell_audience' end
+        local seen={[identity.key(args.caster)]=true}
+        if args.target then seen[identity.key(args.target)]=true end
+        audience={}
+        for _,actor in ipairs(args.audience) do
+            if not identity.validate(actor) or (actor.kind~='npc' and actor.kind~='creature') then return nil,'invalid_spell_audience' end
+            local key=identity.key(actor)
+            if seen[key] then return nil,'duplicate_spell_audience' end
+            seen[key]=true;audience[#audience+1]=util.copy(actor)
+        end
+    end
+    return {caster=util.copy(args.caster),target=args.target and util.copy(args.target) or nil,audience=audience,
+        spell_id=args.spell_id,spell_name=args.spell_name,game_time=args.game_time}
+end
+
 -- Validate the actor snapshot that materializes a profile after successful automatic activation.
 function M.actorProfile(args)
     if type(args)~='table' or not identity.validate(args.actor)

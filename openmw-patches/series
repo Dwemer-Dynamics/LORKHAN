@@ -9,3 +9,6 @@ patches/0010-apps-openmw-mwsound-soundmanagerimp-hpp.patch
 patches/0011-apps-launcher-main-cpp.patch
 patches/0012-apps-launcher-maindialog-cpp.patch
 patches/0013-apps-openmw-mwlua-luamanagerimp-cpp.patch
+patches/0014-apps-openmw-mwbase-luamanager-hpp.patch
+patches/0015-apps-openmw-mwlua-luamanagerimp-hpp.patch
+patches/0016-apps-openmw-mwmechanics-spellcasting-cpp.patch

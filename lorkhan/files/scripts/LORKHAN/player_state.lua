@@ -129,4 +129,37 @@ function M.observeInventory(state,event,session,reader,submit,now)
     return true
 end
 
+-- Retry only this live session's bounded immutable cast observations; no model turn is scheduled.
+function M.captureSpellCast(state,event,session,reader,submit,now)
+    if type(event)~='table' or type(session)~='table' or event.sessionId~=session.session_id
+        or event.generation~=session.generation or type(submit)~='function' then return false end
+    local queue=state.spellCaptures
+    if not queue or queue.session_id~=session.session_id or queue.generation~=session.generation then
+        queue={session_id=session.session_id,generation=session.generation,items={},nextAttemptAt=now}
+        state.spellCaptures=queue
+    end
+    local payload=reader(event)
+    if not payload then return false end
+    if #queue.items==0 and submit(payload) then return true end
+    if #queue.items>=32 then return false end
+    queue.items[#queue.items+1]={payload=util.copy(payload),capturedAt=now,attempts=0}
+    return true
+end
+
+function M.flushSpellCasts(state,session,submit,now)
+    local queue=state.spellCaptures
+    if not queue then return false end
+    if not session or session.session_id~=queue.session_id or session.generation~=queue.generation then
+        state.spellCaptures=nil;return false
+    end
+    if #queue.items==0 or now<queue.nextAttemptAt or type(submit)~='function' then return false end
+    queue.nextAttemptAt=now+0.1
+    local item=queue.items[1]
+    if now-item.capturedAt>=5 or now<item.capturedAt then table.remove(queue.items,1);return false end
+    item.attempts=item.attempts+1
+    if submit(item.payload) then table.remove(queue.items,1);return true end
+    if item.attempts>=20 then table.remove(queue.items,1) end
+    return false
+end
+
 return M

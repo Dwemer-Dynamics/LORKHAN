@@ -343,6 +343,28 @@ void testAcceptedProtocolResponses()
         R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"actor_profile","duplicate":false})",
         jsonHeaders);
     CHECK(actorProfile && actorProfile.value().type == "actor_profile");
+    const std::string castPrefix = "{\"caster\":" + protocolIdentity() + R"(,"spell_id":"firebite","spell_name":"Firebite","game_time":100)";
+    CHECK(lorkhan::validateSpellCastPayload(castPrefix + "}"));
+    CHECK(lorkhan::validateSpellCastPayload(castPrefix + ",\"audience\":[" + protocolIdentity() + "]}"));
+    CHECK(!lorkhan::validateSpellCastPayload(castPrefix + ",\"audience\":[" + protocolIdentity() + "," + protocolIdentity() + "]}"));
+    CHECK(!lorkhan::validateSpellCastPayload(castPrefix + R"(,"audience":[{}]})"));
+
+    CHECK(lorkhan::validateSpellCastPayload(castPrefix + ",\"target\":" + protocolIdentity() + "}"));
+    CHECK(!lorkhan::validateSpellCastPayload(castPrefix + R"(,"code":"cast firebite"})"));
+    CHECK(!lorkhan::validateSpellCastPayload(castPrefix + R"(,"target":{})"));
+    std::string castAudience;
+    for (int index = 0; index < 13; ++index) {
+        auto actor = protocolIdentity(); actor.replace(actor.find("112"), 3, std::to_string(200 + index));
+        castAudience += (index ? "," : "") + actor;
+        if (index == 11) CHECK(lorkhan::validateSpellCastPayload(castPrefix + ",\"audience\":[" + castAudience + "]}"));
+    }
+    CHECK(!lorkhan::validateSpellCastPayload(castPrefix + ",\"audience\":[" + castAudience + "]}"));
+    auto negativeCast = castPrefix; negativeCast.replace(negativeCast.find(":100"), 4, ":-1");
+    CHECK(!lorkhan::validateSpellCastPayload(negativeCast + "}"));
+    auto narratorCast = castPrefix; narratorCast.replace(narratorCast.find("npc"), 3, "narrator");
+    CHECK(!lorkhan::validateSpellCastPayload(narratorCast + "}"));
+    auto longCast = castPrefix; longCast.replace(longCast.find("Firebite"), 8, std::string(257, 'x'));
+    CHECK(!lorkhan::validateSpellCastPayload(longCast + "}"));
     auto inventoryAccepted = lorkhan::parseGameDataAcceptedResponse(
         R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"inventory","duplicate":false})",
         jsonHeaders);

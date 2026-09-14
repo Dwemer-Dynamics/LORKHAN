@@ -540,6 +540,11 @@ namespace MWLua
             std::string error() const { return m_error; }
             std::uint64_t generation() const { return m_service ? m_service->generation().value() : 0; }
             bool ready() const { return m_service && m_session.has_value() && m_status == "ready"; }
+            std::optional<LorkhanObservationScope> observationScope() const
+            {
+                if (!ready()) return std::nullopt;
+                return LorkhanObservationScope{m_session->value(), m_service->generation().value()};
+            }
 
             std::string serverBaseUrl() const
             {
@@ -1467,7 +1472,7 @@ namespace MWLua
             }
 
             static std::vector<std::string> capabilities()
-            { return { "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.conversation.end", "action.ai.follow", "action.ai.stop",
+            { return { "context.spell_cast.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.conversation.end", "action.ai.follow", "action.ai.stop",
                 "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
                 "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" }; }
@@ -1613,9 +1618,12 @@ namespace MWLua
             std::uint64_t m_initMatches{};
         };
 
+        NativeClient* activeClient = nullptr;
+
         NativeClient& client()
         {
             static NativeClient instance;
+            activeClient = &instance;
             return instance;
         }
 
@@ -1625,7 +1633,7 @@ namespace MWLua
             api["version"] = std::string(lorkhan::kClientVersion);
             api["capabilities"] = [lua] {
                 sol::table result(lua, sol::create); std::size_t index = 1;
-            for (const auto& capability : std::vector<std::string>{ "dialogue.text", "speech.say", "speech.listen", "controls.session",
+            for (const auto& capability : std::vector<std::string>{ "context.spell_cast.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session",
                 "action.ai.follow", "action.ai.stop", "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
                 "action.combat.start", "action.combat.stop", "action.animation.play", "action.item.equip", "action.item.unequip",
                 "action.item.use", "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" })
@@ -1648,6 +1656,9 @@ namespace MWLua
             api["submitTurn"] = [lua](sol::table dto) { return client().submitTurn(lua, std::move(dto)); };
             api["submitCapturedDialogue"] = [lua](sol::table payload) {
                 return client().submitCapturedDialogue(lua, std::move(payload));
+            };
+            api["submitSpellCast"] = [lua](sol::table payload) {
+                return client().submitGameData(lua, lorkhan::GameDataType::spell_cast, std::move(payload));
             };
             api["submitInventory"] = [lua](sol::table payload) {
                 return client().submitInventory(lua, std::move(payload));
@@ -1724,6 +1735,11 @@ namespace MWLua
             api["halt"] = [] { client().halt(); };
             return LuaUtil::makeReadOnly(api);
         }
+    }
+
+    std::optional<LorkhanObservationScope> lorkhanObservationScope()
+    {
+        return activeClient ? activeClient->observationScope() : std::nullopt;
     }
 
     sol::object initLorkhanPackage(const Context& context)

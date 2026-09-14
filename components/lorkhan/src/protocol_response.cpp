@@ -1360,6 +1360,40 @@ Result<PlayerAutochatReadyResponse> parsePlayerAutochatReadyResponse(
         std::move(text).value()});
 }
 
+// Keep successful-cast observations closed and bounded before enqueueing transport work.
+Result<void> validateSpellCastPayload(std::string_view body, json::ParseLimits limits)
+{
+    auto parsed = json::parse(body, limits);
+    if (!parsed) return Result<void>::failure(parsed.error());
+    const auto* object = parsed.value().object();
+    if (!object || !hasExactly(*object, {"caster", "spell_id", "spell_name", "game_time"}, {"target", "audience"}))
+        return invalidSchema("spell cast fields mismatch");
+    auto caster = parseIdentity(*json::find(*object, "caster"));
+    if (!caster || (caster.value().kind != "player" && caster.value().kind != "npc" && caster.value().kind != "creature"))
+        return invalidSchema("spell caster must be a physical actor");
+    if (const auto* value = json::find(*object, "target")) {
+        auto target = parseIdentity(*value);
+        if (!target || (target.value().kind != "player" && target.value().kind != "npc" && target.value().kind != "creature"))
+            return invalidSchema("spell cast target must be a physical actor");
+    }
+    if (const auto* value = json::find(*object, "audience")) {
+        const auto* audience = value->array();
+        if (!audience || audience->size() > 12) return invalidSchema("spell audience exceeds bounds");
+        std::set<std::pair<std::uint64_t, std::uint64_t>> references;
+        for (const auto& entry : *audience) {
+            auto actor = parseIdentity(entry);
+            if (!actor || (actor.value().kind != "player" && actor.value().kind != "npc" && actor.value().kind != "creature"))
+                return invalidSchema("spell audience must contain physical actors");
+            if (!references.emplace(actor.value().refnumContentFile, actor.value().refnumIndex).second)
+                return invalidSchema("spell audience contains a duplicate actor reference");
+        }
+    }
+    if (!requireString(*object, "spell_id", 1, 256) || !requireString(*object, "spell_name", 1, 256)
+        || !requireNumber(*object, "game_time", 0, 9007199254740991.0))
+        return invalidSchema("spell cast values exceed bounds");
+    return Result<void>::success();
+}
+
 Result<void> validateInventoryPayload(std::string_view body, json::ParseLimits limits)
 {
     auto parsed = json::parse(body, limits);
@@ -1410,7 +1444,7 @@ Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(
     if (!request) return invalidSchemaValue<GameDataAcceptedResponse>(request.error().message);
     if (!session) return invalidSchemaValue<GameDataAcceptedResponse>(session.error().message);
     if (!generation) return invalidSchemaValue<GameDataAcceptedResponse>(generation.error().message);
-    if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile" && type.value() != "inventory"
+    if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile" && type.value() != "inventory" && type.value() != "spell_cast"
         &&type.value()!="automatic_diary"&&type.value()!="rpg_event"&&type.value()!="bored_event"&&type.value()!="quest_event"))
         return invalidSchemaValue<GameDataAcceptedResponse>("game-data type mismatch");
     if (!duplicate) return invalidSchemaValue<GameDataAcceptedResponse>(duplicate.error().message);

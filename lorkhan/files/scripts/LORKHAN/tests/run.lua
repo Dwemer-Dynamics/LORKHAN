@@ -888,6 +888,30 @@ test('NPC manager uses exact references and verifies deferred movement with save
  truthy(next(manager.save(controls)))
  manager.load(controls,nil);eq(next(manager.save(controls)),nil)
 end)
+test('successful spell observations stay bounded and never cross capture sessions',function()
+ local playerState=require('scripts.LORKHAN.player_state') local state={} local calls=0 local reads=0
+ local session={session_id=UUID.session,generation=1}
+ local event={sessionId=UUID.session,generation=1}
+ local args={caster=npc,target=playerId,spell_id='fireball',spell_name='Fireball',game_time=123}
+ local function reader()reads=reads+1;return protocol.spellCast(args)end
+ local accept=false
+ local function submit(payload)calls=calls+1;eq(payload.spell_id,'fireball');return accept end
+ event.generation=2;eq(playerState.captureSpellCast(state,event,session,reader,submit,0),false);eq(reads,0)
+ event.generation=1;truthy(playerState.captureSpellCast(state,event,session,reader,submit,0));eq(#state.spellCaptures.items,1)
+ accept=true;truthy(playerState.flushSpellCasts(state,session,submit,0.1));eq(#state.spellCaptures.items,0)
+ accept=false
+ for _=1,32 do truthy(playerState.captureSpellCast(state,event,session,reader,submit,1)) end
+ eq(playerState.captureSpellCast(state,event,session,reader,submit,1),false);eq(#state.spellCaptures.items,32)
+ local before=calls;eq(playerState.flushSpellCasts(state,{session_id=UUID.session,generation=2},submit,2),false)
+ eq(calls,before);eq(state.spellCaptures,nil)
+ truthy(playerState.captureSpellCast(state,event,session,reader,submit,3))
+ before=calls;eq(playerState.flushSpellCasts(state,session,submit,8),false);eq(calls,before);eq(#state.spellCaptures.items,0)
+ args.game_time=0/0;eq(protocol.spellCast(args),nil)
+ args.game_time=123;args.spell_id='';eq(protocol.spellCast(args),nil)
+ args.spell_id='fireball';args.audience={enemy};eq(#protocol.spellCast(args).audience,1)
+ args.audience={enemy,enemy};eq(protocol.spellCast(args),nil)
+ args.audience={};for i=1,13 do args.audience[i]=enemy end;eq(protocol.spellCast(args),nil)
+end)
 test('inventory observations are changed-only bounded and fenced from failed reads and sessions',function()
  local state={} local playerState=require('scripts.LORKHAN.player_state')
  local session={session_id=UUID.session,generation=1}
@@ -1687,6 +1711,27 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
  modules.types.Actor.inventory=function()return nil end
  eq(openmwAdapter.playerContext(mapped,modules).targetState.inventory,nil)
  eq(openmwAdapter.inventoryObservation(mapped,modules),nil)
+ local cast={caster=object,target=playerTarget,spellId='fireball',spellName='Fireball',gameTime=123}
+ local observation=openmwAdapter.spellCastObservation(cast,modules)
+ eq(observation.caster.record_id,'fargoth');eq(observation.target.kind,'player');eq(observation.game_time,123)
+ local oldPosition=object.position;object.position=vector(0,3000,0)
+ eq(openmwAdapter.spellCastObservation(cast,modules),nil);object.position=oldPosition
+ local oldCell=object.cell;object.cell={isExterior=false,id='unseen',name='Unseen room'}
+ eq(openmwAdapter.spellCastObservation(cast,modules),nil);object.cell=oldCell
+ cast.caster=playerTarget;cast.target=nil
+ observation=openmwAdapter.spellCastObservation(cast,modules);eq(observation.caster.kind,'player');eq(observation.target,nil)
+ modules.nearby.actors={object,creatureObject,object,playerTarget}
+ observation=openmwAdapter.spellCastObservation(cast,modules)
+ eq(#observation.audience,2);eq(observation.audience[1].record_id,'fargoth')
+ cast.target=object;observation=openmwAdapter.spellCastObservation(cast,modules)
+ eq(#observation.audience,1);eq(observation.audience[1].record_id,'dagoth_ur_1')
+ cast.caster=object;cast.target=nil;object.position=vector(0,2000,0);creatureObject.position=vector(0,-300,0)
+ observation=openmwAdapter.spellCastObservation(cast,modules);eq(#observation.audience,0)
+ creatureObject.position=vector(0,2100,0);creatureObject.cell={isExterior=false,id='remote',name='Remote'}
+ observation=openmwAdapter.spellCastObservation(cast,modules);eq(#observation.audience,0)
+ creatureObject.cell={isExterior=true,gridX=-2,gridY=-9}
+ observation=openmwAdapter.spellCastObservation(cast,modules);eq(#observation.audience,1)
+ cast.gameTime=math.huge;eq(openmwAdapter.spellCastObservation(cast,modules),nil)
 end)
 
 io.write(string.format('%d tests, %d failures\n',tests,failures))
