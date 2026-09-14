@@ -61,6 +61,9 @@ checklist remains deliberately unclaimed.
   spell/pickup evidence from active context. Original sources remain immutable.
 - Automated Lua and protocol checks pass (81 Lua cases; 38 schemas, 77 fixtures,
   115 paired files). Live gameplay and paid-provider checks have not been performed.
-- Further audit: published automatic NPC profile revisions still need save rollback.
-  Physical diary book materialization is absent and requires reconciling the closed
-  game-mutation boundary before implementation; it is not supplied by diary generation.
+- Server migration 109 records automatic NPC/creature profile revision provenance
+  from the leased job. Save rollback appends a restoration revision while preserving
+  manual/locked/Narrator/player/unknown-history boundaries. Revision numbers never
+  move backwards, and an earlier subsequent load can follow restored ancestry.
+- Physical diary book materialization awaits an explicit exception to the closed
+  game-record creation boundary; it is not supplied by web diary generation.
