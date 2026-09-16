@@ -1397,7 +1397,7 @@ test('focused UI builders keep chat selectors tools and notifications independen
  -- the moved controls sit between the send hint and Send, in one compact clickable list
  local MENU_FIRST=6
  eq(#chatbox.MENU,10);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
- local expected={'mood','autoChat','modes','model','profiles','settings','waitHere','history','statusHud','diagnostics'}
+ local expected={'modes','mood','autoChat','model','profiles','settings','waitHere','history','statusHud','diagnostics'}
  for index,entry in ipairs(chatbox.MENU) do
   eq(entry.key,expected[index])
   local row=chat[MENU_FIRST+index-1]
@@ -1405,7 +1405,8 @@ test('focused UI builders keep chat selectors tools and notifications independen
    or entry.key=='autoChat' and 'Auto Chat: off' or entry.label)
   clicked=nil;row.events.mouseClick();eq(clicked,entry.key)
  end
- eq(chat[MENU_FIRST].props.text,'Mood')
+ eq(chat[MENU_FIRST].props.text,'Dialogue mode...')
+ eq(chat[MENU_FIRST+1].props.text,'Mood')
  -- the status HUD entry reports the state it will leave behind, and toggles rather than navigates
  local hudShown=chatbox.build({ui=ui,util=util,target='Fargoth',text='',shortcuts=uiState.SHORTCUTS,
   statusHudVisible=true,onTextChanged=function()end,onKeyPress=function()end,

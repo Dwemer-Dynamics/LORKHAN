@@ -46,9 +46,9 @@ end
 -- the callback the panel owner supplies, so labels and routes stay described in one place.
 -- The order and count are fixed: a live prefix preview must only rewrite text on existing widgets.
 local MENU={
+    {key='modes',label='Dialogue mode...',callback='onSelectModes'},
     {key='mood',label='Mood',callback='onSelectMood'},
     {key='autoChat',label='Auto Chat',callback='onToggleAutoChat'},
-    {key='modes',label='Dialogue mode...',callback='onSelectModes'},
     {key='model',label='LLM model...',callback='onSelectModel'},
     {key='profiles',label='Dynamic profiles...',callback='onSelectProfiles'},
     {key='settings',label='Settings...',callback='onSelectSettings'},
