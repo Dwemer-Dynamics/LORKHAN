@@ -642,9 +642,9 @@
       "sha256": "56688538b56f927f83a98a131c07364de6886049c2f08bb4bf74485d1a98e94e"
     },
     {
-      "bytes": 1594,
+      "bytes": 1824,
       "path": "lorkhan/schemas/v1/session-accepted.schema.json",
-      "sha256": "bad4362481d9fca82d7f973170713e375ba7f9e28f1f1d440ca7ade472dec7a5"
+      "sha256": "bd6d87cda87e4d334d80fdd232ca0b0be9f15c7c8276c9800f9bbe6c85c2b0b7"
     },
     {
       "bytes": 691,

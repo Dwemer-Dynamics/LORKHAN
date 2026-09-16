@@ -1616,6 +1616,7 @@ function M.refreshCharacterIdentity(state,info)
     local pending=state.characterChoice
     if type(info)~='table' or not pending or info.generation~=pending.generation then return end
     if info.ready then
+        if info.profile_id then state.profileId=info.profile_id end
         state.characterId=info.character_id state.playthroughId=info.playthrough_id state.characterBinding=info.character_binding
         state.characterChoice=nil state.preserveIdentitySave=false state.originalIdentitySave=nil
         state.emit('LORKHAN_PLAYTHROUGH_SELECTED',util.copy(info))

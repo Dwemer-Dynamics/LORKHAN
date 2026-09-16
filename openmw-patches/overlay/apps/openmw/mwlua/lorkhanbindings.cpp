@@ -2431,6 +2431,8 @@ namespace MWLua
                         if (parsed)
                         {
                             if(parsed.value().characterId)m_characterIdentity.character=*parsed.value().characterId;
+                            // Only the accepted session may select the scoped owner profile for subsequent envelopes.
+                            if(parsed.value().profileId)m_config->profile=lorkhan::ProfileId(*parsed.value().profileId);
                             m_characterRejected=false;
                             m_loadedSave=false;m_loadedCalendar.reset();
                             m_session = parsed.value().session; m_cursor = parsed.value().eventCursor;
@@ -2537,6 +2539,7 @@ namespace MWLua
                 sol::table result(lua,sol::create);
                 result["character_id"]=m_characterIdentity.character;result["legacy_playthrough_id"]=m_characterIdentity.legacyPlaythrough;
                 result["generation"]=generation();result["ready"]=m_session.has_value();
+                if(m_session&&m_config)result["profile_id"]=m_config->profile.value();
                 result["needs_choice"]=m_characterRejected||!m_characterIdentity.selected();
                 if(m_characterRejected)result["error"]=m_error;
                 if(m_characterIdentity.selected()){

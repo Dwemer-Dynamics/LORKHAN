@@ -94,6 +94,7 @@ struct SessionAcceptedResponse {
     ClientSettings clientSettings;
     std::uint64_t eventCursor{};
     std::optional<std::string> characterId;
+    std::optional<std::string> profileId;
 };
 
 struct ResponseCorrelation {
