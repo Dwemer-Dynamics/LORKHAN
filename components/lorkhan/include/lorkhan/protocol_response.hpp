@@ -39,6 +39,7 @@ struct ClientBehaviorSettings {
     std::uint64_t boredomDelaySeconds{180};
     bool combatBarks{};
     std::uint64_t combatBarkPeriodSeconds{20};
+    bool aiEnabled{true};
 };
 
 struct ClientMemorySettings {

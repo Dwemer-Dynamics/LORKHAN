@@ -65,6 +65,7 @@ function M.applyTargetSettings(settings,targetSettings)
     targetSettings=targetSettings or {}
     local remote=targetSettings.behavior or {}
     local behavior=settings.behavior
+    behavior.aiEnabled=remote.ai_enabled~=false
     behavior.autoGreeting=remote.auto_greeting==true
     behavior.boredom=remote.boredom==true
     behavior.boredomDelaySeconds=remote.boredom_delay_seconds or 180

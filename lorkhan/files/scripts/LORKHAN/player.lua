@@ -78,6 +78,8 @@ local SERVER_CONTROL_PANELS={models=true,profiles=true,narrator=true,settings=tr
 local settingScope,settingField,settingValue,settingToken,settingTarget
 local settingPage=1
 local settingsControls={}
+local aiEnabled=true
+local pendingAiToggle=false
 local controlsRequestActive=false
 local debugRequestActive=false
 local nextDebugPollAt=0
@@ -434,6 +436,7 @@ end
 
 -- Queue one newly auto-managed NPC until the authenticated native bridge can persist its profile.
 local function submitAutoActorProfile(event)
+    if not aiEnabled then return end
     local actor=type(event)=='table' and event.actor or nil
     local key=actor and identity.key(actor) or nil
     if not key or pendingActorProfileKeys[key] then return end
@@ -465,6 +468,7 @@ local function submitAutoActorProfile(event)
 end
 
 local function flushActorProfiles(dt)
+    if not aiEnabled then pendingActorProfiles={} pendingActorProfileKeys={} return end
     if #pendingActorProfiles==0 then return end
     actorProfileFlushElapsed=actorProfileFlushElapsed+(tonumber(dt) or 0)
     if actorProfileFlushElapsed<0.1 then return end
@@ -489,6 +493,7 @@ end
 
 -- Persist the observation and freeze the eligible responder before the server makes its profile policy decision.
 local function submitRpgEvent(kind,text)
+    if not aiEnabled then return end
     if not nativeOk or not native.submitRpgEvent or not native.sessionInfo then return end
     local session=native.sessionInfo()
     if not session then return end
@@ -516,6 +521,7 @@ local function submitQuestEvent(entries,session)
 end
 
 local function submitAutomaticDiary(trigger)
+    if not aiEnabled then return end
     if not nativeOk or not native or type(native.sessionInfo)~='function' or not native.sessionInfo() then return end
     local gameTime=adapter.gameTime()
     if type(gameTime)~='number' then return end
@@ -537,6 +543,7 @@ local function submitAutomaticDiary(trigger)
 end
 
 local function flushAutomaticDiaries(dt)
+    if not aiEnabled then pendingAutomaticDiaries={} return end
     if #pendingAutomaticDiaries==0 then return end
     automaticDiaryFlushElapsed=automaticDiaryFlushElapsed+(tonumber(dt) or 0)
     if automaticDiaryFlushElapsed<0.25 then return end
@@ -659,6 +666,7 @@ local function updatePlayerAutochat()
 end
 
 local function submitText()
+    if not aiEnabled then state.ui.status='AI is off; microphone transcription remains available' render() return false end
     if pendingTextSubmit or awaitingTextQueue or pendingAutochat
         or pendingGlobalDebugCommand and pendingGlobalDebugCommand.browser_args then return false end
     local parsed,parseReason=playerInput.parse(state.ui.input)
@@ -1120,6 +1128,13 @@ render=function()
                 openFromConversation('models') refreshSessionControls('models')
             end),
             onSelectProfiles=adapter.callback(function() openFromConversation('profile-menu') render() end),
+            aiEnabled=aiEnabled,
+            onToggleAI=adapter.callback(function()
+                if controlsRequestActive then return end
+                pendingAiToggle=true
+                refreshSessionControls('settings')
+                if not controlsRequestActive then pendingAiToggle=false end
+            end),
             onSelectSettings=adapter.callback(settingsControls.open),
             onWaitHere=adapter.callback(function()
                 if not state.ui.target or state.ui.target.kind=='narrator' then
@@ -1735,7 +1750,8 @@ end
 
 applySettings=function(session,controls)
     local exterior=self.cell and self.cell.isExterior==true
-    local effective=controls and state.ui.target and identity.same(controls.target,state.ui.target)
+    local settingsTarget=state.ui.target or adapter.identity(self)
+    local effective=controls and settingsTarget and identity.same(controls.target,settingsTarget)
         and controls.effective_settings or nil
     local targetSettings=effective and effective.settings or session and session.client_settings or {}
     local legacyHearing=autoSettings and autoSettings:get('hearingDistance')
@@ -1751,6 +1767,7 @@ applySettings=function(session,controls)
             interiorDistance=autoSettings and autoSettings:get('interiorDistance'),
             exteriorDistance=autoSettings and autoSettings:get('exteriorDistance'),
             hearingDistance=exterior and exteriorHearing or interiorHearing,
+            hearingPreset=autoSettings and autoSettings:get('hearingPreset') or 'Nearby',
             interiorHearingDistance=interiorHearing,
             exteriorHearingDistance=exteriorHearing,
             addHostile=autoSettings and autoSettings:get('addHostile'),
@@ -1784,15 +1801,16 @@ applySettings=function(session,controls)
     player.applyTargetSettings(current,targetSettings)
     local auto=current.autoActivate or {}
     local behavior=current.behavior or {}
+    aiEnabled=behavior.aiEnabled~=false
     local presentation=current.presentation or {}
     local narrator=current.narrator or {}
     narrator.welcomeReady=narratorCooldownReady('lastWelcomeGameTime',narrator.welcome_cooldown_minutes or 10)
     narrator.questReady=narratorCooldownReady('lastQuestGameTime',narrator.quest_cooldown_minutes or 3)
     currentNarratorSettings=narrator
     local signature=table.concat({tostring(auto.enabled),tostring(auto.interiorDistance),tostring(auto.exteriorDistance),
-        tostring(auto.hearingDistance),tostring(auto.interiorHearingDistance),tostring(auto.exteriorHearingDistance),
+        tostring(auto.hearingPreset),tostring(auto.hearingDistance),tostring(auto.interiorHearingDistance),tostring(auto.exteriorHearingDistance),
         tostring(auto.addHostile),tostring(auto.addCreatures),tostring(behavior.actionsEnabled),
-        table.concat(audioSignature,','),tostring(behavior.allowCombatDialogue),tostring(behavior.cancelDialogueOnCombat),tostring(behavior.autoGreeting),tostring(behavior.boredom),
+        table.concat(audioSignature,','),tostring(behavior.allowCombatDialogue),tostring(behavior.cancelDialogueOnCombat),tostring(behavior.aiEnabled),tostring(behavior.autoGreeting),tostring(behavior.boredom),
         tostring(behavior.boredomDelaySeconds),tostring(behavior.combatBarks),tostring(behavior.combatBarkPeriodSeconds),
         tostring(behavior.rechat),tostring(behavior.rechatMaxDepth),
         tostring(behavior.rechatProbabilityPercent),tostring(behavior.rechatMode),tostring(behavior.rechatStrictTargeting),
@@ -1938,7 +1956,27 @@ return {
             if not ok or type(status)~='table' then controlsRequestActive=false return end
             if status.pending==true then return end
             controlsRequestActive=false
-            if status.error then state.ui.status=tostring(status.error) end
+            if status.error then state.ui.status=tostring(status.error) pendingAiToggle=false end
+            if pendingAiToggle then
+                pendingAiToggle=false
+                local controls=sessionControls()
+                local target=state.ui.target or adapter.identity(self)
+                local editor=controls and identity.same(controls.target,target) and controls.settings_editor
+                local found=false
+                for _,section in ipairs(editor and editor.sections or {}) do
+                    for _,field in ipairs(section.fields or {}) do
+                        if field.key=='client.behavior.ai_enabled' or field.key=='behavior.ai_enabled' then
+                            settingScope=section.scope settingField=field settingTarget=target settingToken=editor.change_token
+                            saveSessionSetting(field.value=='true' and 'false' or 'true') found=true break
+                        end
+                    end
+                    if found then break end
+                end
+                if not found then state.ui.status='AI switch unavailable; refresh server settings' end
+            elseif not status.error then
+                local session=native.sessionInfo and native.sessionInfo() or nil
+                applySettings(session,sessionControls())
+            end
             -- Rerendering is what settles the panel: the models branch feeds the returned snapshot to
             -- uiState.settleModelSlot, which clears the pending mark and shows the selected slot.
             render()
@@ -2093,6 +2131,7 @@ return {
         end,
         LORKHAN_AUTO_ACTIVATED=submitAutoActorProfile,
         LORKHAN_BORED_POLICY_REQUEST=function(event)
+            if not aiEnabled then return end
             local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
             if not session or not native.submitBoredEvent or type(event)~='table'
                 or event.session_id~=session.session_id or event.generation~=session.generation then return end
@@ -2125,6 +2164,7 @@ return {
             player.observeInventory(state,event,native.sessionInfo(),adapter.inventoryObservation,native.submitInventory,core.getRealTime())
         end,
         LORKHAN_DIRECTOR_CONTEXT_REQUEST=function(event)
+            if not aiEnabled then return end
             local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
             if type(event)~='table' or not session or event.session_id~=session.session_id
                 or event.generation~=session.generation or not identity.validate(event.target) then return end
@@ -2133,6 +2173,7 @@ return {
                 context=conversationContext(event.target)})
         end,
         LORKHAN_RECHAT_CONTEXT_REQUEST=function(event)
+            if not aiEnabled then return end
             local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
             if type(event)~='table' or not session or event.session_id~=session.session_id
                 or event.generation~=session.generation or not identity.validate(event.target) then return end
@@ -2143,6 +2184,7 @@ return {
                 target=event.target,context=snapshot})
         end,
         LORKHAN_AUTONOMY_CONTEXT_REQUEST=function(event)
+            if not aiEnabled then return end
             if type(event)~='table' or type(event.actor)~='table' then return end
             local prompts={
                 greeting='[Autonomy:greeting]',
@@ -2196,6 +2238,17 @@ return {
             reportNarrator(ok and 'played' or 'failed',ok and 'subtitle_displayed' or (reason or 'subtitle_unavailable'))
         end,
         LORKHAN_NARRATOR_STOP=function(event) stopNarrator(event and event.reason or 'client_interrupted') end,
+        LORKHAN_AI_STATUS=function(event)
+            aiEnabled=event.enabled~=false
+            if not aiEnabled then
+                if pendingAutochat and nativeOk and native.cancelPlayerAutochat then pcall(native.cancelPlayerAutochat,pendingAutochat.request_id) end
+                pendingAutochat=nil pendingTextSubmit=false awaitingTextQueue=false pendingHistory=nil
+                turnActive=false
+                stopPlayerSpeech()
+            end
+            state.ui.status=aiEnabled and 'AI on' or 'AI off; transcription and observations remain active'
+            render()
+        end,
         LORKHAN_STATUS=function(event) state.ui.status=event.status state.ui.diagnostics=event.reason render() end,
         LORKHAN_WAIT_HERE_STATUS=function(event)
             if not event or not identity.same(event.target,state.ui.target) then return end
@@ -2206,7 +2259,7 @@ return {
         end,
         LORKHAN_VOICE_STATUS=function(event)
             state.ui.status=event.status;state.ui.diagnostics=event.reason
-            if event.status=='failed' or event.status=='queued' then voiceRecording=false end
+            if event.status=='failed' or event.status=='queued' or event.status=='transcribed' then voiceRecording=false end
             if event.status=='open mic off' or event.status=='failed' and event.continuous then openMicEnabled=false end
             render()
         end,

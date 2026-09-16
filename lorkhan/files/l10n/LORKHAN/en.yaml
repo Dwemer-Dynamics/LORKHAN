@@ -167,3 +167,9 @@ MonoEffects: Mono + Effects
 
 voice_volume_percent_name: AI Voice Volume (%)
 voice_volume_percent_description: "Scale AI speech volume. Zero mutes audio. Existing saved volume boost is preserved internally."
+
+HearingPreset_name: Nearby Hearing
+HearingPreset_description: "Targets Only excludes incidental listeners. Nearby uses the interior/exterior hearing radius. Wide doubles it. Selected targets and groups remain included; no wall occlusion is simulated."
+TargetsOnly: Targets Only
+Nearby: Nearby
+Wide: Wide

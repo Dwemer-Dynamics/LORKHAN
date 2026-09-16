@@ -1185,10 +1185,10 @@ test('configured hearing distance adds nearby managed agents to the turn audienc
  eq(b.submitted[1].payload.context.dialogueMode,'Standard')
 end)
 test('dialogue modes apply explicit bounded audience policies',function()
- local function submit(mode,explicitGroup,distance)
+ local function submit(mode,explicitGroup,distance,preset)
   local b=fake.bridge() local s=orchestrator.new(b,nil,nil,function()return true end)
   local other=fake.identity('npc','mode-actor',91)
-  s.settings={autoActivate={hearingDistance=500}}
+  s.settings={autoActivate={hearingDistance=500,hearingPreset=preset}}
   s.dialogueMode=mode
   orchestrator.configureSession(s,UUID.session)
   for _,actorId in ipairs({npc,other}) do orchestrator.activate(s,actorId,{}) end
@@ -1207,6 +1207,9 @@ test('dialogue modes apply explicit bounded audience policies',function()
  local standard=submit('Standard',false,300);eq(#standard.audience,2);eq(standard.context.dialogueMode,'Standard')
  local close=submit('Close',true,300);eq(#close.audience,2);eq(close.context.dialogueMode,'Close')
  local whisper=submit('Whisper',true,300);eq(#whisper.audience,1);eq(whisper.context.dialogueMode,'Whisper')
+ eq(#submit('Standard',false,300,'TargetsOnly').audience,1)
+ eq(#submit('Standard',true,300,'TargetsOnly').audience,2)
+ eq(#submit('Standard',false,700,'Wide').audience,2)
  local shout=submit('Shout',false,700);eq(#shout.audience,2);eq(shout.context.dialogueMode,'Shout')
 end)
 test('one-turn mode override strips its prefix and preserves the selected mode and rechat group',function()
@@ -1441,13 +1444,13 @@ test('focused UI builders keep chat selectors tools and notifications independen
  eq(chat[4].props.text,'Press Enter or select Send')
  -- the moved controls sit between the send hint and Send, in one compact clickable list
  local MENU_FIRST=5
- eq(#chatbox.MENU,8);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
- local expected={'modes','mood','model','profiles','waitHere','history','statusHud','diagnostics'}
+ eq(#chatbox.MENU,9);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
+ local expected={'modes','mood','model','profiles','waitHere','history','statusHud','diagnostics','aiEnabled'}
  for index,entry in ipairs(chatbox.MENU) do
   eq(entry.key,expected[index])
   local row=chat[MENU_FIRST+index-1]
   eq(row.props.text,entry.key=='statusHud' and 'Status HUD: off'
-   or entry.key=='autoChat' and 'Auto Chat: off' or entry.label)
+   or entry.key=='autoChat' and 'Auto Chat: off' or entry.key=='aiEnabled' and 'AI: on' or entry.label)
   clicked=nil;row.events.mouseClick();eq(clicked,entry.key)
  end
  eq(chat[MENU_FIRST].props.text,'Dialogue mode...')
@@ -1708,7 +1711,25 @@ test('agent scanning schedules one verified automatic greeting without submittin
  eq(request.payload.kind,'greeting');truthy(identity.same(request.payload.actor,npc))
  eq(orchestrator.runAutonomy(s,0.05),false)
 end)
-test('dynamic profile timer resubmits a bounded nearby batch after the CHIM cadence',function()
+test('AI master cancels only AI work and preserves microphone STT session and observations',function()
+ local b=fake.bridge() local emitted={}
+ local s=orchestrator.new(b,function(name,payload)emitted[#emitted+1]={name=name,payload=payload}end,nil,function()return true end)
+ orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+ orchestrator.scanAgents(s,{{identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true}})
+ local cancelledMic=0;b.cancelVoiceCapture=function()cancelledMic=cancelledMic+1 end
+ s.pendingVoice={target=npc};s.pendingStt.keep={target=npc};s.openMic=true
+ local generation=s.generation
+ s.conversation.turn={requestId=UUID.request,turnId=UUID.turn,terminal=false}
+ truthy(orchestrator.setAiEnabled(s,false));eq(cancelledMic,0);eq(s.generation,generation)
+ eq(s.sessionId,UUID.session);truthy(s.pendingVoice);truthy(s.pendingStt.keep);truthy(s.openMic)
+ eq(s.conversation.turn,nil);eq(orchestrator.runAutonomy(s,5),false)
+ local result,reason=orchestrator.submitText(s,{})
+ eq(result,nil);eq(reason,'ai_disabled')
+ truthy(orchestrator.pollInventoryObservations(s,2))
+ truthy(orchestrator.setAiEnabled(s,true));eq(s.conversation.turn,nil);eq(cancelledMic,0)
+end)
+
+test('dynamic profile scheduling is server owned without a client real-time timer',function()
  local b=fake.bridge() local emitted={}
  local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end,nil,function()return true end)
  s.settings={autoActivate={enabled=true},behavior={}}
@@ -1716,9 +1737,8 @@ test('dynamic profile timer resubmits a bounded nearby batch after the CHIM cade
  local candidate={identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true}
  eq(orchestrator.scanAgents(s,{candidate}),1)
  for _=1,239 do eq(orchestrator.runAutonomy(s,5),false) end
- truthy(orchestrator.runAutonomy(s,5))
- local request=emitted[#emitted];eq(request.name,'LORKHAN_PROFILE_EVOLUTION_REQUEST')
- eq(#request.payload.actors,1);truthy(identity.same(request.payload.actors[1],npc))
+ eq(orchestrator.runAutonomy(s,5),false)
+ for _,event in ipairs(emitted) do truthy(event.name~='LORKHAN_PROFILE_EVOLUTION_REQUEST') end
 end)
 test('boredom and combat barks share idle and period fences',function()
  local b=fake.bridge() local emitted={}

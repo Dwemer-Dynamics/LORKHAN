@@ -103,6 +103,7 @@ I.Settings.registerGroup({
         {key='enabled',renderer='checkbox',default=true,name='AutoActivateEnabled_name',description='AutoActivateEnabled_description'},
         {key='interiorDistance',renderer='number',default=1200,name='InteriorDistance_name',description='InteriorDistance_description',argument={integer=true,min=128,max=8192}},
         {key='exteriorDistance',renderer='number',default=2400,name='ExteriorDistance_name',description='ExteriorDistance_description',argument={integer=true,min=128,max=16384}},
+        {key='hearingPreset',renderer='select',default='Nearby',name='HearingPreset_name',description='HearingPreset_description',argument={l10n='LORKHAN',items={'TargetsOnly','Nearby','Wide'}}},
         {key='interiorHearingDistance',renderer='number',default=500,name='InteriorHearingDistance_name',description='InteriorHearingDistance_description',argument={integer=true,min=128,max=8192}},
         {key='exteriorHearingDistance',renderer='number',default=1000,name='ExteriorHearingDistance_name',description='ExteriorHearingDistance_description',argument={integer=true,min=128,max=16384}},
         {key='addHostile',renderer='checkbox',default=false,name='AddHostile_name',description='AddHostile_description'},

@@ -686,6 +686,7 @@ namespace MWLua
                     behavior["boredom"] = settings.behavior.boredom;
                     behavior["boredom_delay_seconds"] = settings.behavior.boredomDelaySeconds;
                     behavior["combat_barks"] = settings.behavior.combatBarks;
+                    behavior["ai_enabled"] = settings.behavior.aiEnabled;
                     behavior["combat_bark_period_seconds"] = settings.behavior.combatBarkPeriodSeconds;
                     memory["recent_turn_limit"] = settings.memory.recentTurnLimit;
                     memory["knowledge_limit"] = settings.memory.knowledgeLimit;
@@ -1833,6 +1834,7 @@ namespace MWLua
                 behavior["end_conversation_cooldown_seconds"]=snapshot.behavior.endConversationCooldownSeconds;
                 behavior["boredom"]=snapshot.behavior.boredom;behavior["boredom_delay_seconds"]=snapshot.behavior.boredomDelaySeconds;
                 behavior["combat_barks"]=snapshot.behavior.combatBarks;
+                behavior["ai_enabled"]=snapshot.behavior.aiEnabled;
                 behavior["combat_bark_period_seconds"]=snapshot.behavior.combatBarkPeriodSeconds;
                 memory["recent_turn_limit"]=snapshot.memory.recentTurnLimit;memory["knowledge_limit"]=snapshot.memory.knowledgeLimit;
                 narrator["enabled"]=snapshot.narrator.enabled;narrator["name"]=snapshot.narrator.name;

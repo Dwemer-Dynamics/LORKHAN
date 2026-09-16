@@ -44,6 +44,7 @@ local MENU={
     {key='history',label='Context history...',callback='onSelectHistory'},
     {key='statusHud',label='Status HUD',callback='onToggleStatusHud'},
     {key='diagnostics',label='Diagnostics...',callback='onSelectDiagnostics'},
+    {key='aiEnabled',label='AI',callback='onToggleAI'},
 }
 M.MENU=MENU
 
@@ -66,7 +67,9 @@ function M.build(context)
         {textChanged=context.onTextChanged,keyPress=context.onKeyPress})
     rows[#rows+1]=text(ui,util,'Press Enter or select Send',14,'detail')
     for _,entry in ipairs(MENU) do
-        if entry.key=='statusHud' then
+        if entry.key=='aiEnabled' then
+            rows[#rows+1]=text(ui,util,'AI: '..(context.aiEnabled~=false and 'on' or 'off'),15,'action',{mouseClick=context[entry.callback]})
+        elseif entry.key=='statusHud' then
             rows[#rows+1]=text(ui,util,M.statusHudLabel(context.statusHudVisible),15,
                 context.statusHudVisible and 'active' or 'action',{mouseClick=context[entry.callback]})
         else

@@ -8,15 +8,15 @@ function M.receive(event,seed)
     local payload=event and event.payload
     if not seed or not payload or event.turn_id~=seed.turn_id or payload.origin_turn_id~=seed.turn_id
         or not protocol.isUuid(payload.plan_id) or type(payload.expires_at)~='string'
-        or type(payload.instructions)~='table' or #payload.instructions<1 or #payload.instructions>3 then return nil end
+        or type(payload.instructions)~='table' or #payload.instructions<1 or #payload.instructions>12 then return nil end
     local seen={}
     for _,row in ipairs(payload.instructions) do
         local key=identity.key(row.actor)
-        if not protocol.isUuid(row.instruction_id) or not key or seen[key]
+        if not protocol.isUuid(row.instruction_id) or seen[row.instruction_id] or not key
             or (row.actor.kind~='npc' and row.actor.kind~='creature') or not identity.validate(row.recipient)
             or identity.same(row.actor,row.recipient) or type(row.instruction)~='string'
             or #row.instruction<1 or #row.instruction>2000 then return nil end
-        seen[key]=true
+        seen[row.instruction_id]=true
     end
     return {planId=payload.plan_id,sessionId=event.session_id,generation=event.generation,
         expiresAt=payload.expires_at,instructions=util.copy(payload.instructions),index=1,seed=util.copy(seed)}

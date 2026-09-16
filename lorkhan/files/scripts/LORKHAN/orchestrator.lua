@@ -16,7 +16,7 @@ local M={}
 
 local function newAutonomyState()
     return {idleSeconds=0,combatSeconds=0,pending=nil,pendingSeconds=0,greetingQueue={},
-        greeted={},interacted={},rotation=0,profileEvolutionSeconds=0,narratorRounds=0,rpgCooldownSeconds=0,
+        greeted={},interacted={},rotation=0,narratorRounds=0,rpgCooldownSeconds=0,
         narratorRandomPending=false,narratorQueue={},welcomeAttempted=false,restoreTarget=nil,restoreTargetPresent=false,
         activeTurnTarget=nil,activeTurnSource=nil}
 end
@@ -111,6 +111,26 @@ local function cancelResponseLane(state,reason,stopSpeech)
     end
     state.activeSpeechMediaId=nil
     emitQueue(state)
+end
+
+
+-- Switch only AI work off. Session fencing, observations and microphone/STT remain alive.
+function M.setAiEnabled(state,enabled)
+    enabled=enabled~=false
+    if (state.aiEnabled~=false)==enabled then return false end
+    state.aiEnabled=enabled
+    if not enabled then
+        cancelResponseLane(state,'ai_disabled',true)
+        signalAllActors(state,'LORKHAN_ACTOR_STOP','ai_disabled')
+        state.conversation.turn=nil -- Late results cannot match a cancelled turn after re-enabling.
+        state.directorPlan=nil state.directorSeed=nil
+        state.rechat=nil state.rechatSeed=nil state.rechatEligibility=nil
+        state.advancedAuthority=nil state.pendingConfirmations={}
+        state.actionFollowups={seen={},pending={}}
+        state.autonomy.pending=nil state.autonomy.boredPending=nil state.autonomy.narratorQueue={}
+    end
+    state.emit('LORKHAN_AI_STATUS',{enabled=enabled})
+    return true
 end
 
 function M.lifecycle(state,kind)
@@ -394,6 +414,7 @@ end
 
 -- Temporarily target the player-local narrator while preserving the user's world-actor target.
 local function requestNarrator(state,kind,contextActor,observedText)
+    if state.aiEnabled==false then return false,'ai_disabled' end
     local narrator=state.settings and state.settings.narrator or {}
     if narrator.enabled~=true then return false end
     local actor=narratorIdentity(state)
@@ -518,7 +539,6 @@ function M.runAutonomy(state,elapsed)
         autonomy.boredPending.seconds=autonomy.boredPending.seconds+seconds
         if autonomy.boredPending.seconds>=30 then autonomy.boredPending=nil end
     end
-    if state.sessionId then autonomy.profileEvolutionSeconds=autonomy.profileEvolutionSeconds+seconds end
     if autonomy.pending then
         autonomy.pendingSeconds=autonomy.pendingSeconds+seconds
         if autonomy.pendingSeconds<5 then return false end
@@ -531,7 +551,7 @@ function M.runAutonomy(state,elapsed)
     end
     local behavior=state.settings and state.settings.behavior or {}
     local turn=state.conversation.turn
-    local busy=state.disabled or state.hardHalted or not state.sessionId or state.directorPlan~=nil or not responseQueue.idle(state.responseQueue)
+    local busy=state.aiEnabled==false or state.disabled or state.hardHalted or not state.sessionId or state.directorPlan~=nil or not responseQueue.idle(state.responseQueue)
         or (turn and not turn.terminal) or state.pendingVoice~=nil or state.openMic==true
     if busy then autonomy.idleSeconds=0 return false end
     local narrator=state.settings and state.settings.narrator or {}
@@ -549,21 +569,6 @@ function M.runAutonomy(state,elapsed)
         local chance=math.max(1,math.min(100,tonumber(narrator.random_chance_percent) or 15))
         if narrator.enabled==true and narrator.random_events==true and autonomy.narratorRounds>=cooldown
             and state.randomPercent()<=chance and requestNarrator(state,'narrator_random',nil) then return true end
-    end
-    local profilePeriod=20*60
-    if autonomy.profileEvolutionSeconds>=profilePeriod then
-        local actors={}
-        for _,entry in ipairs(agentRegistry.snapshot(state.agents)) do
-            if entry.identity.kind=='npc' and state.registry:resolve(entry.identity) then
-                actors[#actors+1]=util.copy(entry.identity)
-                if #actors>=32 then break end
-            end
-        end
-        autonomy.profileEvolutionSeconds=0
-        if #actors>0 then
-            state.emit('LORKHAN_PROFILE_EVOLUTION_REQUEST',{actors=actors,generation=state.generation})
-            return true
-        end
     end
     autonomy.idleSeconds=autonomy.idleSeconds+seconds
     if next(state.combatActors)~=nil then autonomy.combatSeconds=autonomy.combatSeconds+seconds
@@ -792,6 +797,7 @@ function M.clearAudience(state)
 end
 
 function M.submitText(state,args)
+    if state.aiEnabled==false then return nil,'ai_disabled' end
     if state.disabled or state.hardHalted then return nil,'lorkhan_disabled' end
     for _,key in ipairs({'request_id','turn_id','message_id'}) do
         if not protocol.isUuid(args[key]) then return nil,'invalid_'..key end
@@ -904,6 +910,9 @@ function M.submitText(state,args)
     end
     local hearingDistance=tonumber(state.settings and state.settings.autoActivate
         and state.settings.autoActivate.hearingDistance) or 0
+    local hearingPreset=state.settings and state.settings.autoActivate and state.settings.autoActivate.hearingPreset
+    if hearingPreset=='TargetsOnly' then hearingDistance=0
+    elseif hearingPreset=='Wide' then hearingDistance=math.min(16384,hearingDistance*2) end
     if mode=='Close' or mode=='Whisper' then hearingDistance=0
     elseif mode=='Shout' then hearingDistance=math.min(32768,hearingDistance*2) end
     if hearingDistance>0 and not isRechat then
@@ -984,6 +993,7 @@ end
 
 -- Submit at most one result-aware continuation per completed action after its response lane is idle.
 local function submitActionFollowup(state)
+    if state.aiEnabled==false then return false,'ai_disabled' end
     local queue=state.actionFollowups and state.actionFollowups.pending or nil
     local pending=queue and queue[1] or nil
     if not pending or not state.rechatSeed or not state.conversation.turn or not state.conversation.turn.terminal
@@ -1009,6 +1019,7 @@ end
 
 local emitInbound
 local function pumpResponseQueue(state)
+    if state.aiEnabled==false then return false,'ai_disabled' end
     for _=1,64 do
         local item=responseQueue.head(state.responseQueue)
         if not item or state.responseQueue.active then return end
@@ -1133,6 +1144,7 @@ end
 
 -- Submit a continuation only from a complete, bounded set of freshly proven actor states.
 local function submitPlaybackRechat(state,probe)
+    if state.aiEnabled==false then return false,'ai_disabled' end
     local chain=state.rechat
     local settings=state.settings and state.settings.behavior or {}
     if not chain or chain.cancelled or chain.requestInFlight or settings.rechat~=true
@@ -1368,8 +1380,8 @@ function M.poll(state)
                     pending.text=event.payload.text;pending.input_key='voice:'..event.message_id;pending.language=event.payload.language
                     pending.input_kind='stt'
                     local submitted,submitReason=M.submitText(state,pending)
-                    if not submitted and pending.continuous then state.openMic=false end
-                    state.emit('LORKHAN_VOICE_STATUS',{status=submitted and 'queued' or 'failed',reason=submitReason,
+                    if not submitted and pending.continuous and submitReason~='ai_disabled' then state.openMic=false end
+                    state.emit('LORKHAN_VOICE_STATUS',{status=submitted and 'queued' or (submitReason=='ai_disabled' and 'transcribed' or 'failed'),reason=submitReason,
                         request_id=submitted,continuous=pending.continuous==true})
                 elseif event.type=='stt.failed' then
                     restoreVoiceTarget(state,pending)
@@ -1383,6 +1395,8 @@ function M.poll(state)
                         continuous=pending and pending.continuous==true})
                 end
                 accepted=accepted+1;emitInbound(state,'LORKHAN_EVENT',event)
+            elseif state.aiEnabled==false then
+                accepted=accepted+1 -- Keep the ordered event cursor current, but never dispatch disabled AI output.
             else
             local applyOk,applied,applyReason=pcall(conversation.apply,state.conversation,event)
             if not applyOk then

@@ -280,9 +280,15 @@ void testAcceptedProtocolResponses()
 {
     const lorkhan::Headers jsonHeaders{{"Content-Type", "application/json; charset=utf-8"}};
 
-    auto session = lorkhan::parseSessionAcceptedResponse(
-        R"({"schema":"lorkhan.session.accepted.v1","message_id":"01900000-0000-7000-8000-000000000006","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"capabilities":["dialogue.text","speech.say"],"config_revision":"revision-9","client_settings":{"schema":"lorkhan.client-settings.v1","behavior":{"auto_greeting":false,"rechat":false,"rechat_delay_seconds":45,"rechat_max_depth":2,"rechat_probability_percent":50,"rechat_mode":"random","rechat_strict_targeting":false,"open_rechat":true,"rechat_allow_actions":false,"end_conversation_cooldown_seconds":60,"boredom":false,"boredom_delay_seconds":180,"combat_barks":false,"combat_bark_period_seconds":600},"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"welcome_cooldown_minutes":10,"random_events":false,"random_chance_percent":15,"random_cooldown_rounds":2,"bored_events":false,"bored_chance_percent":25,"quest_events":false,"quest_chance_percent":10,"quest_cooldown_minutes":3,"book_events":false},"presentation":{"show_status_hud":true,"transcript_rows":8,"tts_volume_boost":3},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"event_cursor":3})",
-        jsonHeaders);
+    const std::string sessionBody = R"({"schema":"lorkhan.session.accepted.v1","message_id":"01900000-0000-7000-8000-000000000006","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"capabilities":["dialogue.text","speech.say"],"config_revision":"revision-9","client_settings":{"schema":"lorkhan.client-settings.v1","behavior":{"auto_greeting":false,"rechat":false,"rechat_delay_seconds":45,"rechat_max_depth":2,"rechat_probability_percent":50,"rechat_mode":"random","rechat_strict_targeting":false,"open_rechat":true,"rechat_allow_actions":false,"end_conversation_cooldown_seconds":60,"boredom":false,"boredom_delay_seconds":180,"combat_barks":false,"combat_bark_period_seconds":600},"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"welcome_cooldown_minutes":10,"random_events":false,"random_chance_percent":15,"random_cooldown_rounds":2,"bored_events":false,"bored_chance_percent":25,"quest_events":false,"quest_chance_percent":10,"quest_cooldown_minutes":3,"book_events":false},"presentation":{"show_status_hud":true,"transcript_rows":8,"tts_volume_boost":3},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"event_cursor":3})";
+    auto session = lorkhan::parseSessionAcceptedResponse(sessionBody,jsonHeaders);
+    CHECK(session && session.value().clientSettings.behavior.aiEnabled);
+    for (const std::string value : {"true", "false", "0", "null", "\"false\""}) {
+        auto changed=sessionBody;changed.insert(changed.find("\"auto_greeting\""),"\"ai_enabled\":"+value+",");
+        auto parsed=lorkhan::parseSessionAcceptedResponse(changed,jsonHeaders);
+        if(value=="true"||value=="false")CHECK(parsed && parsed.value().clientSettings.behavior.aiEnabled==(value=="true"));
+        else CHECK(!parsed);
+    }
     CHECK(session && session.value().message == lorkhan::MessageId(kMessage)
         && session.value().session == lorkhan::SessionId(kSession)
         && session.value().generation == lorkhan::Generation(7)
@@ -444,6 +450,13 @@ void testAcceptedProtocolResponses()
     const std::string controlsJson =
         R"({"schema":"lorkhan.controls.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"target":{"kind":"npc","record_id":"fargoth","refnum":{"index":42,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"interior","name":"Seyda Neen, Census and Excise Office"},"display_name":"Fargoth"},"selected_model_slot_key":"standard","resolved_model_slot_key":"standard","selected_profile_id":null,"narrator_profile_id":"10000000-0000-4000-8000-000000000408","effective_settings":{"schema":"lorkhan.effective-settings.v1","change_token":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","profile_id":null,"profile_revision":null,"core_profile_id":"10000000-0000-4000-8000-000000000409","core_profile_revision":1,"settings":{"behavior":{"auto_greeting":false,"rechat":false,"rechat_delay_seconds":45,"rechat_max_depth":2,"rechat_probability_percent":50,"rechat_mode":"random","rechat_strict_targeting":false,"open_rechat":true,"rechat_allow_actions":false,"end_conversation_cooldown_seconds":60,"boredom":false,"boredom_delay_seconds":180,"combat_barks":false,"combat_bark_period_seconds":600},"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"welcome_cooldown_minutes":10,"random_events":false,"random_chance_percent":15,"random_cooldown_rounds":2,"bored_events":false,"bored_chance_percent":25,"quest_events":false,"quest_chance_percent":10,"quest_cooldown_minutes":3,"book_events":false},"presentation":{"show_status_hud":true,"transcript_rows":8,"tts_volume_boost":3},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"routing":{"llm_configuration_id":"10000000-0000-4000-8000-000000000406"},"source_map":{"settings.memory.recent_turn_limit":"global","settings.memory.knowledge_limit":"global","settings.narrator.enabled":"global","settings.narrator.name":"global","settings.narrator.context_visibility":"global","settings.narrator.inline_mode":"global","settings.narrator.welcome_events":"narrator_profile","settings.narrator.random_events":"global","settings.narrator.quest_events":"global","settings.narrator.book_events":"global","settings.safety.actions_enabled":"global","settings.safety.allow_hostile":"global","settings.safety.allow_creatures":"global","routing.llm_configuration_id":"core_profile"}},"model_slots":[{"key":"standard","label":"Standard","available":true,"configuration_id":"10000000-0000-4000-8000-000000000406","configuration_name":"Dialogue","revision":1,"driver":"configured","model":"gpt-5-mini"},{"key":"fast","label":"Fast","available":false,"configuration_id":null,"configuration_name":null,"revision":null,"driver":null,"model":null},{"key":"powerful","label":"Powerful","available":false,"configuration_id":null,"configuration_name":null,"revision":null,"driver":null,"model":null},{"key":"experimental","label":"Experimental","available":false,"configuration_id":null,"configuration_name":null,"revision":null,"driver":null,"model":null}],"profiles":[{"profile_id":"10000000-0000-4000-8000-000000000407","name":"Fargoth","revision":2}]})";
     auto controls = lorkhan::parseControlsResponse(controlsJson, jsonHeaders);
+    CHECK(controls && controls.value().effectiveSettings.behavior.aiEnabled);
+    for (const std::string value : {"false", "null", "1"}) {
+        auto changed=controlsJson;changed.insert(changed.find("\"auto_greeting\""),"\"ai_enabled\":"+value+",");
+        auto parsed=lorkhan::parseControlsResponse(changed,jsonHeaders);
+        if(value=="false")CHECK(parsed && !parsed.value().effectiveSettings.behavior.aiEnabled);
+        else CHECK(!parsed);
+    }
     auto invalidCombatCooldown = controlsJson;
     const std::string cooldownField = "\"combat_bark_period_seconds\":600";
     invalidCombatCooldown.replace(invalidCombatCooldown.find(cooldownField), cooldownField.size(), "\"combat_bark_period_seconds\":601");
@@ -794,7 +807,14 @@ void testProtocolEventResponses()
     CHECK(!lorkhan::parseEventsResponse(directorPrefix+directorSuffix,jsonHeaders));
     CHECK(!lorkhan::parseEventsResponse(directorPrefix+directorInstruction+","+directorInstruction+directorSuffix,jsonHeaders));
     auto secondDirector=directorInstruction;secondDirector.replace(secondDirector.find("000000000040"),12,"000000000041");
-    CHECK(!lorkhan::parseEventsResponse(directorPrefix+directorInstruction+","+secondDirector+directorSuffix,jsonHeaders));
+    CHECK(lorkhan::parseEventsResponse(directorPrefix+directorInstruction+","+secondDirector+directorSuffix,jsonHeaders));
+    std::string scene;
+    for(unsigned i=0;i<13;++i){
+        auto instruction=directorInstruction;instruction.replace(instruction.find("000000000040"),12,"0000000000"+std::to_string(40+i));
+        if(i)scene+=",";scene+=instruction;
+        if(i==11)CHECK(lorkhan::parseEventsResponse(directorPrefix+scene+directorSuffix,jsonHeaders));
+    }
+    CHECK(!lorkhan::parseEventsResponse(directorPrefix+scene+directorSuffix,jsonHeaders));
     auto playerDirector=directorInstruction;playerDirector.replace(playerDirector.find("\"kind\":\"npc\""),12,"\"kind\":\"player\"");
     CHECK(!lorkhan::parseEventsResponse(directorPrefix+playerDirector+directorSuffix,jsonHeaders));
     auto invalidSheathe = sheatheJson;

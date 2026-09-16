@@ -792,12 +792,13 @@ Result<ClientSettings> parseClientSettings(const json::Value& value)
     const auto objectFor=[&](std::string_view key)->const json::Object*{const auto* item=json::find(*root,key);return item?item->object():nullptr;};
     const auto* behavior=objectFor("behavior");const auto* memory=objectFor("memory");const auto* narrator=objectFor("narrator");
     const auto* presentation=objectFor("presentation");const auto* safety=objectFor("safety");
-    if(!behavior||!hasExactly(*behavior,{"auto_greeting","rechat","rechat_delay_seconds","rechat_max_depth","rechat_probability_percent","rechat_mode","rechat_strict_targeting","open_rechat","rechat_allow_actions","end_conversation_cooldown_seconds","boredom","boredom_delay_seconds","combat_barks","combat_bark_period_seconds"})
+    if(!behavior||!hasExactly(*behavior,{"auto_greeting","rechat","rechat_delay_seconds","rechat_max_depth","rechat_probability_percent","rechat_mode","rechat_strict_targeting","open_rechat","rechat_allow_actions","end_conversation_cooldown_seconds","boredom","boredom_delay_seconds","combat_barks","combat_bark_period_seconds"},{"ai_enabled"})
         ||!memory||!hasExactly(*memory,{"recent_turn_limit","knowledge_limit"})
         ||!narrator||!hasExactly(*narrator,{"enabled","name","context_visibility","inline_mode","welcome_events","welcome_cooldown_minutes","random_events","random_chance_percent","random_cooldown_rounds","bored_events","bored_chance_percent","quest_events","quest_chance_percent","quest_cooldown_minutes","book_events"})
         ||!presentation||!hasExactly(*presentation,{"show_status_hud","transcript_rows","tts_volume_boost"})
         ||!safety||!hasExactly(*safety,{"actions_enabled","allow_hostile","allow_creatures"}))
         return invalidSchemaValue<ClientSettings>("client settings section mismatch");
+    auto aiEnabled=json::find(*behavior,"ai_enabled")?requireBoolean(*behavior,"ai_enabled"):Result<bool>::success(true);
     auto autoGreeting=requireBoolean(*behavior,"auto_greeting");auto rechat=requireBoolean(*behavior,"rechat");
     auto rechatDelay=requireUnsigned(*behavior,"rechat_delay_seconds",3600,30);auto rechatDepth=requireUnsigned(*behavior,"rechat_max_depth",20,1);
     auto rechatProbability=requireUnsigned(*behavior,"rechat_probability_percent",100);auto rechatMode=requireString(*behavior,"rechat_mode",1,16);
@@ -817,7 +818,7 @@ Result<ClientSettings> parseClientSettings(const json::Value& value)
     auto showStatus=requireBoolean(*presentation,"show_status_hud");auto transcriptRows=requireUnsigned(*presentation,"transcript_rows",20,2);
     auto volumeBoost=requireUnsigned(*presentation,"tts_volume_boost",4,1);auto actionsEnabled=requireBoolean(*safety,"actions_enabled");
     auto allowHostile=requireBoolean(*safety,"allow_hostile");auto allowCreatures=requireBoolean(*safety,"allow_creatures");
-    if(!autoGreeting||!rechat||!rechatDelay||!rechatDepth||!rechatProbability||!rechatMode||!strictRechat||!openRechat
+    if(!aiEnabled||!autoGreeting||!rechat||!rechatDelay||!rechatDepth||!rechatProbability||!rechatMode||!strictRechat||!openRechat
         ||!rechatActions||!conversationCooldown||!boredom||!boredomDelay||!combatBarks||!combatPeriod
         ||!recentTurns||!knowledgeLimit||!narratorEnabled||!narratorName||!contextVisibility||!inlineMode
         ||!welcomeEvents||!welcomeCooldown||!randomEvents||!randomChance||!randomCooldown||!boredEvents||!boredChance
@@ -829,7 +830,7 @@ Result<ClientSettings> parseClientSettings(const json::Value& value)
         return invalidSchemaValue<ClientSettings>("rechat mode is invalid");
     return Result<ClientSettings>::success({
         {autoGreeting.value(),rechat.value(),rechatDelay.value(),rechatDepth.value(),rechatProbability.value(),std::move(rechatMode).value(),
-            strictRechat.value(),openRechat.value(),rechatActions.value(),conversationCooldown.value(),boredom.value(),boredomDelay.value(),combatBarks.value(),combatPeriod.value()},
+            strictRechat.value(),openRechat.value(),rechatActions.value(),conversationCooldown.value(),boredom.value(),boredomDelay.value(),combatBarks.value(),combatPeriod.value(),aiEnabled.value()},
         {recentTurns.value(),knowledgeLimit.value()},
         {narratorEnabled.value(),std::move(narratorName).value(),contextVisibility.value(),std::move(inlineMode).value(),
             welcomeEvents.value(),welcomeCooldown.value(),randomEvents.value(),randomChance.value(),randomCooldown.value(),
@@ -876,12 +877,13 @@ Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::V
     const auto objectFor=[&](std::string_view key)->const json::Object*{const auto* item=json::find(*settings,key);return item?item->object():nullptr;};
     const auto* behavior=objectFor("behavior");const auto* memory=objectFor("memory");const auto* narrator=objectFor("narrator");
     const auto* presentation=objectFor("presentation");const auto* safety=objectFor("safety");
-    if(!behavior||!hasExactly(*behavior,{"auto_greeting","rechat","rechat_delay_seconds","rechat_max_depth","rechat_probability_percent","rechat_mode","rechat_strict_targeting","open_rechat","rechat_allow_actions","end_conversation_cooldown_seconds","boredom","boredom_delay_seconds","combat_barks","combat_bark_period_seconds"})
+    if(!behavior||!hasExactly(*behavior,{"auto_greeting","rechat","rechat_delay_seconds","rechat_max_depth","rechat_probability_percent","rechat_mode","rechat_strict_targeting","open_rechat","rechat_allow_actions","end_conversation_cooldown_seconds","boredom","boredom_delay_seconds","combat_barks","combat_bark_period_seconds"},{"ai_enabled"})
         ||!memory||!hasExactly(*memory,{"recent_turn_limit","knowledge_limit"})
         ||!narrator||!hasExactly(*narrator,{"enabled","name","context_visibility","inline_mode","welcome_events","welcome_cooldown_minutes","random_events","random_chance_percent","random_cooldown_rounds","bored_events","bored_chance_percent","quest_events","quest_chance_percent","quest_cooldown_minutes","book_events"})
         ||!presentation||!hasExactly(*presentation,{"show_status_hud","transcript_rows","tts_volume_boost"})
         ||!safety||!hasExactly(*safety,{"actions_enabled","allow_hostile","allow_creatures"}))
         return invalidSchemaValue<Snapshot>("effective settings value sections mismatch");
+    auto aiEnabled=json::find(*behavior,"ai_enabled")?requireBoolean(*behavior,"ai_enabled"):Result<bool>::success(true);
     auto autoGreeting=requireBoolean(*behavior,"auto_greeting");auto rechat=requireBoolean(*behavior,"rechat");
     auto rechatDelay=requireUnsigned(*behavior,"rechat_delay_seconds",3600,30);auto rechatDepth=requireUnsigned(*behavior,"rechat_max_depth",20,1);
     auto rechatProbability=requireUnsigned(*behavior,"rechat_probability_percent",100);auto rechatMode=requireString(*behavior,"rechat_mode",1,16);
@@ -902,7 +904,7 @@ Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::V
     auto volumeBoost=requireUnsigned(*presentation,"tts_volume_boost",4,1);
     auto actionsEnabled=requireBoolean(*safety,"actions_enabled");auto allowHostile=requireBoolean(*safety,"allow_hostile");
     auto allowCreatures=requireBoolean(*safety,"allow_creatures");
-    if(!autoGreeting||!rechat||!rechatDelay||!rechatDepth||!rechatProbability||!rechatMode||!strictRechat||!openRechat
+    if(!aiEnabled||!autoGreeting||!rechat||!rechatDelay||!rechatDepth||!rechatProbability||!rechatMode||!strictRechat||!openRechat
         ||!rechatActions||!conversationCooldown||!boredom||!boredomDelay||!combatBarks||!combatPeriod
         ||!recentTurns||!knowledgeLimit||!narratorEnabled||!narratorName||!contextVisibility||!inlineMode
         ||!welcomeEvents||!welcomeCooldown||!randomEvents||!randomChance||!randomCooldown||!boredEvents||!boredChance
@@ -919,7 +921,7 @@ Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::V
     parsed.coreProfileId=std::move(coreId).value();parsed.coreProfileRevision=std::move(coreRevision).value();
     parsed.behavior={autoGreeting.value(),rechat.value(),rechatDelay.value(),rechatDepth.value(),rechatProbability.value(),
         std::move(rechatMode).value(),strictRechat.value(),openRechat.value(),rechatActions.value(),conversationCooldown.value(),
-        boredom.value(),boredomDelay.value(),combatBarks.value(),combatPeriod.value()};
+        boredom.value(),boredomDelay.value(),combatBarks.value(),combatPeriod.value(),aiEnabled.value()};
     parsed.memory={recentTurns.value(),knowledgeLimit.value()};
     parsed.narrator={narratorEnabled.value(),std::move(narratorName).value(),contextVisibility.value(),std::move(inlineMode).value(),
         welcomeEvents.value(),welcomeCooldown.value(),randomEvents.value(),randomChance.value(),randomCooldown.value(),
@@ -940,9 +942,9 @@ Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::V
             parsed.routing.emplace_back(key,*item.boolean());}
         else return invalidSchemaValue<Snapshot>("unknown effective routing field");
     }
-    static constexpr std::array<std::string_view,14> behaviorFields={"auto_greeting","rechat","rechat_delay_seconds","rechat_max_depth",
+    static constexpr std::array<std::string_view,15> behaviorFields={"auto_greeting","rechat","rechat_delay_seconds","rechat_max_depth",
         "rechat_probability_percent","rechat_mode","rechat_strict_targeting","open_rechat","rechat_allow_actions",
-        "end_conversation_cooldown_seconds","boredom","boredom_delay_seconds","combat_barks","combat_bark_period_seconds"};
+        "end_conversation_cooldown_seconds","boredom","boredom_delay_seconds","combat_barks","combat_bark_period_seconds","ai_enabled"};
     static constexpr std::array<std::string_view,2> memoryFields={"recent_turn_limit","knowledge_limit"};
     static constexpr std::array<std::string_view,15> narratorFields={"enabled","name","context_visibility","inline_mode",
         "welcome_events","welcome_cooldown_minutes","random_events","random_chance_percent","random_cooldown_rounds",
@@ -996,6 +998,7 @@ std::optional<ErrorCode> protocolCode(std::string_view code)
 {
     struct Mapping { std::string_view name; ErrorCode code; };
     static constexpr std::array mappings{
+        Mapping{"ai_disabled", ErrorCode::action_disabled},
         Mapping{"action_disabled", ErrorCode::action_disabled},
         Mapping{"action_parameters_invalid", ErrorCode::invalid_action},
         Mapping{"action_result_expired", ErrorCode::invalid_action},
@@ -1103,11 +1106,10 @@ Result<ProtocolEvent> parseEvent(const json::Value& value, const SessionId& resp
         const auto* rowsValue = json::find(*payload, "instructions");
         const auto* rows = rowsValue ? rowsValue->array() : nullptr;
         if (!plan || !origin || origin.value() != correlation.value().turn.value() || !expiry
-            || !rows || rows->empty() || rows->size() > 3)
+            || !rows || rows->empty() || rows->size() > 12)
             return invalidSchemaValue<ProtocolEvent>("director instruction scope or bounds mismatch");
         DirectorInstructionsEventPayload instructions{MessageId(plan.value()), TurnId(origin.value()), expiry.value(), {}};
         std::set<std::string> ids;
-        std::set<std::pair<std::uint64_t, std::uint64_t>> actors;
         for (const auto& instructionValue : *rows) {
             const auto* row = instructionValue.object();
             if (!row || !hasExactly(*row, {"instruction_id", "actor", "recipient", "instruction", "scene_note"}))
@@ -1119,8 +1121,7 @@ Result<ProtocolEvent> parseEvent(const json::Value& value, const SessionId& resp
             auto note = requireString(*row, "scene_note", 0, 1000);
             if (!id || !actor || !recipient || !instruction || !note
                 || (actor.value().kind != "npc" && actor.value().kind != "creature")
-                || !ids.insert(id.value()).second
-                || !actors.emplace(actor.value().refnumContentFile, actor.value().refnumIndex).second)
+                || !ids.insert(id.value()).second)
                 return invalidSchemaValue<ProtocolEvent>("director instruction identity, uniqueness or text mismatch");
             instructions.instructions.push_back({MessageId(id.value()), actor.value(), recipient.value(), instruction.value(), note.value()});
         }

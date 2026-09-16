@@ -533,6 +533,7 @@ return {
         LORKHAN_HARD_HALT_REQUEST=function() orchestrator.hardHalt(state) end,
         LORKHAN_SETTINGS_UPDATE=function(event)
             state.settings=event
+            orchestrator.setAiEnabled(state,event.behavior and event.behavior.aiEnabled~=false)
             for _,entry in ipairs({{'configurePlayback',event.playback},{'configureTransport',event.transport}}) do
                 if entry[2] and bridge[entry[1]] then
                     local ok,result,reason=pcall(bridge[entry[1]],entry[2])

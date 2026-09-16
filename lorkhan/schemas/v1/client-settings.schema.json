@@ -6,6 +6,7 @@
     "behavior": {
       "additionalProperties": false,
       "properties": {
+        "ai_enabled": {"type": "boolean"},
         "auto_greeting": {"type": "boolean"},
         "boredom": {"type": "boolean"},
         "boredom_delay_seconds": {"maximum": 86400, "minimum": 30, "type": "integer"},

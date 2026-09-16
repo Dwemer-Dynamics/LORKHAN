@@ -5,6 +5,7 @@
   "properties": {
     "code": {
       "enum": [
+        "ai_disabled",
         "action_disabled",
         "action_parameters_invalid",
         "action_result_expired",
