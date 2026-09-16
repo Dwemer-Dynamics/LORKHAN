@@ -78,10 +78,10 @@ AvoidAutonomyWhenSneaking_name: Pause autonomous dialogue while sneaking
 AvoidAutonomyWhenSneaking_description: Pause idle conversations while sneaking.
 CancelDialogueOnCombat_name: Stop Dialogue in Combat
 CancelDialogueOnCombat_description: Stop dialogue and recording when an NPC attacks you.
-CombatBarks_name: Enable combat barks
-CombatBarks_description: Allow short NPC remarks during combat.
+CombatBarks_name: Combat Barks
+CombatBarks_description: Use the server profile, enable, or disable short combat remarks. Requires Allow Combat Dialogue.
 CombatBarkPeriod_name: Combat bark interval
-CombatBarkPeriod_description: Minimum seconds between combat remarks.
+CombatBarkPeriod_description: Seconds between combat remarks. Zero uses the profile. The server profile remains the minimum cooldown.
 OpenMicSensitivity_name: Open Mic Sensitivity
 OpenMicSensitivity_description: Higher values require louder speech.
 OpenMicEndDelay_name: Open Mic Silence (ms)
@@ -110,3 +110,60 @@ BookReadAloud_description: Read books with the Narrator voice. Close the book to
 MenuDialogueTts_description: Speak vanilla dialogue and menu responses.
 OpenMicEnabled_name: Enable Open Mic
 OpenMicEnabled_description: Listen for speech automatically. Use Mute Open Mic to pause.
+
+AllowCombatDialogue_name: Allow Combat Dialogue
+AllowCombatDialogue_description: "Allow AI replies from actors in combat. Turning this off does not stop microphone recording or transcription."
+
+ConnectionTimeout_name: Connection Timeout
+ConnectionTimeout_description: "Connection timeout in seconds, from 15 to 300. Default 30."
+
+audio_mode_name: Audio Mode
+audio_mode_description: "OpenMW spatial playback: flat directional, normal distance, Realistic 3D with a custom distance curve, mono, or Mono + Effects with distance falloff. This does not emulate Skyrim occlusion."
+
+head_voice_volume_percent_name: Head Voice Volume (%)
+head_voice_volume_percent_description: "Player and Narrator volume relative to the existing TTS volume boost."
+
+distance_scale_name: Advanced Distance Scale
+distance_scale_description: "Distance multiplier for Realistic 3D and Mono + Effects."
+
+dropoff_inside_percent_name: Interior Dropoff (%)
+dropoff_inside_percent_description: "Interior distance fading for Realistic 3D and Mono + Effects."
+
+dropoff_outside_percent_name: Exterior Dropoff (%)
+dropoff_outside_percent_description: "Exterior distance fading for Realistic 3D and Mono + Effects."
+
+legacy_distance_scale_name: Normal Distance Scale
+legacy_distance_scale_description: "Distance multiplier for Normal 3D playback."
+
+clip_start_ms_name: Clip Start (ms)
+clip_start_ms_description: "Trim this many milliseconds from the beginning of each audio clip."
+
+clip_end_ms_name: Clip End (ms)
+clip_end_ms_description: "Trim this many milliseconds from the end of each audio clip."
+
+lip_intensity_name: Lip Intensity
+lip_intensity_description: "Scale mouth animation intensity."
+
+lip_resolution_ms_name: Lip Update Interval (ms)
+lip_resolution_ms_description: "Minimum interval between mouth animation updates. Zero uses every frame."
+
+camera_based_audio_name: Camera-Based Audio
+camera_based_audio_description: "Use the camera instead of the player facing direction for directional sound."
+
+invert_heading_name: Invert Audio Heading
+invert_heading_description: "Reverse the directional audio heading."
+
+pause_on_game_pause_name: Pause Audio with Game
+pause_on_game_pause_description: "Pause dialogue playback while the game is paused. Leave off to hear dialogue in menus."
+
+UseProfile: Use Profile
+Enabled: On
+Disabled: Off
+Flat3D: Flat Directional
+Normal3D: Normal 3D
+Realistic3D: Realistic 3D
+Mono: Mono
+MonoEffects: Mono + Effects
+
+voice_volume_percent_name: AI Voice Volume (%)
+voice_volume_percent_description: "Scale AI speech volume. Zero mutes audio. Existing saved volume boost is preserved internally."

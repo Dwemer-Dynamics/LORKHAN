@@ -1,3 +1,5 @@
+#include <lorkhan/playback.hpp>
+#include <atomic>
 #include "lorkhan/beast_transport.hpp"
 
 #ifdef LORKHAN_WITH_BOOST_BEAST
@@ -1094,6 +1096,7 @@ struct BeastTransport::Impl {
     PairingToken token;
     std::filesystem::path cacheRoot;
     Deadlines deadlines;
+    std::atomic<int> timeoutSeconds{0};
     asio::ip::address address;
     std::mutex operationMutex;
     std::shared_ptr<TransportOperation> activeOperation;
@@ -1111,6 +1114,12 @@ BeastTransport::BeastTransport(BaseUrl baseUrl, InstallationId installation, Pai
     : m_impl(std::make_unique<Impl>(std::move(baseUrl), std::move(installation), std::move(token),
         std::move(mediaCacheRoot), deadlines))
 {
+}
+
+void BeastTransport::setConnectionTimeout(int seconds)
+{
+    if(!validConnectionTimeout(seconds))throw std::invalid_argument("connection timeout must be 15..300 seconds");
+    m_impl->timeoutSeconds.store(seconds,std::memory_order_relaxed);
 }
 
 BeastTransport::~BeastTransport() = default;
@@ -1142,7 +1151,12 @@ Result<InboundResult> BeastTransport::execute(const OutboundRequest& request, st
     if (!serialized)
         return Result<InboundResult>::failure(serialized.error());
     WireRequest wire = std::move(serialized).value();
-    const auto totalDeadline = std::chrono::steady_clock::now() + m_impl->deadlines.total;
+    auto deadlines=m_impl->deadlines;
+    if(const int configured=m_impl->timeoutSeconds.load(std::memory_order_relaxed);configured>0){
+        const auto timeout=std::chrono::milliseconds(configured*1000);
+        deadlines.connect=deadlines.write=deadlines.firstByte=deadlines.read=deadlines.total=deadlines.loadedSaveFirstByte=timeout;
+    }
+    const auto totalDeadline = std::chrono::steady_clock::now() + deadlines.total;
     const auto cancelled = [&operation, &cancellation] {
         return cancellation.stop_requested() || operation->cancelled;
     };
@@ -1155,7 +1169,7 @@ Result<InboundResult> BeastTransport::execute(const OutboundRequest& request, st
     });
 
     boost::system::error_code error;
-    operation->stream.expires_after(boundedStage(totalDeadline, m_impl->deadlines.connect));
+    operation->stream.expires_after(boundedStage(totalDeadline, deadlines.connect));
     operation->stream.async_connect(tcp::endpoint(m_impl->address, m_impl->baseUrl.port),
         [&error](const boost::system::error_code& result) { error = result; });
     operation->context.run();
@@ -1193,7 +1207,7 @@ Result<InboundResult> BeastTransport::execute(const OutboundRequest& request, st
     message.set("X-LORKHAN-Content-SHA256", digest);
     message.set("X-LORKHAN-Signature", hexBytes(hmacSha256(m_impl->token.macKey(), canonical)));
 
-    operation->stream.expires_after(boundedStage(totalDeadline, m_impl->deadlines.write));
+    operation->stream.expires_after(boundedStage(totalDeadline, deadlines.write));
     http::async_write(operation->stream, message,
         [&error](const boost::system::error_code& result, std::size_t) { error = result; });
     operation->context.run();
@@ -1209,7 +1223,7 @@ Result<InboundResult> BeastTransport::execute(const OutboundRequest& request, st
     parser.body_limit(wire.responseBodyLimit);
     const auto* init = std::get_if<InitRequest>(&request.payload);
     const auto firstByteBudget = init && init->loadedSave && init->loadedCalendar
-        ? m_impl->deadlines.loadedSaveFirstByte : m_impl->deadlines.firstByte;
+        ? deadlines.loadedSaveFirstByte : deadlines.firstByte;
     const auto firstByteDeadline = std::chrono::steady_clock::now()
         + boundedStage(totalDeadline, firstByteBudget);
     operation->stream.expires_at(firstByteDeadline);
@@ -1249,7 +1263,7 @@ Result<InboundResult> BeastTransport::execute(const OutboundRequest& request, st
                 "media Content-Type does not match descriptor codec"));
     }
 
-    operation->stream.expires_after(boundedStage(totalDeadline, m_impl->deadlines.read));
+    operation->stream.expires_after(boundedStage(totalDeadline, deadlines.read));
     http::async_read(operation->stream, buffer, parser,
         [&error](const boost::system::error_code& result, std::size_t) { error = result; });
     operation->context.run();

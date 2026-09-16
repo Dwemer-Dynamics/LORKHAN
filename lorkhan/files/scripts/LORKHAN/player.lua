@@ -1756,11 +1756,31 @@ applySettings=function(session,controls)
             addHostile=autoSettings and autoSettings:get('addHostile'),
             addCreatures=autoSettings and autoSettings:get('addCreatures')},
         behavior={actionsEnabled=actionsEnabled,
+            allowCombatDialogue=not behaviorSettings or behaviorSettings:get('allowCombatDialogue')~=false,
+            combatBarksMode=behaviorSettings and behaviorSettings:get('combatBarksMode') or 'UseProfile',
+            combatBarkInterval=tonumber(behaviorSettings and behaviorSettings:get('combatBarkInterval')) or 0,
             cancelDialogueOnCombat=behaviorSettings and behaviorSettings:get('cancelDialogueOnCombat')},
         presentation={showStatusHud=presentationSettings and presentationSettings:get('showStatusHud')==true,
             transcriptRows=tonumber(presentationSettings and presentationSettings:get('transcriptRows')) or 12,
             ttsVolumeBoost=tonumber(ttsVolumeBoost) or 3},
     }
+    current.playback={}
+    local playbackDefaults={voice_volume_percent=100,head_voice_volume_percent=100,distance_scale=1,dropoff_inside_percent=70,
+        dropoff_outside_percent=70,legacy_distance_scale=1,clip_start_ms=0,clip_end_ms=0,
+        lip_intensity=1,lip_resolution_ms=0,camera_based_audio=true,invert_heading=false,pause_on_game_pause=false}
+    local audioSignature={}
+    for key,default in pairs(playbackDefaults) do
+        local value=soundSettings and soundSettings:get(key)
+        if value==nil then value=default end
+        current.playback[key]=value
+        audioSignature[#audioSignature+1]=key..'='..tostring(value)
+    end
+    table.sort(audioSignature)
+    current.playback.audio_mode=({Flat3D=0,Normal3D=1,Realistic3D=2,Mono=3,MonoEffects=4})[
+        soundSettings and soundSettings:get('audio_mode') or 'Normal3D'] or 1
+    current.transport={connection_timeout_seconds=tonumber(presentationSettings and presentationSettings:get('connectionTimeoutSeconds')) or 30}
+    audioSignature[#audioSignature+1]=tostring(current.playback.audio_mode)
+    audioSignature[#audioSignature+1]=tostring(current.transport.connection_timeout_seconds)
     player.applyTargetSettings(current,targetSettings)
     local auto=current.autoActivate or {}
     local behavior=current.behavior or {}
@@ -1772,7 +1792,7 @@ applySettings=function(session,controls)
     local signature=table.concat({tostring(auto.enabled),tostring(auto.interiorDistance),tostring(auto.exteriorDistance),
         tostring(auto.hearingDistance),tostring(auto.interiorHearingDistance),tostring(auto.exteriorHearingDistance),
         tostring(auto.addHostile),tostring(auto.addCreatures),tostring(behavior.actionsEnabled),
-        tostring(behavior.cancelDialogueOnCombat),tostring(behavior.autoGreeting),tostring(behavior.boredom),
+        table.concat(audioSignature,','),tostring(behavior.allowCombatDialogue),tostring(behavior.cancelDialogueOnCombat),tostring(behavior.autoGreeting),tostring(behavior.boredom),
         tostring(behavior.boredomDelaySeconds),tostring(behavior.combatBarks),tostring(behavior.combatBarkPeriodSeconds),
         tostring(behavior.rechat),tostring(behavior.rechatMaxDepth),
         tostring(behavior.rechatProbabilityPercent),tostring(behavior.rechatMode),tostring(behavior.rechatStrictTargeting),

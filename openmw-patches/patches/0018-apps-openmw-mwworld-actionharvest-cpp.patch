@@ -1,15 +1,23 @@
 diff --git a/apps/openmw/mwworld/actionharvest.cpp b/apps/openmw/mwworld/actionharvest.cpp
-index 1d9e009afe..15137f3a88 100644
+index 1d9e009afef0c52a9e449d35c0d5a82128861f1f..15137f3a883857ccc658c1f5b6fe25a259e53be2 100644
 --- a/apps/openmw/mwworld/actionharvest.cpp
 +++ b/apps/openmw/mwworld/actionharvest.cpp
-@@ -9,2 +9,3 @@
+@@ -7,6 +7,7 @@
+ #include <components/misc/strings/format.hpp>
+ 
  #include "../mwbase/environment.hpp"
 +#include "../mwbase/luamanager.hpp"
  #include "../mwbase/mechanicsmanager.hpp"
-@@ -46,4 +47,5 @@ namespace MWWorld
+ #include "../mwbase/windowmanager.hpp"
+ #include "../mwbase/world.hpp"
+@@ -44,8 +45,9 @@
+             // not work for a last item in the container - empty harvested containers are considered as "allowed to
+             // use".
              MWBase::Environment::get().getMechanicsManager()->itemTaken(actor, *it, target, itemCount);
 -            actorStore.add(*it, itemCount);
 +            MWWorld::Ptr received = *actorStore.add(*it, itemCount);
              store.remove(*it, itemCount);
 +            MWBase::Environment::get().getLuaManager()->onLorkhanItemPickup(actor, received, itemCount, target);
              std::string name{ it->getClass().getName(*it) };
+             takenMap[name] += itemCount;
+         }

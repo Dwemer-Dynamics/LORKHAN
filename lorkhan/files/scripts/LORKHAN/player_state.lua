@@ -68,8 +68,9 @@ function M.applyTargetSettings(settings,targetSettings)
     behavior.autoGreeting=remote.auto_greeting==true
     behavior.boredom=remote.boredom==true
     behavior.boredomDelaySeconds=remote.boredom_delay_seconds or 180
-    behavior.combatBarks=remote.combat_barks==true
-    behavior.combatBarkPeriodSeconds=remote.combat_bark_period_seconds or 20
+    behavior.combatBarks=behavior.combatBarksMode=='Enabled' or (behavior.combatBarksMode~='Disabled' and remote.combat_barks==true)
+    local profilePeriod=math.max(5,math.min(600,tonumber(remote.combat_bark_period_seconds) or 20))
+    behavior.combatBarkPeriodSeconds=math.max(profilePeriod,math.min(600,tonumber(behavior.combatBarkInterval) or 0))
     behavior.rechat=remote.rechat==true
     behavior.rechatMaxDepth=remote.rechat_max_depth or 2
     behavior.rechatProbabilityPercent=remote.rechat_probability_percent or 50

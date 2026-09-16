@@ -1,8 +1,13 @@
 diff --git a/apps/openmw/mwbase/soundmanager.hpp b/apps/openmw/mwbase/soundmanager.hpp
-index 9b6b579c2ffc52431a974b0a5455a3f7da7f4e3e..de9bc349ef44f6c788af8260f5dec015335a3c1e 100644
+index 9b6b579c2ffc52431a974b0a5455a3f7da7f4e3e..dee9406bd2254e906e77bd580d4122db808acdf5 100644
 --- a/apps/openmw/mwbase/soundmanager.hpp
 +++ b/apps/openmw/mwbase/soundmanager.hpp
-@@ -6,6 +6,7 @@
+@@ -1,3 +1,4 @@
++#include <lorkhan/playback.hpp>
+ #ifndef GAME_MWBASE_SOUNDMANAGER_H
+ #define GAME_MWBASE_SOUNDMANAGER_H
+ 
+@@ -6,6 +7,7 @@
  #include <string>
  #include <string_view>
  
@@ -10,10 +15,11 @@ index 9b6b579c2ffc52431a974b0a5455a3f7da7f4e3e..de9bc349ef44f6c788af8260f5dec015
  #include <components/vfs/pathutil.hpp>
  
  #include "../mwsound/type.hpp"
-@@ -130,6 +131,11 @@
+@@ -130,6 +132,12 @@
          ///< Make an actor say some text.
          /// \param filename name of a sound file in the VFS
  
++        virtual void configureLorkhanPlayback(const lorkhan::PlaybackSettings& settings) = 0;
 +        virtual bool sayLorkhanMedia(
 +            const MWWorld::ConstPtr& reference, Files::IStreamPtr media, std::string_view name, float volumeBoost)
 +            = 0;

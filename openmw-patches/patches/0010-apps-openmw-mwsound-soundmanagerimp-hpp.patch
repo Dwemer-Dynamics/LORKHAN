@@ -1,8 +1,32 @@
 diff --git a/apps/openmw/mwsound/soundmanagerimp.hpp b/apps/openmw/mwsound/soundmanagerimp.hpp
-index 48ff293002779cac943d8f15daced46b982b7fa5..4c2d2972b95259865fad9e964825712f98dc3638 100644
+index 48ff293002779cac943d8f15daced46b982b7fa5..27be42e2999aa691799342a5462920e7301d4095 100644
 --- a/apps/openmw/mwsound/soundmanagerimp.hpp
 +++ b/apps/openmw/mwsound/soundmanagerimp.hpp
-@@ -114,11 +114,12 @@
+@@ -1,3 +1,4 @@
++#include <chrono>
+ #ifndef GAME_SOUND_SOUNDMANAGER_H
+ #define GAME_SOUND_SOUNDMANAGER_H
+ 
+@@ -76,11 +77,18 @@
+         {
+             const MWWorld::CellStore* mCell;
+             StreamPtr mStream;
++            bool mLorkhan=false, mLorkhanPaused=false;
++            float mLorkhanVolume=1;
++            mutable float mLipValue=0;
++            mutable std::chrono::steady_clock::time_point mLipSample{};
+         };
+ 
+         typedef std::map<const MWWorld::LiveCellRefBase*, SaySound> SaySoundMap;
+         SaySoundMap mSaySoundsQueue;
+         SaySoundMap mActiveSaySounds;
++        lorkhan::PlaybackSettings mLorkhanPlayback;
++        osg::Vec3f lorkhanPosition(const MWWorld::ConstPtr& ptr) const;
++        float lorkhanGain(const MWWorld::ConstPtr& ptr) const;
+ 
+         typedef std::vector<StreamPtr> TrackList;
+         TrackList mActiveTracks;
+@@ -114,11 +122,12 @@
  
          // returns a decoder to start streaming, or nullptr if the sound was not found
          DecoderPtr loadVoice(VFS::Path::NormalizedView voicefile);
@@ -16,10 +40,11 @@ index 48ff293002779cac943d8f15daced46b982b7fa5..4c2d2972b95259865fad9e964825712f
  
          void streamMusicFull(VFS::Path::NormalizedView filename);
          void advanceMusic(VFS::Path::NormalizedView filename, float fadeOut = 1.f);
-@@ -185,6 +186,9 @@
+@@ -185,6 +194,10 @@
          ///< Make an actor say some text.
          /// \param filename name of a sound file in the VFS
  
++        void configureLorkhanPlayback(const lorkhan::PlaybackSettings& settings) override { mLorkhanPlayback=settings; }
 +        bool sayLorkhanMedia(const MWWorld::ConstPtr& reference, Files::IStreamPtr media, std::string_view name,
 +            float volumeBoost) override;
 +

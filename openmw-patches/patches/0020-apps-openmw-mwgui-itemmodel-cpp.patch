@@ -1,8 +1,10 @@
 diff --git a/apps/openmw/mwgui/itemmodel.cpp b/apps/openmw/mwgui/itemmodel.cpp
-index 6e8e4f8912..81dcc6b307 100644
+index 6e8e4f89129f5caadb5dac0f99282196d3d97cca..81dcc6b307ed0455d1ac625b7eae8698988d62a6 100644
 --- a/apps/openmw/mwgui/itemmodel.cpp
 +++ b/apps/openmw/mwgui/itemmodel.cpp
-@@ -6,3 +6,7 @@
+@@ -4,7 +4,11 @@
+ #include "../mwworld/containerstore.hpp"
+ 
  #include "../mwbase/environment.hpp"
 +#include "../mwbase/luamanager.hpp"
  #include "../mwbase/mechanicsmanager.hpp"
@@ -10,7 +12,11 @@ index 6e8e4f8912..81dcc6b307 100644
 +#include "../mwbase/world.hpp"
 +#include <limits>
  
-@@ -59,7 +63,15 @@ namespace MWGui
+ namespace MWGui
+ {
+@@ -57,11 +61,19 @@
+ 
+     MWWorld::Ptr ItemModel::moveItem(const ItemStack& item, size_t count, ItemModel* otherModel, bool allowAutoEquip)
      {
 +        const MWWorld::Ptr source = lorkhanPickupSource();
          removeItem(item, count);
@@ -29,3 +35,5 @@ index 6e8e4f8912..81dcc6b307 100644
 +            MWBase::Environment::get().getLuaManager()->onLorkhanItemPickup(player, received, static_cast<int>(count), source);
 +        return received;
      }
+ 
+     bool ItemModel::allowedToUseItems() const

@@ -570,7 +570,7 @@ function M.runAutonomy(state,elapsed)
     else autonomy.combatSeconds=0 end
 
     local combatPeriod=math.max(5,math.min(600,tonumber(behavior.combatBarkPeriodSeconds) or 20))
-    if behavior.combatBarks==true and autonomy.combatSeconds>=combatPeriod then
+    if behavior.allowCombatDialogue~=false and behavior.combatBarks==true and autonomy.combatSeconds>=combatPeriod then
         local actor=nextCombatActor(state)
         if actor then return requestAutonomy(state,'combat_bark',actor) end
     end
@@ -836,6 +836,11 @@ function M.submitText(state,args)
         and (args.ui_source~='lorkhan_text' or args.input_kind=='stt' or isContinuation) then return nil,'injection_requires_typed_text' end
     local modeTarget=args.target or state.conversation.target
     if args.selectedTargetPresent then modeTarget=args.selectedTarget end
+    local combatKey=identity.key(modeTarget)
+    if state.settings and state.settings.behavior and state.settings.behavior.allowCombatDialogue==false
+        and combatKey and state.combatActors[combatKey]
+        and args.execution_mode~='cheat' and args.execution_mode~='director'
+        and args.execution_mode~='injection_log' then return nil,'combat_dialogue_disabled' end
     local injectionAudience
     if args.execution_mode=='injection_log' or args.execution_mode=='injection_chat' then
         injectionAudience={}
@@ -1040,7 +1045,12 @@ local function pumpResponseQueue(state)
                     expires_at=item.media and item.media.expires_at or '',tts_volume_boost=ttsVolumeBoost,
                     subtitle_only=subtitleOnly}
                 local sent,reason
-                if command.actor.kind=='narrator' and state.settings and state.settings.narrator
+                if state.settings and state.settings.behavior and state.settings.behavior.allowCombatDialogue==false
+                    and state.combatActors[identity.key(command.actor)] then
+                    reportQueuedDialogue(state,item,'interrupted','combat_dialogue_disabled')
+                    if item.media and state.bridge.releaseMedia then state.bridge.releaseMedia(mediaId) end
+                    responseQueue.failHead(state.responseQueue,'combat_dialogue_disabled') emitQueue(state)
+                elseif command.actor.kind=='narrator' and state.settings and state.settings.narrator
                     and state.settings.narrator.enabled~=true then
                     reportQueuedDialogue(state,item,'failed','narrator_disabled')
                     if item.media and state.bridge.releaseMedia then state.bridge.releaseMedia(mediaId) end

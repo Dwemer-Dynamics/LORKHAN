@@ -531,7 +531,15 @@ return {
         LORKHAN_OPEN_MIC_CONTEXT=function(event) orchestrator.runOpenMicContext(state,event) end,
         LORKHAN_HALT_ACTIONS_REQUEST=function() orchestrator.haltActions(state,'halt_ai_actions') end,
         LORKHAN_HARD_HALT_REQUEST=function() orchestrator.hardHalt(state) end,
-        LORKHAN_SETTINGS_UPDATE=function(event) state.settings=event end,
+        LORKHAN_SETTINGS_UPDATE=function(event)
+            state.settings=event
+            for _,entry in ipairs({{'configurePlayback',event.playback},{'configureTransport',event.transport}}) do
+                if entry[2] and bridge[entry[1]] then
+                    local ok,result,reason=pcall(bridge[entry[1]],entry[2])
+                    if not ok or not result then print('[LORKHAN] '..entry[1]..' failed: '..tostring(reason or result)) end
+                end
+            end
+        end,
         LORKHAN_NARRATOR_EVENT_CANDIDATE=function(event)
             if type(event)=='table' then orchestrator.queueNarratorEvent(state,event.kind,event.context_actor,event.cooldown_ready,event.observed_text) end
         end,

@@ -1,0 +1,20 @@
+diff --git a/apps/openmw/mwsound/openaloutput.hpp b/apps/openmw/mwsound/openaloutput.hpp
+index 107c3f4c6192c38f43a8ac1f29361968275877c5..ace1fb38545e3b7730e1014175d22c3e5aca209e 100644
+--- a/apps/openmw/mwsound/openaloutput.hpp
++++ b/apps/openmw/mwsound/openaloutput.hpp
+@@ -44,6 +44,7 @@
+         SoundVec mActiveSounds;
+         typedef std::vector<Stream*> StreamVec;
+         StreamVec mActiveStreams;
++        int mPausedTypes = 0;
+ 
+         osg::Vec3f mListenerPos;
+         osg::Vec3f mListenerVel;
+@@ -105,6 +106,7 @@
+         float getStreamLoudness(Stream* sound) override;
+         bool isStreamPlaying(Stream* sound) override;
+         void updateStream(Stream* sound) override;
++        void pauseStream(Stream* sound, bool paused) override;
+ 
+         void startUpdate() override;
+         void finishUpdate() override;

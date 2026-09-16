@@ -1,8 +1,12 @@
 diff --git a/apps/openmw/mwgui/inventoryitemmodel.hpp b/apps/openmw/mwgui/inventoryitemmodel.hpp
-index 636d3be557..dfd60a7c29 100644
+index 636d3be557b46f807982a543ffa4e4c38b96efd4..dfd60a7c29c2857a5bfe0a195557fd32734a5b0c 100644
 --- a/apps/openmw/mwgui/inventoryitemmodel.hpp
 +++ b/apps/openmw/mwgui/inventoryitemmodel.hpp
-@@ -26,2 +26,3 @@ namespace MWGui
+@@ -24,6 +24,7 @@
+         void update() override;
+ 
          bool usesContainer(const MWWorld::Ptr& container) override;
 +        MWWorld::Ptr lorkhanPickupSource() const override { return mActor; }
  
+     protected:
+         MWWorld::Ptr addItem(const ItemStack& item, size_t count, bool allowAutoEquip = true) override;

@@ -1,13 +1,21 @@
 diff --git a/apps/openmw/mwgui/itemmodel.hpp b/apps/openmw/mwgui/itemmodel.hpp
-index dd094e8272..034b71daac 100644
+index dd094e8272c5fbddc6cd70415951853a4bee19cb..034b71daacb37b4d7eda2c4da34b13501731a941 100644
 --- a/apps/openmw/mwgui/itemmodel.hpp
 +++ b/apps/openmw/mwgui/itemmodel.hpp
-@@ -75,2 +75,4 @@ namespace MWGui
+@@ -73,6 +73,8 @@
+         virtual bool onTakeItem(const MWWorld::Ptr& item, int count);
+ 
          virtual bool usesContainer(const MWWorld::Ptr& container) = 0;
 +        // Resolve only the native transfer source; default excludes non-inventory service models.
 +        virtual MWWorld::Ptr lorkhanPickupSource() const { return {}; }
  
-@@ -110,2 +112,3 @@ namespace MWGui
+     protected:
+         virtual MWWorld::Ptr addItem(const ItemStack& item, size_t count, bool allowAutoEquip = true) = 0;
+@@ -108,6 +110,7 @@
+         ModelIndex mapFromSource(ModelIndex index);
+ 
          bool usesContainer(const MWWorld::Ptr& container) override;
 +        MWWorld::Ptr lorkhanPickupSource() const override { return mSourceModel->lorkhanPickupSource(); }
  
+     protected:
+         MWWorld::Ptr addItem(const ItemStack& item, size_t count, bool allowAutoEquip = true) override;

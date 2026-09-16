@@ -1,12 +1,20 @@
 diff --git a/apps/openmw/mwgui/inventorywindow.cpp b/apps/openmw/mwgui/inventorywindow.cpp
-index 9c50d4104b..78b183971e 100644
+index 9c50d4104b3b6b3ed6c6fd32f536e56f27886f81..78b183971e652f3fbfcbef218ff92f039c5222c1 100644
 --- a/apps/openmw/mwgui/inventorywindow.cpp
 +++ b/apps/openmw/mwgui/inventorywindow.cpp
-@@ -21,2 +21,3 @@
+@@ -19,6 +19,7 @@
+ #include <components/settings/values.hpp>
+ 
  #include "../mwbase/environment.hpp"
 +#include "../mwbase/luamanager.hpp"
  #include "../mwbase/inputmanager.hpp"
-@@ -844,2 +845,3 @@ namespace MWGui
+ #include "../mwbase/luamanager.hpp"
+ #include "../mwbase/mechanicsmanager.hpp"
+@@ -842,6 +843,7 @@
+ 
+         // remove from world
          MWBase::Environment::get().getWorld()->deleteObject(object);
 +        MWBase::Environment::get().getLuaManager()->onLorkhanItemPickup(player, newObject, count, MWWorld::Ptr());
  
+         // get ModelIndex to the item
+         mTradeModel->update();

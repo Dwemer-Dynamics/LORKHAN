@@ -6,6 +6,7 @@
 #include <lorkhan/bridge_service.hpp>
 #include <lorkhan/protocol_response.hpp>
 #include <lorkhan/validation.hpp>
+#include <lorkhan/playback.hpp>
 #include <lorkhan/voice_capture.hpp>
 #include <components/lua/configuration.hpp>
 #include <components/lua/scriptscontainer.hpp>
@@ -567,6 +568,7 @@ namespace MWLua
                     m_config = loadConfig();
                     auto transport = std::make_unique<lorkhan::BeastTransport>(m_config->baseUrl,
                         m_config->installation, lorkhan::PairingToken(m_config->key), m_config->cacheRoot);
+                    m_transport=transport.get();m_transport->setConnectionTimeout(30);
                     m_service = std::make_unique<lorkhan::BridgeService>(std::move(transport),
                         std::make_shared<lorkhan::SystemClock>(), processGeneration());
                     beginSession();
@@ -2000,6 +2002,80 @@ namespace MWLua
                   return sol::make_object(lua, result);
             }
 
+            // Only bounded presentation values may cross this settings boundary.
+            std::tuple<sol::object,sol::object> configurePlayback(sol::state_view lua,sol::table values,LuaManager* manager)
+            {
+                try{
+                    static const std::vector<std::string> keys={"voice_volume_percent","head_voice_volume_percent","audio_mode","distance_scale","dropoff_inside_percent","dropoff_outside_percent","legacy_distance_scale","camera_based_audio","invert_heading","clip_start_ms","clip_end_ms","lip_intensity","lip_resolution_ms","pause_on_game_pause"};
+                    for(const auto& entry:values){
+                        if(!entry.first.is<std::string>()||std::find(keys.begin(),keys.end(),entry.first.as<std::string>())==keys.end())
+                            return failure(lua,"unknown_playback_setting");
+                    }
+                    lorkhan::PlaybackSettings settings;
+                    if(values["voice_volume_percent"].valid()){const auto value=values.get<sol::object>("voice_volume_percent");
+                        if(!value.is<double>())return failure(lua,"invalid_playback_setting");const double number=value.as<double>();
+                        settings.voiceVolumePercent=static_cast<float>(number);}
+                    if(values["head_voice_volume_percent"].valid()){const auto value=values.get<sol::object>("head_voice_volume_percent");
+                        if(!value.is<double>())return failure(lua,"invalid_playback_setting");const double number=value.as<double>();
+                        settings.headVoiceVolumePercent=static_cast<float>(number);}
+                    if(values["audio_mode"].valid()){const auto value=values.get<sol::object>("audio_mode");
+                        if(!value.is<double>())return failure(lua,"invalid_playback_setting");const double number=value.as<double>();
+                        if(!std::isfinite(number)||number!=std::floor(number)||number<0||number>10000)return failure(lua,"invalid_playback_setting");
+                        settings.audioMode=static_cast<int>(number);}
+                    if(values["distance_scale"].valid()){const auto value=values.get<sol::object>("distance_scale");
+                        if(!value.is<double>())return failure(lua,"invalid_playback_setting");const double number=value.as<double>();
+                        settings.distanceScale=static_cast<float>(number);}
+                    if(values["dropoff_inside_percent"].valid()){const auto value=values.get<sol::object>("dropoff_inside_percent");
+                        if(!value.is<double>())return failure(lua,"invalid_playback_setting");const double number=value.as<double>();
+                        settings.dropoffInsidePercent=static_cast<float>(number);}
+                    if(values["dropoff_outside_percent"].valid()){const auto value=values.get<sol::object>("dropoff_outside_percent");
+                        if(!value.is<double>())return failure(lua,"invalid_playback_setting");const double number=value.as<double>();
+                        settings.dropoffOutsidePercent=static_cast<float>(number);}
+                    if(values["legacy_distance_scale"].valid()){const auto value=values.get<sol::object>("legacy_distance_scale");
+                        if(!value.is<double>())return failure(lua,"invalid_playback_setting");const double number=value.as<double>();
+                        settings.legacyDistanceScale=static_cast<float>(number);}
+                    if(values["camera_based_audio"].valid()){const auto value=values.get<sol::object>("camera_based_audio");
+                        if(!value.is<bool>())return failure(lua,"invalid_playback_setting");settings.cameraBasedAudio=value.as<bool>();}
+                    if(values["invert_heading"].valid()){const auto value=values.get<sol::object>("invert_heading");
+                        if(!value.is<bool>())return failure(lua,"invalid_playback_setting");settings.invertHeading=value.as<bool>();}
+                    if(values["clip_start_ms"].valid()){const auto value=values.get<sol::object>("clip_start_ms");
+                        if(!value.is<double>())return failure(lua,"invalid_playback_setting");const double number=value.as<double>();
+                        if(!std::isfinite(number)||number!=std::floor(number)||number<0||number>10000)return failure(lua,"invalid_playback_setting");
+                        settings.clipStartMs=static_cast<int>(number);}
+                    if(values["clip_end_ms"].valid()){const auto value=values.get<sol::object>("clip_end_ms");
+                        if(!value.is<double>())return failure(lua,"invalid_playback_setting");const double number=value.as<double>();
+                        if(!std::isfinite(number)||number!=std::floor(number)||number<0||number>10000)return failure(lua,"invalid_playback_setting");
+                        settings.clipEndMs=static_cast<int>(number);}
+                    if(values["lip_intensity"].valid()){const auto value=values.get<sol::object>("lip_intensity");
+                        if(!value.is<double>())return failure(lua,"invalid_playback_setting");const double number=value.as<double>();
+                        settings.lipIntensity=static_cast<float>(number);}
+                    if(values["lip_resolution_ms"].valid()){const auto value=values.get<sol::object>("lip_resolution_ms");
+                        if(!value.is<double>())return failure(lua,"invalid_playback_setting");const double number=value.as<double>();
+                        if(!std::isfinite(number)||number!=std::floor(number)||number<0||number>10000)return failure(lua,"invalid_playback_setting");
+                        settings.lipResolutionMs=static_cast<int>(number);}
+                    if(values["pause_on_game_pause"].valid()){const auto value=values.get<sol::object>("pause_on_game_pause");
+                        if(!value.is<bool>())return failure(lua,"invalid_playback_setting");settings.pauseOnGamePause=value.as<bool>();}
+                    if(!lorkhan::validPlayback(settings))return failure(lua,"invalid_playback_setting");
+                    manager->addAction([settings]{MWBase::Environment::get().getSoundManager()->configureLorkhanPlayback(settings);});
+                    return {sol::make_object(lua,true),sol::make_object(lua,sol::nil)};
+                }catch(const std::exception& error){return failure(lua,error.what());}
+            }
+
+            std::tuple<sol::object,sol::object> configureTransport(sol::state_view lua,sol::table values)
+            {
+                try{
+                    for(const auto& entry:values)if(!entry.first.is<std::string>()||entry.first.as<std::string>()!="connection_timeout_seconds")
+                        return failure(lua,"unknown_transport_setting");
+                    const auto value=values.get<sol::object>("connection_timeout_seconds");
+                    if(!value.is<double>())return failure(lua,"invalid_connection_timeout");
+                    const double seconds=value.as<double>();
+                    if(!std::isfinite(seconds)||seconds!=std::floor(seconds)||seconds<15||seconds>300)return failure(lua,"invalid_connection_timeout");
+                    if(!m_transport)return failure(lua,"bridge_not_configured");
+                    m_transport->setConnectionTimeout(static_cast<int>(seconds));
+                    return {sol::make_object(lua,true),sol::make_object(lua,sol::nil)};
+                }catch(const std::exception& error){return failure(lua,error.what());}
+            }
+
             std::tuple<sol::object, sol::object> playSpeech(sol::state_view lua, const std::string& mediaId,
                 const sol::object& actor, const std::string& subtitle, float volumeBoost, LuaManager* luaManager)
             {
@@ -2674,6 +2750,7 @@ namespace MWLua
             }
 
             std::optional<ClientConfig> m_config;
+            lorkhan::BeastTransport* m_transport=nullptr;
             std::unique_ptr<lorkhan::BridgeService> m_service;
             std::optional<lorkhan::SessionId> m_session;
             std::optional<lorkhan::ClientSettings> m_clientSettings;
@@ -2781,6 +2858,8 @@ namespace MWLua
             api["pumpSessionControls"] = [lua] { return client().pumpSessionControls(lua); };
             api["pumpPlayerAutochat"] = [lua] { return client().pumpPlayerAutochat(lua); };
             if(global){
+                api["configurePlayback"]=[lua,luaManager](sol::table values){return client().configurePlayback(lua,values,luaManager);};
+                api["configureTransport"]=[lua](sol::table values){return client().configureTransport(lua,values);};
                 api["executeAdvanced"]=[lua,luaManager](const std::string& id){return client().executeTransfer(lua,luaManager,id);};
                 api["cancelAdvanced"]=[](const std::string& id){client().cancelTransfer(id);};
                 api["advancedReceiptStatus"]=[lua](const std::string& id){return client().transferReceiptStatus(lua,id);};

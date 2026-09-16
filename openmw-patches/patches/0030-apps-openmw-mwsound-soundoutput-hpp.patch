@@ -1,0 +1,12 @@
+diff --git a/apps/openmw/mwsound/soundoutput.hpp b/apps/openmw/mwsound/soundoutput.hpp
+index def95ac693972d4ffd7f464eb4cb6525ba9a0ae0..f11ff7f1b632dd6ea15e06aaff26a5cc0605ec99 100644
+--- a/apps/openmw/mwsound/soundoutput.hpp
++++ b/apps/openmw/mwsound/soundoutput.hpp
+@@ -57,6 +57,7 @@
+         virtual float getStreamLoudness(Stream* sound) = 0;
+         virtual bool isStreamPlaying(Stream* sound) = 0;
+         virtual void updateStream(Stream* sound) = 0;
++        virtual void pauseStream(Stream* sound, bool paused) = 0;
+ 
+         virtual void startUpdate() = 0;
+         virtual void finishUpdate() = 0;

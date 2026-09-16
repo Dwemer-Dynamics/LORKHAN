@@ -270,6 +270,11 @@ test('target settings preserve local presentation actions and target preferences
  eq(settings.behavior.boredomDelaySeconds,180);eq(settings.behavior.combatBarks,true)
  eq(settings.behavior.combatBarkPeriodSeconds,20);eq(settings.behavior.rechat_allow_actions,nil)
  eq(settings.memory.recent_turn_limit,0);eq(settings.narrator.enabled,false)
+ settings.behavior.combatBarksMode='Disabled';player.applyTargetSettings(settings,target);eq(settings.behavior.combatBarks,false)
+ settings.behavior.combatBarksMode='Enabled';settings.behavior.combatBarkInterval=5
+ target.behavior.combat_barks=false;player.applyTargetSettings(settings,target)
+ eq(settings.behavior.combatBarks,true);eq(settings.behavior.combatBarkPeriodSeconds,20)
+ settings.behavior.combatBarkInterval=90;player.applyTargetSettings(settings,target);eq(settings.behavior.combatBarkPeriodSeconds,90)
  settings=localSettings();settings.behavior.actionsEnabled=false
  settings.autoActivate.addHostile=false;settings.autoActivate.addCreatures=false
  player.applyTargetSettings(settings,target)
@@ -1638,7 +1643,13 @@ package.preload['openmw.lorkhan']=function() return {
  eq(setting(registered.groups[2],'interiorDistance').default,1200);eq(setting(registered.groups[2],'exteriorDistance').default,2400)
  eq(setting(registered.groups[2],'interiorHearingDistance').default,500)
  eq(setting(registered.groups[2],'exteriorHearingDistance').default,1000)
- eq(registered.groups[3].key,'SettingsLORKHANBehavior');eq(#registered.groups[3].settings,6)
+ eq(registered.groups[3].key,'SettingsLORKHANBehavior');eq(#registered.groups[3].settings,9)
+ eq(setting(registered.groups[3],'allowCombatDialogue').default,true)
+ eq(setting(registered.groups[3],'combatBarksMode').default,'UseProfile')
+ eq(setting(registered.groups[3],'combatBarkInterval').default,0)
+ eq(setting(registered.groups[6],'connectionTimeoutSeconds').default,30)
+ eq(setting(registered.groups[4],'audio_mode').default,'Normal3D')
+ eq(setting(registered.groups[4],'pause_on_game_pause').default,false)
  eq(setting(registered.groups[3],'cancelDialogueOnCombat').default,true)
  eq(setting(registered.groups[3],'openMicEnabled').default,false)
  eq(setting(registered.groups[3],'openMicSensitivity').default,1000)
@@ -1653,7 +1664,10 @@ package.preload['openmw.lorkhan']=function() return {
  eq(data.SettingsLORKHANBehavior.recordingDeviceName,'Test microphone')
  eq(setting(registered.groups[3],'rechat'),nil);eq(setting(registered.groups[3],'boredom'),nil)
  eq(setting(registered.groups[3],'combatBarks'),nil);eq(setting(registered.groups[3],'autoGreeting'),nil)
- eq(registered.groups[4].key,'SettingsLORKHANSound');eq(setting(registered.groups[4],'ttsVolumeBoost').default,3)
+ eq(registered.groups[4].key,'SettingsLORKHANSound');eq(setting(registered.groups[4],'ttsVolumeBoost'),nil)
+ eq(setting(registered.groups[4],'voice_volume_percent').default,100)
+ eq(setting(registered.groups[4],'voice_volume_percent').argument.min,0)
+ eq(setting(registered.groups[4],'voice_volume_percent').argument.max,500)
  eq(registered.groups[5].key,'SettingsLORKHANAgents');eq(setting(registered.groups[5],'actionsEnabled').default,true)
  eq(registered.groups[6].key,'SettingsLORKHANPresentation');eq(setting(registered.groups[6],'showStatusHud').default,false)
  local talk=data.OMWInputBindings.LORKHAN_Talk_Binding
@@ -1746,6 +1760,11 @@ test('combat cooldown accepts the full profile range without a 300 second clamp'
  for _=1,119 do eq(orchestrator.runAutonomy(s,5),false) end
  eq(orchestrator.runAutonomy(s,4),false);truthy(orchestrator.runAutonomy(s,1))
  eq(emitted[#emitted].payload.kind,'combat_bark')
+ s.autonomy.pending=nil;s.settings.behavior.allowCombatDialogue=false
+ s.autonomy.combatSeconds=600;eq(orchestrator.runAutonomy(s,5),false)
+ local result,reason=orchestrator.submitText(s,{request_id=UUID.request,turn_id=UUID.turn,message_id=UUID.message,
+  target=npc,speaker=playerId,text='Hello',input_kind='stt',ui_source='lorkhan_voice',execution_mode='standard'})
+ eq(result,nil);eq(reason,'combat_dialogue_disabled')
 end)
 
 test('narrator events use welcome, round, quest, and bored fences',function()

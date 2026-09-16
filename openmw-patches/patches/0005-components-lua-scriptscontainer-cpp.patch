@@ -1,11 +1,14 @@
 diff --git a/components/lua/scriptscontainer.cpp b/components/lua/scriptscontainer.cpp
-index 8b62eb7bd4..708f5fc262 100644
+index 8b62eb7bd4641b3a4b7450f28d2f45361a5ecaa5..708f5fc2629738635419f7f86c92c8d97d97f71f 100644
 --- a/components/lua/scriptscontainer.cpp
 +++ b/components/lua/scriptscontainer.cpp
-@@ -56,4 +56,4 @@ namespace LuaUtil
+@@ -54,8 +54,8 @@
+ 
+     void ScriptsContainer::addPackage(std::string packageName, sol::main_object package)
      {
 -        if (!package.is<sol::userdata>())
 -            throw std::logic_error("Expected package to be read-only: " + packageName);
 +        if (!package.is<sol::userdata>() && !package.is<sol::function>())
 +            throw std::logic_error("Expected package to be read-only or a per-script loader: " + packageName);
          mAPI.insert_or_assign(std::move(packageName), std::move(package));
+     }

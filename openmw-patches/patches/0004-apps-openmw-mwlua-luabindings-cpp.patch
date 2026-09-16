@@ -1,20 +1,35 @@
 diff --git a/apps/openmw/mwlua/luabindings.cpp b/apps/openmw/mwlua/luabindings.cpp
-index dc20205cbe..2340a3f784 100644
+index dc20205cbe15f17230b87cea60a6c4276972f0a6..2340a3f7845c1939d132a976345792973c473c90 100644
 --- a/apps/openmw/mwlua/luabindings.cpp
 +++ b/apps/openmw/mwlua/luabindings.cpp
-@@ -9,2 +9,3 @@
+@@ -7,6 +7,7 @@
+ #include "../mwbase/world.hpp"
+ #include "../mwworld/datetimemanager.hpp"
  
 +#include "lorkhanbindings.hpp"
  #include "animationbindings.hpp"
-@@ -52,2 +53,3 @@ namespace MWLua
+ #include "camerabindings.hpp"
+ #include "cellbindings.hpp"
+@@ -50,6 +51,7 @@
+             { "openmw.core", initCorePackage(context) },
+             { "openmw.types", initTypesPackage(context) },
              { "openmw.world", initWorldPackage(context) },
 +            { "openmw.lorkhan", initLorkhanPackage(context) },
          };
-@@ -65,2 +67,3 @@ namespace MWLua
+     }
+ 
+@@ -63,6 +65,7 @@
+             { "openmw.core", initCorePackage(context) },
+             { "openmw.types", initTypesPackage(context) },
              { "openmw.nearby", initNearbyPackage(context) },
 +            { "openmw.lorkhan", initLorkhanCustomPackageLoader(context) },
          };
-@@ -77,2 +80,3 @@ namespace MWLua
+     }
+ 
+@@ -75,6 +78,7 @@
+             { "openmw.input", initInputPackage(context) },
+             { "openmw.postprocessing", initPostprocessingPackage(context) },
              { "openmw.ui", initUserInterfacePackage(context) },
 +            { "openmw.lorkhan", initLorkhanPackage(context) },
          };
+     }

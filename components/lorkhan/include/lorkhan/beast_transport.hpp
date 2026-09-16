@@ -30,6 +30,7 @@ public:
     ~BeastTransport() override;
     Result<InboundResult> execute(const OutboundRequest& request, std::stop_token cancellation) override;
     void interrupt(const RequestId& request) noexcept override;
+    void setConnectionTimeout(int seconds);
 
 private:
     struct Impl;

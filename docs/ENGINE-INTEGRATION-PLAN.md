@@ -171,3 +171,29 @@ these focused results. Temp evidence: dragon-windows-build.txt and WSL
 
 See PROTOCOL.md, Physical NPC diary books. Only authenticated completed diary snapshots may
 create or update their fixed mundane book record. No general record API is added.
+
+## Local audio, combat, and timeout controls
+
+Reference behavior is CHIM unstable `76194ad1d0be2c971ebf02a0ca3c4d6266479acd`
+and HerikaServer unstable `1d9a3d8ad1157e3fd429f85e3b992efc234dcfea`.
+These references remain read-only; OpenMW playback retains its own engine implementation.
+
+The PLAYER script owns saved sound preferences. GLOBAL passes bounded numeric/boolean playback
+settings and a 15–300 second connection timeout to the native bridge; the default timeout is 30
+seconds. No settings path accepts endpoints, credentials, files, or executable commands.
+Playback settings apply only to verified LORKHAN speech, leaving vanilla audio ownership intact.
+Pause-on-game-pause defaults off to preserve speech in paused dialogue/book menus.
+
+Combat dialogue is a local master permission, separate from the existing combat-entry interruption
+switch. Combat barks require that permission and support local Use Profile/On/Off scheduling.
+The server also enforces the effective NPC/profile bark cooldown across the installation, using
+server receipt time rather than the client's game/request clock. Explicit player conversation is
+not subject to the automatic bark cooldown. Microphone capture is not a side effect of this gate.
+
+Verification (2026-09-16): Windows Release OpenMW build, native bridge tests, Beast loopback
+transport tests, 97 Lua tests, 10 patch-tool tests, protocol validation, and provenance validation
+passed. Server unit suite (1,474 checks) and disposable-database integration tests passed; deployed
+server health returned HTTP 200. Local engine and six runtime Lua/localization files were copied
+with matching SHA-256 hashes. No game was launched; audible behavior remains unverified in-game.
+The broad foundation suite retains a pre-existing typed-player-TTS source-string assertion failure.
+OpenMW audio modes adapt direction and distance curves; Skyrim-specific occlusion DSP is not ported.

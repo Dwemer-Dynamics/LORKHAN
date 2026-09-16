@@ -1,4 +1,5 @@
 #include <lorkhan/record_provenance.hpp>
+#include <lorkhan/playback.hpp>
 #include "lorkhan/actions.hpp"
 #include "lorkhan/bridge_service.hpp"
 #include "lorkhan/events.hpp"
@@ -1061,6 +1062,38 @@ void testRecordProvenance()
     record.observe("Final.esp"); CHECK(!record.complete && record.winningFile == "Final.esp");
 }
 
+void testPlaybackSettings()
+{
+    lorkhan::PlaybackSettings settings;
+    CHECK(lorkhan::validPlayback(settings));
+    CHECK(lorkhan::playbackGain(settings,100,10,100,false,false)==0);
+    CHECK(lorkhan::playbackGain(settings,100,10,100,false,true)==1);
+    settings.voiceVolumePercent=0;
+    CHECK(lorkhan::playbackGain(settings,0,10,100,false,false)==0);
+    settings.voiceVolumePercent=100;settings.headVoiceVolumePercent=50;
+    CHECK(lorkhan::playbackGain(settings,100,10,100,false,true)==.5f);
+    settings.audioMode=2;settings.dropoffInsidePercent=200;settings.dropoffOutsidePercent=100;
+    CHECK(lorkhan::playbackGain(settings,55,10,100,false,false)==.25f);
+    CHECK(lorkhan::playbackGain(settings,55,10,100,true,false)==.5f);
+    settings.audioMode=3;
+    CHECK(lorkhan::playbackGain(settings,1000,10,100,false,false)==1);
+    settings.distanceScale=std::numeric_limits<float>::infinity();
+    CHECK(!lorkhan::validPlayback(settings));
+    CHECK(lorkhan::clipFrames(44100,100)==4410);
+    CHECK(lorkhan::clipFrames(48000,2000)==96000);
+    lorkhan::PlaybackClipWindow window(3,2);
+    window.append("ab",2); CHECK(window.available()==0);
+    window.append("cdef",4); CHECK(window.available()==1);
+    char result[16]{}; CHECK(window.read(result,16)==1 && result[0]=='d');
+    window.append("ghi",3); CHECK(window.read(result,16)==3 && std::string(result,3)=="efg");
+    CHECK(window.read(result,16)==0);
+    lorkhan::PlaybackClipWindow shortClip(100,200);
+    shortClip.append("abc",3); CHECK(shortClip.available()==0);
+    CHECK(lorkhan::lipAmplitude(.75f,2)==1 && lorkhan::lipAmplitude(.5f,.5f)==.25f);
+    CHECK(lorkhan::validConnectionTimeout(15) && lorkhan::validConnectionTimeout(300));
+    CHECK(!lorkhan::validConnectionTimeout(14) && !lorkhan::validConnectionTimeout(301));
+}
+
 void testConcurrency()
 {
     auto state = std::make_shared<TransportState>();
@@ -1087,7 +1120,7 @@ void testConcurrency()
 
 int main()
 {
-    testRecordProvenance(); testUtf8(); testUrls(); testHeaders(); testJson(); testProtocolResponses(); testAcceptedProtocolResponses();
+    testPlaybackSettings(); testRecordProvenance(); testUtf8(); testUrls(); testHeaders(); testJson(); testProtocolResponses(); testAcceptedProtocolResponses();
     testProtocolEventResponses(); testQueue(); testLifecycleAndCancellation();
     testEvents(); testActions(); testPairingToken(); testMedia(); testBridgeDialogueDeliveryValidation();
     testBridge(); testConcurrency(); testVoiceCapturePrimitives();

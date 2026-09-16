@@ -1,8 +1,53 @@
 diff --git a/apps/openmw/mwsound/soundmanagerimp.cpp b/apps/openmw/mwsound/soundmanagerimp.cpp
-index 8471dbe0beb73ba1894a5d73c117c0ab2927a68b..47934b3c305f09450a79e7e69a8750dddea99713 100644
+index 8471dbe0beb73ba1894a5d73c117c0ab2927a68b..0282d17e3caffc9082c3defdf794cb72e066fa92 100644
 --- a/apps/openmw/mwsound/soundmanagerimp.cpp
 +++ b/apps/openmw/mwsound/soundmanagerimp.cpp
-@@ -189,6 +189,22 @@
+@@ -22,6 +22,9 @@
+ 
+ #include "../mwworld/cellstore.hpp"
+ #include "../mwworld/esmstore.hpp"
++#include "../mwworld/datetimemanager.hpp"
++#include <cstring>
++#include <stdexcept>
+ 
+ #include "../mwmechanics/actorutil.hpp"
+ 
+@@ -41,6 +44,34 @@
+         constexpr float sSfxFadeInDuration = 1.0f;
+         constexpr float sSfxFadeOutDuration = 1.0f;
+         constexpr float sSoundCullDistance = 2000.f;
++
++        // Keep only the bounded trailing clip window; never decode an entire utterance up front.
++        class LorkhanTrimDecoder final : public SoundDecoder {
++            DecoderPtr mSource;
++            lorkhan::PlaybackClipWindow mWindow{0,0};
++            std::size_t mDelivered=0,mFrameBytes=1;
++            bool mEof=false;
++        public:
++            LorkhanTrimDecoder(DecoderPtr source,int start,int end):SoundDecoder(nullptr),mSource(std::move(source)) {
++                int rate;ChannelConfig channels;SampleType type;mSource->getInfo(&rate,&channels,&type);
++                mFrameBytes=framesToBytes(1,channels,type);
++                if(rate<=0||rate>384000||!mFrameBytes||mFrameBytes>32)throw std::runtime_error("invalid voice PCM format");
++                mWindow=lorkhan::PlaybackClipWindow(lorkhan::clipFrames(rate,start)*mFrameBytes,lorkhan::clipFrames(rate,end)*mFrameBytes);
++            }
++            void open(VFS::Path::NormalizedView) override { throw std::logic_error("prepared decoder only"); }
++            void close() override {mSource->close();mWindow=lorkhan::PlaybackClipWindow(0,0);mEof=true;}
++            std::string getName() override {return mSource->getName();}
++            void getInfo(int* rate,ChannelConfig* channels,SampleType* type) override {mSource->getInfo(rate,channels,type);}
++            std::size_t getSampleOffset() override {return mDelivered/mFrameBytes;}
++            std::size_t read(char* buffer,std::size_t bytes) override {
++                while(!mEof&&mWindow.available()<bytes){
++                    char chunk[16384];const auto amount=mSource->read(chunk,sizeof(chunk)/mFrameBytes*mFrameBytes);
++                    if(!amount){mEof=true;break;}
++                    mWindow.append(chunk,amount);
++                }
++                const auto count=mWindow.read(buffer,bytes);mDelivered+=count;return count;
++            }
++        };
+ 
+         WaterSoundUpdaterSettings makeWaterSoundUpdaterSettings()
+         {
+@@ -189,6 +220,22 @@
          return nullptr;
      }
  
@@ -25,7 +70,7 @@ index 8471dbe0beb73ba1894a5d73c117c0ab2927a68b..47934b3c305f09450a79e7e69a8750dd
      SoundPtr SoundManager::getSoundRef()
      {
          return mSounds.get();
-@@ -199,7 +215,8 @@
+@@ -199,7 +246,8 @@
          return mStreams.get();
      }
  
@@ -35,7 +80,7 @@ index 8471dbe0beb73ba1894a5d73c117c0ab2927a68b..47934b3c305f09450a79e7e69a8750dd
      {
          MWBase::World* world = MWBase::Environment::get().getWorld();
          static const float fAudioMinDistanceMult
-@@ -220,6 +237,7 @@
+@@ -220,6 +268,7 @@
          {
              sound->init([&] {
                  SoundParams params;
@@ -43,7 +88,7 @@ index 8471dbe0beb73ba1894a5d73c117c0ab2927a68b..47934b3c305f09450a79e7e69a8750dd
                  params.mBaseVolume = basevol;
                  params.mFlags = PlayMode::NoEnv | Type::Voice | Play_2D;
                  return params;
-@@ -231,6 +249,7 @@
+@@ -231,6 +280,7 @@
              sound->init([&] {
                  SoundParams params;
                  params.mPos = pos;
@@ -51,32 +96,92 @@ index 8471dbe0beb73ba1894a5d73c117c0ab2927a68b..47934b3c305f09450a79e7e69a8750dd
                  params.mBaseVolume = basevol;
                  params.mMinDistance = minDistance;
                  params.mMaxDistance = maxDistance;
-@@ -331,6 +350,28 @@
-             return;
- 
+@@ -333,12 +383,67 @@
          mSaySoundsQueue.emplace(ptr.mRef, SaySound{ ptr.mCell, std::move(sound) });
+     }
+ 
++    osg::Vec3f SoundManager::lorkhanPosition(const MWWorld::ConstPtr& ptr) const
++    {
++        auto world=MWBase::Environment::get().getWorld();
++        auto delta=world->getActorHeadTransform(ptr).getTrans()-mListenerPos;
++        if(!mLorkhanPlayback.cameraBasedAudio){
++            const auto player=world->getPlayerPtr();
++            delta=world->getActorHeadTransform(ptr).getTrans()-world->getActorHeadTransform(player).getTrans();
++            const float yaw=player.getRefData().getPosition().rot[2];
++            const osg::Vec3f forward(std::sin(yaw),std::cos(yaw),0),right(std::cos(yaw),-std::sin(yaw),0);
++            const osg::Vec3f cameraRight=mListenerDir^mListenerUp;
++            delta=cameraRight*(delta*right)+mListenerDir*(delta*forward)+mListenerUp*delta.z();
++        }
++        if(mLorkhanPlayback.invertHeading)delta=-delta;
++        if(delta.normalize()==0)delta=mListenerDir;
++        return mListenerPos+delta*10.f;
++    }
++
++    float SoundManager::lorkhanGain(const MWWorld::ConstPtr& ptr) const
++    {
++        auto world=MWBase::Environment::get().getWorld();const bool head=ptr==world->getPlayerPtr();
++        const auto listener=mLorkhanPlayback.cameraBasedAudio?mListenerPos:osg::Vec3f(world->getActorHeadTransform(world->getPlayerPtr()).getTrans());
++        const float distance=(world->getActorHeadTransform(ptr).getTrans()-listener).length();
++        const auto& store=world->getStore().get<ESM::GameSetting>();
++        const float minimum=std::max(1.f,store.find("fAudioVoiceDefaultMinDistance")->mValue.getFloat()*store.find("fAudioMinDistanceMult")->mValue.getFloat());
++        const float maximum=std::max(minimum+1,store.find("fAudioVoiceDefaultMaxDistance")->mValue.getFloat()*store.find("fAudioMaxDistanceMult")->mValue.getFloat());
++        return lorkhan::playbackGain(mLorkhanPlayback,distance,minimum,maximum,ptr.isInCell()&&ptr.getCell()->getCell()->isExterior(),head);
 +    }
 +
 +    bool SoundManager::sayLorkhanMedia(
 +        const MWWorld::ConstPtr& ptr, Files::IStreamPtr media, std::string_view name, float volumeBoost)
 +    {
-+        if (!mOutput->isInitialized())
-+            return false;
++        if(!mOutput->isInitialized())return false;
++        DecoderPtr decoder=loadLorkhanMedia(std::move(media),name);if(!decoder)return false;
++        if(mLorkhanPlayback.clipStartMs||mLorkhanPlayback.clipEndMs)
++            decoder=std::make_unique<LorkhanTrimDecoder>(std::move(decoder),mLorkhanPlayback.clipStartMs,mLorkhanPlayback.clipEndMs);
++        stopSay(ptr);const bool head=ptr==MWMechanics::getPlayer();
++        const bool spatial=!head&&mLorkhanPlayback.audioMode<=2;
++        StreamPtr sound=getStreamRef();SoundParams params;
++        params.mPos=lorkhanPosition(ptr);params.mVolume=volumeBoost*lorkhanGain(ptr);
++        params.mBaseVolume=volumeFromType(Type::Voice);params.mMinDistance=100;params.mMaxDistance=1000000;
++        params.mFlags=PlayMode::NoEnv|Type::Voice|(spatial?Play_3D:Play_2D);sound->init(params);
++        const bool played=spatial?mOutput->streamSound3D(std::move(decoder),sound.get(),true):mOutput->streamSound(std::move(decoder),sound.get(),true);
++        if(!played)return false;
++        const bool paused=mLorkhanPlayback.pauseOnGamePause&&MWBase::Environment::get().getWorld()->getTimeManager()->isPaused();
++        if(paused)mOutput->pauseStream(sound.get(),true);
++        mSaySoundsQueue.emplace(ptr.mRef,SaySound{ptr.mCell,std::move(sound),true,paused,volumeBoost});return true;
++    }
 +
-+        DecoderPtr decoder = loadLorkhanMedia(std::move(media), name);
-+        if (!decoder)
-+            return false;
-+
-+        MWBase::World* world = MWBase::Environment::get().getWorld();
-+        const osg::Vec3f pos = world->getActorHeadTransform(ptr).getTrans();
-+
-+        stopSay(ptr);
-+        StreamPtr sound = playVoice(std::move(decoder), pos, (ptr == MWMechanics::getPlayer()), volumeBoost);
-+        if (!sound)
-+            return false;
-+
-+        mSaySoundsQueue.emplace(ptr.mRef, SaySound{ ptr.mCell, std::move(sound) });
-+        return true;
-     }
- 
      float SoundManager::getSaySoundLoudness(const MWWorld::ConstPtr& ptr) const
+     {
+         SaySoundMap::const_iterator snditer = mActiveSaySounds.find(ptr.mRef);
+         if (snditer != mActiveSaySounds.end())
+         {
+             Stream* sound = snditer->second.mStream.get();
++            if(snditer->second.mLorkhan){
++                const auto now=std::chrono::steady_clock::now();auto& voice=snditer->second;
++                if(mLorkhanPlayback.lipResolutionMs==0||now-voice.mLipSample>=std::chrono::milliseconds(mLorkhanPlayback.lipResolutionMs)){
++                    voice.mLipValue=lorkhan::lipAmplitude(mOutput->getStreamLoudness(sound),mLorkhanPlayback.lipIntensity);voice.mLipSample=now;
++                }
++                return voice.mLorkhanPaused?0.f:voice.mLipValue;
++            }
+             return mOutput->getStreamLoudness(sound);
+         }
+ 
+@@ -1011,13 +1116,19 @@
+         {
+             MWWorld::ConstPtr ptr = sayiter->first;
+             Stream* sound = sayiter->second.mStream.get();
++            if(sayiter->second.mLorkhan && !ptr.isEmpty()){
++                const bool paused=mLorkhanPlayback.pauseOnGamePause&&MWBase::Environment::get().getWorld()->getTimeManager()->isPaused();
++                if(paused||sayiter->second.mLorkhanPaused)mOutput->pauseStream(sound,paused);
++                sayiter->second.mLorkhanPaused=paused;
++                sound->setVolume(sayiter->second.mLorkhanVolume*lorkhanGain(ptr));
++            }
+             if (sound->getIs3D())
+             {
+                 if (!ptr.isEmpty())
+                 {
+                     sound->setLastPosition(sound->getPosition());
+                     MWBase::World* world = MWBase::Environment::get().getWorld();
+-                    sound->setPosition(world->getActorHeadTransform(ptr).getTrans());
++                    sound->setPosition(sayiter->second.mLorkhan?lorkhanPosition(ptr):osg::Vec3f(world->getActorHeadTransform(ptr).getTrans()));
+                     sound->setVelocity(
+                         (sound->getPosition() - sound->getLastPosition()) / world->getPhysicsFrameRateDt());
+                 }

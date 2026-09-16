@@ -1,12 +1,19 @@
 diff --git a/apps/openmw/mwworld/actiontake.cpp b/apps/openmw/mwworld/actiontake.cpp
-index 1f37499e8f..04e673a1b7 100644
+index 1f37499e8f1800bb1b03fe95d7514138cf2b146b..04e673a1b7b1033b90aa2c44689e1a0a2dd282ce 100644
 --- a/apps/openmw/mwworld/actiontake.cpp
 +++ b/apps/openmw/mwworld/actiontake.cpp
-@@ -3,2 +3,3 @@
+@@ -1,6 +1,7 @@
+ #include "actiontake.hpp"
+ 
  #include "../mwbase/environment.hpp"
 +#include "../mwbase/luamanager.hpp"
  #include "../mwbase/mechanicsmanager.hpp"
-@@ -40,2 +41,3 @@ namespace MWWorld
+ #include "../mwbase/windowmanager.hpp"
+ #include "../mwbase/world.hpp"
+@@ -38,5 +39,6 @@
+         MWWorld::Ptr newitem = *actor.getClass().getContainerStore(actor).add(getTarget(), count);
+         MWBase::Environment::get().getWorld()->deleteObject(getTarget());
          setTarget(newitem);
 +        MWBase::Environment::get().getLuaManager()->onLorkhanItemPickup(actor, newitem, count, MWWorld::Ptr());
      }
+ }

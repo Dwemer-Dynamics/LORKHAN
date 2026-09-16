@@ -1,5 +1,5 @@
 diff --git a/apps/openmw/mwmechanics/spellcasting.cpp b/apps/openmw/mwmechanics/spellcasting.cpp
-index c7571c35ac..dceda34e61 100644
+index c7571c35acee644e91b8b01cd0111259456ad8fe..dceda34e61f41619eb3841739cb75f538c4f54a6 100644
 --- a/apps/openmw/mwmechanics/spellcasting.cpp
 +++ b/apps/openmw/mwmechanics/spellcasting.cpp
 @@ -10,6 +10,7 @@
@@ -10,7 +10,7 @@ index c7571c35ac..dceda34e61 100644
  #include "../mwbase/soundmanager.hpp"
  #include "../mwbase/windowmanager.hpp"
  #include "../mwbase/world.hpp"
-@@ -440,6 +441,9 @@ namespace MWMechanics
+@@ -440,6 +441,9 @@
  
          launchMagicBolt();
  
@@ -19,4 +19,3 @@ index c7571c35ac..dceda34e61 100644
 +                mCaster, mTarget, spell->mId.serializeText(), spell->mName);
          return true;
      }
- 

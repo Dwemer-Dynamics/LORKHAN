@@ -10,7 +10,7 @@ index 91eec7eb623c3480e75192be65237ad36a5d9765..0b143dc984aa147c789ec8487515c012
  #include "../mwbase/soundmanager.hpp"
  #include "../mwbase/statemanager.hpp"
  #include "../mwbase/windowmanager.hpp"
-@@ -1915,5 +1916,6 @@
+@@ -1915,6 +1916,7 @@
          {
              stats.resurrect();
              mActors.resurrect(ptr);

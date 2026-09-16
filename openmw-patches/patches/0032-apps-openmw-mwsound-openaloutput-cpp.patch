@@ -1,0 +1,60 @@
+diff --git a/apps/openmw/mwsound/openaloutput.cpp b/apps/openmw/mwsound/openaloutput.cpp
+index 90668fe35ae5881e0bdb26775742a1bdf26d9dfa..2cb7e2a9f9002c14e8fc02b141b81f4d8f5665ba 100644
+--- a/apps/openmw/mwsound/openaloutput.cpp
++++ b/apps/openmw/mwsound/openaloutput.cpp
+@@ -297,6 +297,7 @@
+         std::unique_ptr<Sound_Loudness> mLoudnessAnalyzer;
+ 
+         std::atomic<bool> mIsFinished;
++        bool mLocallyPaused = false;
+ 
+         OpenAL_SoundStream(const OpenAL_SoundStream& rhs);
+         OpenAL_SoundStream& operator=(const OpenAL_SoundStream& rhs);
+@@ -973,6 +974,7 @@
+ 
+     void OpenALOutput::deinit()
+     {
++        mPausedTypes = 0;
+         mStreamThread->removeAll();
+         mDefaultDeviceThread.reset();
+ 
+@@ -1505,8 +1507,22 @@
+         mListenerEnv = env;
+     }
+ 
++    // Pause one managed voice without changing unrelated vanilla sound sources.
++    void OpenALOutput::pauseStream(Stream* sound,bool paused)
++    {
++        if(!sound||!sound->mHandle)return;
++        auto* stream=reinterpret_cast<OpenAL_SoundStream*>(sound->mHandle);
++        std::lock_guard<std::mutex> lock(mStreamThread->mMutex);
++        ALint state=AL_STOPPED;alGetSourcei(stream->mSource,AL_SOURCE_STATE,&state);
++        stream->mLocallyPaused=paused;
++        if(paused&&state==AL_PLAYING)alSourcePause(stream->mSource);
++        if(!paused&&!(mPausedTypes & sound->getPlayType())&&state==AL_PAUSED)alSourcePlay(stream->mSource);
++        getALError();
++    }
++
+     void OpenALOutput::pauseSounds(int types)
+     {
++        mPausedTypes |= types;
+         std::vector<ALuint> sources;
+         for (Sound* sound : mActiveSounds)
+         {
+@@ -1562,6 +1578,7 @@
+ 
+     void OpenALOutput::resumeSounds(int types)
+     {
++        mPausedTypes &= ~types;
+         std::vector<ALuint> sources;
+         for (Sound* sound : mActiveSounds)
+         {
+@@ -1573,7 +1590,7 @@
+             if ((types & sound->getPlayType()))
+             {
+                 OpenAL_SoundStream* stream = reinterpret_cast<OpenAL_SoundStream*>(sound->mHandle);
+-                sources.push_back(stream->mSource);
++                if (!stream->mLocallyPaused) sources.push_back(stream->mSource);
+             }
+         }
+         if (!sources.empty())
