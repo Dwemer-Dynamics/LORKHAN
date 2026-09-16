@@ -432,9 +432,9 @@
       "sha256": "1e08e718390dda37a573aafa51256c25972a8c397b07bfd15afbebd3cac2d9fc"
     },
     {
-      "bytes": 1248,
+      "bytes": 1595,
       "path": "lorkhan/fixtures/v1/valid/session-init.json",
-      "sha256": "b55ebcbb3d6942ac2c3fdf5c3b5c7f0900907ec2ffe6d4dc5353d3d56474f4d5"
+      "sha256": "8d8f8ba515c2ff2887ec6aa99af2dcd5a4ca141d3c6b39cbb6720c4d28835c39"
     },
     {
       "bytes": 1493,
@@ -562,9 +562,9 @@
       "sha256": "f9f9023764e30b5b32d85cda5bad00e63837c9fc7e2a7234b3145ddae30d33ff"
     },
     {
-      "bytes": 1953,
+      "bytes": 2071,
       "path": "lorkhan/schemas/v1/error.schema.json",
-      "sha256": "9e699f1dc8956d8ada915d463f3ec75237e3c084cb1dd040dd161a7716c47ab9"
+      "sha256": "75540777ca027f291bc7a0acc46d7f8b73b0deb4b96d9f548ef0e6b1eeb9c00f"
     },
     {
       "bytes": 4900,
@@ -642,9 +642,9 @@
       "sha256": "56688538b56f927f83a98a131c07364de6886049c2f08bb4bf74485d1a98e94e"
     },
     {
-      "bytes": 1342,
+      "bytes": 1594,
       "path": "lorkhan/schemas/v1/session-accepted.schema.json",
-      "sha256": "dbd140ec16e5f1171af0f37c431cc4d67630a5c00c64eb0a21582b69021f6996"
+      "sha256": "bad4362481d9fca82d7f973170713e375ba7f9e28f1f1d440ca7ade472dec7a5"
     },
     {
       "bytes": 691,
@@ -652,9 +652,9 @@
       "sha256": "37fe0695f63bdfa574827da8d5aba8994ad25afa5493f633883393a799f3b2f0"
     },
     {
-      "bytes": 4069,
+      "bytes": 4690,
       "path": "lorkhan/schemas/v1/session-init.schema.json",
-      "sha256": "ce7cf8c5a908ed5b07d8b8ec9814f22a634a75b587054aadcb6471dd34b020c5"
+      "sha256": "6b301675b43f46de675626fbabfc3a58fcad39d8804dea2b90481330dd30d6b2"
     },
     {
       "bytes": 1032,

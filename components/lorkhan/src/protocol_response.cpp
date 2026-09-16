@@ -999,6 +999,9 @@ std::optional<ErrorCode> protocolCode(std::string_view code)
     struct Mapping { std::string_view name; ErrorCode code; };
     static constexpr std::array mappings{
         Mapping{"ai_disabled", ErrorCode::action_disabled},
+        Mapping{"character_binding_required", ErrorCode::invalid_argument},
+        Mapping{"character_binding_conflict", ErrorCode::duplicate_conflict},
+        Mapping{"playthrough_isolation_required", ErrorCode::action_disabled},
         Mapping{"action_disabled", ErrorCode::action_disabled},
         Mapping{"action_parameters_invalid", ErrorCode::invalid_action},
         Mapping{"action_result_expired", ErrorCode::invalid_action},
@@ -1280,7 +1283,7 @@ Result<SessionAcceptedResponse> parseSessionAcceptedResponse(
 {
     auto object = parseObject(body, headers, "lorkhan.session.accepted.v1", limits);
     if (!object) return Result<SessionAcceptedResponse>::failure(object.error());
-    if (!hasExactly(object.value(), {"schema", "message_id", "session_id", "generation", "capabilities", "config_revision", "client_settings", "event_cursor"}))
+    if (!hasExactly(object.value(), {"schema", "message_id", "session_id", "generation", "capabilities", "config_revision", "client_settings", "event_cursor"}, {"character_id"}))
         return invalidSchemaValue<SessionAcceptedResponse>("session accepted fields mismatch");
     auto message = requireUuid(object.value(), "message_id");
     auto session = requireUuid(object.value(), "session_id");
@@ -1308,9 +1311,15 @@ Result<SessionAcceptedResponse> parseSessionAcceptedResponse(
             return invalidSchemaValue<SessionAcceptedResponse>("capabilities must contain unique bounded strings");
         parsedCapabilities.push_back(*value.string());
     }
+    std::optional<std::string> character;
+    if (json::find(object.value(), "character_id")) {
+        auto parsedCharacter = requireUuid(object.value(), "character_id");
+        if (!parsedCharacter) return invalidSchemaValue<SessionAcceptedResponse>(parsedCharacter.error().message);
+        character = std::move(parsedCharacter).value();
+    }
     return Result<SessionAcceptedResponse>::success({MessageId(std::move(message).value()),
         SessionId(std::move(session).value()), Generation(generation.value()), std::move(parsedCapabilities),
-        std::move(revision).value(),std::move(settings).value(),cursor.value()});
+        std::move(revision).value(),std::move(settings).value(),cursor.value(),std::move(character)});
 }
 
 Result<TurnAcceptedResponse> parseTurnAcceptedResponse(

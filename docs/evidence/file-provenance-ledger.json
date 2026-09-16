@@ -288,7 +288,8 @@
         "components/lorkhan/tests/beast_transport_tests.cpp",
         "components/lorkhan/tests/native_tests.cpp",
         "components/lorkhan/include/lorkhan/record_provenance.hpp",
-        "components/lorkhan/include/lorkhan/playback.hpp"
+        "components/lorkhan/include/lorkhan/playback.hpp",
+        "components/lorkhan/include/lorkhan/session_identity.hpp"
       ],
       "source_repository": null,
       "source_commit": null,

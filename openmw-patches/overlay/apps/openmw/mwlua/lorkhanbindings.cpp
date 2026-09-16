@@ -7,6 +7,7 @@
 #include <lorkhan/protocol_response.hpp>
 #include <lorkhan/validation.hpp>
 #include <lorkhan/playback.hpp>
+#include <lorkhan/session_identity.hpp>
 #include <lorkhan/voice_capture.hpp>
 #include <components/lua/configuration.hpp>
 #include <components/lua/scriptscontainer.hpp>
@@ -566,13 +567,13 @@ namespace MWLua
                 try
                 {
                     m_config = loadConfig();
+                    m_legacyPlaythrough=m_config->playthrough.value();
                     auto transport = std::make_unique<lorkhan::BeastTransport>(m_config->baseUrl,
                         m_config->installation, lorkhan::PairingToken(m_config->key), m_config->cacheRoot);
                     m_transport=transport.get();m_transport->setConnectionTimeout(30);
                     m_service = std::make_unique<lorkhan::BridgeService>(std::move(transport),
                         std::make_shared<lorkhan::SystemClock>(), processGeneration());
-                    beginSession();
-                    m_status = "connecting";
+                    m_status = "waiting_identity";
                 }
                 catch (const std::exception& error) { m_status = "unconfigured"; m_error = error.what(); }
             }
@@ -2363,6 +2364,16 @@ namespace MWLua
                     if (settlePlayerAutochatResult(result)) continue;
                     if (result.kind == lorkhan::ResponseKind::failure)
                     {
+                        if(m_initRequest&&result.request==*m_initRequest){
+                            m_initRequest.reset();
+                            m_retryInit=result.failure&&(result.failure->retriable||result.failure->code==lorkhan::ErrorCode::transport_failure)&&m_initAttempts<3;
+                            m_nextInit=std::chrono::steady_clock::now()+1000ms;
+                            m_characterRejected=result.failure&&!result.failure->retriable
+                                &&(result.failure->code==lorkhan::ErrorCode::duplicate_conflict
+                                   ||result.failure->code==lorkhan::ErrorCode::action_disabled
+                                   ||result.failure->code==lorkhan::ErrorCode::invalid_argument);
+                        }
+
                         const auto failedTurn=m_turnRequests.find(result.request.value());
                         if(failedTurn!=m_turnRequests.end()){
                             sol::table failureEvent(lua,sol::create);
@@ -2419,6 +2430,9 @@ namespace MWLua
                         auto parsed = lorkhan::parseSessionAcceptedResponse(result.payload, jsonHeaders());
                         if (parsed)
                         {
+                            if(parsed.value().characterId)m_characterIdentity.character=*parsed.value().characterId;
+                            m_characterRejected=false;
+                            m_loadedSave=false;m_loadedCalendar.reset();
                             m_session = parsed.value().session; m_cursor = parsed.value().eventCursor;
                             m_configRevision = parsed.value().configRevision;
                             m_clientSettings = parsed.value().clientSettings;
@@ -2477,11 +2491,61 @@ namespace MWLua
                     }
                     if(result.kind!=lorkhan::ResponseKind::failure)m_turnRequests.erase(result.request.value());
                 }
+                if(m_retryInit&&std::chrono::steady_clock::now()>=m_nextInit)beginSession();
                 schedulePoll();
                 return output;
             }
 
-            bool cancelGeneration(std::uint64_t generation, bool loadedSave = false)
+            // GLOBAL save lifecycle selects a stable character before any network session can begin.
+            std::tuple<sol::object,sol::object> configureCharacter(sol::state_view lua,sol::table values)
+            {
+                try {
+                    if(!m_config||!m_service)return failure(lua,"bridge_not_configured");
+                    static const std::set<std::string> keys={"mode","character_id","playthrough_id","character_binding","generation"};
+                    for(const auto& entry:values)if(!entry.first.is<std::string>()||!keys.contains(entry.first.as<std::string>()))
+                        return failure(lua,"invalid_character_identity_field");
+                    const auto text=[&](const char* key){const sol::object value=values[key];
+                        if(value==sol::nil)return std::string{};
+                        if(!value.is<std::string>())throw std::invalid_argument("invalid_character_identity_field");
+                        return value.as<std::string>();};
+                    const auto mode=text("mode");
+                    if(mode=="new_game"||mode=="load"){
+                        m_characterIdentity.prepare(mode=="new_game",text("character_id"),text("playthrough_id"),
+                            text("character_binding"),m_legacyPlaythrough,[]{return uuid();});
+                    }else if(mode=="existing"||mode=="new"){
+                        const sol::object supplied=values["generation"];
+                        if(!supplied.is<double>()||supplied.as<double>()!=static_cast<double>(generation()))
+                            return failure(lua,"stale_character_selection");
+                        if(m_characterRejected){
+                            if(text("character_id")!=m_characterIdentity.character)return failure(lua,"stale_character_selection");
+                            m_characterIdentity.playthrough.clear();m_characterIdentity.binding.clear();
+                            m_initSnapshot.reset();m_initAttempts=0;m_retryInit=false;m_characterRejected=false;
+                        }
+                        m_characterIdentity.choose(text("character_id"),mode,[]{return uuid();});
+                    }else return failure(lua,"invalid_character_identity_mode");
+                    if(m_characterIdentity.selected()){
+                        m_config->playthrough=lorkhan::PlaythroughId(m_characterIdentity.playthrough);
+                        if(!m_session){beginSession();m_status="connecting";}
+                    }else m_status="waiting_identity";
+                    return {sol::make_object(lua,characterInfo(lua)),sol::make_object(lua,sol::nil)};
+                }catch(const std::exception& error){return failure(lua,error.what());}
+            }
+
+            // Expose confirmed identity separately from the provisional handshake choice.
+            sol::table characterInfo(sol::state_view lua) const
+            {
+                sol::table result(lua,sol::create);
+                result["character_id"]=m_characterIdentity.character;result["legacy_playthrough_id"]=m_characterIdentity.legacyPlaythrough;
+                result["generation"]=generation();result["ready"]=m_session.has_value();
+                result["needs_choice"]=m_characterRejected||!m_characterIdentity.selected();
+                if(m_characterRejected)result["error"]=m_error;
+                if(m_characterIdentity.selected()){
+                    result["playthrough_id"]=m_characterIdentity.playthrough;result["character_binding"]=m_characterIdentity.binding;
+                }
+                return result;
+            }
+
+            bool cancelGeneration(std::uint64_t generation, bool loadedSave = false, bool identityChange = false)
             {
                 if (!m_service) return false;
                 auto result = m_service->cancelGeneration(lorkhan::Generation(generation));
@@ -2493,8 +2557,10 @@ namespace MWLua
                 m_diaryRequest.reset();m_diaryReceipt.reset();m_diaryBook.reset();m_diaryReceiptDto.reset();m_diaryPending=false;
                 m_diaryState.clear();m_diaryReason.clear();m_diaryError.clear();m_diaryReceiptOk=false;
                 m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_turnRequests.clear();m_controlsError.clear();m_debugError.clear();
+                m_initSnapshot.reset();m_initAttempts=0;m_retryInit=false;
+                if(identityChange){m_characterIdentity.clear();m_characterRejected=false;}
                 m_loadedSave=loadedSave;m_waitingLoadedCalendar=loadedSave;m_loadedCalendar.reset();beginSession();
-                m_status = "connecting";
+                m_status = m_characterIdentity.selected()?"connecting":"waiting_identity";
                 return true;
             }
 
@@ -2561,17 +2627,22 @@ namespace MWLua
 
             void beginSession()
             {
-                if (!m_service || !m_config || m_initRequest || m_waitingLoadedCalendar) return;
+                if (!m_service || !m_config || !m_characterIdentity.selected() || m_initRequest || m_waitingLoadedCalendar) return;
                 const lorkhan::RequestId request(uuid());
-                lorkhan::EnvelopeIds ids{ m_config->installation, m_config->profile, m_config->playthrough, {}, request,
-                    lorkhan::TurnId(uuid()), lorkhan::MessageId(uuid()), m_service->generation() };
-                lorkhan::RuntimeInfo runtime; runtime.platform = m_config->platform;
-                runtime.capabilities = capabilities();
-                lorkhan::InitRequest init{ std::move(ids), std::move(runtime), m_config->fingerprint, utcNow() };
-                init.loadedSave=m_loadedSave;init.loadedCalendar=m_loadedCalendar;
-                lorkhan::OutboundRequest outbound{ request, {}, ids.generation, lorkhan::RequestKind::init, std::move(init) };
+                if(!m_initSnapshot){
+                    lorkhan::EnvelopeIds ids{m_config->installation,m_config->profile,m_config->playthrough,{},request,
+                        lorkhan::TurnId(uuid()),lorkhan::MessageId(uuid()),m_service->generation()};
+                    lorkhan::RuntimeInfo runtime;runtime.platform=m_config->platform;runtime.capabilities=capabilities();
+                    m_initSnapshot=lorkhan::InitRequest{std::move(ids),std::move(runtime),m_config->fingerprint,utcNow()};
+                    m_initSnapshot->loadedSave=m_loadedSave;m_initSnapshot->loadedCalendar=m_loadedCalendar;
+                    m_initSnapshot->characterId=m_characterIdentity.character;m_initSnapshot->characterBinding=m_characterIdentity.binding;
+                }
+                // Retries use a fresh local request token but exactly the same HTTP body and idempotency key.
+                auto init=*m_initSnapshot;init.ids.request=request;
+                lorkhan::OutboundRequest outbound{request,{},init.ids.generation,lorkhan::RequestKind::init,std::move(init)};
+                m_retryInit=false;++m_initAttempts;
                 auto result = m_service->enqueue(std::move(outbound));
-                if (result) {m_initRequest = request;m_loadedSave=false;m_loadedCalendar.reset();}
+                if (result) m_initRequest = request;
                 else { m_status = "error"; m_error = result.error().message; }
             }
 
@@ -2753,11 +2824,18 @@ namespace MWLua
 
             std::optional<ClientConfig> m_config;
             lorkhan::BeastTransport* m_transport=nullptr;
+            bool m_characterRejected=false;
+            lorkhan::CharacterSessionIdentity m_characterIdentity;
+            std::string m_legacyPlaythrough;
             std::unique_ptr<lorkhan::BridgeService> m_service;
             std::optional<lorkhan::SessionId> m_session;
             std::optional<lorkhan::ClientSettings> m_clientSettings;
             std::string m_configRevision;
             std::optional<lorkhan::RequestId> m_initRequest;
+            std::optional<lorkhan::InitRequest> m_initSnapshot;
+            unsigned m_initAttempts=0;
+            bool m_retryInit=false;
+            std::chrono::steady_clock::time_point m_nextInit;
             bool m_waitingLoadedCalendar=false;
             bool m_loadedSave=false;
             std::optional<lorkhan::LoadedSaveCalendar> m_loadedCalendar;
@@ -2860,6 +2938,8 @@ namespace MWLua
             api["pumpSessionControls"] = [lua] { return client().pumpSessionControls(lua); };
             api["pumpPlayerAutochat"] = [lua] { return client().pumpPlayerAutochat(lua); };
             if(global){
+                api["characterInfo"]=[lua]{return client().characterInfo(lua);};
+                api["configureCharacter"]=[lua](sol::table values){return client().configureCharacter(lua,values);};
                 api["configurePlayback"]=[lua,luaManager](sol::table values){return client().configurePlayback(lua,values,luaManager);};
                 api["configureTransport"]=[lua](sol::table values){return client().configureTransport(lua,values);};
                 api["executeAdvanced"]=[lua,luaManager](const std::string& id){return client().executeTransfer(lua,luaManager,id);};
@@ -2944,7 +3024,7 @@ namespace MWLua
             api["submitDialogueDeliveryResult"] = [lua](sol::table dto) {
                 return client().submitDialogueDeliveryResult(lua, std::move(dto));
             };
-            api["cancelGeneration"] = [](std::uint64_t generation, sol::optional<bool> loadedSave) { return client().cancelGeneration(generation,loadedSave.value_or(false)); };
+            api["cancelGeneration"] = [](std::uint64_t generation, sol::optional<bool> loadedSave, sol::optional<bool> identityChange) { return client().cancelGeneration(generation,loadedSave.value_or(false),identityChange.value_or(false)); };
             api["finishLoadedSave"] = [](sol::optional<sol::table> calendar) { return client().finishLoadedSave(calendar); };
             api["halt"] = [] { client().halt(); };
             return LuaUtil::makeReadOnly(api);

@@ -410,3 +410,21 @@ Automated protocol, Lua and server integration checks cover all eight actions, s
 Record names accept simple plural forms (rat/rats, robe/robes), without fuzzy matching. Ambiguous record names require an exact loaded record ID. Actor spawning creates instances only; dynamically generated actors are not yet addressable for AI profiles or later LORKHAN actions under the existing v1 identity contract. Vanilla game interaction is unaffected.
 
 Client deployment engine SHA256: 923123E3FC9E937B901606E928128911AF5605CF1A46D54FB6A28A13162B70D9. Server tests: 1421 checks plus integration, migrations/jobs and factory restore checks. Lua: 90 tests. Protocol: 42 schemas and 93 fixtures. OpenMW: all 29 declared source hashes and 10 patch fixtures passed.
+
+## Saved character identity foundation
+
+Identity-aware clients send `character_id` (a UUID persisted in the OpenMW save) together with
+`character_binding` (`new` or `existing`) on session initialization. These fields are paired;
+legacy requests may omit both. Display names never identify a character. An established binding
+cannot be silently reassigned by a later handshake. An older save requires an explicit adoption
+choice before submitting identity-aware gameplay. Choices and callbacks remain generation-bound.
+An accepted identity-aware response returns the authoritative `character_id`. Explicit `existing`
+adoption of an earlier untagged save may reuse the existing playthrough binding; it does not reassign
+history. The client confirms and persists that binding only after successful session acceptance.
+A rejected choice remains recoverable.
+
+The foundation rejects an unsafe cross-playthrough admission with
+`playthrough_isolation_required` before replacing the active session. Identity binding alone does
+not isolate mutable NPC and Player profiles. Automatic switching must wait for the ownership stage
+in the server's `docs/PLAYTHROUGH-PARITY.md`. Shared Narrator configuration, Core Profiles and
+connectors stay global. No full-database restore is performed by this handshake.

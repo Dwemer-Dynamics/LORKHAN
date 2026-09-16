@@ -138,7 +138,9 @@ function M.lifecycle(state,kind)
     cancelResponseLane(state,kind,true)
     detachAll(state,kind)
     state.generation=conversation.invalidate(state.conversation,kind)
-    if state.bridge then state.bridge.cancelGeneration(state.generation-1,kind=='load' and state.bridge.finishLoadedSave~=nil) end
+    if state.bridge then state.bridge.cancelGeneration(state.generation-1,kind=='load' and state.bridge.finishLoadedSave~=nil,kind=='load' or kind=='new_game') end
+    if kind=='load' or kind=='new_game' then state.sessionId=nil state.characterChoice=nil end
+    if kind=='new_game' then state.disabled=false state.futureSave=nil state.characterId=nil state.playthroughId=nil state.characterBinding=nil end
     state.events=state.sessionId and protocol.CursoredEvents(state.sessionId,state.generation) or nil
     state.pendingConfirmations={}
     state.actionFollowups={seen={},pending={}}
@@ -158,6 +160,7 @@ function M.lifecycle(state,kind)
     emitCombatState(state)
     state.emit('LORKHAN_ACTOR_ACTIVITY',{reset=true})
     state.emit('LORKHAN_STATUS',{status='offline',reason=kind,generation=state.generation})
+    if kind=='new_game' then state.preserveIdentitySave=false state.originalIdentitySave=nil M.configureCharacter(state,'new_game') end
 end
 
 function M.configureSession(state,sessionId)
@@ -1585,11 +1588,60 @@ end
 -- Preserve the original public entry point while making the in-game control recoverable.
 function M.halt(state) return M.interrupt(state,'halt_ai_actions') end
 
+-- Freeze a save-owned identity before native session initialization; never infer it from a player name.
+function M.configureCharacter(state,mode,saved)
+    if type(state.bridge.configureCharacter)~='function' then return nil,'character_identity_unsupported' end
+    saved=saved or {}
+    local values={mode=mode,character_id=saved.characterId,playthrough_id=saved.playthroughId,
+        character_binding=saved.characterBinding,generation=saved.generation}
+    local result,reason=state.bridge.configureCharacter(values)
+    if not result then state.emit('LORKHAN_STATUS',{status='error',reason=reason});return nil,reason end
+    if result.needs_choice then
+        state.characterId=result.character_id state.playthroughId=result.legacy_playthrough_id state.characterBinding=nil
+        state.characterChoice=util.copy(result)
+        state.emit('LORKHAN_PLAYTHROUGH_CHOICE',util.copy(result))
+    else
+        state.characterChoice=util.copy(result)
+        state.characterChoice.waiting=true
+        if mode=='new_game' then
+            state.characterId=result.character_id state.playthroughId=result.playthrough_id state.characterBinding=nil
+        end
+        state.emit('LORKHAN_PLAYTHROUGH_CONNECTING',util.copy(state.characterChoice))
+    end
+    return result
+end
+
+-- Commit save identity only after the server confirms its canonical binding.
+function M.refreshCharacterIdentity(state,info)
+    local pending=state.characterChoice
+    if type(info)~='table' or not pending or info.generation~=pending.generation then return end
+    if info.ready then
+        state.characterId=info.character_id state.playthroughId=info.playthrough_id state.characterBinding=info.character_binding
+        state.characterChoice=nil state.preserveIdentitySave=false state.originalIdentitySave=nil
+        state.emit('LORKHAN_PLAYTHROUGH_SELECTED',util.copy(info))
+    elseif info.needs_choice and pending.waiting then
+        state.characterChoice=util.copy(info)
+        state.emit('LORKHAN_PLAYTHROUGH_CHOICE',util.copy(info))
+    end
+end
+
+function M.selectCharacter(state,event)
+    local pending=state.characterChoice
+    if type(event)~='table' or not pending or event.character_id~=pending.character_id
+        or event.generation~=pending.generation or (event.choice~='new' and event.choice~='existing') then
+        return nil,'stale_character_selection'
+    end
+    return M.configureCharacter(state,event.choice,{characterId=event.character_id,generation=event.generation})
+end
+
 function M.load(state,raw)
     local loaded,meta=storage.load(raw,state.generation)
     M.lifecycle(state,'load')
     if loaded and not meta.disable then
         state.profileId=loaded.profileId state.playthroughId=loaded.playthroughId
+        state.disabled=false state.futureSave=nil
+        state.preserveIdentitySave=true state.originalIdentitySave=util.copy(raw)
+        M.configureCharacter(state,'load',loaded)
         state.preferences=loaded.preferences state.conversationUi=loaded.conversationUi
         state.generation=math.max(state.generation,loaded.generationSeed or state.generation)
         state.conversation.generation=state.generation
@@ -1602,7 +1654,9 @@ function M.load(state,raw)
 end
 function M.save(state)
     if state.futureSave then return state.futureSave end
-    return storage.save({profileId=state.profileId,playthroughId=state.playthroughId,generationSeed=state.generation,
+    if state.preserveIdentitySave then return util.copy(state.originalIdentitySave) end
+    return storage.save({profileId=state.profileId,playthroughId=state.playthroughId,characterId=state.characterId,
+        characterBinding=state.characterBinding,generationSeed=state.generation,
         preferences=state.preferences,conversationUi=state.conversationUi,actorStateHints={}})
 end
 return M

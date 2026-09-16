@@ -36,6 +36,10 @@
     },
     "session_id": {
       "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "character_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid",
+      "description": "Authoritative saved character identity. Explicit adoption may resolve an older untagged save to an existing binding."
     }
   },
   "required": [

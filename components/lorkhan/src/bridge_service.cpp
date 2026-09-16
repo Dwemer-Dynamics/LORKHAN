@@ -64,6 +64,10 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         || (request.kind == RequestKind::media) != std::holds_alternative<MediaPrepareRequest>(request.payload))
         return Result<void>::failure(makeError(ErrorCode::invalid_argument, "request kind does not match typed payload"));
     if (const auto* init = std::get_if<InitRequest>(&request.payload)) {
+        if(init->characterId.has_value()!=init->characterBinding.has_value()
+            ||(init->characterId&&(!isCanonicalUuid(*init->characterId)
+                ||(*init->characterBinding!="new"&&*init->characterBinding!="existing"))))
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,"invalid saved character binding"));
         if (init->loadedCalendar && (!init->loadedSave || !init->loadedCalendar->valid()))
             return Result<void>::failure(makeError(ErrorCode::invalid_argument, "invalid loaded-save calendar"));
         if (!validEnvelope(init->ids, false) || !envelopeMatches(init->ids))

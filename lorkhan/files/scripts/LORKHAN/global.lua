@@ -410,6 +410,7 @@ return {
                 bridge.pollResults(8)
                 session=bridge.sessionInfo and bridge.sessionInfo()
             end
+            if bridge.characterInfo then orchestrator.refreshCharacterIdentity(state,bridge.characterInfo()) end
             local currentStatus=bridge.status and bridge.status()
             if currentStatus and currentStatus~=bridgeStatus then
                 bridgeStatus=currentStatus
@@ -437,6 +438,7 @@ return {
         end,
     },
     eventHandlers={
+        LORKHAN_PLAYTHROUGH_SELECT=function(event) orchestrator.selectCharacter(state,event) end,
         LORKHAN_WAIT_HERE_REQUEST=function(event)
             local target=type(event)=='table' and event.target
             local player=currentPlayer()

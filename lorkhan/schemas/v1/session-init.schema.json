@@ -146,6 +146,18 @@
           }
         }
       ]
+    },
+    "character_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid",
+      "description": "Stable character identity persisted in the OpenMW save. Must be paired with character_binding."
+    },
+    "character_binding": {
+      "type": "string",
+      "enum": [
+        "new",
+        "existing"
+      ],
+      "description": "New identity or explicit adoption of existing data. The server never silently rebinds an established character."
     }
   },
   "required": [
@@ -159,5 +171,13 @@
     "runtime",
     "content_fingerprint"
   ],
-  "type": "object"
+  "type": "object",
+  "dependentRequired": {
+    "character_id": [
+      "character_binding"
+    ],
+    "character_binding": [
+      "character_id"
+    ]
+  }
 }

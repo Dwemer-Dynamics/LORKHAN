@@ -1,5 +1,6 @@
 #include <lorkhan/record_provenance.hpp>
 #include <lorkhan/playback.hpp>
+#include <lorkhan/session_identity.hpp>
 #include "lorkhan/actions.hpp"
 #include "lorkhan/bridge_service.hpp"
 #include "lorkhan/events.hpp"
@@ -283,6 +284,12 @@ void testAcceptedProtocolResponses()
     const std::string sessionBody = R"({"schema":"lorkhan.session.accepted.v1","message_id":"01900000-0000-7000-8000-000000000006","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"capabilities":["dialogue.text","speech.say"],"config_revision":"revision-9","client_settings":{"schema":"lorkhan.client-settings.v1","behavior":{"auto_greeting":false,"rechat":false,"rechat_delay_seconds":45,"rechat_max_depth":2,"rechat_probability_percent":50,"rechat_mode":"random","rechat_strict_targeting":false,"open_rechat":true,"rechat_allow_actions":false,"end_conversation_cooldown_seconds":60,"boredom":false,"boredom_delay_seconds":180,"combat_barks":false,"combat_bark_period_seconds":600},"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"welcome_cooldown_minutes":10,"random_events":false,"random_chance_percent":15,"random_cooldown_rounds":2,"bored_events":false,"bored_chance_percent":25,"quest_events":false,"quest_chance_percent":10,"quest_cooldown_minutes":3,"book_events":false},"presentation":{"show_status_hud":true,"transcript_rows":8,"tts_volume_boost":3},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"event_cursor":3})";
     auto session = lorkhan::parseSessionAcceptedResponse(sessionBody,jsonHeaders);
     CHECK(session && session.value().clientSettings.behavior.aiEnabled);
+    for(const auto& identity : {std::string(kMessage),std::string("invalid")}) {
+        auto changed=sessionBody;changed.insert(1,"\"character_id\":\""+identity+"\",");
+        auto parsed=lorkhan::parseSessionAcceptedResponse(changed,jsonHeaders);
+        if(identity==kMessage)CHECK(parsed && parsed.value().characterId==identity);
+        else CHECK(!parsed);
+    }
     for (const std::string value : {"true", "false", "0", "null", "\"false\""}) {
         auto changed=sessionBody;changed.insert(changed.find("\"auto_greeting\""),"\"ai_enabled\":"+value+",");
         auto parsed=lorkhan::parseSessionAcceptedResponse(changed,jsonHeaders);
@@ -1082,6 +1089,36 @@ void testRecordProvenance()
     record.observe("Final.esp"); CHECK(!record.complete && record.winningFile == "Final.esp");
 }
 
+void testSavedCharacterIdentity()
+{
+    unsigned sequence=50;
+    auto generate=[&]{return uuidFor(sequence++);};
+    lorkhan::CharacterSessionIdentity first;
+    first.prepare(true,"","","",kPlaythrough,generate);
+    const auto firstCharacter=first.character,firstPlaythrough=first.playthrough;
+    CHECK(first.selected() && first.binding=="new" && first.playthrough!=kPlaythrough);
+    lorkhan::CharacterSessionIdentity second;
+    second.prepare(true,"","","",kPlaythrough,generate);
+    CHECK(second.character!=firstCharacter && second.playthrough!=firstPlaythrough);
+    first.clear();first.prepare(false,firstCharacter,firstPlaythrough,"new",kPlaythrough,generate);
+    CHECK(first.selected() && first.character==firstCharacter && first.playthrough==firstPlaythrough);
+    first.clear();first.prepare(false,"",kPlaythrough,"",kPlaythrough,generate);
+    CHECK(!first.selected() && first.legacyPlaythrough==kPlaythrough);
+    const auto pendingCharacter=first.character;
+    first.clear();first.prepare(false,pendingCharacter,kPlaythrough,"",kPlaythrough,generate);
+    CHECK(!first.selected() && first.character==pendingCharacter);
+    try{first.choose(second.character,"existing",generate);CHECK(false);}catch(const std::invalid_argument&){}
+    first.choose(pendingCharacter,"existing",generate);const auto allocated=sequence;
+    first.choose(pendingCharacter,"existing",generate);
+    CHECK(first.playthrough==kPlaythrough && first.binding=="existing" && sequence==allocated);
+    try{first.choose(pendingCharacter,"new",generate);CHECK(false);}catch(const std::invalid_argument&){}
+    first.clear();first.prepare(false,"","","",kPlaythrough,generate);first.choose(first.character,"new",generate);
+    CHECK(first.selected() && first.playthrough!=kPlaythrough);
+    first.clear();
+    try{first.prepare(false,"bad",kPlaythrough,"existing",kPlaythrough,generate);CHECK(false);}catch(const std::invalid_argument&){}
+    CHECK(!first.prepared);
+}
+
 void testPlaybackSettings()
 {
     lorkhan::PlaybackSettings settings;
@@ -1140,7 +1177,7 @@ void testConcurrency()
 
 int main()
 {
-    testPlaybackSettings(); testRecordProvenance(); testUtf8(); testUrls(); testHeaders(); testJson(); testProtocolResponses(); testAcceptedProtocolResponses();
+    testSavedCharacterIdentity(); testPlaybackSettings(); testRecordProvenance(); testUtf8(); testUrls(); testHeaders(); testJson(); testProtocolResponses(); testAcceptedProtocolResponses();
     testProtocolEventResponses(); testQueue(); testLifecycleAndCancellation();
     testEvents(); testActions(); testPairingToken(); testMedia(); testBridgeDialogueDeliveryValidation();
     testBridge(); testConcurrency(); testVoiceCapturePrimitives();

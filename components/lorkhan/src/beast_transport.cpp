@@ -388,6 +388,12 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
                 + ",\"created_at\":" + escapeJson(init->createdAt)
                 + ",\"runtime\":" + runtimeJson(init->runtime)
                 + ",\"content_fingerprint\":" + escapeJson(init->contentFingerprint);
+            if(init->characterId.has_value()!=init->characterBinding.has_value()
+                ||(init->characterId&&(!isCanonicalUuid(*init->characterId)
+                    ||(*init->characterBinding!="new"&&*init->characterBinding!="existing"))))
+                return Result<WireRequest>::failure(makeError(ErrorCode::invalid_argument,"invalid saved character binding"));
+            if(init->characterId)wire.body+=",\"character_id\":"+escapeJson(*init->characterId)
+                +",\"character_binding\":"+escapeJson(*init->characterBinding);
             if (init->loadedSave) {
                 wire.body += ",\"loaded_save\":";
                 if (init->loadedCalendar) {

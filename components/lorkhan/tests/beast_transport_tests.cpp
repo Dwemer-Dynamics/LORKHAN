@@ -368,8 +368,9 @@ void testDiaryBookWire()
 
 void testSessionTurnAndCorrelation()
 {
-    for (int loaded = 0; loaded < 3; ++loaded) {
-        OneShotServer server([loaded](const CapturedRequest& request, tcp::socket& socket) {
+    std::string retryBody;
+    for (int loaded = 0; loaded < 4; ++loaded) {
+        OneShotServer server([loaded,&retryBody](const CapturedRequest& request, tcp::socket& socket) {
             CHECK(request.method == http::verb::post);
             CHECK(request.target == std::string(kBasePath) + "/sessions");
             CHECK(request.idempotency == kMessage);
@@ -377,7 +378,12 @@ void testSessionTurnAndCorrelation()
             CHECK(request.body.find("\"schema\":\"lorkhan.session.init.v1\"") != std::string::npos);
             CHECK(request.body.find("\"created_at\":\"2026-07-18T20:00:00Z\"") != std::string::npos);
             if (loaded == 0) CHECK(request.body.find("loaded_save") == std::string::npos);
+            if(loaded==0)CHECK(request.body.find("character_id")==std::string::npos);
+            else CHECK(request.body.find("\"character_id\":\"01900000-0000-7000-8000-000000000055\"")!=std::string::npos
+                &&request.body.find("\"character_binding\":\"existing\"")!=std::string::npos);
             if (loaded == 1) CHECK(request.body.find("\"loaded_save\":null") != std::string::npos);
+            if(loaded==1)retryBody=request.body;
+            if(loaded==3)CHECK(request.body==retryBody);
             if (loaded == 2) {
                 CHECK(request.body.find("\"loaded_save\":{\"year\":427,\"month\":7,\"day\":16,\"hour\":9.500000}") != std::string::npos);
                 std::this_thread::sleep_for(100ms);
@@ -393,6 +399,8 @@ void testSessionTurnAndCorrelation()
         auto request = init();
         auto& payload = std::get<lorkhan::InitRequest>(request.payload);
         payload.loadedSave = loaded != 0;
+        if(loaded==3){request.id=lorkhan::RequestId("01900000-0000-7000-8000-000000000077");payload.ids.request=request.id;}
+        if(loaded!=0){payload.characterId="01900000-0000-7000-8000-000000000055";payload.characterBinding="existing";}
         if (loaded == 2) payload.loadedCalendar = lorkhan::LoadedSaveCalendar{427, 7, 16, 9.5};
         auto result = transport.execute(request, {});
         CHECK(result && result.value().session == lorkhan::SessionId(kSession));

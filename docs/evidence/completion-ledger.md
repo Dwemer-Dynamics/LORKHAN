@@ -108,3 +108,23 @@ checklist remains deliberately unclaimed.
   structural validator. PHP/Lua syntax and client provenance/source-tree audits pass.
 - No engine code changed or rebuild was required. In-game menu interaction, live provider audio,
   and game rendering remain unverified; no game was launched.
+
+## Saved character identity foundation (2026-09-16) — WINDOWS BUILD PROVEN
+
+- Save schema 3 retains a character UUID independently of installation configuration. Native
+  initialization waits for the loaded save or an explicit legacy-data choice. Same-name characters
+  receive different IDs; names are never identity keys.
+- A choice remains provisional until session acceptance. Rejection reopens the choice without
+  overwriting the original save data. Explicit adoption of an earlier untagged save accepts the
+  server's canonical identity. Generation fences reject stale choices and acceptance callbacks.
+- Handshake retries retain the same wire body/idempotency key. Loaded-save calendar metadata
+  survives a rejected choice so subsequent adoption still checks for a rewind.
+- OpenMW Windows Release and both native test targets built successfully. Native bridge and Beast
+  loopback tests pass; 99 Lua tests pass. The mirrored 135 protocol files, patch verification,
+  provenance and source-tree audits pass.
+- Built engine SHA256: `596FED58A126D4746CDB2E8EEC92BEA9E0BD472EADA9C02E0F28090EDE056626`.
+- The optional Python structural fallback still has 10 failures also reproduced on the starting
+  HEAD; it is not reported as passing. Executable Lua tests are the verified script test lane.
+- Development checkpoint only: not deployed or merged to main. NPC/Player ownership remains the
+  rollout gate; full new/switch UI, portable transfer and retention remain later stages. Shared
+  Narrator configuration and Core Profiles must remain global. No in-game proof or game launch.

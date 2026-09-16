@@ -43,7 +43,10 @@
         "unauthorized",
         "unknown_action",
         "unknown_session",
-        "unknown_turn"
+        "unknown_turn",
+        "character_binding_required",
+        "character_binding_conflict",
+        "playthrough_isolation_required"
       ],
       "type": "string"
     },

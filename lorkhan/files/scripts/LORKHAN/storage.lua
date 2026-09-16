@@ -1,8 +1,9 @@
 local constants = require('scripts.LORKHAN.constants')
 local util = require('scripts.LORKHAN.util')
+local protocol = require('scripts.LORKHAN.protocol')
 
 local M = {}
-local allowed = {schemaVersion=true, profileId=true, playthroughId=true, generationSeed=true,
+local allowed = {schemaVersion=true, profileId=true, playthroughId=true, characterId=true, characterBinding=true, generationSeed=true,
     preferences=true, conversationUi=true, actorStateHints=true}
 
 local function sanitized(state)
@@ -10,11 +11,18 @@ local function sanitized(state)
         schemaVersion = constants.SAVE_SCHEMA_VERSION,
         profileId = state.profileId,
         playthroughId = state.playthroughId,
+        characterId = state.characterId,
+        characterBinding = state.characterBinding,
         generationSeed = state.generationSeed or 0,
         preferences = util.copy(state.preferences or {}),
         conversationUi = util.copy(state.conversationUi or {}),
         actorStateHints = util.copy(state.actorStateHints or {}),
     }
+    for _,key in ipairs({'characterId','playthroughId','profileId'}) do
+        if out[key]~=nil and not protocol.isUuid(out[key]) then return nil,'invalid_saved_identity' end
+    end
+    if out.characterBinding~=nil and (not out.characterId or not out.playthroughId
+        or (out.characterBinding~='new' and out.characterBinding~='existing')) then return nil,'invalid_saved_identity' end
     if not util.isPrimitiveTree(out) then return nil, 'save_contains_non_primitive' end
     return out
 end

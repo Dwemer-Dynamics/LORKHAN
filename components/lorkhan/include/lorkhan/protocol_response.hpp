@@ -93,6 +93,7 @@ struct SessionAcceptedResponse {
     std::string configRevision;
     ClientSettings clientSettings;
     std::uint64_t eventCursor{};
+    std::optional<std::string> characterId;
 };
 
 struct ResponseCorrelation {

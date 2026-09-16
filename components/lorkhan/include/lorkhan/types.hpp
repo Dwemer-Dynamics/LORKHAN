@@ -129,6 +129,8 @@ struct InitRequest {
     std::string createdAt;
     bool loadedSave = false;
     std::optional<LoadedSaveCalendar> loadedCalendar = std::nullopt;
+    std::optional<std::string> characterId = std::nullopt;
+    std::optional<std::string> characterBinding = std::nullopt;
 };
 struct TurnRequest {
     EnvelopeIds ids;

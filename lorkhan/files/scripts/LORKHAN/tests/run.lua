@@ -345,7 +345,7 @@ test('future save disables and cannot overwrite',function()
 end)
 test('old save migrates and drops inflight',function()
  local loaded,meta=storage.load({schemaVersion=1,generationSeed=2,preferences={},conversationUi={},actorStateHints={}},5)
- truthy(meta.migrated) eq(loaded.schemaVersion,2) eq(loaded.generationSeed,6) eq(loaded.inFlight,nil)
+ truthy(meta.migrated) eq(loaded.schemaVersion,3) eq(loaded.generationSeed,6) eq(loaded.inFlight,nil)
 end)
 test('context applies all bounded constants',function()
  local over=context.snapshot({world={description=string.rep('x',context.limits.MAX_CONTEXT_BYTES)},targetState={inventory={items={{record_id='dagger',count=1}},total=1,truncated=false}}})
@@ -2301,6 +2301,39 @@ test('GLOBAL Wait Here accepts only the selected living nearby NPC and forwards 
  end)
  for _,name in ipairs(names)do package.loaded[name]=saved[name]end
  assert(ok,err)
+end)
+
+test('saved character selection waits for explicit choice and rejects stale generations',function()
+ local b=fake.bridge() local emitted={} local requests={}
+ local char='00000000-0000-4000-8000-000000000081'
+ local legacy='00000000-0000-4000-8000-000000000082'
+ local fresh='00000000-0000-4000-8000-000000000083'
+ b.configureCharacter=function(args)
+  requests[#requests+1]=args
+  if args.mode=='load' and args.character_binding then return {character_id=args.character_id,playthrough_id=args.playthrough_id,character_binding=args.character_binding,generation=9,needs_choice=false} end
+  if args.mode=='load' then return {character_id=args.character_id or char,legacy_playthrough_id=args.playthrough_id or legacy,generation=9,needs_choice=true} end
+  return {character_id=char,playthrough_id=args.mode=='existing' and legacy or fresh,character_binding=args.mode=='existing' and 'existing' or 'new',generation=9,needs_choice=false}
+ end
+ local s=orchestrator.new(b,function(name,payload)emitted[#emitted+1]={name=name,payload=payload}end)
+ orchestrator.load(s,nil);eq(s.sessionId,nil);eq(s.characterId,char);truthy(s.characterChoice)
+ eq(orchestrator.save(s),nil)
+ local before=#requests
+ local ok,reason=orchestrator.selectCharacter(s,{character_id=char,generation=8,choice='existing'})
+ eq(ok,nil);eq(reason,'stale_character_selection');eq(#requests,before)
+ truthy(orchestrator.selectCharacter(s,{character_id=char,generation=9,choice='existing'}))
+ eq(s.playthroughId,legacy);eq(s.characterBinding,nil);truthy(s.characterChoice.waiting);eq(orchestrator.save(s),nil)
+ orchestrator.refreshCharacterIdentity(s,{generation=8,ready=true,character_id=fresh})
+ eq(s.characterId,char)
+ orchestrator.refreshCharacterIdentity(s,{generation=9,needs_choice=true,character_id=char,legacy_playthrough_id=legacy,error='conflict'})
+ truthy(s.characterChoice);eq(s.characterChoice.waiting,nil);eq(orchestrator.save(s),nil)
+ truthy(orchestrator.selectCharacter(s,{character_id=char,generation=9,choice='existing'}))
+ orchestrator.refreshCharacterIdentity(s,{generation=9,ready=true,character_id=fresh,playthrough_id=legacy,character_binding='existing'})
+ eq(s.characterId,fresh);eq(s.characterBinding,'existing');eq(s.characterChoice,nil)
+ local saved=orchestrator.save(s);eq(saved.schemaVersion,3)
+ orchestrator.load(s,saved);eq(s.characterId,fresh);eq(s.playthroughId,legacy);truthy(s.characterChoice.waiting)
+ eq(orchestrator.save(s).characterId,fresh)
+ orchestrator.lifecycle(s,'new_game');eq(s.playthroughId,fresh);eq(s.characterBinding,nil)
+ local _,meta=storage.load({schemaVersion=3,characterId='bad'},1);truthy(meta.disable)
 end)
 
 io.write(string.format('%d tests, %d failures\n',tests,failures))

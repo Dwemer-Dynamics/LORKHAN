@@ -1104,7 +1104,25 @@ render=function()
         return
     end
     local transcript={}
-    if state.ui.panel=='conversation' then
+    if state.ui.characterChoice then
+        local pending=state.ui.characterChoice
+        transcript={
+            {type=openmwUi.TYPE.Text,props={text='Choose playthrough',textSize=24}},
+            {type=openmwUi.TYPE.Text,props={text='This save needs one-time linking. Use existing Lorkhan data to retain your current history, or create a new playthrough. Nothing changes until you choose.',textSize=16}},
+        }
+        if pending.waiting or pending.error then transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=pending.waiting and 'Linking playthrough...' or tostring(pending.error),textSize=16}} end
+        for _,option in ipairs(pending.waiting and {} or {{label='Use existing Lorkhan data',choice='existing'},{label='New playthrough',choice='new'}}) do
+            local choice=option.choice
+            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=option.label,textSize=20,textColor=util.color.rgb(188/255,157/255,90/255)},
+                events={mouseClick=adapter.callback(function()
+                    send('LORKHAN_PLAYTHROUGH_SELECT',{choice=choice,character_id=pending.character_id,generation=pending.generation})
+                    state.ui.status='Linking playthrough...' render()
+                end)}}
+        end
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Close (choose later with Text chat and interact)',textSize=16},events={mouseClick=adapter.callback(function()
+            state.ui.visible=false leaveUiMode() render()
+        end)}}
+    elseif state.ui.panel=='conversation' then
         uiState.refreshTurnPreview(state.ui)
         transcript=chatbox.build({ui=openmwUi,util=util,whiteTexture=whiteTexture,text=state.ui.input,
             target=displayName(state.ui.target),
@@ -2066,6 +2084,21 @@ return {
         end,
     },
     eventHandlers={
+        LORKHAN_PLAYTHROUGH_CHOICE=function(event)
+            if type(event)~='table' or type(event.character_id)~='string' or type(event.generation)~='number' then return end
+            if native.generation and native.generation()~=event.generation then return end
+            state.ui.characterChoice=event state.ui.visible=true enterUiMode() render()
+        end,
+        LORKHAN_PLAYTHROUGH_CONNECTING=function(event)
+            if type(event)~='table' or (native.generation and native.generation()~=event.generation) then return end
+            if state.ui.characterChoice then state.ui.characterChoice=event render() end
+        end,
+        LORKHAN_PLAYTHROUGH_SELECTED=function(event)
+            local pending=state.ui.characterChoice
+            if pending and event.generation==pending.generation then
+                state.ui.characterChoice=nil state.ui.visible=false leaveUiMode() render()
+            end
+        end,
         UiModeChanged=function(event)
             if type(event)~='table' then return end
             if (event.oldMode=='Book' or event.oldMode=='Scroll') and event.newMode~='Book' and event.newMode~='Scroll' then stopBookSpeech() end
