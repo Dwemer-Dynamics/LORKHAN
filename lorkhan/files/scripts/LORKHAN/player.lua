@@ -1190,12 +1190,6 @@ render=function()
         local newest=#state.ui.transcript-(state.ui.historyPage-1)*pageSize
         for index=newest,math.max(1,newest-pageSize+1),-1 do
             local line=state.ui.transcript[index]
-            local order=line.sequence and ('#'..tostring(line.sequence)) or ('local '..tostring(index))
-            local timestamp=tostring(line.createdAt or line.terminalCreatedAt or 'time pending')
-            local request=line.requestId and line.requestId:sub(1,8) or 'pending'
-            local metadata=order..'  |  '..timestamp..'  |  '..tostring(line.status or 'unknown')..'  |  request '..request
-            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=metadata,textSize=13,
-                textColor=util.color.rgb(0.72,0.68,0.62)}}
             transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=displayName(line.speaker)..': '..line.text,
                 textSize=16,wordWrap=true,textColor=util.color.rgb(0.92,0.82,0.68)}}
         end
