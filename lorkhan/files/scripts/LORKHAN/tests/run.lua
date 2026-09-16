@@ -2081,5 +2081,30 @@ test('diary phase deadlines and exceptions cancel native callbacks without inven
  end
 end)
 
+test('compact settings binding preserves keyboard mouse controller and Escape behavior',function()
+ local data={saved={device='keyboard',button=6,type='trigger',key='LORKHAN_Talk'}}
+ local render,refreshes
+ refreshes=0
+ package.loaded['openmw.input']=nil;package.loaded['openmw.storage']=nil
+ package.loaded['openmw.async']=nil;package.loaded['openmw.interfaces']=nil
+ package.preload['openmw.input']=function()return {KEY={Escape=27},CONTROLLER_BUTTON={A=0},getKeyName=function(k)return 'Key '..k end}end
+ package.preload['openmw.storage']=function()return {playerSection=function(name)
+  eq(name,'OMWInputBindings');return {get=function(_,k)return data[k]end,set=function(_,k,v)data[k]=v end}
+ end}end
+ package.preload['openmw.async']=function()return {callback=function(_,fn)return fn end}end
+ package.preload['openmw.interfaces']=function()return {Settings={registerRenderer=function(name,fn)
+  eq(name,'lorkhanBinding');render=fn
+ end},MWUI={templates={textNormal={}}}}end
+ local entry=require('scripts.LORKHAN.settings_menu')
+ local function control()return render('saved',function(id)eq(id,'saved');refreshes=refreshes+1 end,{type='trigger',key='LORKHAN_Talk'})end
+ eq(control().props.text,'Key 6');eq(control().content,nil)
+ control().events.mouseClick();eq(data.saved,nil);eq(control().props.text,'Press a button...')
+ entry.engineHandlers.onKeyPress({code=7});eq(data.saved.device,'keyboard');eq(data.saved.button,7)
+ control().events.mouseClick();entry.engineHandlers.onMouseButtonPress(3);eq(control().props.text,'Mouse Right')
+ control().events.mouseClick();entry.engineHandlers.onControllerButtonPress(0);eq(data.saved.device,'controller');eq(control().props.text,'A')
+ control().events.mouseClick();entry.engineHandlers.onKeyPress({code=27});eq(data.saved.device,nil);eq(control().props.text,'None')
+ eq(data.saved.type,'trigger');eq(data.saved.key,'LORKHAN_Talk');eq(refreshes,8)
+end)
+
 io.write(string.format('%d tests, %d failures\n',tests,failures))
 if failures>0 then os.exit(1) end

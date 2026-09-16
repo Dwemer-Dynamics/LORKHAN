@@ -508,6 +508,20 @@
       "copyright_notice": "OpenMW contributors and LORKHAN contributors",
       "transformation": "Minimal exact-pin integration adds the context-gated LORKHAN typed package, engine-expanded dialogue text, verified-media playback, bounded record provenance, typed inventory/service/ordinary animated spell actions, and actual pickup/cast/resurrection observations. Listed patch artifacts contain the corresponding OpenMW source context and LORKHAN changes; they are modified upstream work, not wholly original files. No URLs, tokens, host paths, filesystems, or generic HTTP are exposed to Lua.",
       "reviewer": "LORKHAN maintainers"
+    },
+    {
+      "id": "openmw-compact-binding-renderer",
+      "classification": "modified",
+      "target_paths": [
+        "lorkhan/files/scripts/LORKHAN/settings_menu.lua"
+      ],
+      "source_repository": "https://gitlab.com/OpenMW/openmw.git",
+      "source_commit": "f4bec41444214a7903bebd178389ca22ca13f646",
+      "source_path": "files/data/scripts/omw/input/settings.lua",
+      "license": "GPL-3.0-only",
+      "copyright_notice": "OpenMW contributors",
+      "transformation": "Compact MENU binding recorder using the existing OMWInputBindings store and input events; duplicate labels and descriptions omitted.",
+      "reviewer": "LORKHAN maintainers"
     }
   ]
 }

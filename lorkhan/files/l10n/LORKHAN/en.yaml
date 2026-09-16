@@ -1,110 +1,110 @@
 SettingsPage_name: LORKHAN
-SettingsPage_description: Configure conversation controls, automatic NPC activation, voice, AI actions, and display options.
+SettingsPage_description: Conversation, voice and NPC settings.
 HotkeysGroup_name: Hotkeys
-HotkeysGroup_description: Select a binding, clear it, then press a keyboard, mouse, or controller button to assign it.
+HotkeysGroup_description: Click a binding, then press a button. Escape clears it.
 ControlsGroup_name: Hotkeys
-ControlsGroup_description: Focused gameplay controls. Click a binding to clear it, then press a keyboard, mouse, or controller button to assign it.
+ControlsGroup_description: Click a binding, then press a button. Escape clears it.
 Talk_name: Interact
-Talk_description: Target the actor under the crosshair and open the Interact menu; type and press Enter to send, or select dialogue mode, LLM model, dynamic profiles, context history, status HUD, or diagnostics.
+Talk_description: Open chat and conversation options for the aimed NPC.
 StopDialogue_name: Stop Dialogue
-StopDialogue_description: Cancel the active response and speech without disabling LORKHAN or stopping unrelated NPC behavior.
-Halt_name: Halt All Activity
-Halt_description: Recoverably cancel current dialogue, generated speech, microphone capture, and LORKHAN-owned actor actions.
+StopDialogue_description: Stop the current response and speech.
+Halt_name: Stop All Activity
+Halt_description: Stop dialogue, recording and AI actions.
 PushToTalk_name: Voice Chat
-PushToTalk_description: Hold to record your microphone, transcribe it through the LorkhanServer, and send the transcript to the selected NPC group.
+PushToTalk_description: Hold to speak to the selected NPCs.
 OpenMic_name: Open Microphone
-OpenMic_description: Opt in to voice-activated recording for the selected NPC group; toggle again to stop immediately.
-OpenMicMute_name: Mute Open Microphone
-OpenMicMute_description: Temporarily pause or resume voice-activated recording without turning open microphone mode off.
-ManualActivate_name: Activate AI Agents
-ManualActivate_description: Add or remove the aimed NPC as a pinned agent, or pin a bounded nearby group when no NPC is aimed at.
+OpenMic_description: Toggle voice-activated chat for the selected NPCs.
+OpenMicMute_name: Mute Open Mic
+OpenMicMute_description: Pause or resume open-mic recording.
+ManualActivate_name: Activate NPCs
+ManualActivate_description: Toggle the aimed NPC, or activate nearby NPCs.
 ActionsMenu_name: Open LORKHAN actions menu
-ActionsMenu_description: Open actor-scoped roleplay and safety actions for the current NPC.
-ActorTools_name: Targeted NPC Tools
-ActorTools_description: Open the compact menu for the aimed NPC, including activation, profiles, conversation controls, and actor actions.
+ActionsMenu_description: Open actions for the current NPC.
+ActorTools_name: NPC Tools
+ActorTools_description: Open actions and profile options for the aimed NPC.
 MasterMenu_name: Open LORKHAN master menu
-MasterMenu_description: Legacy binding retained for compatibility; opens Targeted NPC Tools in the focused interface.
+MasterMenu_description: Open NPC Tools.
 ToggleMode_name: Cycle LORKHAN dialogue mode
-ToggleMode_description: Open the Standard, Whisper, Close, and Shout conversation routing selector.
+ToggleMode_description: Choose how loudly you speak.
 ModeMenu_name: Toggle Modes
-ModeMenu_description: Legacy binding retained for compatibility; the mode selector is in the Interact menu.
+ModeMenu_description: Choose a dialogue mode.
 ModelMenu_name: Toggle LLM Model
-ModelMenu_description: Legacy binding retained for compatibility; the server-owned LLM model selector is in the Interact menu.
+ModelMenu_description: Choose an AI model.
 ProfileMenu_name: Dynamic Profile Menu
-ProfileMenu_description: Legacy binding retained for compatibility; targeted NPC, nearby AI NPC, and narrator profile management are in the Interact menu.
+ProfileMenu_description: Manage NPC and Narrator profiles.
 StatusHud_name: Status HUD
-StatusHud_description: Legacy binding retained for compatibility; the compact target, mode, voice, and server status display is toggled from the Interact menu.
+StatusHud_description: Toggle the status display.
 History_name: Context History
-History_description: Legacy binding retained for compatibility; the recent LORKHAN conversation history panel is in the Interact menu.
+History_description: Show recent conversations.
 Diagnostics_name: Diagnostics
-Diagnostics_description: Legacy binding retained for compatibility; the safe in-game LORKHAN status and diagnostics panel is in the Interact menu.
+Diagnostics_description: Show connection and voice status.
 AutoActivateGroup_name: Auto Activate
-AutoActivateGroup_description: Automatically manage nearby eligible NPCs using bounded active-cell scans.
+AutoActivateGroup_description: Manage nearby NPCs automatically.
 AutoActivateEnabled_name: Enable Auto Activate
-AutoActivateEnabled_description: Automatically add eligible nearby NPCs as LORKHAN agents.
-InteriorDistance_name: Interior Auto Activate Distance (units)
-InteriorDistance_description: Maximum automatic activation distance inside buildings and interior cells, measured in OpenMW units.
-ExteriorDistance_name: Exterior Auto Activate Distance (units)
-ExteriorDistance_description: Maximum automatic activation distance in exterior cells, measured in OpenMW units.
-InteriorHearingDistance_name: Interior Spatial Hearing Distance (units)
-InteriorHearingDistance_description: Nearby managed actors inside this distance may join spatial conversation in interior cells. Measured in OpenMW units.
-ExteriorHearingDistance_name: Exterior Spatial Hearing Distance (units)
-ExteriorHearingDistance_description: Nearby managed actors inside this distance may join spatial conversation in exterior cells. Measured in OpenMW units.
+AutoActivateEnabled_description: Activate nearby NPCs automatically.
+InteriorDistance_name: Interior Activation Range
+InteriorDistance_description: Activation distance indoors, in game units.
+ExteriorDistance_name: Exterior Activation Range
+ExteriorDistance_description: Activation distance outdoors, in game units.
+InteriorHearingDistance_name: Interior Hearing Range
+InteriorHearingDistance_description: Conversation range indoors, in game units.
+ExteriorHearingDistance_name: Exterior Hearing Range
+ExteriorHearingDistance_description: Conversation range outdoors, in game units.
 AddHostile_name: Include Hostile NPCs
-AddHostile_description: Allow hostile NPCs to be automatically managed by LORKHAN.
+AddHostile_description: Include hostile NPCs in automatic activation.
 AddCreatures_name: Include Creatures
-AddCreatures_description: Allow creatures as well as NPCs to be automatically managed by LORKHAN.
+AddCreatures_description: Include creatures in automatic activation.
 BehaviorGroup_name: Conversation & Microphone
-BehaviorGroup_description: Configure combat interruption, microphone detection, and the recording device.
+BehaviorGroup_description: Combat interruption and microphone settings.
 ActionsEnabled_name: Enable AI actions
-ActionsEnabled_description: Allow negotiated LORKHAN action intents to execute in OpenMW.
+ActionsEnabled_description: Allow NPCs to perform AI actions.
 AutoGreeting_name: Enable automatic greetings
-AutoGreeting_description: Allow eligible managed NPCs to greet the player subject to distance and cooldown rules.
+AutoGreeting_description: Let nearby NPCs greet you.
 Rechat_name: Enable conversation continuation
-Rechat_description: Allow a recent conversation to continue after a bounded quiet period.
+Rechat_description: Let NPCs continue recent conversations.
 RechatDelay_name: Rechat quiet time
-RechatDelay_description: Seconds after completed dialogue before the selected NPC may continue the conversation.
+RechatDelay_description: Seconds before an NPC may speak again.
 RechatMaxDepth_name: Maximum rechat turns
-RechatMaxDepth_description: Maximum consecutive autonomous continuation turns before LORKHAN waits for new player input.
+RechatMaxDepth_description: Maximum replies before waiting for your input.
 Boredom_name: Enable idle conversation
-Boredom_description: Allow occasional context-aware conversation when no active turn is running.
+Boredom_description: Let NPCs start conversations while idle.
 BoredomDelay_name: Idle conversation quiet time
-BoredomDelay_description: Seconds without active dialogue before a managed NPC may start an idle conversation.
+BoredomDelay_description: Seconds of silence before idle conversation.
 AvoidAutonomyInMenus_name: Pause autonomous dialogue in menus
-AvoidAutonomyInMenus_description: Reset the idle timer while an OpenMW menu or interface is open.
+AvoidAutonomyInMenus_description: Pause idle conversations while menus are open.
 AvoidAutonomyInCombat_name: Pause autonomous dialogue in combat
-AvoidAutonomyInCombat_description: Reset the idle timer while a managed nearby actor is fighting the player.
+AvoidAutonomyInCombat_description: Pause idle conversations during combat.
 AvoidAutonomyWhenSneaking_name: Pause autonomous dialogue while sneaking
-AvoidAutonomyWhenSneaking_description: Reset the idle timer while the player is sneaking.
-CancelDialogueOnCombat_name: Stop Dialogue When Combat Starts
-CancelDialogueOnCombat_description: Cancel active LORKHAN dialogue and voice capture when a managed actor begins fighting the player.
+AvoidAutonomyWhenSneaking_description: Pause idle conversations while sneaking.
+CancelDialogueOnCombat_name: Stop Dialogue in Combat
+CancelDialogueOnCombat_description: Stop dialogue and recording when an NPC attacks you.
 CombatBarks_name: Enable combat barks
-CombatBarks_description: Allow managed hostile actors to make bounded contextual combat remarks when no other LORKHAN work is active.
+CombatBarks_description: Allow short NPC remarks during combat.
 CombatBarkPeriod_name: Combat bark interval
-CombatBarkPeriod_description: Minimum seconds between LORKHAN combat remarks while a managed actor remains hostile to the player.
-OpenMicSensitivity_name: Open Microphone Sensitivity
-OpenMicSensitivity_description: RMS level required to detect speech. Higher values require louder speech.
-OpenMicEndDelay_name: Open Microphone End Delay (ms)
-OpenMicEndDelay_description: Milliseconds of silence after speech before LORKHAN submits the recording.
-RecordingDevice_name: Recording Device ID
-RecordingDevice_description: WinMM recording device used by LORKHAN. Use -1 for the Windows default; Diagnostics lists every available ID and name. Restart capture after changing it.
-CurrentRecordingDevice_name: Current Recording Device
-CurrentRecordingDevice_description: Read-only name resolved for the configured recording device ID when LORKHAN loaded.
+CombatBarkPeriod_description: Minimum seconds between combat remarks.
+OpenMicSensitivity_name: Open Mic Sensitivity
+OpenMicSensitivity_description: Higher values require louder speech.
+OpenMicEndDelay_name: Open Mic Silence (ms)
+OpenMicEndDelay_description: Silence before sending a recording, in milliseconds.
+RecordingDevice_name: Microphone ID
+RecordingDevice_description: -1 uses Windows default. See Diagnostics for IDs. Restart recording to apply.
+CurrentRecordingDevice_name: Current Microphone
+CurrentRecordingDevice_description: Microphone selected when LORKHAN loaded.
 SoundGroup_name: Sound
-SoundGroup_description: Configure LORKHAN-generated speech playback without changing other OpenMW audio.
+SoundGroup_description: AI speech and narration.
 AgentsGroup_name: AI Agents
-AgentsGroup_description: Configure capabilities available to managed LORKHAN actors.
+AgentsGroup_description: NPC behavior and actions.
 ToolsGroup_name: Display
-ToolsGroup_description: Configure the optional status display and conversation history size.
+ToolsGroup_description: Status display and chat history.
 PresentationGroup_name: Tools / Advanced
-PresentationGroup_description: Optional status and retained transcript controls.
+PresentationGroup_description: Status display and chat history.
 ShowStatusHud_name: Show Status HUD
-ShowStatusHud_description: Keep a compact LORKHAN status strip visible. Off by default; important updates still appear briefly.
-TranscriptRows_name: Conversation History Rows
-TranscriptRows_description: Maximum recent dialogue rows retained in the in-game conversation panel.
-TtsVolumeBoost_name: AI Voice Volume Boost (x)
-TtsVolumeBoost_description: Multiply only LORKHAN-generated speech volume. 1x uses normal OpenMW voice volume; 4x is four times louder.
-MenuDialogueTts_name: Menu Dialogue TTS
+ShowStatusHud_description: Show conversation and connection status.
+TranscriptRows_name: Chat History Rows
+TranscriptRows_description: Number of recent lines kept in chat.
+TtsVolumeBoost_name: AI Voice Volume (x)
+TtsVolumeBoost_description: AI speech volume multiplier. 1x is normal.
+MenuDialogueTts_name: Read Dialogue Aloud
 BookReadAloud_name: Read Books Aloud
-BookReadAloud_description: Read opened books and scrolls with the Narrator voice. Streams short sentences and stops immediately when the book closes. Off by default.
-MenuDialogueTts_description: Speak regular Morrowind dialogue and menu responses aloud. Off leaves vanilla topic text silent.
+BookReadAloud_description: Read books with the Narrator voice. Close the book to stop.
+MenuDialogueTts_description: Speak vanilla dialogue and menu responses.
