@@ -268,7 +268,7 @@ test('target settings preserve local presentation actions and target preferences
  eq(settings.behavior.rechatStrictTargeting,false);eq(settings.behavior.endConversationCooldownSeconds,0)
  eq(settings.behavior.autoGreeting,true);eq(settings.behavior.boredom,true)
  eq(settings.behavior.boredomDelaySeconds,180);eq(settings.behavior.combatBarks,true)
- eq(settings.behavior.combatBarkPeriodSeconds,20);eq(settings.behavior.rechat_allow_actions,nil)
+ eq(settings.behavior.combatBarkPeriodSeconds,30);eq(settings.behavior.rechat_allow_actions,nil)
  eq(settings.memory.recent_turn_limit,0);eq(settings.narrator.enabled,false)
  settings.behavior.combatBarksMode='Disabled';player.applyTargetSettings(settings,target);eq(settings.behavior.combatBarks,false)
  settings.behavior.combatBarksMode='Enabled';settings.behavior.combatBarkInterval=5
@@ -1441,8 +1441,8 @@ test('focused UI builders keep chat selectors tools and notifications independen
  eq(chat[4].props.text,'Press Enter or select Send')
  -- the moved controls sit between the send hint and Send, in one compact clickable list
  local MENU_FIRST=5
- eq(#chatbox.MENU,9);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
- local expected={'modes','mood','model','profiles','settings','waitHere','history','statusHud','diagnostics'}
+ eq(#chatbox.MENU,8);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
+ local expected={'modes','mood','model','profiles','waitHere','history','statusHud','diagnostics'}
  for index,entry in ipairs(chatbox.MENU) do
   eq(entry.key,expected[index])
   local row=chat[MENU_FIRST+index-1]
@@ -1456,7 +1456,7 @@ test('focused UI builders keep chat selectors tools and notifications independen
  local hudShown=chatbox.build({ui=ui,util=util,target='Fargoth',text='',shortcuts=uiState.SHORTCUTS,
   statusHudVisible=true,onTextChanged=function()end,onKeyPress=function()end,
   onSend=function()end,onClose=function()end})
- eq(hudShown[MENU_FIRST+7].props.text,'Status HUD: on')
+ eq(hudShown[MENU_FIRST+6].props.text,'Status HUD: on')
  eq(chatbox.statusHudLabel(true),'Status HUD: on');eq(chatbox.statusHudLabel(false),'Status HUD: off')
  eq(chatbox.autoChatLabel(true),'Auto Chat: on');eq(chatbox.autoChatLabel(false),'Auto Chat: off')
  -- the top-left HUD draws only while statusHudVisible is set, so no transient status leaks when it is off
@@ -1646,7 +1646,7 @@ package.preload['openmw.lorkhan']=function() return {
  eq(registered.groups[3].key,'SettingsLORKHANBehavior');eq(#registered.groups[3].settings,9)
  eq(setting(registered.groups[3],'allowCombatDialogue').default,true)
  eq(setting(registered.groups[3],'combatBarksMode').default,'UseProfile')
- eq(setting(registered.groups[3],'combatBarkInterval').default,0)
+ eq(setting(registered.groups[3],'combatBarkInterval').default,30)
  eq(setting(registered.groups[6],'connectionTimeoutSeconds').default,30)
  eq(setting(registered.groups[4],'audio_mode').default,'Normal3D')
  eq(setting(registered.groups[4],'pause_on_game_pause').default,false)

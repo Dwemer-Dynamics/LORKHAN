@@ -1758,7 +1758,7 @@ applySettings=function(session,controls)
         behavior={actionsEnabled=actionsEnabled,
             allowCombatDialogue=not behaviorSettings or behaviorSettings:get('allowCombatDialogue')~=false,
             combatBarksMode=behaviorSettings and behaviorSettings:get('combatBarksMode') or 'UseProfile',
-            combatBarkInterval=tonumber(behaviorSettings and behaviorSettings:get('combatBarkInterval')) or 0,
+            combatBarkInterval=tonumber(behaviorSettings and behaviorSettings:get('combatBarkInterval')) or 30,
             cancelDialogueOnCombat=behaviorSettings and behaviorSettings:get('cancelDialogueOnCombat')},
         presentation={showStatusHud=presentationSettings and presentationSettings:get('showStatusHud')==true,
             transcriptRows=tonumber(presentationSettings and presentationSettings:get('transcriptRows')) or 12,

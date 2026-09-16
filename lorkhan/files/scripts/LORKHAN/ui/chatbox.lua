@@ -40,7 +40,6 @@ local MENU={
     {key='mood',label='Mood',callback='onSelectMood'},
     {key='model',label='LLM model...',callback='onSelectModel'},
     {key='profiles',label='Dynamic profiles...',callback='onSelectProfiles'},
-    {key='settings',label='Settings...',callback='onSelectSettings'},
     {key='waitHere',label='Wait Here (90 seconds)',callback='onWaitHere'},
     {key='history',label='Context history...',callback='onSelectHistory'},
     {key='statusHud',label='Status HUD',callback='onToggleStatusHud'},
