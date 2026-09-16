@@ -200,7 +200,7 @@ test('player input policy parses only safe one-turn prefixes and validates moods
  parsed=playerInput.parse('!! everyone');eq(parsed.text,'everyone');eq(parsed.mode,'Shout')
  parsed=playerInput.parse('Normal text');eq(parsed.text,'Normal text');eq(parsed.mode,nil)
  local invalid,reason=playerInput.parse('|  ');eq(invalid,nil);eq(reason,'empty_input')
- parsed=playerInput.parse('** narrator');eq(parsed.text,'** narrator');eq(parsed.mode,nil)
+ parsed=playerInput.parse('** narrator');eq(parsed.text,'narrator');eq(parsed.autoChat,true)
  local mood; mood,reason=playerInput.validateMood({kind='angry'});eq(mood.kind,'angry');eq(reason,nil)
  mood=playerInput.validateMood({kind='custom',custom='  with quiet resolve  '});eq(mood.custom,'with quiet resolve')
  mood,reason=playerInput.validateMood({kind='custom',custom='two\nlines'});eq(mood,nil);eq(reason,'invalid_mood')
@@ -1327,7 +1327,7 @@ test('player mood and typed prefixes stay separate from the saved dialogue mode'
  local s=uiState.new()
  eq(s.mood,'None');eq(s.mode,'Standard');eq(uiState.moodSelection(s),nil);eq(uiState.effectiveMode(s),'Standard')
  eq(#uiState.MOODS,12);eq(uiState.MOODS[1],'None');eq(uiState.MOODS[#uiState.MOODS],'Custom')
- eq(#uiState.SHORTCUTS,3);eq(uiState.SHORTCUTS[1].prefix,'||')
+ eq(#uiState.SHORTCUTS,9);eq(uiState.SHORTCUTS[1].prefix,'%%')
  -- longest match wins and a prefix never rewrites the saved mode
  eq(uiState.refreshTurnPreview(s),false)
  s.input='|| stay close';truthy(uiState.refreshTurnPreview(s))
@@ -1364,7 +1364,7 @@ test('player mood and typed prefixes stay separate from the saved dialogue mode'
   if mood=='None' then eq(selection,nil) else truthy(kinds[selection.kind]) end
   for _,shortcut in ipairs(playerInput.SHORTCUTS) do
    local parsed=playerInput.parse(shortcut.prefix..' hello')
-   eq(uiState.shortcutPreview(shortcut.prefix..' hello'),parsed.mode)
+   eq(uiState.shortcutPreview(shortcut.prefix..' hello'),parsed.label or parsed.mode)
   end
  end
  truthy(uiState.setMood(s,'None'));eq(s.moodDirection,'');eq(uiState.moodSelection(s),nil)
@@ -1378,6 +1378,46 @@ test('player mood and typed prefixes stay separate from the saved dialogue mode'
  uiState.setPanel(s,'profile-menu','nowhere');eq(s.panelOrigin,'conversation')
  uiState.setPanel(s,'modes','actor-tools');eq(uiState.backRoute(s).panel,'actor-tools')
 end)
+test('unified chat modes reset legacy state and prefixes override only one turn',function()
+ local uiState=require('scripts.LORKHAN.ui.state');local input=require('scripts.LORKHAN.player_input')
+ local s=uiState.new()
+ for _,entry in ipairs(uiState.CHAT_MODES) do
+  truthy(uiState.selectChatMode(s,entry.key));eq(uiState.selectedChatMode(s).key,entry.key)
+  local selected=uiState.turnSelection(s,input.parse('ordinary text'))
+  eq(selected.hearing,entry.hearing or 'Standard');eq(selected.execution,entry.execution or 'standard')
+  eq(selected.autoChat,entry.autoChat==true)
+  for _,sample in ipairs({{'% quiet','Whisper','standard',false},{'%% close','Close','standard',false},
+   {'@ scene','Standard','narrator',false},{'> scene','Standard','director',false},
+   {'# scene','Standard','cheat',false},{'** hello','Standard','standard',true},
+   {'((rain begins))','Standard','injection_log',false},{'(rain begins)','Standard','injection_chat',false}}) do
+   local parsed=input.parse(sample[1]);local one=uiState.turnSelection(s,parsed)
+   eq(one.hearing,sample[2]);eq(one.execution,sample[3]);eq(one.autoChat,sample[4]);eq(uiState.selectedChatMode(s).key,entry.key)
+  end
+ end
+ for _,mode in ipairs({'injection_log','injection_chat'}) do
+  local b=fake.bridge();local state=orchestrator.new(b,nil,nil,function()return true end);orchestrator.configureSession(state,UUID.session)
+  orchestrator.activate(state,npc,{})
+  state.settings={autoActivate={enabled=true,hearingDistance=1000}}
+  truthy(orchestrator.manageCandidate(state,{identity=npc,distance=100,maxDistance=1000,dead=false,available=true},'auto'))
+  local args=b.nextTurnMetadata();args.text='(preserve these parentheses)';args.input_parsed=true
+  args.language='en-US';args.speaker=playerId;args.context={};args.capabilities={'dialogue.text'}
+  args.recent_action_results={};args.ui_source='lorkhan_text';args.execution_mode=mode;args.selectedTargetPresent=true
+  truthy(orchestrator.submitText(state,args));eq(b.submitted[1].payload.execution_mode,mode)
+  eq(b.submitted[1].payload.input.text,'(preserve these parentheses)');eq(b.submitted[1].payload.target.kind,'narrator')
+  eq(#b.submitted[1].payload.audience,1);truthy(identity.same(b.submitted[1].payload.audience[1],npc))
+  local voice=fake.bridge();local vs=orchestrator.new(voice)
+  local ok,reason=orchestrator.startVoice(vs,{speaker=playerId,execution_mode=mode})
+  eq(ok,nil);eq(reason,'injection_requires_typed_text');eq(voice.voiceState,'idle')
+ end
+ local b=fake.bridge();local state=orchestrator.new(b);orchestrator.configureSession(state,UUID.session)
+ orchestrator.activate(state,npc,{});conversation.setTarget(state.conversation,npc)
+ local args=b.nextTurnMetadata();args.text='(not an injected voice line)';args.input_kind='stt'
+ args.language='en-US';args.speaker=playerId;args.context={};args.capabilities={'dialogue.text'}
+ args.recent_action_results={};args.ui_source='lorkhan_voice'
+ truthy(orchestrator.submitText(state,args));eq(b.submitted[1].payload.input.text,'(not an injected voice line)')
+ eq(b.submitted[1].payload.execution_mode,nil)
+end)
+
 test('focused UI builders keep chat selectors tools and notifications independent',function()
  local ui={TYPE={Text='text',Image='image',TextEdit='edit',Container='container'},content=function(value)return value end}
  local util={vector2=function(x,y)return{x=x,y=y}end,color={rgb=function(r,g,b)return{r=r,g=g,b=b}end}}
@@ -1393,11 +1433,11 @@ test('focused UI builders keep chat selectors tools and notifications independen
  local chat=chatbox.build(menuContext)
  eq(chat[1].props.text,'Text Chat and Interact: Fargoth');eq(chat[#chat-1].props.text,'Send');eq(chat[#chat].props.text,'Close')
  eq(chat[2].props.text,'Mood: None  |  Mode: Standard')
- eq(chat[4].props.text,'One-turn prefixes: || Close, !! Shout, | Whisper.')
+ eq(chat[4].props.text,'Press Enter or select Send')
  -- the moved controls sit between the send hint and Send, in one compact clickable list
- local MENU_FIRST=6
- eq(#chatbox.MENU,10);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
- local expected={'modes','mood','autoChat','model','profiles','settings','waitHere','history','statusHud','diagnostics'}
+ local MENU_FIRST=5
+ eq(#chatbox.MENU,9);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
+ local expected={'modes','mood','model','profiles','settings','waitHere','history','statusHud','diagnostics'}
  for index,entry in ipairs(chatbox.MENU) do
   eq(entry.key,expected[index])
   local row=chat[MENU_FIRST+index-1]
@@ -1411,7 +1451,7 @@ test('focused UI builders keep chat selectors tools and notifications independen
  local hudShown=chatbox.build({ui=ui,util=util,target='Fargoth',text='',shortcuts=uiState.SHORTCUTS,
   statusHudVisible=true,onTextChanged=function()end,onKeyPress=function()end,
   onSend=function()end,onClose=function()end})
- eq(hudShown[MENU_FIRST+8].props.text,'Status HUD: on')
+ eq(hudShown[MENU_FIRST+7].props.text,'Status HUD: on')
  eq(chatbox.statusHudLabel(true),'Status HUD: on');eq(chatbox.statusHudLabel(false),'Status HUD: off')
  eq(chatbox.autoChatLabel(true),'Auto Chat: on');eq(chatbox.autoChatLabel(false),'Auto Chat: off')
  -- the top-left HUD draws only while statusHudVisible is set, so no transient status leaks when it is off
@@ -1423,7 +1463,7 @@ test('focused UI builders keep chat selectors tools and notifications independen
   mood='Custom: hushed',mode='Standard',turnMode='Close',turnPrefix='||',shortcuts=uiState.SHORTCUTS,
   onTextChanged=function()end,onKeyPress=function()end,onSend=function()end,onClose=function()end})
  eq(prefixed[2].props.text,'Mood: Custom: hushed  |  Mode: Close (this turn)')
- eq(prefixed[4].props.text,'Prefix "||" sends this turn as Close. Saved mode stays Standard.')
+ eq(prefixed[4].props.text,'Press Enter or select Send')
  eq(#prefixed,#chat) -- constant row structure keeps the live preview from rebuilding the text box
  local moodPanel=chatbox.buildMoodPanel({ui=ui,util=util,customVisible=true,customText='',customLimit=80,
   moods={{label='None',active=true,onSelect=function()end},{label='Custom',onSelect=function()end}},
@@ -1431,10 +1471,6 @@ test('focused UI builders keep chat selectors tools and notifications independen
  eq(moodPanel[1].props.text,'Player Mood');eq(moodPanel[3].props.text,'None  [active]')
  eq(moodPanel[4].props.text,'Custom');eq(moodPanel[5].props.text,'Custom delivery direction')
  eq(moodPanel[#moodPanel-1].props.text,'Back to conversation');eq(moodPanel[#moodPanel].props.text,'Close')
- local help=chatbox.buildShortcutHelp({ui=ui,util=util,shortcuts=uiState.SHORTCUTS})
- eq(help[1].props.text,'Typed one-turn shortcuts')
- eq(help[2].props.text,'|| before your message sends that one turn as Close.')
- eq(help[#help].props.text,'A prefix changes only the turn you submit. The mode selected above stays saved.')
  local choices=require('scripts.LORKHAN.ui.selector').build({ui=ui,util=util,title='Dialogue Mode',
   options={{label='Standard',active=true,onSelect=function()end}},onClose=function()end})
  eq(choices[1].props.text,'Dialogue Mode');eq(choices[2].props.text,'Standard  [active]')

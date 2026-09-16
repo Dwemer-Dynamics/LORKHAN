@@ -120,9 +120,9 @@ local CAPABILITIES={'dialogue.text','speech.say','speech.listen','action.ai.foll
     'action.actor.resurrect','action.actor.kill',
     'action.confirmation','action.result-followup'}
 
-local function conversationContext(target)
+local function conversationContext(target,executionMode)
     local started=core and core.getRealTime and core.getRealTime() or nil
-    local snapshot=adapter.playerContext(target,nil,state.ui.executionMode=='narrator')
+    local snapshot=adapter.playerContext(target,nil,(executionMode or state.ui.executionMode)=='narrator')
     local activities={}
     for _,status in pairs(actorActivities) do activities[#activities+1]=status end
     table.sort(activities,function(left,right) return identity.key(left.actor)<identity.key(right.actor) end)
@@ -146,7 +146,8 @@ local function voicePayload(uiSource)
     local snapshot=conversationContext(state.ui.target);snapshot.dialogueMode=state.ui.mode
     return {speaker=adapter.identity(self),target=state.ui.target,context=snapshot,language='en-US',capabilities=CAPABILITIES,
         recent_action_results={},ui_source=uiSource,dialogueMode=state.ui.mode,mood=uiState.moodSelection(state.ui),
-        execution_mode=state.ui.executionMode,selectedTargetPresent=true,selectedTarget=state.ui.target,
+        execution_mode=(uiSource=='lorkhan_open_mic' and (state.ui.executionMode=='injection_log' or state.ui.executionMode=='injection_chat'))
+            and 'standard' or state.ui.executionMode,selectedTargetPresent=true,selectedTarget=state.ui.target,
         vad_sensitivity=tonumber(behaviorSettings and behaviorSettings:get('openMicSensitivity')) or 1000,
         end_delay_ms=tonumber(behaviorSettings and behaviorSettings:get('openMicEndDelayMs')) or 1000,
         recording_device=math.floor(tonumber(behaviorSettings and behaviorSettings:get('recordingDevice')) or -1)}
@@ -616,11 +617,12 @@ local chooseTarget
 
 local function queueTypedTurn(args,speechAlreadyPlayed)
     if args.execution_mode=='director' then pendingDirectorInput={text=args.text} end
-    if not speechAlreadyPlayed and args.execution_mode~='director' and args.execution_mode~='cheat' then
+    if not speechAlreadyPlayed and args.execution_mode~='director' and args.execution_mode~='cheat'
+        and args.execution_mode~='injection_log' and args.execution_mode~='injection_chat' then
         startPlayerSpeech(args.speaker,args.text)
     end
     send('LORKHAN_SUBMIT_TEXT',args)
-    pendingHistory={speaker=args.speaker,text=args.text}
+    pendingHistory=(args.execution_mode~='injection_log' and args.execution_mode~='injection_chat') and {speaker=args.speaker,text=args.text} or nil
     awaitingTextQueue=true
     state.ui.status='submitting'
     print('[LORKHAN] text message submitted for '..displayName(state.ui.target))
@@ -666,7 +668,9 @@ local function submitText()
         render()
         return false
     end
-    if not state.ui.target and state.ui.executionMode~='director' and state.ui.executionMode~='narrator' and state.ui.executionMode~='cheat' then
+    local selected=uiState.turnSelection(state.ui,parsed)
+    if not state.ui.target and selected.execution~='director' and selected.execution~='narrator'
+        and selected.execution~='cheat' and selected.execution~='injection_log' and selected.execution~='injection_chat' then
         pendingTextSubmit=true
         state.ui.status='finding actor target'
         print('[LORKHAN] text submit waiting for actor target')
@@ -675,15 +679,15 @@ local function submitText()
         return false
     end
     local speaker=adapter.identity(self)
-    local context=conversationContext(state.ui.target)
-    local effectiveMode=parsed.mode or state.ui.mode
+    local context=conversationContext(state.ui.target,selected.execution)
+    local effectiveMode=selected.hearing
     context.dialogueMode=effectiveMode
-    local args={text=parsed.text,language='en-US',speaker=speaker,dialogueMode=effectiveMode,
-        execution_mode=state.ui.executionMode,target=state.ui.target,selectedTargetPresent=true,selectedTarget=state.ui.target,
+    local args={text=parsed.text,input_parsed=true,language='en-US',speaker=speaker,dialogueMode=effectiveMode,
+        execution_mode=selected.execution,target=state.ui.target,selectedTargetPresent=true,selectedTarget=state.ui.target,
         mood=uiState.moodSelection(state.ui),
         context=context,capabilities=CAPABILITIES,
         recent_action_results={},ui_source='lorkhan_text'}
-    if state.ui.autoChat and state.ui.executionMode~='director' and state.ui.executionMode~='cheat' then
+    if selected.autoChat then
         if not nativeOk or not native or not native.requestPlayerAutochat then
             state.ui.status='Auto Chat unavailable' render() return false
         end
@@ -1039,7 +1043,7 @@ local function renderStatusHud()
     local text='LORKHAN  |  Connection: '..tostring(nativeValue('status','unavailable'))..
         '  |  Request: '..(turnActive and 'active' or 'idle')..
         '  |  Speech: '..(speechActive() and 'speaking' or 'idle')..
-        '  |  Target: '..actorLabel(state.ui.target)..'  |  '..state.ui.mode
+        '  |  Target: '..actorLabel(state.ui.target)..'  |  '..uiState.selectedChatMode(state.ui).label
     local width=520
     local height=42
     local layout={layer='HUD',type=openmwUi.TYPE.Container,
@@ -1096,7 +1100,7 @@ render=function()
         uiState.refreshTurnPreview(state.ui)
         transcript=chatbox.build({ui=openmwUi,util=util,whiteTexture=whiteTexture,text=state.ui.input,
             target=displayName(state.ui.target),
-            mood=uiState.moodSummary(state.ui),mode=state.ui.mode,shortcuts=uiState.SHORTCUTS,
+            mood=uiState.moodSummary(state.ui),mode=uiState.selectedChatMode(state.ui).label,
             turnMode=state.ui.turnMode,turnPrefix=state.ui.turnPrefix,
             onTextChanged=adapter.callback(function(value)
                 state.ui.input=player.consumeTextEdit(value)
@@ -1479,30 +1483,18 @@ render=function()
     elseif state.ui.panel=='modes' then
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Dialogue Mode',textSize=20,
             textColor=util.color.rgb(0.95,0.9,0.82)}}
-        for _,entry in ipairs(uiState.EXECUTION_MODES) do
-            local selected=entry.key==state.ui.executionMode
-            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=entry.label..(selected and ' [active]' or ''),textSize=18,
-                textColor=selected and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(188/255,157/255,90/255)},
-                events={mouseClick=adapter.callback(function() state.ui.executionMode=entry.key render() end)}}
-        end
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Hearing distance',textSize=18,
-            textColor=util.color.rgb(0.95,0.9,0.82)}}
-        local descriptions={
-            Standard='Selected group plus managed actors inside normal hearing distance.',
-            Whisper='Private turn to the selected target only.',
-            Close='Only the explicitly selected conversation group hears the turn.',
-            Shout='Selected group plus managed actors inside double hearing distance.',
-        }
-        for _,mode in ipairs(MODES) do
-            local active=mode==state.ui.mode and ' [active]' or ''
-            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=mode..active,textSize=18,
-                textColor=mode==state.ui.mode and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(188/255,157/255,90/255)},
-                events={mouseClick=adapter.callback(function() setMode(mode) end)}}
-            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=descriptions[mode],textSize=14,
-                textColor=util.color.rgb(0.72,0.68,0.62)}}
-        end
-        for _,row in ipairs(chatbox.buildShortcutHelp({ui=openmwUi,util=util,shortcuts=uiState.SHORTCUTS})) do
-            transcript[#transcript+1]=row
+        local selected=uiState.selectedChatMode(state.ui)
+        for _,entry in ipairs(uiState.CHAT_MODES) do
+            local active=entry.key==selected.key
+            local label=entry.label..(entry.prefix and (entry.prefix:sub(1,1)=='(' and ' '..entry.prefix or ' ('..entry.prefix..')') or '')
+            transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=label..(active and ' [active]' or ''),textSize=16,
+                textColor=active and util.color.rgb(0.45,0.9,0.45) or util.color.rgb(188/255,157/255,90/255)},
+                events={mouseClick=adapter.callback(function()
+                    uiState.selectChatMode(state.ui,entry.key)
+                    if playerInputSettings then playerInputSettings:set('autoChat',state.ui.autoChat) end
+                    send('LORKHAN_MODE_CHANGED',{mode=state.ui.mode})
+                    render()
+                end)}}
         end
         transcript[#transcript+1]=backRow()
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Close',textSize=16,
@@ -1591,6 +1583,9 @@ local function handlePushToTalk(held,source)
     held=held==true
     if held==pttHeld then return end
     if held then
+        if state.ui.executionMode=='injection_log' or state.ui.executionMode=='injection_chat' then
+            state.ui.status='Injection modes require typed text. Select another mode for push-to-talk.' render() return
+        end
         if not controlsAllowed() and not ownsUiMode then
             print('[LORKHAN] push-to-talk blocked by another UI mode via '..tostring(source))
             return
@@ -2223,7 +2218,7 @@ return {
                 print('[LORKHAN] text message accepted; chat closed')
             else
                 if pendingDirectorInput then
-                    state.ui.input=pendingDirectorInput.text;state.ui.executionMode='director';pendingDirectorInput=nil
+                    state.ui.input='> '..pendingDirectorInput.text;pendingDirectorInput=nil
                 end
                 state.ui.status='message failed: '..tostring(event.reason or 'unknown')
                 turnActive=false
@@ -2319,10 +2314,10 @@ return {
         end,
         LORKHAN_EVENT=function(event)
             if pendingDirectorInput and event.request_id==pendingDirectorInput.request_id then
-                if event.type=='turn.accepted' then state.ui.executionMode='standard' end
+                -- A submitted one-turn prefix never changes the selected menu mode.
                 if event.type=='turn.complete' then pendingDirectorInput=nil
                 elseif event.type=='turn.failed' then
-                    state.ui.input=pendingDirectorInput.text;state.ui.executionMode='director';pendingDirectorInput=nil
+                    state.ui.input='> '..pendingDirectorInput.text;pendingDirectorInput=nil
                 elseif event.type=='turn.cancelled' then pendingDirectorInput=nil end
             end
             if event.type=='turn.accepted' then turnActive=true end

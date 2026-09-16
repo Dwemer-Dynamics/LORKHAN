@@ -113,6 +113,13 @@ bounded context snapshot/delta, recent terminal action results, and UI source. I
 pairing token, provider key, host file path, save bytes, proprietary assets, engine pointers, or raw
 unbounded logs.
 
+Explicit typed player turns may select `execution_mode` `injection_log` or `injection_chat`.
+Both require `ui_source=lorkhan_text`, text input, and no action request or Director child ID.
+The input is recorded as a scene event, not spoken player dialogue. `injection_log` persists the
+event and emits `turn.accepted` followed by `turn.complete` without provider, speech, or action jobs.
+`injection_chat` additionally generates a reply to that event through the normal NPC/Narrator lane;
+it never speaks the injected input as the player or enables provider actions.
+
 A playback-driven rechat turn sets `ui_source` to `lorkhan_rechat` and carries the Herika-compatible
 typed hint vocabulary: `speaker`, `listener_hint`, `rechat_target_hint`, `origin_line`,
 `rechat_depth`, and `chain_id` (plus the originating turn correlation). The server owns mode,

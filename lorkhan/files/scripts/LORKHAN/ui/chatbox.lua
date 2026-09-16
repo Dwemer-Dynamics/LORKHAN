@@ -32,23 +32,12 @@ local function lineEdit(context,width,value,events)
     return {type=ui.TYPE.Container,props={size=util.vector2(width,44)},content=ui.content(content)}
 end
 
--- Readable prefix summary. Fonts vary between OpenMW installs, so every cue stays textual.
-local function shortcutSummary(shortcuts)
-    local parts={}
-    for _,shortcut in ipairs(shortcuts or {}) do
-        parts[#parts+1]=shortcut.prefix..' '..shortcut.mode
-    end
-    if #parts==0 then return nil end
-    return 'One-turn prefixes: '..table.concat(parts,', ')..'.'
-end
-
 -- Every LORKHAN control the player can reach from Interact, in one compact list. Each entry names
 -- the callback the panel owner supplies, so labels and routes stay described in one place.
 -- The order and count are fixed: a live prefix preview must only rewrite text on existing widgets.
 local MENU={
     {key='modes',label='Dialogue mode...',callback='onSelectModes'},
     {key='mood',label='Mood',callback='onSelectMood'},
-    {key='autoChat',label='Auto Chat',callback='onToggleAutoChat'},
     {key='model',label='LLM model...',callback='onSelectModel'},
     {key='profiles',label='Dynamic profiles...',callback='onSelectProfiles'},
     {key='settings',label='Settings...',callback='onSelectSettings'},
@@ -76,21 +65,11 @@ function M.build(context)
         (turnMode and ' (this turn)' or ''),15,turnMode and 'highlight' or 'status')
     rows[#rows+1]=lineEdit(context,520,context.text,
         {textChanged=context.onTextChanged,keyPress=context.onKeyPress})
-    if turnMode then
-        rows[#rows+1]=text(ui,util,'Prefix "'..tostring(context.turnPrefix)..'" sends this turn as '..turnMode..
-            '. Saved mode stays '..savedMode..'.',13,'highlight')
-    else
-        rows[#rows+1]=text(ui,util,shortcutSummary(context.shortcuts) or
-            'Type a prefix to change one turn without changing your saved mode.',13,'detail')
-    end
     rows[#rows+1]=text(ui,util,'Press Enter or select Send',14,'detail')
     for _,entry in ipairs(MENU) do
         if entry.key=='statusHud' then
             rows[#rows+1]=text(ui,util,M.statusHudLabel(context.statusHudVisible),15,
                 context.statusHudVisible and 'active' or 'action',{mouseClick=context[entry.callback]})
-        elseif entry.key=='autoChat' then
-            rows[#rows+1]=text(ui,util,M.autoChatLabel(context.autoChat),15,
-                context.autoChat and 'active' or 'action',{mouseClick=context[entry.callback]})
         else
             rows[#rows+1]=text(ui,util,entry.label,15,'action',{mouseClick=context[entry.callback]})
         end
@@ -118,20 +97,6 @@ function M.buildMoodPanel(context)
     end
     rows[#rows+1]=text(ui,util,'Back to conversation',16,'quiet',{mouseClick=context.onBack})
     rows[#rows+1]=text(ui,util,'Close',16,'quiet',{mouseClick=context.onClose})
-    return rows
-end
-
--- Build the shortcut help shown inside the existing dialogue mode panel.
-function M.buildShortcutHelp(context)
-    local ui,util=context.ui,context.util
-    local rows={text(ui,util,'Typed one-turn shortcuts',17,'title')}
-    for _,shortcut in ipairs(context.shortcuts or {}) do
-        rows[#rows+1]=text(ui,util,shortcut.prefix..' before your message sends that one turn as '..
-            shortcut.mode..'.',14,'detail')
-    end
-    rows[#rows+1]=text(ui,util,'The longest matching prefix wins.',14,'detail')
-    rows[#rows+1]=text(ui,util,'A prefix changes only the turn you submit. The mode selected above stays saved.',
-        14,'status')
     return rows
 end
 

@@ -672,9 +672,9 @@
       "sha256": "52ca2b7555cd4b11becf70373ce02dda7f58f72fd8780db4ea9f5c3043641c08"
     },
     {
-      "bytes": 10564,
+      "bytes": 10623,
       "path": "lorkhan/schemas/v1/turn.schema.json",
-      "sha256": "5b4b674523c66cdc8de10e004d220252a5e6368a605c87763021778d780c322c"
+      "sha256": "489c7828093100d43508e4a3edbe38da861aff07333972ce2843bb21ac2526f3"
     }
   ],
   "format": "lorkhan.protocol-manifest.v1",

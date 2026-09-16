@@ -95,3 +95,16 @@ checklist remains deliberately unclaimed.
   Client rollback: %TEMP%/lorkhan-physical-diary-de5d33ebcb2d4ce0bc20bf834186cee2.
 - No game or paid provider was invoked. Physical reading, dropping/trading, and save/load behavior
   still require in-game acceptance. This checkpoint completes physical diary implementation only.
+
+## Dialogue modes and typed event injection (2026-09-16) — AUTOMATED
+
+- One compact mode menu exposes Standard, Whisper, Close, Shout, Narrator, Director, Cheat,
+  Auto Chat, Inject Event, and Inject & Chat; typed shortcuts appear beside their mode.
+- Injection inputs are scene context, not player speech. Log-only injection queues no inference,
+  TTS, or action work; injection chat generates a reply with the ordinary response pipeline.
+- 97 Lua tests and 1474 server checks pass. Disposable database integration and migration/jobs
+  pass at schema118, including subsequent NPC prompt retrieval for an intended event witness.
+- Protocol manifests match across both repositories; 42 schemas and93 fixtures pass the local
+  structural validator. PHP/Lua syntax and client provenance/source-tree audits pass.
+- No engine code changed or rebuild was required. In-game menu interaction, live provider audio,
+  and game rendering remain unverified; no game was launched.

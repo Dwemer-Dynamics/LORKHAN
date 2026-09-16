@@ -635,6 +635,7 @@ function M.startVoice(state,args)
     if not state.bridge or not state.bridge.startVoiceCapture then return nil,'voice_capture_unavailable' end
     if state.conversation.turn and not state.conversation.turn.terminal then return nil,'turn_in_flight' end
     if not args or not identity.validate(args.speaker) then return nil,'invalid_speaker' end
+    if args.execution_mode=='injection_log' or args.execution_mode=='injection_chat' then return nil,'injection_requires_typed_text' end
     local selectedTarget=args.target or state.conversation.target
     if args.selectedTargetPresent then selectedTarget=args.selectedTarget end
     local syntheticMode=args.execution_mode=='director' or args.execution_mode=='narrator'
@@ -824,10 +825,29 @@ function M.submitText(state,args)
         local targetKey=identity.key(state.conversation.target)
         if targetKey then state.autonomy.interacted[targetKey]=true end
     end
+    local parsed,parseReason
+    if args.input_parsed or args.ui_source~='lorkhan_text' or args.input_kind=='stt' then parsed={text=args.text}
+    else parsed,parseReason=playerInput.parse(args.text) end
+    if not parsed then return nil,parseReason end
+    if parsed.prefix and args.ui_source=='lorkhan_text' and args.input_kind~='stt' then
+        args.execution_mode=parsed.execution or 'standard'
+    end
+    if (args.execution_mode=='injection_log' or args.execution_mode=='injection_chat')
+        and (args.ui_source~='lorkhan_text' or args.input_kind=='stt' or isContinuation) then return nil,'injection_requires_typed_text' end
     local modeTarget=args.target or state.conversation.target
     if args.selectedTargetPresent then modeTarget=args.selectedTarget end
+    local injectionAudience
+    if args.execution_mode=='injection_log' or args.execution_mode=='injection_chat' then
+        injectionAudience={}
+        for _,entry in ipairs(state.conversation.audience) do
+            if #injectionAudience>=constants.MAX_AUDIENCE then break end
+            if (entry.identity.kind=='npc' or entry.identity.kind=='creature') and state.registry:resolve(entry.identity) then
+                injectionAudience[#injectionAudience+1]=util.copy(entry)
+            end
+        end
+    end
     local syntheticMode=args.execution_mode=='narrator' or args.execution_mode=='director'
-        or (args.execution_mode=='cheat' and not modeTarget)
+        or ((args.execution_mode=='cheat' or args.execution_mode=='injection_log' or args.execution_mode=='injection_chat') and not modeTarget)
     if syntheticMode then
         if args.speaker.kind~='player' then return nil,'execution_mode_not_allowed' end
         conversation.setTarget(state.conversation,narratorIdentity(state))
@@ -842,12 +862,6 @@ function M.submitText(state,args)
         if syntheticMode then restoreModeTarget(state,modeTarget) end
         return nil,reason
     end
-    local parsed,parseReason=playerInput.parse(args.text)
-    if not parsed then
-        state.conversation.turn=nil
-        if syntheticMode then restoreModeTarget(state,modeTarget) end
-        return nil,parseReason
-    end
     args.text=parsed.text
     local requestedMode=args.dialogueMode
     local mode=({Standard=true,Whisper=true,Close=true,Shout=true})[requestedMode] and requestedMode
@@ -861,7 +875,14 @@ function M.submitText(state,args)
     end
     local audience={}
     local audienceKeys={}
-    local selectedAudience=state.conversation.audience
+    local selectedAudience=injectionAudience or state.conversation.audience
+    if injectionAudience and state.conversation.target.kind~='narrator' then
+        local key=identity.key(state.conversation.target);local found=false
+        for _,entry in ipairs(selectedAudience) do if entry.key==key then found=true end end
+        if not found and #selectedAudience<constants.MAX_AUDIENCE then
+            selectedAudience[#selectedAudience+1]={identity=util.copy(state.conversation.target),key=key}
+        end
+    end
     if isRechat and type(args.rechatAudience)=='table' then
         selectedAudience={}
         for _,actor in ipairs(args.rechatAudience) do

@@ -289,7 +289,9 @@
             "standard",
             "narrator",
             "director",
-            "cheat"
+            "cheat",
+            "injection_log",
+            "injection_chat"
           ]
         },
         "director_instruction_id": {

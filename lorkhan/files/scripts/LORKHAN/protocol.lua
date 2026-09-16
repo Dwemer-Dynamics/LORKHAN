@@ -136,9 +136,13 @@ function M.turn(args)
         target=util.copy(args.target), audience=util.arrayCopy(args.audience), context=util.copy(args.context),
         recent_action_results=util.arrayCopy(args.recent_action_results or {}), ui_source=args.ui_source}
     if args.execution_mode~=nil then
-        if args.execution_mode~='standard' and args.execution_mode~='narrator'
+        if args.execution_mode~='standard' and args.execution_mode~='narrator' and args.execution_mode~='injection_log' and args.execution_mode~='injection_chat'
             and args.execution_mode~='director' and args.execution_mode~='cheat' then return nil,'invalid_execution_mode' end
         payload.execution_mode=args.execution_mode
+        if (args.execution_mode=='injection_log' or args.execution_mode=='injection_chat')
+            and (inputKind~='text' or args.ui_source~='lorkhan_text' or args.speaker.kind~='player') then
+            return nil,'injection_requires_typed_text'
+        end
     end
     if args.director_instruction_id~=nil then
         if not M.isUuid(args.director_instruction_id) or (args.execution_mode or 'standard')~='standard' then

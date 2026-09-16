@@ -34,6 +34,7 @@ local BACK_ROUTES={
 local DEFAULT_ORIGIN='actor-tools'
 
 M.MODES=MODES
+M.CHAT_MODES=playerInput.MODES
 M.EXECUTION_MODES={{key='standard',label='Standard'},{key='narrator',label='Narrator'},
     {key='director',label='Director'},{key='cheat',label='Cheat'}}
 M.SHORTCUTS=SHORTCUTS
@@ -62,7 +63,33 @@ end
 -- the authoritative parse of a submitted turn stays with the runtime.
 function M.shortcutPreview(text)
     local parsed=playerInput.parse(text)
-    return parsed and parsed.mode or nil,parsed and parsed.prefix or nil
+    return parsed and (parsed.label or parsed.mode) or nil,parsed and parsed.prefix or nil
+end
+
+-- Normalize all three legacy controls into one selected mode without changing one-turn prefixes.
+function M.selectChatMode(state,key)
+    for _,entry in ipairs(M.CHAT_MODES) do
+        if entry.key==key then
+            state.mode=entry.hearing or 'Standard';state.executionMode=entry.execution or 'standard'
+            state.autoChat=entry.autoChat==true;return true
+        end
+    end
+    return false
+end
+
+function M.selectedChatMode(state)
+    for _,entry in ipairs(M.CHAT_MODES) do
+        if (state.executionMode~='standard' and entry.execution==state.executionMode)
+            or (state.executionMode=='standard' and state.autoChat and entry.autoChat)
+            or (state.executionMode=='standard' and not state.autoChat and entry.hearing==state.mode) then return entry end
+    end
+    return M.CHAT_MODES[1]
+end
+
+function M.turnSelection(state,parsed)
+    if parsed and parsed.prefix then return {hearing=parsed.mode or 'Standard',execution=parsed.execution or 'standard',autoChat=parsed.autoChat==true} end
+    local selected=M.selectedChatMode(state)
+    return {hearing=selected.hearing or 'Standard',execution=selected.execution or 'standard',autoChat=selected.autoChat==true}
 end
 
 -- Accept an effective one-turn mode from any source and report whether the display changed.
