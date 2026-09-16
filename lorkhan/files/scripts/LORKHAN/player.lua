@@ -25,6 +25,7 @@ local voiceRecording=false
 local pttHeld=false
 local openMicEnabled=false
 local openMicMuted=false
+local openMicControl={suspended=false,retryAt=0}
 local settingsSignature
 local autoScanElapsed=0
 local turnActive=false
@@ -146,8 +147,8 @@ local function voicePayload(uiSource)
     return {speaker=adapter.identity(self),target=state.ui.target,context=snapshot,language='en-US',capabilities=CAPABILITIES,
         recent_action_results={},ui_source=uiSource,dialogueMode=state.ui.mode,mood=uiState.moodSelection(state.ui),
         execution_mode=state.ui.executionMode,selectedTargetPresent=true,selectedTarget=state.ui.target,
-        vad_sensitivity=tonumber(behaviorSettings and behaviorSettings:get('openMicSensitivity')) or 700,
-        end_delay_ms=tonumber(behaviorSettings and behaviorSettings:get('openMicEndDelayMs')) or 900,
+        vad_sensitivity=tonumber(behaviorSettings and behaviorSettings:get('openMicSensitivity')) or 1000,
+        end_delay_ms=tonumber(behaviorSettings and behaviorSettings:get('openMicEndDelayMs')) or 1000,
         recording_device=math.floor(tonumber(behaviorSettings and behaviorSettings:get('recordingDevice')) or -1)}
 end
 
@@ -1116,6 +1117,14 @@ render=function()
             end),
             onSelectProfiles=adapter.callback(function() openFromConversation('profile-menu') render() end),
             onSelectSettings=adapter.callback(settingsControls.open),
+            onWaitHere=adapter.callback(function()
+                if not state.ui.target or state.ui.target.kind=='narrator' then
+                    state.ui.status='Select a nearby NPC first.' render() return
+                end
+                send('LORKHAN_WAIT_HERE_REQUEST',{target=state.ui.target})
+                state.ui.status='Requesting wait...'
+                state.ui.visible=false leaveUiMode() render()
+            end),
             onSelectHistory=adapter.callback(function() openFromConversation('history') render() end),
             onToggleStatusHud=adapter.callback(toggleStatusHud),
             onToggleAutoChat=adapter.callback(toggleAutoChat),
@@ -1364,7 +1373,6 @@ render=function()
             link('Back',function() state.ui.actionView='root' state.ui.actionPage=1 render() end)
         end
         link('Conversation',function() state.ui.panel='conversation' render() end)
-        link('Targeted NPC Tools',function() uiState.setPanel(state.ui,'actor-tools','actor-tools') render() end)
         link('Close',function() state.ui.visible=false leaveUiMode() render() end)
     elseif state.ui.panel=='actor-tools' then
         transcript=actorTools.build({ui=openmwUi,util=util,target=displayName(state.ui.target),options={
@@ -1594,7 +1602,7 @@ local function handlePushToTalk(held,source)
         end
         pttHeld=true
         if openMicEnabled then
-            openMicEnabled=false;openMicMuted=false
+            openMicEnabled=false
             send('LORKHAN_OPEN_MIC_STOP',{})
         end
         voiceRecording=true
@@ -1795,6 +1803,36 @@ applySettings=function(session,controls)
     render()
 end
 
+-- Keep CHIM-style enablement separate from temporary mute, menus and push-to-talk.
+function settingsControls.syncOpenMic()
+    local desired=behaviorSettings and behaviorSettings:get('openMicEnabled')==true
+    if not desired then
+        if openMicEnabled or openMicControl.suspended then send('LORKHAN_OPEN_MIC_STOP',{}) end
+        openMicEnabled=false openMicMuted=false openMicControl.suspended=false
+        return
+    end
+    if not controlsAllowed() or not state.ui.target or state.ui.target.kind=='narrator'
+        or nearbyCombat and behaviorSettings:get('cancelDialogueOnCombat')~=false then
+        if openMicEnabled and not openMicControl.suspended and not pttHeld then
+            if nativeOk and native.cancelVoiceCapture then pcall(native.cancelVoiceCapture) end
+            send('LORKHAN_OPEN_MIC_MUTE',{})
+            openMicControl.suspended=true voiceRecording=false
+        end
+        return
+    end
+    if openMicMuted or pttHeld then return end
+    local session=nativeOk and native.sessionInfo and native.sessionInfo() or nil
+    if not session or not state.ui.target or state.ui.target.kind=='narrator' then return end
+    local scope=tostring(session.session_id)..':'..tostring(session.generation)
+    if openMicControl.scope~=scope then openMicEnabled=false openMicControl.scope=scope end
+    if core.getRealTime()<openMicControl.retryAt then return end
+    if not openMicEnabled or openMicControl.suspended then
+        openMicEnabled=true openMicControl.suspended=false
+        openMicControl.retryAt=core.getRealTime()+1
+        send('LORKHAN_OPEN_MIC_START',voicePayload('lorkhan_open_mic'))
+    end
+end
+
 if inputOk then
     input.registerTriggerHandler('LORKHAN_Talk',adapter.callback(requestTalkToggle))
     input.registerTriggerHandler('LORKHAN_StopDialogue',adapter.callback(function()
@@ -1802,6 +1840,7 @@ if inputOk then
         send('LORKHAN_STOP_DIALOGUE_REQUEST',{}) state.ui.status='dialogue stopped' render()
     end))
     input.registerTriggerHandler('LORKHAN_Halt',adapter.callback(function()
+        if behaviorSettings and behaviorSettings:get('openMicEnabled')==true then openMicMuted=true end
         state.ui.pendingTargetAction=nil
         stopPlayerSpeech()
         stopBookSpeech()
@@ -1831,16 +1870,16 @@ if inputOk then
     end))
     input.registerTriggerHandler('LORKHAN_OpenMic',adapter.callback(function()
         if not controlsAllowed() then return end
-        if not openMicEnabled and not state.ui.target then chooseTarget(2048) return end
-        openMicEnabled=not openMicEnabled;openMicMuted=false;voiceRecording=openMicEnabled
-        send(openMicEnabled and 'LORKHAN_OPEN_MIC_START' or 'LORKHAN_OPEN_MIC_STOP',openMicEnabled and voicePayload('lorkhan_open_mic') or {})
-        state.ui.status=openMicEnabled and 'open mic listening' or 'open mic off';render()
+        if behaviorSettings then behaviorSettings:set('openMicEnabled',behaviorSettings:get('openMicEnabled')~=true) end
+        openMicMuted=false settingsControls.syncOpenMic()
+        state.ui.status=behaviorSettings and behaviorSettings:get('openMicEnabled')==true and 'open mic enabled' or 'open mic off';render()
     end))
     input.registerTriggerHandler('LORKHAN_OpenMicMute',adapter.callback(function()
         if not controlsAllowed() then return end
-        if not openMicEnabled then state.ui.status='open mic is off';render();return end
+        if not behaviorSettings or behaviorSettings:get('openMicEnabled')~=true then state.ui.status='open mic is off';render();return end
         openMicMuted=not openMicMuted;voiceRecording=not openMicMuted
-        send(openMicMuted and 'LORKHAN_OPEN_MIC_MUTE' or 'LORKHAN_OPEN_MIC_START',openMicMuted and {} or voicePayload('lorkhan_open_mic'))
+        if openMicMuted then send('LORKHAN_OPEN_MIC_MUTE',{})
+        else openMicControl.suspended=true settingsControls.syncOpenMic() end
         state.ui.status=openMicMuted and 'open mic muted' or 'open mic listening';render()
     end))
 end
@@ -1874,6 +1913,7 @@ return {
         -- bounded pause-safe pump of the in-flight controls response and nothing else. No gameplay,
         -- settings scan, or event processing belongs here.
         onFrame=function()
+            if not controlsAllowed() then settingsControls.syncOpenMic() end
             if nativeOk and native.pumpMenuDialogueTts and (bookSpeech or playerSpeech or menuDialogueSpeech) then native.pumpMenuDialogueTts() end
             updateBookSpeech()
             pumpDebugCommands()
@@ -1895,6 +1935,7 @@ return {
             render()
         end,
         onUpdate=function(dt)
+            settingsControls.syncOpenMic()
             if narratorSpeech and not adapter.isSpeechActive() then reportNarrator('played','playback_completed') end
             updatePlayerAutochat()
             updatePlayerSpeech()
@@ -2147,14 +2188,22 @@ return {
         end,
         LORKHAN_NARRATOR_STOP=function(event) stopNarrator(event and event.reason or 'client_interrupted') end,
         LORKHAN_STATUS=function(event) state.ui.status=event.status state.ui.diagnostics=event.reason render() end,
+        LORKHAN_WAIT_HERE_STATUS=function(event)
+            if not event or not identity.same(event.target,state.ui.target) then return end
+            if event.status=='waiting' then state.ui.status=displayName(event.target)..' will wait for 90 seconds.'
+            elseif event.status=='ended' then state.ui.status='Wait ended.'
+            else state.ui.status='Cannot wait: '..tostring(event.reason or 'NPC unavailable') end
+            render()
+        end,
         LORKHAN_VOICE_STATUS=function(event)
             state.ui.status=event.status;state.ui.diagnostics=event.reason
             if event.status=='failed' or event.status=='queued' then voiceRecording=false end
-            if event.status=='open mic off' or event.status=='failed' and event.continuous then openMicEnabled=false;openMicMuted=false end
+            if event.status=='open mic off' or event.status=='failed' and event.continuous then openMicEnabled=false end
             render()
         end,
         LORKHAN_OPEN_MIC_CONTEXT_REQUEST=function()
-            if openMicEnabled and not openMicMuted and state.ui.target then send('LORKHAN_OPEN_MIC_CONTEXT',voicePayload('lorkhan_open_mic')) end
+            if openMicEnabled and not openMicMuted and not openMicControl.suspended and not pttHeld
+                and controlsAllowed() and state.ui.target then send('LORKHAN_OPEN_MIC_CONTEXT',voicePayload('lorkhan_open_mic')) end
         end,
         LORKHAN_TURN=function(event)
             if event.status=='queued' and event.execution_mode=='director' and type(event.director_text)=='string' then
@@ -2217,7 +2266,7 @@ return {
             if started and (not behaviorSettings or behaviorSettings:get('cancelDialogueOnCombat')~=false)
                 and (turnActive or voiceRecording or openMicEnabled or speechActive()) then
                 send('LORKHAN_STOP_DIALOGUE_REQUEST',{})
-                voiceRecording=false;openMicEnabled=false;openMicMuted=false;pttHeld=false;turnActive=false
+                voiceRecording=false;openMicEnabled=false;pttHeld=false;turnActive=false
                 stopPlayerSpeech()
                 speechActors={}
                 state.ui.status='dialogue stopped for combat'

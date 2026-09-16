@@ -4,11 +4,11 @@ HotkeysGroup_name: Hotkeys
 HotkeysGroup_description: Click a binding, then press a button. Escape clears it.
 ControlsGroup_name: Hotkeys
 ControlsGroup_description: Click a binding, then press a button. Escape clears it.
-Talk_name: Interact
+Talk_name: Text Chat and Interact
 Talk_description: Open chat and conversation options for the aimed NPC.
 StopDialogue_name: Stop Dialogue
 StopDialogue_description: Stop the current response and speech.
-Halt_name: Stop All Activity
+Halt_name: Stop AI Actions
 Halt_description: Stop dialogue, recording and AI actions.
 PushToTalk_name: Voice Chat
 PushToTalk_description: Hold to speak to the selected NPCs.
@@ -108,3 +108,5 @@ MenuDialogueTts_name: Read Dialogue Aloud
 BookReadAloud_name: Read Books Aloud
 BookReadAloud_description: Read books with the Narrator voice. Close the book to stop.
 MenuDialogueTts_description: Speak vanilla dialogue and menu responses.
+OpenMicEnabled_name: Enable Open Mic
+OpenMicEnabled_description: Listen for speech automatically. Use Mute Open Mic to pause.

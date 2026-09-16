@@ -52,6 +52,7 @@ local MENU={
     {key='model',label='LLM model...',callback='onSelectModel'},
     {key='profiles',label='Dynamic profiles...',callback='onSelectProfiles'},
     {key='settings',label='Settings...',callback='onSelectSettings'},
+    {key='waitHere',label='Wait Here (90 seconds)',callback='onWaitHere'},
     {key='history',label='Context history...',callback='onSelectHistory'},
     {key='statusHud',label='Status HUD',callback='onToggleStatusHud'},
     {key='diagnostics',label='Diagnostics...',callback='onSelectDiagnostics'},
@@ -70,7 +71,7 @@ function M.build(context)
     local savedMode=context.mode or 'Standard'
     local turnMode=context.turnMode
     local mood=context.mood or 'None'
-    rows[#rows+1]=text(ui,util,'Chat with '..context.target,20,'title')
+    rows[#rows+1]=text(ui,util,'Text Chat and Interact: '..context.target,20,'title')
     rows[#rows+1]=text(ui,util,'Mood: '..mood..'  |  Mode: '..(turnMode or savedMode)..
         (turnMode and ' (this turn)' or ''),15,turnMode and 'highlight' or 'status')
     rows[#rows+1]=lineEdit(context,520,context.text,

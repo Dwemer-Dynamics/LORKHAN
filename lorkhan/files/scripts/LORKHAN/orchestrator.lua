@@ -28,7 +28,8 @@ function M.new(bridge,emit,sendActor,manageActor)
         manageActor=manageActor or function() return nil,'actor_manager_unavailable' end,
         conversation=conversation.new(generation),responseQueue=responseQueue.new(generation,generation),events=nil,
         attachments={},media={},pendingConfirmations={},actionFollowups={seen={},pending={}},
-        activeSpeechMediaId=nil,rechat=nil,rechatSeed=nil,pendingVoice=nil,pendingStt={},openMic=false,openMicRequested=false,
+        activeSpeechMediaId=nil,rechat=nil,rechatSeed=nil,pendingVoice=nil,pendingStt={},ignoredOpenMicStt={},ignoredOpenMicSttOrder={},
+        openMic=false,openMicMuted=false,openMicRequested=false,
         combatThreats={},combatActors={},combatVerified={},actorStates={},rechatEligibility=nil,
         autonomy=newAutonomyState(),
         randomPercent=function() return math.random(1,100) end,
@@ -125,7 +126,8 @@ function M.lifecycle(state,kind)
     emitQueue(state)
     state.activeSpeechMediaId=nil
     state.rechat=nil state.rechatSeed=nil
-    state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
+    state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicMuted=false state.openMicRequested=false
+    state.ignoredOpenMicStt={} state.ignoredOpenMicSttOrder={}
     state.combatThreats={} state.combatActors={} state.combatVerified={} state.actorStates={}
     state.rechatEligibility=nil state.autonomy=newAutonomyState()
     state.recentVanillaDialogue={}
@@ -643,8 +645,8 @@ function M.startVoice(state,args)
         conversation.setTarget(state.conversation,args.target)
     end
     if not state.conversation.target then return nil,'target_required' end
-    local sensitivity=math.max(100,math.min(5000,math.floor(tonumber(args.vad_sensitivity) or 700)))
-    local endDelay=math.max(500,math.min(5000,math.floor(tonumber(args.end_delay_ms) or 900)))
+    local sensitivity=math.max(100,math.min(5000,math.floor(tonumber(args.vad_sensitivity) or 1000)))
+    local endDelay=math.max(500,math.min(5000,math.floor(tonumber(args.end_delay_ms) or 1000)))
     local deviceId=math.max(-1,math.min(31,math.floor(tonumber(args.recording_device) or -1)))
     local deviceName='Unavailable'
     if state.bridge.currentVoiceCaptureDeviceName then
@@ -676,42 +678,61 @@ function M.stopVoice(state)
 end
 
 function M.enableOpenMic(state,args)
-    state.openMic=true state.openMicRequested=false
+    state.openMic=true state.openMicMuted=false state.openMicRequested=false
+    if state.pendingVoice or next(state.pendingStt) or state.conversation.turn and not state.conversation.turn.terminal then
+        state.emit('LORKHAN_VOICE_STATUS',{status='open mic waiting',continuous=true});return true
+    end
     args=args or {} args.automatic=true args.continuous=true args.ui_source='lorkhan_open_mic'
     local started,reason=M.startVoice(state,args)
-    if not started then state.openMic=false state.emit('LORKHAN_VOICE_STATUS',{status='failed',reason=reason}) end
+    if not started then state.openMic=false state.emit('LORKHAN_VOICE_STATUS',{status='failed',reason=reason,continuous=true}) end
     return started,reason
 end
 
-function M.disableOpenMic(state)
-    state.openMic=false state.openMicRequested=false
+-- Retire only automatic recordings; a late continuous transcript must not leak through a mute.
+local function cancelContinuousVoice(state)
     if state.pendingVoice and state.pendingVoice.continuous then
         state.bridge.cancelVoiceCapture();restoreVoiceTarget(state,state.pendingVoice);state.pendingVoice=nil
     end
+    for id,pending in pairs(state.pendingStt) do
+        if pending.continuous then
+            state.pendingStt[id]=nil
+            state.ignoredOpenMicStt[id]=true
+            state.ignoredOpenMicSttOrder[#state.ignoredOpenMicSttOrder+1]=id
+            while #state.ignoredOpenMicSttOrder>64 do
+                state.ignoredOpenMicStt[table.remove(state.ignoredOpenMicSttOrder,1)]=nil
+            end
+            restoreVoiceTarget(state,pending)
+        end
+    end
+end
+
+function M.disableOpenMic(state)
+    state.openMic=false state.openMicMuted=false state.openMicRequested=false
+    cancelContinuousVoice(state)
     state.emit('LORKHAN_VOICE_STATUS',{status='open mic off'});return true
 end
 
 function M.muteOpenMic(state)
     if not state.openMic then return nil,'open_mic_disabled' end
-    state.openMicRequested=false
-    if state.pendingVoice and state.pendingVoice.continuous then
-        state.bridge.cancelVoiceCapture();restoreVoiceTarget(state,state.pendingVoice);state.pendingVoice=nil
-    end
+    state.openMicMuted=true state.openMicRequested=false
+    cancelContinuousVoice(state)
     state.emit('LORKHAN_VOICE_STATUS',{status='open mic muted',continuous=true});return true
 end
 
 function M.pollOpenMic(state)
     if state.directorPlan then return false end
-    if not state.openMic or state.openMicRequested or state.pendingVoice or next(state.pendingStt) then return false end
+    if not state.openMic or state.openMicMuted or state.openMicRequested or state.pendingVoice or next(state.pendingStt) then return false end
     if state.conversation.turn and not state.conversation.turn.terminal then return false end
     if not state.conversation.target or not state.registry:resolve(state.conversation.target) then
-        state.openMic=false state.emit('LORKHAN_VOICE_STATUS',{status='failed',reason='target_inactive'});return false end
+        state.openMic=false state.emit('LORKHAN_VOICE_STATUS',{status='failed',reason='target_inactive',continuous=true});return false end
     state.openMicRequested=true;state.emit('LORKHAN_OPEN_MIC_CONTEXT_REQUEST',{target=util.copy(state.conversation.target)});return true
 end
 
 function M.runOpenMicContext(state,args)
-    if not state.openMic then return nil,'open_mic_disabled' end
-    state.openMicRequested=false;args=args or {};args.automatic=true;args.continuous=true;args.ui_source='lorkhan_open_mic'
+    if not state.openMic or state.openMicMuted then return nil,'open_mic_disabled' end
+    state.openMicRequested=false
+    if state.pendingVoice or next(state.pendingStt) or state.conversation.turn and not state.conversation.turn.terminal then return false end
+    args=args or {};args.automatic=true;args.continuous=true;args.ui_source='lorkhan_open_mic'
     return M.startVoice(state,args)
 end
 
@@ -1302,12 +1323,15 @@ function M.poll(state)
                 print('[LORKHAN] response cursor recovered at sequence '..tostring(event.sequence)
                     ..' ('..tostring(event.type)..')')
             end
-            if event.type=='stt.transcript' or event.type=='stt.failed' then
+            if (event.type=='stt.transcript' or event.type=='stt.failed') and state.ignoredOpenMicStt[event.request_id] then
+                state.ignoredOpenMicStt[event.request_id]=nil
+                accepted=accepted+1
+            elseif event.type=='stt.transcript' or event.type=='stt.failed' then
                 local pending=state.pendingStt[event.request_id];state.pendingStt[event.request_id]=nil
                 local fenced=pending and pending.session_id==state.sessionId and pending.generation==state.generation
                     and pending.target_key==identity.key(state.conversation.target)
                     and (pending.target.kind=='narrator' or state.registry:resolve(pending.target))
-                if event.type=='stt.transcript' and fenced and (not pending.continuous or state.openMic) then
+                if event.type=='stt.transcript' and fenced and (not pending.continuous or state.openMic and not state.openMicMuted) then
                     local metadata=state.bridge.nextTurnMetadata and state.bridge.nextTurnMetadata() or {}
                     for key,value in pairs(metadata) do pending[key]=value end
                     pending.text=event.payload.text;pending.input_key='voice:'..event.message_id;pending.language=event.payload.language
@@ -1449,7 +1473,8 @@ function M.interrupt(state,reason)
     state.rechat=nil state.rechatSeed=nil state.rechatEligibility=nil
     state.pendingConfirmations={}
     state.actionFollowups={seen={},pending={}}
-    state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
+    state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicMuted=false state.openMicRequested=false
+    state.ignoredOpenMicStt={} state.ignoredOpenMicSttOrder={}
     state.hardHalted=false
     emitQueue(state)
     state.emit('LORKHAN_HALT',{generation=state.generation,reason=reason,recoverable=true})
@@ -1469,7 +1494,8 @@ function M.stopDialogue(state,reason)
     state.rechat=nil state.rechatSeed=nil state.rechatEligibility=nil
     state.pendingConfirmations={}
     state.actionFollowups={seen={},pending={}}
-    state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
+    state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicMuted=false state.openMicRequested=false
+    state.ignoredOpenMicStt={} state.ignoredOpenMicSttOrder={}
     emitQueue(state)
     state.emit('LORKHAN_DIALOGUE_STOPPED',{generation=state.generation,reason=reason})
     return true
@@ -1504,7 +1530,8 @@ function M.hardHalt(state)
     responseQueue.setFence(state.responseQueue,state.generation,currentRuntimeGeneration(state),'hard_halt')
     state.activeSpeechMediaId=nil
     state.rechat=nil state.rechatSeed=nil state.rechatEligibility=nil
-    state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicRequested=false
+    state.pendingVoice=nil state.pendingStt={} state.openMic=false state.openMicMuted=false state.openMicRequested=false
+    state.ignoredOpenMicStt={} state.ignoredOpenMicSttOrder={}
     state.emit('LORKHAN_NARRATOR_STOP',{reason='hard_halt'})
     emitQueue(state)
     state.emit('LORKHAN_HALT',{generation=state.generation,reason='hard_halt',recoverable=false})

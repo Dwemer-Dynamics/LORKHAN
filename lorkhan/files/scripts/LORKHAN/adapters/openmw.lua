@@ -935,6 +935,87 @@ function M.wait(parameters, modules)
     return true,'wait_started',{distance=0,duration_seconds=parameters.duration_seconds}
 end
 
+-- Keep the exact API-129 package userdata: sol3 compares its underlying engine pointer.
+function M.beginWaitHere(modules)
+    modules=modules or loaded()
+    local ai=modules.interfaces and modules.interfaces.AI
+    if not ai or not ai.startPackage or not ai.getActivePackage or not ai.forEachPackage or not ai.filterPackages then
+        return nil,'ai_interface_unavailable'
+    end
+    local active=ai.getActivePackage()
+    if active and not ({Wander=true,Follow=true,Escort=true,Travel=true})[active.type] then return nil,'actor_busy' end
+    if modules.types and modules.types.Actor and modules.types.Actor.isDead(modules.self) then return nil,'actor_dead' end
+    local before={}
+    ai.forEachPackage(function(package) if #before<=64 then before[#before+1]=package end end)
+    if #before>64 then return nil,'ai_package_limit' end
+    -- Native duration is game-time, not real-time. One game hour is a finite orphan fallback.
+    ai.startPackage({type='Wander',distance=0,duration=3600,isRepeat=false,cancelOther=false})
+    local owned
+    ai.forEachPackage(function(package)
+        local existing=false
+        for _,prior in ipairs(before) do if prior==package then existing=true;break end end
+        if not existing then owned=package end
+    end)
+    if not owned then return nil,'wait_package_unavailable' end
+    if ai.getActivePackage()~=owned then
+        ai.filterPackages(function(package)return package~=owned end)
+        return nil,'actor_busy'
+    end
+    return {package=owned,elapsed=0,cell=M.cellKey(modules.self and modules.self.cell)},'wait_started'
+end
+
+function M.endWaitHere(controller,modules)
+    modules=modules or loaded()
+    local ai=modules.interfaces and modules.interfaces.AI
+    if not controller or not controller.package then return true end
+    if not ai or not ai.filterPackages then return nil,'ai_interface_unavailable' end
+    ai.filterPackages(function(package)return package~=controller.package end)
+    controller.package=nil
+    return true
+end
+
+function M.updateWaitHere(controller,dt,modules)
+    modules=modules or loaded()
+    local ai=modules.interfaces and modules.interfaces.AI
+    local reason
+    if not ai or not ai.getActivePackage then reason='ai_interface_unavailable'
+    elseif modules.types and modules.types.Actor and modules.types.Actor.isDead(modules.self) then reason='actor_dead'
+    elseif M.cellKey(modules.self and modules.self.cell)~=controller.cell then reason='actor_cell_changed'
+    elseif ai.getActivePackage()~=controller.package then reason='wait_interrupted'
+    else
+        local elapsed=modules.core and modules.core.isWorldPaused and modules.core.isWorldPaused() and 0 or (tonumber(dt) or 0)
+        if elapsed==elapsed and elapsed>=0 and elapsed<math.huge then controller.elapsed=controller.elapsed+elapsed end
+        if controller.elapsed>=90 then reason='wait_completed' end
+    end
+    if reason then M.endWaitHere(controller,modules);return reason end
+end
+
+-- Save only its slot and scalar fingerprint. Loading ends the wait, preserving the other saved packages.
+function M.saveWaitHere(controller,modules)
+    modules=modules or loaded()
+    local ai=modules.interfaces and modules.interfaces.AI
+    if not controller or not controller.package or not ai or not ai.forEachPackage then return nil end
+    local count,index=0,nil
+    ai.forEachPackage(function(package)count=count+1;if package==controller.package then index=count end end)
+    if not index or count>65 then return nil end
+    local package=controller.package
+    return {index=index,count=count,type=package.type,distance=package.distance,duration=package.duration,isRepeat=package.isRepeat}
+end
+
+function M.restoreWaitHere(saved,modules)
+    modules=modules or loaded()
+    if type(saved)~='table' or saved.type~='Wander' or saved.distance~=0 or saved.isRepeat~=false
+        or saved.duration~=1 or type(saved.index)~='number' or type(saved.count)~='number'
+        or saved.index%1~=0 or saved.count%1~=0 or saved.index<1 or saved.index>saved.count or saved.count>65 then return end
+    local ai=modules.interfaces and modules.interfaces.AI
+    if not ai or not ai.forEachPackage then return end
+    local count,owned=0,nil
+    ai.forEachPackage(function(package)count=count+1;if count==saved.index then owned=package end end)
+    if count~=saved.count or not owned or owned.type~=saved.type or owned.distance~=saved.distance
+        or owned.duration~=saved.duration or owned.isRepeat~=saved.isRepeat then return end
+    M.endWaitHere({package=owned},modules)
+end
+
 local function movementDestination(parameters, modules)
     if type(parameters)~='table' or M.cellKey(modules.self and modules.self.cell)~=parameters.destination_cell then
         return nil,'destination_cell_changed'

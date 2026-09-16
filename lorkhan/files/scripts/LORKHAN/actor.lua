@@ -7,6 +7,8 @@ local core=adapter.event()
 local state
 local lastCombatSignature
 local menuDialogueSpeech
+local waitHere
+local savedWaitHere
 local combatStatusElapsed=0
 local COMBAT_STATUS_INTERVAL=0.25
 local engine={
@@ -101,14 +103,36 @@ local function stopMenuDialogue(reason)
     if bridge and bridge.releaseMedia then bridge.releaseMedia(command.media_id) end
     reportMenuDialogue(command,'interrupted',reason or 'client_interrupted',false)
 end
+local function waitStatus(status,reason)
+    if state and core and core.sendGlobalEvent then
+        core.sendGlobalEvent('LORKHAN_ACTOR_WAIT_HERE_STATUS',{actor=state.identity,generation=state.generation,status=status,reason=reason})
+    end
+end
+local function endWaitHere(reason)
+    if not waitHere then return end
+    adapter.endWaitHere(waitHere)
+    waitHere=nil
+    waitStatus('ended',reason)
+end
+local function restoreSavedWait()
+    if savedWaitHere then adapter.restoreWaitHere(savedWaitHere);savedWaitHere=nil end
+end
 return {
     engineHandlers={onInit=function(data) state=executor.new(data.actor,data.generation,data.capabilities) end,
+        onSave=function() return {waitHere=adapter.saveWaitHere(waitHere)} end,
+        onLoad=function(data) waitHere=nil;savedWaitHere=type(data)=='table' and data.waitHere or nil end,
         onActive=function()
+            restoreSavedWait()
             if state then
                 state.attached=true lastCombatSignature=nil combatStatusElapsed=0 reportCombatStatus()
             end
         end,
         onUpdate=function(dt)
+            restoreSavedWait()
+            if waitHere then
+                local reason=adapter.updateWaitHere(waitHere,dt)
+                if reason then waitHere=nil;waitStatus('ended',reason) end
+            end
             combatStatusElapsed=combatStatusElapsed+(tonumber(dt) or 0)
             if combatStatusElapsed>=COMBAT_STATUS_INTERVAL then
                 combatStatusElapsed=0
@@ -130,6 +154,7 @@ return {
             end
         end,
         onInactive=function()
+            endWaitHere('actor_became_inactive')
             if state then
                 clearCombatStatus()
                 cancelFace('actor_became_inactive')
@@ -140,6 +165,7 @@ return {
         end},
     eventHandlers={
         LORKHAN_ACTOR_ATTACH=function(command)
+            if state and command and state.generation~=command.generation then endWaitHere('session_changed') end
             if not state and command and command.actor then
                 state=executor.new(command.actor,command.generation,command.capabilities)
             else executor.attach(state,command and command.generation,command and command.capabilities) end
@@ -172,6 +198,7 @@ return {
             reportDelivery(command,ok and 'played' or 'failed',ok and 'subtitle_displayed' or (reason or 'subtitle_unavailable'))
         end,
         LORKHAN_ACTOR_STOP=function()
+            endWaitHere('client_interrupted')
             if state then
                 cancelFace('client_interrupted')
                 reportDelivery(executor.stop(state,engine),'interrupted','client_interrupted')
@@ -206,15 +233,26 @@ return {
             end
         end,
         LORKHAN_ACTOR_HALT_ACTIONS=function()
+            endWaitHere('client_interrupted')
             if state then cancelFace('client_interrupted') executor.haltActions(state,engine) end
         end,
         LORKHAN_ACTOR_DETACH=function()
+            endWaitHere('actor_detached')
             if state then
                 cancelFace('actor_detached')
                 reportDelivery(executor.stop(state,engine),'interrupted','actor_detached')
                 clearCombatStatus()
                 state.attached=false
             end
+        end,
+        LORKHAN_ACTOR_WAIT_HERE=function(command)
+            if not state or state.attached==false or type(command)~='table' or command.generation~=state.generation
+                or not identity.same(command.actor,state.identity) or state.identity.kind~='npc' then return end
+            endWaitHere('wait_restarted')
+            cancelFace('wait_started')
+            local controller,reason=adapter.beginWaitHere()
+            waitHere=controller
+            waitStatus(controller and 'waiting' or 'rejected',reason)
         end,
     },
 }

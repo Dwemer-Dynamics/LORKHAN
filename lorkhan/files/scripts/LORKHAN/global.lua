@@ -1,4 +1,5 @@
 local adapter=require('scripts.LORKHAN.adapters.openmw')
+local identity=require('scripts.LORKHAN.identity')
 local orchestrator=require('scripts.LORKHAN.orchestrator')
 local bridge=assert(adapter.bridge())
 local core=adapter.event()
@@ -436,6 +437,31 @@ return {
         end,
     },
     eventHandlers={
+        LORKHAN_WAIT_HERE_REQUEST=function(event)
+            local target=type(event)=='table' and event.target
+            local player=currentPlayer()
+            local reason
+            if state.disabled or state.hardHalted then reason='lorkhan_disabled'
+            elseif not identity.validate(target) or target.kind~='npc' or not identity.same(target,state.conversation.target) then reason='target_changed' end
+            local object=not reason and state.registry:resolve(target) or nil
+            if not reason and (not object or not player or not object.position or not player.position or not object.cell or not player.cell
+                or adapter.cellKey(object.cell)~=adapter.cellKey(player.cell)) then reason='target_unavailable' end
+            local candidate=not reason and adapter.candidate(object,2048,player.position) or nil
+            if not reason and (not candidate or candidate.dead or candidate.available==false or candidate.distance>2048) then reason='target_unavailable' end
+            if not reason then
+                local managed,failed=orchestrator.manageCandidate(state,candidate,'target',true)
+                if not managed then reason=failed or 'target_unavailable' end
+            end
+            if reason then emit('LORKHAN_WAIT_HERE_STATUS',{target=target,status='rejected',reason=reason});return end
+            local sent,failed=sendActor(target,'LORKHAN_ACTOR_WAIT_HERE',{actor=target,generation=state.generation})
+            if not sent then emit('LORKHAN_WAIT_HERE_STATUS',{target=target,status='rejected',reason=failed}) end
+        end,
+        LORKHAN_ACTOR_WAIT_HERE_STATUS=function(event)
+            if type(event)=='table' and event.generation==state.generation and identity.validate(event.actor)
+                and state.registry:resolve(event.actor) and ({waiting=true,ended=true,rejected=true})[event.status] then
+                emit('LORKHAN_WAIT_HERE_STATUS',{target=event.actor,status=event.status,reason=event.reason})
+            end
+        end,
         LORKHAN_DIRECTOR_CONTEXT=function(event) orchestrator.directorContext(state,event) end,
         LORKHAN_RECHAT_CONTEXT=function(event)
             enrichWorldCalendar(event)

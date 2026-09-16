@@ -1251,6 +1251,36 @@ test('spoken mood and selected mode survive transcription as typed protocol data
  local terminal=event(2,'turn.complete',1,{status='complete'});terminal.request_id=turn.requestId;terminal.turn_id=turn.turnId
  cheatBridge.results={terminal};eq(orchestrator.poll(cheat),1);eq(cheat.conversation.target,nil)
 end)
+test('open mic mute and stop fence late transcripts without cancelling push to talk',function()
+ for _,operation in ipairs({'muteOpenMic','disableOpenMic'}) do
+  local b=fake.bridge();local events={}
+  local s=orchestrator.new(b,function(name,payload)events[#events+1]={name=name,payload=payload} end)
+  orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+  conversation.setTarget(s.conversation,npc)
+  local args={speaker=playerId,target=npc,context={},language='en-US',capabilities={'dialogue.text'}}
+  truthy(orchestrator.enableOpenMic(s,args));truthy(orchestrator.stopVoice(s));truthy(orchestrator.pollVoice(s))
+  local sttId='00000000-0000-4000-8000-000000000041'
+  truthy(s.pendingStt[sttId]);s.pendingStt[uuid(199)]={continuous=false}
+  truthy(orchestrator[operation](s));eq(s.pendingStt[sttId],nil);truthy(s.pendingStt[uuid(199)])
+  eq(orchestrator.pollOpenMic(s),false);eq(orchestrator.runOpenMicContext(s,args),nil)
+  s.pendingStt[uuid(199)]=nil
+  truthy(orchestrator.enableOpenMic(s,args));truthy(s.pendingVoice);eq(s.openMicMuted,false)
+  local before=#events
+  local transcript=event(1,'stt.transcript',1,{text='Do not send this muted recording.',language='en-US'})
+  transcript.request_id=sttId;b.results={transcript};eq(orchestrator.poll(s),1)
+  eq(#b.submitted,0);eq(#events,before);truthy(s.pendingVoice)
+  truthy(orchestrator[operation](s));eq(b.voiceState,'idle');eq(s.pendingVoice,nil)
+ end
+ local b=fake.bridge();local s=orchestrator.new(b)
+ orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+ conversation.setTarget(s.conversation,npc)
+ local args={speaker=playerId,target=npc,context={},language='en-US',capabilities={'dialogue.text'}}
+ truthy(orchestrator.startVoice(s,args));local manual=s.pendingVoice
+ truthy(orchestrator.enableOpenMic(s,args));eq(s.pendingVoice,manual);eq(b.voiceAutomatic,false)
+ truthy(orchestrator.muteOpenMic(s));eq(s.pendingVoice,manual);eq(b.voiceState,'recording')
+ truthy(orchestrator.disableOpenMic(s));eq(s.pendingVoice,manual);eq(b.voiceState,'recording')
+end)
+
 test('auto-managed actors attacking the player are removed unless explicitly allowed',function()
  local b=fake.bridge() local detached=0 local combatEvents={}
  local s=orchestrator.new(b,function(name,payload)
@@ -1361,13 +1391,13 @@ test('focused UI builders keep chat selectors tools and notifications independen
   menuContext[entry.callback]=function() clicked=entry.key end
  end
  local chat=chatbox.build(menuContext)
- eq(chat[1].props.text,'Chat with Fargoth');eq(chat[#chat-1].props.text,'Send');eq(chat[#chat].props.text,'Close')
+ eq(chat[1].props.text,'Text Chat and Interact: Fargoth');eq(chat[#chat-1].props.text,'Send');eq(chat[#chat].props.text,'Close')
  eq(chat[2].props.text,'Mood: None  |  Mode: Standard')
  eq(chat[4].props.text,'One-turn prefixes: || Close, !! Shout, | Whisper.')
  -- the moved controls sit between the send hint and Send, in one compact clickable list
  local MENU_FIRST=6
- eq(#chatbox.MENU,9);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
- local expected={'mood','autoChat','modes','model','profiles','settings','history','statusHud','diagnostics'}
+ eq(#chatbox.MENU,10);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
+ local expected={'mood','autoChat','modes','model','profiles','settings','waitHere','history','statusHud','diagnostics'}
  for index,entry in ipairs(chatbox.MENU) do
   eq(entry.key,expected[index])
   local row=chat[MENU_FIRST+index-1]
@@ -1380,7 +1410,7 @@ test('focused UI builders keep chat selectors tools and notifications independen
  local hudShown=chatbox.build({ui=ui,util=util,target='Fargoth',text='',shortcuts=uiState.SHORTCUTS,
   statusHudVisible=true,onTextChanged=function()end,onKeyPress=function()end,
   onSend=function()end,onClose=function()end})
- eq(hudShown[MENU_FIRST+7].props.text,'Status HUD: on')
+ eq(hudShown[MENU_FIRST+8].props.text,'Status HUD: on')
  eq(chatbox.statusHudLabel(true),'Status HUD: on');eq(chatbox.statusHudLabel(false),'Status HUD: off')
  eq(chatbox.autoChatLabel(true),'Auto Chat: on');eq(chatbox.autoChatLabel(false),'Auto Chat: off')
  -- the top-left HUD draws only while statusHudVisible is set, so no transient status leaks when it is off
@@ -1544,7 +1574,7 @@ package.preload['openmw.lorkhan']=function() return {
  package.loaded['scripts.LORKHAN.settings']=nil
  local settingsEntry=require('scripts.LORKHAN.settings')
  eq(next(settingsEntry),nil)
- eq(registered.pages[1].key,'LORKHAN');eq(#registered.groups,6);eq(registered.groups[1].page,'LORKHAN');eq(#registered.groups[1].settings,8)
+ eq(registered.pages[1].key,'LORKHAN');eq(#registered.groups,6);eq(registered.groups[1].page,'LORKHAN');eq(#registered.groups[1].settings,5)
  for _,setting in ipairs(registered.groups[1].settings) do truthy(setting.name);truthy(setting.description) end
  truthy(registered.triggers.LORKHAN_Talk);truthy(registered.triggers.LORKHAN_Halt)
  truthy(registered.triggers.LORKHAN_StopDialogue);truthy(registered.triggers.LORKHAN_ManualActivate)
@@ -1557,14 +1587,13 @@ package.preload['openmw.lorkhan']=function() return {
  local function setting(group,key)
   for _,candidate in ipairs(group.settings) do if candidate.key==key then return candidate end end
  end
- truthy(setting(registered.groups[1],'StopDialogueBinding'));truthy(setting(registered.groups[1],'TalkBinding'))
+ truthy(setting(registered.groups[1],'TalkBinding'))
  truthy(setting(registered.groups[1],'HaltBinding'));truthy(setting(registered.groups[1],'ManualActivateBinding'))
- truthy(setting(registered.groups[1],'ActorToolsBinding'))
- truthy(setting(registered.groups[1],'PushToTalkBinding'));truthy(setting(registered.groups[1],'OpenMicBinding'))
+ truthy(setting(registered.groups[1],'PushToTalkBinding'))
  truthy(setting(registered.groups[1],'OpenMicMuteBinding'))
  -- the six moved controls leave the visible Hotkeys list so Interact is the one discoverable entry
  for _,key in ipairs({'ModeMenuBinding','ModelMenuBinding','ProfileMenuBinding','StatusHudBinding',
-  'HistoryBinding','DiagnosticsBinding'}) do eq(setting(registered.groups[1],key),nil) end
+  'HistoryBinding','DiagnosticsBinding','StopDialogueBinding','ActorToolsBinding','OpenMicBinding'}) do eq(setting(registered.groups[1],key),nil) end
  -- their triggers stay registered so bindings users already saved keep working
  for _,key in ipairs({'LORKHAN_ToggleMode','LORKHAN_ModelMenu','LORKHAN_ProfileMenu','LORKHAN_StatusHud',
   'LORKHAN_History','LORKHAN_Diagnostics'}) do truthy(registered.triggers[key]) end
@@ -1572,10 +1601,11 @@ package.preload['openmw.lorkhan']=function() return {
  eq(setting(registered.groups[2],'interiorDistance').default,1200);eq(setting(registered.groups[2],'exteriorDistance').default,2400)
  eq(setting(registered.groups[2],'interiorHearingDistance').default,500)
  eq(setting(registered.groups[2],'exteriorHearingDistance').default,1000)
- eq(registered.groups[3].key,'SettingsLORKHANBehavior');eq(#registered.groups[3].settings,5)
+ eq(registered.groups[3].key,'SettingsLORKHANBehavior');eq(#registered.groups[3].settings,6)
  eq(setting(registered.groups[3],'cancelDialogueOnCombat').default,true)
- eq(setting(registered.groups[3],'openMicSensitivity').default,700)
- eq(setting(registered.groups[3],'openMicEndDelayMs').default,900)
+ eq(setting(registered.groups[3],'openMicEnabled').default,false)
+ eq(setting(registered.groups[3],'openMicSensitivity').default,1000)
+ eq(setting(registered.groups[3],'openMicEndDelayMs').default,1000)
  eq(setting(registered.groups[3],'recordingDevice').default,-1)
  eq(setting(registered.groups[3],'recordingDevice').renderer,'number')
  eq(setting(registered.groups[3],'recordingDevice').argument.min,-1)
@@ -2104,6 +2134,97 @@ test('compact settings binding preserves keyboard mouse controller and Escape be
  control().events.mouseClick();entry.engineHandlers.onControllerButtonPress(0);eq(data.saved.device,'controller');eq(control().props.text,'A')
  control().events.mouseClick();entry.engineHandlers.onKeyPress({code=27});eq(data.saved.device,nil);eq(control().props.text,'None')
  eq(data.saved.type,'trigger');eq(data.saved.key,'LORKHAN_Talk');eq(refreshes,8)
+end)
+
+test('local Wait Here owns one package and counts only unpaused seconds',function()
+ local follow={type='Follow'}
+ local vanilla={type='Wander',distance=0,duration=1,isRepeat=false}
+ local packages={follow,vanilla} local paused=false local dead=false
+ local ai={getActivePackage=function()return packages[1]end,
+  forEachPackage=function(callback)for _,package in ipairs(packages)do callback(package)end end,
+  filterPackages=function(keep)local out={};for _,package in ipairs(packages)do if keep(package)then out[#out+1]=package end end;packages=out end,
+  startPackage=function(args)eq(args.cancelOther,false);eq(args.duration,3600)
+   table.insert(packages,1,{type='Wander',distance=0,duration=1,isRepeat=false})end}
+ local modules={interfaces={AI=ai},self={cell={id='seyda neen',isExterior=false}},
+  core={isWorldPaused=function()return paused end},types={Actor={isDead=function()return dead end}}}
+ local controller=assert(openmwAdapter.beginWaitHere(modules));local owned=controller.package
+ eq(#packages,3);eq(packages[2],follow);eq(packages[3],vanilla)
+ paused=true;eq(openmwAdapter.updateWaitHere(controller,200,modules),nil);eq(controller.elapsed,0)
+ paused=false;eq(openmwAdapter.updateWaitHere(controller,89,modules),nil)
+ eq(openmwAdapter.updateWaitHere(controller,1,modules),'wait_completed');eq(#packages,2);eq(packages[1],follow);eq(packages[2],vanilla)
+ controller=assert(openmwAdapter.beginWaitHere(modules));table.insert(packages,1,{type='Combat'})
+ eq(openmwAdapter.updateWaitHere(controller,1,modules),'wait_interrupted');eq(#packages,3);eq(packages[1].type,'Combat')
+ table.remove(packages,1);controller=assert(openmwAdapter.beginWaitHere(modules));dead=true
+ eq(openmwAdapter.updateWaitHere(controller,1,modules),'actor_dead');eq(packages[1],follow)
+end)
+
+test('saved Wait Here removes only its matching saved slot and preserves vanilla lookalikes',function()
+ local vanilla={type='Wander',distance=0,duration=1,isRepeat=false}
+ local packages={vanilla};local ai={getActivePackage=function()return packages[1]end,
+  forEachPackage=function(callback)for _,package in ipairs(packages)do callback(package)end end,
+  filterPackages=function(keep)local out={};for _,package in ipairs(packages)do if keep(package)then out[#out+1]=package end end;packages=out end,
+  startPackage=function()table.insert(packages,1,{type='Wander',distance=0,duration=1,isRepeat=false})end}
+ local modules={interfaces={AI=ai},self={cell={id='cell'}}}
+ local controller=assert(openmwAdapter.beginWaitHere(modules));local saved=openmwAdapter.saveWaitHere(controller,modules)
+ eq(saved.index,1);eq(saved.count,2);eq(support.isPrimitiveTree(saved),true)
+ -- Loading recreates userdata but retains the saved package order and fields.
+ packages={support.copy(packages[1]),vanilla};openmwAdapter.restoreWaitHere(saved,modules)
+ eq(#packages,1);eq(packages[1],vanilla)
+ packages={{type='Follow'},vanilla};openmwAdapter.restoreWaitHere(saved,modules);eq(#packages,2)
+ packages={support.copy(vanilla),vanilla,{type='Travel'}};openmwAdapter.restoreWaitHere(saved,modules);eq(#packages,3)
+ openmwAdapter.restoreWaitHere(nil,modules);eq(#packages,3)
+end)
+
+test('actor Wait Here rejects stale requests and restores on halt detach and load',function()
+ local moduleName='scripts.LORKHAN.adapters.openmw';local original=package.loaded[moduleName]
+ local started,stopped,restored=0,0,0
+ local mock={event=function()return {sendGlobalEvent=function()end}end,bridge=function()return nil end,
+  beginWaitHere=function()started=started+1;return {package={},elapsed=0},'wait_started'end,
+  endWaitHere=function()stopped=stopped+1 end,saveWaitHere=function(value)return value and {index=1}end,
+  restoreWaitHere=function(value)eq(value.index,1);restored=restored+1 end,combatStatus=function()return nil end,
+  stopSpeech=function()end,stopAi=function()return true end}
+ package.loaded[moduleName]=mock
+ local ok,err=pcall(function()
+  local script=assert(loadfile(root..'/scripts/LORKHAN/actor.lua'))()
+  script.engineHandlers.onInit({actor=npc,generation=3,capabilities={}})
+  local request=script.eventHandlers.LORKHAN_ACTOR_WAIT_HERE
+  request({actor=npc,generation=2});request({actor=enemy,generation=3});eq(started,0)
+  request({actor=npc,generation=3});eq(started,1)
+  script.eventHandlers.LORKHAN_ACTOR_HALT_ACTIONS();eq(stopped,1)
+  request({actor=npc,generation=3});local saved=script.engineHandlers.onSave()
+  script.eventHandlers.LORKHAN_ACTOR_DETACH();eq(stopped,2)
+  script.engineHandlers.onLoad(saved);script.engineHandlers.onActive();eq(restored,1)
+ end)
+ package.loaded[moduleName]=original;assert(ok,err)
+end)
+
+test('GLOBAL Wait Here accepts only the selected living nearby NPC and forwards fenced status',function()
+ local names={'scripts.LORKHAN.adapters.openmw','scripts.LORKHAN.orchestrator','openmw.world','openmw.types','openmw.interfaces','openmw.util'}
+ local saved={};for _,name in ipairs(names)do saved[name]=package.loaded[name]end
+ local ok,err=pcall(function()
+  local events={} local sent=0 local distance=100 local dead=false
+  local object={position={},cell={id='cell'},sendEvent=function(_,name,payload)
+   eq(name,'LORKHAN_ACTOR_WAIT_HERE');eq(payload.generation,4);sent=sent+1 end}
+  local playerObject={position={},cell={id='cell'},sendEvent=function(_,name,payload)events[#events+1]={name=name,payload=payload}end}
+  local current={generation=4,conversation={target=npc},registry={resolve=function(_,target)return identity.same(target,npc)and object or nil end}}
+  package.loaded['scripts.LORKHAN.adapters.openmw']={bridge=function()return {}end,event=function()return {}end,
+   cellKey=function(cell)return cell and cell.id end,
+   candidate=function()return {identity=npc,distance=distance,dead=dead,available=true,maxDistance=2048}end}
+  package.loaded['scripts.LORKHAN.orchestrator']={new=function()return current end,manageCandidate=function()return npc end}
+  package.loaded['openmw.world']={players={playerObject}}
+  for _,name in ipairs({'openmw.types','openmw.interfaces','openmw.util'})do package.loaded[name]={}end
+  local handlers=assert(loadfile(root..'/scripts/LORKHAN/global.lua'))().eventHandlers
+  handlers.LORKHAN_WAIT_HERE_REQUEST({target=enemy});eq(sent,0);eq(events[#events].payload.reason,'target_changed')
+  distance=2049;handlers.LORKHAN_WAIT_HERE_REQUEST({target=npc});eq(sent,0)
+  distance=100;dead=true;handlers.LORKHAN_WAIT_HERE_REQUEST({target=npc});eq(sent,0)
+  dead=false;handlers.LORKHAN_WAIT_HERE_REQUEST({target=npc});eq(sent,1)
+  local count=#events
+  handlers.LORKHAN_ACTOR_WAIT_HERE_STATUS({actor=npc,generation=3,status='waiting'});eq(#events,count)
+  handlers.LORKHAN_ACTOR_WAIT_HERE_STATUS({actor=npc,generation=4,status='waiting'});eq(#events,count+1)
+  current.hardHalted=true;handlers.LORKHAN_WAIT_HERE_REQUEST({target=npc});eq(sent,1);eq(events[#events].payload.reason,'lorkhan_disabled')
+ end)
+ for _,name in ipairs(names)do package.loaded[name]=saved[name]end
+ assert(ok,err)
 end)
 
 io.write(string.format('%d tests, %d failures\n',tests,failures))
