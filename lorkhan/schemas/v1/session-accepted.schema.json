@@ -44,6 +44,10 @@
     "profile_id": {
       "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid",
       "description": "Authoritative session owner for this playthrough. The client must use it on subsequent messages."
+    },
+    "playthrough_id": {
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid",
+      "description": "Authoritative playthrough after applying a web-managed saved-character association. Use on subsequent messages and persist in the save."
     }
   },
   "required": [

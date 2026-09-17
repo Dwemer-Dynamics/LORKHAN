@@ -2433,6 +2433,10 @@ namespace MWLua
                             if(parsed.value().characterId)m_characterIdentity.character=*parsed.value().characterId;
                             // Only the accepted session may select the scoped owner profile for subsequent envelopes.
                             if(parsed.value().profileId)m_config->profile=lorkhan::ProfileId(*parsed.value().profileId);
+                            if(parsed.value().playthroughId){
+                                m_characterIdentity.playthrough=*parsed.value().playthroughId;
+                                m_config->playthrough=lorkhan::PlaythroughId(*parsed.value().playthroughId);
+                            }
                             m_characterRejected=false;
                             m_loadedSave=false;m_loadedCalendar.reset();
                             m_session = parsed.value().session; m_cursor = parsed.value().eventCursor;

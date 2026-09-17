@@ -438,7 +438,6 @@ return {
         end,
     },
     eventHandlers={
-        LORKHAN_PLAYTHROUGH_SELECT=function(event) orchestrator.selectCharacter(state,event) end,
         LORKHAN_WAIT_HERE_REQUEST=function(event)
             local target=type(event)=='table' and event.target
             local player=currentPlayer()

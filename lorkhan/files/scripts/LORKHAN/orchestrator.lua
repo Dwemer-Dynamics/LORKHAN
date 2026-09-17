@@ -1599,14 +1599,17 @@ function M.configureCharacter(state,mode,saved)
     if result.needs_choice then
         state.characterId=result.character_id state.playthroughId=result.legacy_playthrough_id state.characterBinding=nil
         state.characterChoice=util.copy(result)
-        state.emit('LORKHAN_PLAYTHROUGH_CHOICE',util.copy(result))
+        if mode=='load' and not result.error then
+            return M.configureCharacter(state,'existing',{characterId=result.character_id,generation=result.generation})
+        end
+        state.emit('LORKHAN_STATUS',{status='error',reason=result.error or 'character_binding_required'})
     else
         state.characterChoice=util.copy(result)
         state.characterChoice.waiting=true
         if mode=='new_game' then
             state.characterId=result.character_id state.playthroughId=result.playthrough_id state.characterBinding=nil
         end
-        state.emit('LORKHAN_PLAYTHROUGH_CONNECTING',util.copy(state.characterChoice))
+        state.emit('LORKHAN_STATUS',{status='connecting'})
     end
     return result
 end
@@ -1619,20 +1622,11 @@ function M.refreshCharacterIdentity(state,info)
         if info.profile_id then state.profileId=info.profile_id end
         state.characterId=info.character_id state.playthroughId=info.playthrough_id state.characterBinding=info.character_binding
         state.characterChoice=nil state.preserveIdentitySave=false state.originalIdentitySave=nil
-        state.emit('LORKHAN_PLAYTHROUGH_SELECTED',util.copy(info))
+        state.emit('LORKHAN_STATUS',{status='ready'})
     elseif info.needs_choice and pending.waiting then
         state.characterChoice=util.copy(info)
-        state.emit('LORKHAN_PLAYTHROUGH_CHOICE',util.copy(info))
+        state.emit('LORKHAN_STATUS',{status='error',reason=info.error or 'character_binding_conflict'})
     end
-end
-
-function M.selectCharacter(state,event)
-    local pending=state.characterChoice
-    if type(event)~='table' or not pending or event.character_id~=pending.character_id
-        or event.generation~=pending.generation or (event.choice~='new' and event.choice~='existing') then
-        return nil,'stale_character_selection'
-    end
-    return M.configureCharacter(state,event.choice,{characterId=event.character_id,generation=event.generation})
 end
 
 function M.load(state,raw)

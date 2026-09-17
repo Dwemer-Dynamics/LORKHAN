@@ -1283,7 +1283,7 @@ Result<SessionAcceptedResponse> parseSessionAcceptedResponse(
 {
     auto object = parseObject(body, headers, "lorkhan.session.accepted.v1", limits);
     if (!object) return Result<SessionAcceptedResponse>::failure(object.error());
-    if (!hasExactly(object.value(), {"schema", "message_id", "session_id", "generation", "capabilities", "config_revision", "client_settings", "event_cursor"}, {"character_id", "profile_id"}))
+    if (!hasExactly(object.value(), {"schema", "message_id", "session_id", "generation", "capabilities", "config_revision", "client_settings", "event_cursor"}, {"character_id", "profile_id", "playthrough_id"}))
         return invalidSchemaValue<SessionAcceptedResponse>("session accepted fields mismatch");
     auto message = requireUuid(object.value(), "message_id");
     auto session = requireUuid(object.value(), "session_id");
@@ -1323,9 +1323,15 @@ Result<SessionAcceptedResponse> parseSessionAcceptedResponse(
         if (!parsedProfile) return invalidSchemaValue<SessionAcceptedResponse>(parsedProfile.error().message);
         profile = std::move(parsedProfile).value();
     }
+    std::optional<std::string> playthrough;
+    if (json::find(object.value(), "playthrough_id")) {
+        auto parsedPlaythrough = requireUuid(object.value(), "playthrough_id");
+        if (!parsedPlaythrough) return invalidSchemaValue<SessionAcceptedResponse>(parsedPlaythrough.error().message);
+        playthrough = std::move(parsedPlaythrough).value();
+    }
     return Result<SessionAcceptedResponse>::success({MessageId(std::move(message).value()),
         SessionId(std::move(session).value()), Generation(generation.value()), std::move(parsedCapabilities),
-        std::move(revision).value(),std::move(settings).value(),cursor.value(),std::move(character),std::move(profile)});
+        std::move(revision).value(),std::move(settings).value(),cursor.value(),std::move(character),std::move(profile),std::move(playthrough)});
 }
 
 Result<TurnAcceptedResponse> parseTurnAcceptedResponse(

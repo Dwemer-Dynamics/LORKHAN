@@ -10,6 +10,14 @@ end
 local function eq(a,b) assert(a==b,tostring(a)..' ~= '..tostring(b)) end
 local function truthy(v) assert(v) end
 
+-- Compile entrypoints too: module-only tests cannot catch renderer closure limits.
+test('game script entrypoints compile in the active Lua runtime',function()
+ for _,name in ipairs({'player','global','actor','settings','settings_menu'}) do
+  local chunk,reason=loadfile(root..'/scripts/LORKHAN/'..name..'.lua')
+  assert(chunk,reason)
+ end
+end)
+
 local identity=require('scripts.LORKHAN.identity')
 local protocol=require('scripts.LORKHAN.protocol')
 local playerInput=require('scripts.LORKHAN.player_input')
@@ -2303,7 +2311,7 @@ test('GLOBAL Wait Here accepts only the selected living nearby NPC and forwards 
  assert(ok,err)
 end)
 
-test('saved character selection waits for explicit choice and rejects stale generations',function()
+test('saved character linking is automatic without game menus and preserves rejected saves',function()
  local b=fake.bridge() local emitted={} local requests={}
  local char='00000000-0000-4000-8000-000000000081'
  local legacy='00000000-0000-4000-8000-000000000082'
@@ -2317,16 +2325,16 @@ test('saved character selection waits for explicit choice and rejects stale gene
  local s=orchestrator.new(b,function(name,payload)emitted[#emitted+1]={name=name,payload=payload}end)
  orchestrator.load(s,nil);eq(s.sessionId,nil);eq(s.characterId,char);truthy(s.characterChoice)
  eq(orchestrator.save(s),nil)
- local before=#requests
- local ok,reason=orchestrator.selectCharacter(s,{character_id=char,generation=8,choice='existing'})
- eq(ok,nil);eq(reason,'stale_character_selection');eq(#requests,before)
- truthy(orchestrator.selectCharacter(s,{character_id=char,generation=9,choice='existing'}))
+ eq(#requests,2);eq(requests[1].mode,'load');eq(requests[2].mode,'existing')
  eq(s.playthroughId,legacy);eq(s.characterBinding,nil);truthy(s.characterChoice.waiting);eq(orchestrator.save(s),nil)
  orchestrator.refreshCharacterIdentity(s,{generation=8,ready=true,character_id=fresh,profile_id=fresh})
  eq(s.characterId,char);eq(s.profileId,nil)
  orchestrator.refreshCharacterIdentity(s,{generation=9,needs_choice=true,character_id=char,legacy_playthrough_id=legacy,error='conflict'})
  truthy(s.characterChoice);eq(s.characterChoice.waiting,nil);eq(orchestrator.save(s),nil)
- truthy(orchestrator.selectCharacter(s,{character_id=char,generation=9,choice='existing'}))
+ local rejectedRequests=#requests
+ orchestrator.refreshCharacterIdentity(s,{generation=9,needs_choice=true,error='conflict'})
+ eq(#requests,rejectedRequests)
+ for _,event in ipairs(emitted) do truthy(not event.name:match('LORKHAN_PLAYTHROUGH_')) end
  orchestrator.refreshCharacterIdentity(s,{generation=9,ready=true,character_id=fresh,playthrough_id=legacy,character_binding='existing',profile_id=char})
  eq(s.characterId,fresh);eq(s.characterBinding,'existing');eq(s.characterChoice,nil)
  local saved=orchestrator.save(s);eq(saved.schemaVersion,3);eq(saved.profileId,char)

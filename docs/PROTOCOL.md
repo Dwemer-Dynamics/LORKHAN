@@ -428,3 +428,12 @@ The foundation rejects an unsafe cross-playthrough admission with
 not isolate mutable NPC and Player profiles. Automatic switching must wait for the ownership stage
 in the server's `docs/PLAYTHROUGH-PARITY.md`. Shared Narrator configuration, Core Profiles and
 connectors stay global. No full-database restore is performed by this handshake.
+
+### Web-managed playthrough association
+
+Session acceptance may return canonical `character_id`, `profile_id` and `playthrough_id`.
+After a web association is applied on the next load, the client uses the accepted world/profile
+for subsequent envelopes and persists the accepted identity in the save. Old saves can carry a
+previous world hint; the server-owned character binding resolves it. No in-game playthrough menu
+is shown: existing saves reconnect automatically and new games initialize a new world. Ambiguous
+legacy ownership fails without mutating the save or silently assigning historical NPC profiles.

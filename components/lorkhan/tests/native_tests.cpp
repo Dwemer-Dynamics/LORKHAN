@@ -296,6 +296,12 @@ void testAcceptedProtocolResponses()
         if(identity==kMessage)CHECK(parsed && parsed.value().profileId==identity);
         else CHECK(!parsed);
     }
+    for(const auto& identity : {std::string(kMessage),std::string("invalid")}) {
+        auto changed=sessionBody;changed.insert(1,"\"playthrough_id\":\""+identity+"\",");
+        auto parsed=lorkhan::parseSessionAcceptedResponse(changed,jsonHeaders);
+        if(identity==kMessage)CHECK(parsed && parsed.value().playthroughId==identity);
+        else CHECK(!parsed);
+    }
     for (const std::string value : {"true", "false", "0", "null", "\"false\""}) {
         auto changed=sessionBody;changed.insert(changed.find("\"auto_greeting\""),"\"ai_enabled\":"+value+",");
         auto parsed=lorkhan::parseSessionAcceptedResponse(changed,jsonHeaders);

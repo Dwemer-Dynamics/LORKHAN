@@ -95,6 +95,7 @@ struct SessionAcceptedResponse {
     std::uint64_t eventCursor{};
     std::optional<std::string> characterId;
     std::optional<std::string> profileId;
+    std::optional<std::string> playthroughId;
 };
 
 struct ResponseCorrelation {
