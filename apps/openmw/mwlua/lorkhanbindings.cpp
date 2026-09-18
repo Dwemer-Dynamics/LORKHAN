@@ -777,6 +777,16 @@ namespace MWLua
                 if (!ready()) return failure(lua, "bridge_not_ready");
                 try
                 {
+                    if (type == lorkhan::GameDataType::disposition && m_dispositionReceipts.size() >= 128) {
+                        // Observation-only callers do not await receipts. Reclaim settled transport
+                        // results under pressure, never pending requests or Lua's mutation receipts.
+                        for (auto receipt = m_dispositionReceipts.begin(); receipt != m_dispositionReceipts.end();) {
+                            if (receipt->second != "pending") receipt = m_dispositionReceipts.erase(receipt);
+                            else ++receipt;
+                        }
+                        if (m_dispositionReceipts.size() >= 128)
+                            return failure(lua, "disposition_queue_full");
+                    }
                     const lorkhan::RequestId request(uuid());
                     const std::string serialized = toJson(sol::make_object(lua, payload));
                     lorkhan::OutboundRequest outbound{request, *m_session, m_service->generation(),
@@ -785,6 +795,7 @@ namespace MWLua
                             m_service->generation(), utcNow(), type, serialized}};
                     auto accepted = m_service->enqueue(std::move(outbound));
                     if (!accepted) return failure(lua, accepted.error().message);
+                    if (type == lorkhan::GameDataType::disposition) m_dispositionReceipts[request.value()] = "pending";
                     return success(lua, request.value());
                 }
                 catch (const std::exception& error) { return failure(lua, error.what()); }
@@ -2344,6 +2355,35 @@ namespace MWLua
                 return status;
             }
 
+            // Keep correlated receipts until Lua consumes them; no network result is mistaken for acceptance.
+            bool settleDispositionResult(const lorkhan::InboundResult& result)
+            {
+                auto found = m_dispositionReceipts.find(result.request.value());
+                if (found == m_dispositionReceipts.end()) return false;
+                found->second = result.kind == lorkhan::ResponseKind::accepted ? "ok" : "disposition_submit_failed";
+                return true;
+            }
+
+            sol::table pumpDispositionResult(sol::state_view lua, const std::string& request)
+            {
+                if (m_service && m_dispositionReceipts.count(request)
+                    && m_deferredResults.size() + kControlsPumpBatch <= kDeferredResultCapacity) {
+                    for (auto& item : m_service->poll(kControlsPumpBatch)) {
+                        if (settleDispositionResult(item)) { ++m_resultsSeen; continue; }
+                        m_deferredResults.push_back(std::move(item));
+                    }
+                }
+                sol::table result(lua, sol::create);
+                auto found = m_dispositionReceipts.find(request);
+                if (found == m_dispositionReceipts.end()) { result["error"] = "unknown_disposition_request"; return result; }
+                result["pending"] = found->second == "pending";
+                if (found->second == "pending") return result;
+                if (found->second == "ok") result["ok"] = true;
+                else result["error"] = found->second;
+                m_dispositionReceipts.erase(found);
+                return result;
+            }
+
             sol::table poll(sol::state_view lua, std::size_t maximum)
             {
                 sol::table output(lua, sol::create);
@@ -2359,6 +2399,7 @@ namespace MWLua
                 {
                     if(settleTransferReceipt(result)){++m_resultsSeen;continue;}
                     ++m_resultsSeen;
+                    if (settleDispositionResult(result)) continue;
                     if (settleDebugResult(result)) continue;
                     if (settleDiaryResult(result)) continue;
                     if (settlePlayerAutochatResult(result)) continue;
@@ -2563,7 +2604,7 @@ namespace MWLua
                 m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();
                 m_diaryRequest.reset();m_diaryReceipt.reset();m_diaryBook.reset();m_diaryReceiptDto.reset();m_diaryPending=false;
                 m_diaryState.clear();m_diaryReason.clear();m_diaryError.clear();m_diaryReceiptOk=false;
-                m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_turnRequests.clear();m_controlsError.clear();m_debugError.clear();
+                m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_dispositionReceipts.clear();m_turnRequests.clear();m_controlsError.clear();m_debugError.clear();
                 m_initSnapshot.reset();m_initAttempts=0;m_retryInit=false;
                 if(identityChange){m_characterIdentity.clear();m_characterRejected=false;}
                 m_loadedSave=loadedSave;m_waitingLoadedCalendar=loadedSave;m_loadedCalendar.reset();beginSession();
@@ -2668,7 +2709,7 @@ namespace MWLua
             }
 
             static std::vector<std::string> capabilities()
-            { return { "diary.books.v1", "context.item_pickup.v1", "context.spell_cast.v1", "context.actor_resurrected.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.item.create", "action.gold.create", "action.actor.spawn", "action.actor.teleport_to_player", "action.player.teleport", "action.actor.restore", "action.actor.resurrect", "action.actor.kill", "action.conversation.end", "action.ai.follow", "action.ai.stop",
+            { return { "relationship.disposition", "diary.books.v1", "context.item_pickup.v1", "context.spell_cast.v1", "context.actor_resurrected.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.item.create", "action.gold.create", "action.actor.spawn", "action.actor.teleport_to_player", "action.player.teleport", "action.actor.restore", "action.actor.resurrect", "action.actor.kill", "action.conversation.end", "action.ai.follow", "action.ai.stop",
                 "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.weapon.sheathe", "action.item.give", "action.item.take", "action.item.pickup", "action.gold.give", "action.gold.take", "action.service.barter", "action.service.training", "action.service.spells", "action.service.travel", "action.service.spellmaking", "action.service.enchanting", "action.service.repair", "action.spell.cast", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
                 "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" }; }
@@ -2794,6 +2835,15 @@ namespace MWLua
                         }
                         payload["instructions"]=instructions;break;
                     }
+                    case lorkhan::ProtocolEventType::relationship_adjust: {
+                        result["type"] = "relationship.adjust";
+                        const auto& item = std::get<lorkhan::RelationshipAdjustEventPayload>(event.payload);
+                        payload["adjustment_id"] = item.adjustment.value();
+                        payload["actor"] = identityTable(lua, item.actor);
+                        payload["player"] = identityTable(lua, item.player);
+                        payload["delta"] = item.delta; payload["expires_at"] = item.expiresAt;
+                        break;
+                    }
                     case lorkhan::ProtocolEventType::response_complete: {
                         result["type"] = "response.complete";
                         const auto& item = std::get<lorkhan::ResponseCompleteEventPayload>(event.payload);
@@ -2861,6 +2911,7 @@ namespace MWLua
             std::string m_debugError;
             static constexpr std::size_t kControlsPumpBatch = 8;
             static constexpr std::size_t kDeferredResultCapacity = lorkhan::kInboundCapacity;
+            std::map<std::string, std::string> m_dispositionReceipts;
             std::vector<lorkhan::InboundResult> m_deferredResults;
             std::map<std::string,std::string> m_turnRequests;
             std::string m_transferSession;
@@ -2894,7 +2945,7 @@ namespace MWLua
             api["version"] = std::string(lorkhan::kClientVersion);
             api["capabilities"] = [lua] {
                 sol::table result(lua, sol::create); std::size_t index = 1;
-            for (const auto& capability : std::vector<std::string>{ "diary.books.v1", "context.item_pickup.v1", "context.spell_cast.v1", "context.actor_resurrected.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session",
+            for (const auto& capability : std::vector<std::string>{ "relationship.disposition", "diary.books.v1", "context.item_pickup.v1", "context.spell_cast.v1", "context.actor_resurrected.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session",
                 "action.item.create", "action.gold.create", "action.actor.spawn", "action.actor.teleport_to_player", "action.player.teleport", "action.actor.restore", "action.actor.resurrect", "action.actor.kill",
                 "action.ai.follow", "action.ai.stop", "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
                 "action.combat.start", "action.combat.stop", "action.weapon.sheathe", "action.item.give", "action.item.take", "action.item.pickup", "action.gold.give", "action.gold.take", "action.service.barter", "action.service.training", "action.service.spells", "action.service.travel", "action.service.spellmaking", "action.service.enchanting", "action.service.repair", "action.spell.cast", "action.animation.play", "action.item.equip", "action.item.unequip",
@@ -2918,6 +2969,10 @@ namespace MWLua
             api["submitTurn"] = [lua](sol::table dto) { return client().submitTurn(lua, std::move(dto)); };
             api["submitCapturedDialogue"] = [lua](sol::table payload) {
                 return client().submitCapturedDialogue(lua, std::move(payload));
+            };
+            api["pumpDispositionResult"] = [lua](const std::string& request) { return client().pumpDispositionResult(lua, request); };
+            api["submitDisposition"] = [lua](sol::table payload) {
+                return client().submitGameData(lua, lorkhan::GameDataType::disposition, std::move(payload));
             };
             api["submitItemPickup"] = [lua](sol::table payload) {
                 return client().submitGameData(lua, lorkhan::GameDataType::item_pickup, std::move(payload));

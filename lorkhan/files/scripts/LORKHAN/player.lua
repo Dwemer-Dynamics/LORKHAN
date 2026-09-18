@@ -110,7 +110,7 @@ if playerInputSettings then
 end
 state.ui.autoChat=playerInputSettings and playerInputSettings:get('autoChat')==true or false
 local function send(name,payload) if core and core.sendGlobalEvent then core.sendGlobalEvent(name,payload) end end
-local CAPABILITIES={'dialogue.text','speech.say','speech.listen','action.ai.follow','action.ai.stop','action.conversation.end',
+local CAPABILITIES={'dialogue.text','speech.say','speech.listen','relationship.disposition','action.ai.follow','action.ai.stop','action.conversation.end',
     'action.ai.approach','action.ai.wait','action.ai.travel','action.ai.escort','action.ai.face','action.ai.wander',
     'action.combat.start','action.combat.stop','action.weapon.sheathe','action.inspect.report','action.inventory.inspect',
     'action.animation.play','action.item.equip','action.item.unequip','action.item.use',
@@ -1945,9 +1945,16 @@ return {
         end,
         -- The Interact overlay owns Interface UI mode and pauses simulation, so onUpdate stops running
         -- while a server-owned control panel is open. onFrame still runs every frame, so it does one
-        -- bounded pause-safe pump of the in-flight controls response and nothing else. No gameplay,
-        -- settings scan, or event processing belongs here.
+        -- bounded pause-safe pump plus disposition snapshots on menu transitions. No game mutation,
+        -- settings scan, or response-event processing belongs here.
         onFrame=function()
+            local dispositionOpen=dialogueMenuOpen()
+            if dispositionOpen~=nil and dispositionOpen~=state.dispositionDialogueOpen then
+                state.dispositionDialogueOpen=dispositionOpen
+                send('LORKHAN_DISPOSITION_MENU',{open=dispositionOpen,actor=state.dispositionDialogueActor})
+                local observed=adapter.dispositionSnapshot(state.dispositionDialogueActor,dispositionOpen)
+                if observed and nativeOk and native.submitDisposition then native.submitDisposition(observed) end
+            end
             if not controlsAllowed() then settingsControls.syncOpenMic() end
             if nativeOk and native.pumpMenuDialogueTts and (bookSpeech or playerSpeech or menuDialogueSpeech) then native.pumpMenuDialogueTts() end
             updateBookSpeech()
@@ -2132,6 +2139,10 @@ return {
         DialogueResponse=function(event)
             local response=adapter.dialogueResponse(event)
             if response then
+                state.dispositionDialogueActor=response.actor
+                send('LORKHAN_DISPOSITION_MENU',{open=dialogueMenuOpen()==true,actor=response.actor})
+                local observed=adapter.dispositionSnapshot(response.actor,dialogueMenuOpen()==true)
+                if observed and nativeOk and native.submitDisposition then native.submitDisposition(observed) end
                 send('LORKHAN_VANILLA_DIALOGUE',response)
                 captureVanillaDialogue(response)
                 startMenuDialogueSpeech(response)

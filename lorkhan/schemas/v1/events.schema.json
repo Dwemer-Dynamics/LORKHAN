@@ -758,6 +758,268 @@
               "payload"
             ],
             "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "created_at": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+              },
+              "generation": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+              },
+              "message_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "payload": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "adjustment_id",
+                  "actor",
+                  "player",
+                  "delta",
+                  "expires_at"
+                ],
+                "properties": {
+                  "adjustment_id": {
+                    "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+                  },
+                  "actor": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cell": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "interior",
+                                "type": "string"
+                              },
+                              "name": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "grid_x": {
+                                "type": "integer"
+                              },
+                              "grid_y": {
+                                "type": "integer"
+                              },
+                              "kind": {
+                                "const": "exterior",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "grid_x",
+                              "grid_y"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "content_file": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "display_name": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "npc"
+                      },
+                      "record_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "refnum": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "content_file": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "content_file"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "record_id",
+                      "refnum",
+                      "content_file",
+                      "cell",
+                      "display_name"
+                    ],
+                    "type": "object"
+                  },
+                  "player": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cell": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "interior",
+                                "type": "string"
+                              },
+                              "name": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "grid_x": {
+                                "type": "integer"
+                              },
+                              "grid_y": {
+                                "type": "integer"
+                              },
+                              "kind": {
+                                "const": "exterior",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "grid_x",
+                              "grid_y"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "content_file": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "display_name": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "player"
+                      },
+                      "record_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "refnum": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "content_file": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "content_file"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "record_id",
+                      "refnum",
+                      "content_file",
+                      "cell",
+                      "display_name"
+                    ],
+                    "type": "object"
+                  },
+                  "delta": {
+                    "type": "integer",
+                    "enum": [
+                      -3,
+                      -2,
+                      -1,
+                      1,
+                      2,
+                      3
+                    ]
+                  },
+                  "expires_at": {
+                    "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+                  }
+                }
+              },
+              "request_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "sequence": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/sequence"
+              },
+              "session_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "turn_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "type": {
+                "const": "relationship.adjust",
+                "type": "string"
+              }
+            },
+            "required": [
+              "message_id",
+              "request_id",
+              "turn_id",
+              "session_id",
+              "generation",
+              "sequence",
+              "created_at",
+              "type",
+              "payload"
+            ],
+            "type": "object"
           }
         ]
       },

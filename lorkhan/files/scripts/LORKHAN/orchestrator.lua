@@ -828,6 +828,10 @@ function M.submitText(state,args)
     end
     local isContinuation=isRechat or isActionFollowup or isAutonomy or isDirectorChild
     if not isContinuation then
+        -- Player input supersedes speculative Rechat without waiting for its network response.
+        if state.rechat and state.rechat.requestInFlight and state.conversation.turn then
+            state.conversation.turn.terminal=true
+        end
         state.directorPlan=nil state.directorSeed=nil
         state.rechat=nil state.rechatEligibility=nil
         if not responseQueue.idle(state.responseQueue) then cancelResponseLane(state,'superseded_by_player',true) end
@@ -1023,6 +1027,17 @@ end
 local emitInbound
 local function pumpResponseQueue(state)
     if state.aiEnabled==false then return false,'ai_disabled' end
+    -- Stage at most two upcoming clips while the current line plays; dispatch remains head-only.
+    for index=1,math.min(3,#state.responseQueue.items) do
+        local item=state.responseQueue.items[index]
+        if item.kind~='dialogue' then break end
+        if item.generation==state.generation and item.runtimeGeneration==currentRuntimeGeneration(state)
+            and item.status=='new' then
+            local requestId,reason=state.bridge.prepareMedia(item.media)
+            if requestId then responseQueue.beginMediaPreparation(state.responseQueue,item.media.media_id,requestId)
+            else responseQueue.updateMedia(state.responseQueue,item.media.media_id,'failed',reason or 'media_prepare_rejected') end
+        end
+    end
     for _=1,64 do
         local item=responseQueue.head(state.responseQueue)
         if not item or state.responseQueue.active then return end
@@ -1086,6 +1101,10 @@ local function pumpResponseQueue(state)
                         responseQueue.failHead(state.responseQueue,reason or 'dialogue_dispatch_failed') emitQueue(state)
                     else return end
                 end
+            elseif item.status=='failed' or item.status=='expired' or item.status=='cancelled' then
+                reportQueuedDialogue(state,item,item.status=='expired' and 'expired' or 'failed','media_prepare_failed')
+                if state.bridge.releaseMedia then state.bridge.releaseMedia(item.media.media_id) end
+                responseQueue.failHead(state.responseQueue,item.reason or item.status) emitQueue(state)
             else return end
         else
             if item.status~='ready' or not item.intent then return end
@@ -1153,7 +1172,7 @@ local function submitPlaybackRechat(state,probe)
     if not chain or chain.cancelled or chain.requestInFlight or settings.rechat~=true
         or (state.rechatSeed and state.rechatSeed.dialogueMode=='Whisper') or not state.rechatSeed
         or not state.conversation.turn or not state.conversation.turn.terminal then return false end
-    if not responseQueue.idle(state.responseQueue) then return false end
+    if not responseQueue.canStartRechat(state.responseQueue,state.conversation.turn.turnId) then return false end
     if not chain.lastSpeaker or chain.lastSpeaker.kind=='player' then
         chain.cancelled=true return false
     end
@@ -1226,7 +1245,8 @@ function M.rechatContext(state,event)
         or chain.chainId~=probe.chainId or chain.depth+1~=probe.depth or chain.cancelled or chain.requestInFlight
         or not identity.same(event.target,probe.target) or not identity.same(state.conversation.target,probe.target)
         or not state.conversation.turn or not state.conversation.turn.terminal
-        or state.conversation.turn.turnId~=probe.originTurnId or not responseQueue.idle(state.responseQueue)
+        or state.conversation.turn.turnId~=probe.originTurnId
+        or not responseQueue.canStartRechat(state.responseQueue,probe.originTurnId)
         or (state.settings and state.settings.behavior or {}).rechat~=true
         or type(event.context)~='table' then return false end
     state.rechatEligibility=nil
@@ -1237,6 +1257,8 @@ function M.rechatContext(state,event)
     chain.depth=probe.depth
     local submitted,reason=M.submitText(state,args)
     if not submitted then chain.cancelled=true print('[LORKHAN] rechat rejected: '..tostring(reason)) return false end
+    local active=state.responseQueue.active
+    if active then chain.prefetchOriginLine=active.line.line_id end
     state.emit('LORKHAN_RECHAT',{status='queued',chain_id=chain.chainId,depth=chain.depth,turn_id=args.turn_id})
     return true
 end
@@ -1248,7 +1270,7 @@ local function startPlaybackRechatProbe(state)
     if not chain or chain.cancelled or chain.requestInFlight or state.rechatEligibility
         or settings.rechat~=true or (state.rechatSeed and state.rechatSeed.dialogueMode=='Whisper')
         or not state.rechatSeed or not state.conversation.turn or not state.conversation.turn.terminal
-        or not responseQueue.idle(state.responseQueue) then return false end
+        or not responseQueue.canStartRechat(state.responseQueue,state.conversation.turn.turnId) then return false end
     if not chain.lastSpeaker or chain.lastSpeaker.kind=='player' then chain.cancelled=true return false end
     local probeId=state.bridge.newMessageId and state.bridge.newMessageId() or nil
     if not protocol.isUuid(probeId) then chain.cancelled=true return false end
@@ -1315,6 +1337,20 @@ function M.speechStatus(state,event)
     if not completed then return false end
     if state.activeSpeechMediaId==event.media_id then state.activeSpeechMediaId=nil end
     if releaseId and state.bridge and state.bridge.releaseMedia then state.bridge.releaseMedia(releaseId) end
+    local chain=state.rechat
+    if chain and event.status~='played' then
+        chain.cancelled=true state.rechatEligibility=nil
+    end
+    if chain and chain.prefetchOriginLine==item.line.line_id then
+        chain.prefetchOriginLine=nil
+        if event.status~='played' then
+            chain.cancelled=true chain.requestInFlight=false state.rechatEligibility=nil
+            chain.discardTurnId=state.conversation.turn and state.conversation.turn.turnId
+            if state.conversation.turn then state.conversation.turn.terminal=true end
+            cancelResponseLane(state,'playback_failed',false)
+            return true
+        end
+    end
     emitQueue(state)
     pumpResponseQueue(state)
     submitActionFollowup(state)
@@ -1398,8 +1434,11 @@ function M.poll(state)
                         continuous=pending and pending.continuous==true})
                 end
                 accepted=accepted+1;emitInbound(state,'LORKHAN_EVENT',event)
-            elseif state.aiEnabled==false then
-                accepted=accepted+1 -- Keep the ordered event cursor current, but never dispatch disabled AI output.
+            elseif event.type=='relationship.adjust' then
+                if state.onDispositionAdjustment then state.onDispositionAdjustment(event) end
+                accepted=accepted+1
+            elseif state.aiEnabled==false or (state.rechat and state.rechat.discardTurnId==event.turn_id) then
+                accepted=accepted+1 -- Advance the cursor without dispatching disabled or abandoned output.
             else
             local applyOk,applied,applyReason=pcall(conversation.apply,state.conversation,event)
             if not applyOk then
@@ -1465,7 +1504,8 @@ function M.poll(state)
         state.directorPlan=nil state.directorSeed=nil
     end
     submitActionFollowup(state)
-    if responseQueue.consumeRechat(state.responseQueue) then startPlaybackRechatProbe(state) end
+    local advanceRechat=responseQueue.consumeRechat(state.responseQueue)
+    if advanceRechat or state.responseQueue.active then startPlaybackRechatProbe(state) end
     return accepted
 end
 
@@ -1503,7 +1543,7 @@ function M.actionResult(state,event)
     end
     emitQueue(state) pumpResponseQueue(state)
     submitActionFollowup(state)
-    if advance then submitPlaybackRechat(state) end
+    if advance then startPlaybackRechatProbe(state) end
     return true
 end
 

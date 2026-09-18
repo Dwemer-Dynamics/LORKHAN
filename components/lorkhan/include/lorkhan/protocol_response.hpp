@@ -248,6 +248,14 @@ struct CanonicalResponse {
 
 struct ResponseCompleteEventPayload { CanonicalResponse response; };
 
+struct RelationshipAdjustEventPayload {
+    MessageId adjustment;
+    ProtocolIdentity actor;
+    ProtocolIdentity player;
+    int delta{};
+    std::string expiresAt;
+};
+
 struct DirectorInstructionsEventPayload {
     struct Instruction {
         MessageId instruction;
@@ -263,7 +271,7 @@ struct DirectorInstructionsEventPayload {
 };
 
 using ProtocolEventPayload = std::variant<TurnAcceptedEventPayload, DialogueDeltaEventPayload, DialogueCompleteEventPayload,
-    ActionIntentEventPayload, DirectorInstructionsEventPayload, ResponseCompleteEventPayload, TurnCompleteEventPayload, TurnCancelledEventPayload,
+    ActionIntentEventPayload, RelationshipAdjustEventPayload, DirectorInstructionsEventPayload, ResponseCompleteEventPayload, TurnCompleteEventPayload, TurnCancelledEventPayload,
     TurnFailedEventPayload, SttTranscriptEventPayload, SttFailedEventPayload,
     SpeechReadyEventPayload>;
 
@@ -273,6 +281,7 @@ enum class ProtocolEventType {
     dialogue_complete,
     action_intent,
     director_instructions,
+    relationship_adjust,
     response_complete,
     turn_complete,
     turn_cancelled,
@@ -495,6 +504,7 @@ struct DebugCommandResultAcceptedResponse {
 [[nodiscard]] Result<void> validateItemPickupPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateActorResurrectedPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateSpellCastPayload(std::string_view body, json::ParseLimits limits = {});
+[[nodiscard]] Result<void> validateDispositionPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateInventoryPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});

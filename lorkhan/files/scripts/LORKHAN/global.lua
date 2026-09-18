@@ -9,6 +9,7 @@ local worldOk,world=pcall(require,'openmw.world')
 local worldUtilOk,worldUtil=pcall(require,'openmw.util')
 local npcManager=require('scripts.LORKHAN.npc_manager')
 local diaryBooks=require('scripts.LORKHAN.diary_books')
+local disposition=require('scripts.LORKHAN.disposition')
 local transferActions=require('scripts.LORKHAN.transfer_actions')
 local transfers
 local npcControls=npcManager.new({core=core,world=world,types=types,util=worldUtil})
@@ -83,6 +84,16 @@ transfers=transferActions.new(bridge,function(event)
         reason=event.result.reason_code,submitted=true,queue_completed=queued==true,queue_reason=reason})
 end)
 local diaries=diaryBooks.new(bridge,function(actor) return state.registry:resolve(actor) end)
+local dispositions=disposition.new(bridge,function(actor) return state.registry:resolve(actor) end,
+    currentPlayer,types,adapter.identity,function()
+        return state.disabled or state.hardHalted or state.aiEnabled==false
+            or not core or not core.isWorldPaused or core.isWorldPaused()
+    end)
+local dispositionElapsed=0
+local dispositionDialogueOpen=true
+state.onDispositionAdjustment=function(event)
+    return disposition.receive(dispositions,event,state.sessionId,state.generation)
+end
 local configuredSession
 local morrowindMonths={'Morning Star','Sun\'s Dawn','First Seed','Rain\'s Hand','Second Seed','Midyear',
     'Sun\'s Height','Last Seed','Hearthfire','Frostfall','Sun\'s Dusk','Evening Star'}
@@ -356,6 +367,7 @@ end
 return {
     engineHandlers={
         onNewGame=function()
+            disposition.reset(dispositions)
             diaryBooks.reset(diaries)
             pendingLoadedSave=false
             pendingPlayerEvents={}
@@ -365,6 +377,7 @@ return {
             flushPlayerEvents()
         end,
         onLoad=function(data)
+            disposition.reset(dispositions)
             diaryBooks.reset(diaries)
             pendingLoadedSave=type(bridge.finishLoadedSave)=='function'
             pendingPlayerEvents={}
@@ -428,6 +441,13 @@ return {
                 orchestrator.configureSession(state,session.session_id)
             end
             if state.events then orchestrator.poll(state) end
+            disposition.pump(dispositions,state.sessionId,state.generation,
+                core and core.getRealTime and core.getRealTime() or 0,dispositionDialogueOpen)
+            dispositionElapsed=dispositionElapsed+elapsed
+            if dispositionElapsed>=1 then
+                dispositionElapsed=0
+                disposition.observe(dispositions,state.conversation.target,state.sessionId,state.generation,dispositionDialogueOpen)
+            end
             diaryBooks.pump(diaries,state.sessionId,state.generation,
                 core and core.getRealTime and core.getRealTime() or 0,state.disabled or state.hardHalted)
             orchestrator.pollRechatEligibility(state,BRIDGE_POLL_INTERVAL)
@@ -438,6 +458,12 @@ return {
         end,
     },
     eventHandlers={
+        LORKHAN_DISPOSITION_MENU=function(event)
+            if type(event)=='table' and type(event.open)=='boolean' then
+                dispositionDialogueOpen=event.open
+                disposition.observe(dispositions,event.actor or state.conversation.target,state.sessionId,state.generation,event.open)
+            end
+        end,
         LORKHAN_WAIT_HERE_REQUEST=function(event)
             local target=type(event)=='table' and event.target
             local player=currentPlayer()
@@ -496,6 +522,7 @@ return {
         LORKHAN_ACTOR_COMBAT_STATUS=function(event) orchestrator.actorCombatStatus(state,event) end,
         LORKHAN_CLEAR_AUDIENCE=function() orchestrator.clearAudience(state) end,
         LORKHAN_SUBMIT_TEXT=function(event)
+            disposition.observe(dispositions,event.target or state.conversation.target,state.sessionId,state.generation,dispositionDialogueOpen)
             enrichWorldCalendar(event)
             local metadata=bridge.nextTurnMetadata and bridge.nextTurnMetadata() or {}
             for key,value in pairs(metadata) do if event[key]==nil then event[key]=value end end

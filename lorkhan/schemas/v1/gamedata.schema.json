@@ -877,6 +877,239 @@
           "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
         }
       }
+    },
+    "disposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor",
+        "player",
+        "base_disposition",
+        "disposition",
+        "dialogue_open"
+      ],
+      "dependentRequired": {
+        "adjustment_id": [
+          "status"
+        ],
+        "status": [
+          "adjustment_id"
+        ]
+      },
+      "properties": {
+        "actor": {
+          "additionalProperties": false,
+          "properties": {
+            "cell": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "interior",
+                      "type": "string"
+                    },
+                    "name": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "grid_x": {
+                      "type": "integer"
+                    },
+                    "grid_y": {
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "const": "exterior",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "grid_x",
+                    "grid_y"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "content_file": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "display_name": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "npc"
+            },
+            "record_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "refnum": {
+              "additionalProperties": false,
+              "properties": {
+                "content_file": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "index": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "index",
+                "content_file"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "record_id",
+            "refnum",
+            "content_file",
+            "cell",
+            "display_name"
+          ],
+          "type": "object"
+        },
+        "player": {
+          "additionalProperties": false,
+          "properties": {
+            "cell": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "interior",
+                      "type": "string"
+                    },
+                    "name": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "grid_x": {
+                      "type": "integer"
+                    },
+                    "grid_y": {
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "const": "exterior",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "grid_x",
+                    "grid_y"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "content_file": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "display_name": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "player"
+            },
+            "record_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "refnum": {
+              "additionalProperties": false,
+              "properties": {
+                "content_file": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "index": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "index",
+                "content_file"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "record_id",
+            "refnum",
+            "content_file",
+            "cell",
+            "display_name"
+          ],
+          "type": "object"
+        },
+        "base_disposition": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "disposition": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "dialogue_open": {
+          "type": "boolean"
+        },
+        "adjustment_id": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+        },
+        "status": {
+          "enum": [
+            "applied",
+            "rejected"
+          ]
+        }
+      }
     }
   },
   "additionalProperties": false,
@@ -939,6 +1172,9 @@
         },
         {
           "$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/actor_resurrected"
+        },
+        {
+          "$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/disposition"
         }
       ]
     },
@@ -975,7 +1211,8 @@
         "quest_event",
         "spell_cast",
         "item_pickup",
-        "actor_resurrected"
+        "actor_resurrected",
+        "disposition"
       ],
       "type": "string"
     }

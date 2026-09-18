@@ -1,0 +1,51 @@
+{
+  "description": "Game authoritative NPC disposition with acknowledged bounded AI adjustment",
+  "instance": {
+    "game": "tes3",
+    "generation": 12,
+    "installation_id": "10000000-0000-4000-8000-000000000001",
+    "observed_at": "2026-08-09T18:00:03Z",
+    "payload": {
+      "actor": {
+        "cell": {
+          "kind": "interior",
+          "name": "Balmora"
+        },
+        "content_file": "Morrowind.esm",
+        "display_name": "Caius Cosades",
+        "kind": "npc",
+        "record_id": "caius cosades",
+        "refnum": {
+          "content_file": 0,
+          "index": 67647
+        }
+      },
+      "player": {
+        "cell": {
+          "kind": "interior",
+          "name": "Balmora"
+        },
+        "content_file": "Morrowind.esm",
+        "display_name": "Player",
+        "kind": "player",
+        "record_id": "player",
+        "refnum": {
+          "content_file": 0,
+          "index": 16384
+        }
+      },
+      "base_disposition": 52,
+      "disposition": 67,
+      "dialogue_open": false,
+      "adjustment_id": "10000000-0000-4000-8000-000000000009",
+      "status": "applied"
+    },
+    "playthrough_id": "10000000-0000-4000-8000-000000000002",
+    "request_id": "10000000-0000-4000-8000-000000000004",
+    "runtime_generation": 4,
+    "schema": "lorkhan.gamedata.v1",
+    "session_id": "10000000-0000-4000-8000-000000000005",
+    "type": "disposition"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json"
+}

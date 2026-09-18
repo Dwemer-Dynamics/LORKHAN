@@ -5,7 +5,7 @@ local util = require('scripts.LORKHAN.util')
 
 local M = {}
 local knownInternalEvents = {['turn.accepted']=true, ['dialogue.delta']=true, ['dialogue.complete']=true,
-    ['speech.ready']=true, ['action.intent']=true, ['response.complete']=true, ['turn.complete']=true,
+    ['speech.ready']=true, ['action.intent']=true, ['relationship.adjust']=true, ['response.complete']=true, ['turn.complete']=true,
     ['turn.failed']=true, ['turn.cancelled']=true, ['stt.transcript']=true,
     ['stt.failed']=true}
 
@@ -393,6 +393,14 @@ function M.validatePolledEvent(event)
     if type(event.generation)~='number' or event.generation%1~=0 or event.generation<0 then return nil,'invalid_generation' end
     if type(event.sequence)~='number' or event.sequence%1~=0 or event.sequence<1 then return nil,'invalid_event_cursor' end
     if type(event.payload)~='table' then return nil,'invalid_event_payload' end
+    if event.type=='relationship.adjust' then
+        local p=event.payload
+        if not M.isUuid(p.adjustment_id) or not identity.validate(p.actor) or p.actor.kind~='npc'
+            or not identity.validate(p.player) or p.player.kind~='player'
+            or not validInteger(p.delta,-3,3) or p.delta==0 or type(p.expires_at)~='string' then
+            return nil,'invalid_disposition_adjustment'
+        end
+    end
     if (event.type=='dialogue.delta' or event.type=='dialogue.complete') and type(event.payload.text)~='string' then
         return nil,'invalid_dialogue_text'
     end

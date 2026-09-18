@@ -718,6 +718,23 @@ local function actorState(actor, player, modules)
     return state
 end
 
+-- Player-local snapshots also run while vanilla dialogue pauses GLOBAL updates.
+function M.dispositionSnapshot(actorIdentity,dialogueOpen,modules)
+    modules=modules or loaded()
+    if not actorIdentity or actorIdentity.kind~='npc' then return nil end
+    local actor=M.resolve(actorIdentity,modules)
+    local npc=modules.types and modules.types.NPC
+    local player=modules.self
+    if not actor or not npc or not player then return nil end
+    local base=safe(npc.getBaseDisposition,actor,player)
+    local effective=safe(npc.getDisposition,actor,player)
+    local playerIdentity=M.identity(player,modules)
+    if type(base)~='number' or base%1~=0 or type(effective)~='number' or effective%1~=0
+        or not playerIdentity or playerIdentity.kind~='player' then return nil end
+    return {actor=actorIdentity,player=playerIdentity,base_disposition=base,
+        disposition=math.max(0,math.min(100,effective)),dialogue_open=dialogueOpen==true}
+end
+
 -- Capture bounded actor metadata used to seed a server profile when auto-activation succeeds.
 function M.actorProfile(actorIdentity, modules)
     modules=modules or loaded()

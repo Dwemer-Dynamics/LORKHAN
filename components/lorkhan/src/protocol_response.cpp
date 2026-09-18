@@ -1130,6 +1130,20 @@ Result<ProtocolEvent> parseEvent(const json::Value& value, const SessionId& resp
         }
         event.type = ProtocolEventType::director_instructions;
         event.payload = std::move(instructions);
+    } else if (type.value() == "relationship.adjust") {
+        if (!hasExactly(*payload, {"adjustment_id", "actor", "player", "delta", "expires_at"}))
+            return invalidSchemaValue<ProtocolEvent>("relationship adjustment fields mismatch");
+        auto id = requireUuid(*payload, "adjustment_id");
+        auto actor = parseIdentity(*json::find(*payload, "actor"));
+        auto player = parseIdentity(*json::find(*payload, "player"));
+        auto expires = requireTimestamp(*payload, "expires_at");
+        const auto* delta = json::find(*payload, "delta")->integer();
+        if (!id || !actor || actor.value().kind != "npc" || !player || player.value().kind != "player"
+            || !expires || !delta || *delta < -3 || *delta > 3 || *delta == 0)
+            return invalidSchemaValue<ProtocolEvent>("relationship adjustment values mismatch");
+        event.type = ProtocolEventType::relationship_adjust;
+        event.payload = RelationshipAdjustEventPayload{MessageId(id.value()), actor.value(), player.value(),
+            static_cast<int>(*delta), expires.value()};
     } else if (type.value() == "response.complete") {
         auto response = parseCanonicalResponse(*payloadValue, correlation.value());
         if (!response) return invalidSchemaValue<ProtocolEvent>(response.error().message);
@@ -1625,6 +1639,33 @@ Result<void> validateActorResurrectedPayload(std::string_view body, json::ParseL
     return Result<void>::success();
 }
 
+// Only observed game values and correlated acknowledgements cross this typed boundary.
+Result<void> validateDispositionPayload(std::string_view body, json::ParseLimits limits)
+{
+    auto parsed = json::parse(body, limits);
+    if (!parsed) return Result<void>::failure(parsed.error());
+    const auto* object = parsed.value().object();
+    if (!object || !hasExactly(*object, {"actor", "player", "base_disposition", "disposition", "dialogue_open"},
+            {"adjustment_id", "status"}))
+        return invalidSchema("disposition fields mismatch");
+    auto actor = parseIdentity(*json::find(*object, "actor"));
+    auto player = parseIdentity(*json::find(*object, "player"));
+    auto effective = requireUnsigned(*object, "disposition", 100);
+    auto dialogueOpen = requireBoolean(*object, "dialogue_open");
+    const auto* base = json::find(*object, "base_disposition")->integer();
+    if (!actor || actor.value().kind != "npc" || !player || player.value().kind != "player"
+        || !effective || !dialogueOpen || !base || *base < std::numeric_limits<int>::min()
+        || *base > std::numeric_limits<int>::max())
+        return invalidSchema("disposition values mismatch");
+    if (json::find(*object, "adjustment_id") || json::find(*object, "status")) {
+        auto id = requireUuid(*object, "adjustment_id");
+        auto status = requireString(*object, "status");
+        if (!id || !status || (status.value() != "applied" && status.value() != "rejected"))
+            return invalidSchema("disposition acknowledgement mismatch");
+    }
+    return Result<void>::success();
+}
+
 Result<void> validateInventoryPayload(std::string_view body, json::ParseLimits limits)
 {
     auto parsed = json::parse(body, limits);
@@ -1676,7 +1717,7 @@ Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(
     if (!session) return invalidSchemaValue<GameDataAcceptedResponse>(session.error().message);
     if (!generation) return invalidSchemaValue<GameDataAcceptedResponse>(generation.error().message);
     if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile" && type.value() != "inventory" && type.value() != "spell_cast" && type.value() != "actor_resurrected" && type.value() != "item_pickup"
-        &&type.value()!="automatic_diary"&&type.value()!="rpg_event"&&type.value()!="bored_event"&&type.value()!="quest_event"))
+        &&type.value()!="automatic_diary"&&type.value()!="rpg_event"&&type.value()!="bored_event"&&type.value()!="quest_event"&&type.value()!="disposition"))
         return invalidSchemaValue<GameDataAcceptedResponse>("game-data type mismatch");
     if (!duplicate) return invalidSchemaValue<GameDataAcceptedResponse>(duplicate.error().message);
     bool comment=false;

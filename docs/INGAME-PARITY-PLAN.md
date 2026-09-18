@@ -147,3 +147,30 @@ path in the deployed pinned build. ITT, Background Life, and unrelated timer aut
    Life, and timer autonomy never create a request.
 4. Capture screenshots/logs and promote only individually observed rows to `IN-GAME PROVEN`.
 5. Repeat the compatibility profiles in `COMPATIBILITY-PLAN.md`; do not infer them from minimal GOTY.
+
+
+## September 17, 2026: audio and game disposition completion
+
+Status: **AUTOMATED** and **WINDOWS BUILD PROVEN**; not in-game verified.
+
+- Stage up to two upcoming speech clips while the head plays. Playback and actions stay ordered.
+- Start Rechat generation during the final spoken line only after its turn is complete; queued
+  actions block generation ahead. Player interruption and failed origin playback cancel late output.
+- Observe the game's effective disposition (0–100), retaining its unclamped base value separately.
+  Apply bounded AI deltas to the freshly read base only outside paused/dialogue states. Bribes and
+  other game changes remain authoritative; acknowledgement publishes the observed game result.
+- Retain adjustment outcomes across retries so a replay never repeats a mutation. Scope them to
+  session/generation, reject expiry, and defer writes while AI is disabled or hard halted.
+- Reclaim settled native observation receipts under capacity pressure, so ordinary menu observations
+  cannot permanently fill the native transport receipt map. Pending requests and Lua mutation
+  receipts are not reclaimed by this transport cleanup.
+
+Evidence: 109 Lua tests, native bridge tests, Beast loopback tests, 42 protocol schemas/94 fixtures,
+136 byte-identical client/server protocol files, OpenMW patch manifest validation and exact-pin
+patch audit passed. Release `openmw` built with MSVC2022. The standalone GCC12 warning-as-error
+lane hits an existing `std::variant` maybe-uninitialized diagnostic; supported Windows tests passed.
+The optional Python jsonschema package is absent; the repository structural validator passed.
+
+Manual follow-up: compare first-line latency and Rechat gaps, interrupt speech during generation
+lookahead, bribe/flatter Caius then request positive/negative AI interactions, and save/load. Confirm
+only the current player's relationship changes and game/menu values remain authoritative.

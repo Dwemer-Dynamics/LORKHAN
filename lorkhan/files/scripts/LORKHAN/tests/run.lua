@@ -546,7 +546,51 @@ test('media prepare handoff is opaque generation-bound and fake-adapter tested',
   truthy(orchestrator.speechStatus(s,{media_id=descriptor.media_id,active=false,status='played'}));truthy(s.responseQueue.unfinished==false);eq(s.activeSpeechMediaId,nil)
   orchestrator.lifecycle(s,'load');truthy(s.responseQueue.unfinished==false)
  end)
-test('Close rechat preserves its group through one correlated continuation',function()
+test('audio lookahead is bounded ordered and released on interruption',function()
+ local b=fake.bridge();local spoken,released={},{}
+ b.releaseMedia=function(id) released[#released+1]=id end
+ local s=orchestrator.new(b,nil,function(_,name,payload)
+  if name=='LORKHAN_ACTOR_SPEAK' then spoken[#spoken+1]=payload.media_id end
+  return true
+ end)
+ orchestrator.configureSession(s,UUID.session)
+ s.conversation.turn={requestId=UUID.request,turnId=UUID.turn,generation=1,terminal=false}
+ local lines={}
+ for i=1,5 do
+  lines[i]=dialogueLine(i-1,uuid(200+i),npc,playerId,'Sentence '..i..'.',i==5,true)
+  lines[i].media={media_id=uuid(300+i),dialogue_message_id=uuid(200+i),sha256=string.rep('a',64),
+   bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
+ end
+ b.results={responseEvent(1,lines,1)};eq(orchestrator.poll(s),1);eq(#b.prepared,3)
+ b.media[uuid(302)]={state='ready'};orchestrator.poll(s);eq(#spoken,0)
+ b.media[uuid(301)]={state='ready'};orchestrator.poll(s);eq(#spoken,1);eq(spoken[1],uuid(301))
+ eq(#b.prepared,3);eq(responseQueue.canStartRechat(s.responseQueue,UUID.turn),false)
+ truthy(orchestrator.speechStatus(s,{media_id=uuid(301),active=false,status='played'}))
+ eq(#b.prepared,4);eq(#spoken,2);eq(spoken[2],uuid(302))
+ orchestrator.stopDialogue(s);eq(#released,5);eq(#s.responseQueue.items,0)
+end)
+
+test('failed lookahead cannot strand later audio and actions block early rechat',function()
+ local b=fake.bridge();local s=orchestrator.new(b,nil,function()return true end)
+ orchestrator.configureSession(s,UUID.session)
+ s.conversation.turn={requestId=UUID.request,turnId=UUID.turn,generation=1,terminal=false}
+ local lines={}
+ for i=1,2 do
+  lines[i]=dialogueLine(i-1,uuid(210+i),npc,playerId,'Sentence.',i==2,true)
+  lines[i].media={media_id=uuid(310+i),dialogue_message_id=uuid(210+i),sha256=string.rep('a',64),
+   bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
+ end
+ local prepare=b.prepareMedia
+ b.prepareMedia=function(media) if media.media_id==uuid(311) then return nil,'media_limit' end return prepare(media) end
+ b.results={responseEvent(1,lines,1)};orchestrator.poll(s)
+ eq(#s.responseQueue.items,1);b.media[uuid(312)]={state='ready'};orchestrator.poll(s)
+ truthy(responseQueue.canStartRechat(s.responseQueue,UUID.turn))
+ eq(responseQueue.canStartRechat(s.responseQueue,uuid(999)),false)
+ s.responseQueue.items[2]={kind='action'};eq(responseQueue.canStartRechat(s.responseQueue,UUID.turn),false)
+end)
+
+test('Close rechat preserves its group through one correlated early or completed continuation',function()
+ for _,early in ipairs({true,false}) do
  for _,freshItems in ipairs({{{record_id='new_dagger',count=2}}, {}}) do
  local contextRequest
  local busy=fake.identity('npc','busy_actor',4)
@@ -586,7 +630,7 @@ test('Close rechat preserves its group through one correlated continuation',func
   event(3,'speech.ready',1,descriptor),event(4,'turn.complete',1,{status='complete'})}
  eq(orchestrator.poll(s),4);eq(#b.submitted,1)
  b.media[descriptor.media_id]={state='ready'};orchestrator.poll(s);eq(#b.submitted,1)
- truthy(orchestrator.speechStatus(s,{media_id=descriptor.media_id,active=false,status='played'}))
+ if not early then truthy(orchestrator.speechStatus(s,{media_id=descriptor.media_id,active=false,status='played'})) end
  truthy(orchestrator.pollRechatEligibility(s,0))
  eq(#b.submitted,1);truthy(contextRequest);eq(s.rechat.depth,0)
  contextRequest.context={targetState={inventory={items=freshItems,total=#freshItems,truncated=false}}}
@@ -622,6 +666,31 @@ test('Close rechat preserves its group through one correlated continuation',func
  eq(participantStates[2].state,'active');eq(participantStates[3].state,'busy')
  eq(s.rechat.requestInFlight,true)
  eq(s.rechat.originTurnId,UUID.turn)
+ if early then
+  eq(s.responseQueue.active.media.media_id,descriptor.media_id)
+  orchestrator.poll(s);eq(#b.submitted,2)
+  local nextTurn=b.submitted[2]
+  local nextLine=event(5,'dialogue.complete',1,{speaker=enemy,addressee=npc,text='Next reply.'})
+  nextLine.request_id=nextTurn.request_id;nextLine.turn_id=nextTurn.turn_id;nextLine.message_id=uuid(501)
+  local nextMedia=support.copy(descriptor);nextMedia.media_id=uuid(502);nextMedia.dialogue_message_id=uuid(501)
+  local ready=event(6,'speech.ready',1,nextMedia);ready.request_id=nextTurn.request_id;ready.turn_id=nextTurn.turn_id
+  b.results={nextLine,ready};eq(orchestrator.poll(s),2)
+  b.media[nextMedia.media_id]={state='ready'};orchestrator.poll(s)
+  eq(s.responseQueue.active.media.media_id,descriptor.media_id);eq(#s.responseQueue.items,2)
+  if #freshItems>0 then
+   truthy(orchestrator.speechStatus(s,{media_id=descriptor.media_id,active=false,status='played'}))
+   eq(s.responseQueue.active.media.media_id,nextMedia.media_id)
+   local input=support.copy(s.rechatSeed);input.request_id=uuid(601);input.turn_id=uuid(602)
+   input.message_id=uuid(603);input.input_key='player:interrupt';input.text='Wait.'
+   truthy(orchestrator.submitText(s,input));eq(#b.submitted,3);eq(#s.responseQueue.items,0)
+  else
+   truthy(orchestrator.speechStatus(s,{media_id=descriptor.media_id,active=false,status='failed'}))
+   eq(#s.responseQueue.items,0);truthy(s.rechat.cancelled)
+   nextLine.sequence=7;nextLine.message_id=uuid(504);b.results={nextLine};orchestrator.poll(s)
+   eq(#s.responseQueue.items,0);eq(#b.submitted,2)
+  end
+ end
+ end
  end
 end)
 test('rechat cancels when the previous speaker is freshly busy',function()
@@ -1584,8 +1653,7 @@ test('LLM model panel keeps four semantic slots with async fallback and randomiz
   effective_settings={routing={llm_randomizer_enabled=false}}},nil)
  truthy(#clipped.rows[2].detail<=38);eq(clipped.rows[2].detail:sub(-3),'...')
  -- the Interact overlay pauses simulation, so the paused-frame pump is what settles a selection.
- -- It stays gated on a visible server-owned panel with a request in flight, and carries no gameplay,
- -- settings, or event-lane work that belongs to onUpdate.
+ -- Control polling stays gated; the only additional frame work observes disposition menu transitions.
  local playerSource=io.open(root..'/scripts/LORKHAN/player.lua')
  local playerBody=playerSource:read('*a');playerSource:close()
  local frameBody=assert(playerBody:match('\n        onFrame=function%(%)(.-)\n        end,\n'))
@@ -1593,8 +1661,9 @@ test('LLM model panel keeps four semantic slots with async fallback and randomiz
  truthy(frameBody:find('SERVER_CONTROL_PANELS[state.ui.panel]',1,true))
  truthy(frameBody:find('native.pumpSessionControls',1,true))
  truthy(frameBody:find('render()',1,true))
+ truthy(frameBody:find('LORKHAN_DISPOSITION_MENU',1,true))
  for _,forbidden in ipairs({'settingsRefreshElapsed','aimScanElapsed','autoScanElapsed',
-  'flushCapturedDialogue','pollResults','send('}) do
+  'flushCapturedDialogue','pollResults','modifyBaseDisposition'}) do
   eq(frameBody:find(forbidden,1,true),nil)
  end
 end)
@@ -2347,5 +2416,89 @@ test('saved character linking is automatic without game menus and preserves reje
  local _,meta=storage.load({schemaVersion=3,characterId='bad'},1);truthy(meta.disable)
 end)
 
+local disposition=require('scripts.LORKHAN.disposition')
+local function dispositionFixture()
+ local world={base=45,modifier=0,paused=false,expired=false,writes=0,submitted={}}
+ local object={} local current={}
+ local b={isExpired=function()return world.expired end,
+  submitDisposition=function(payload)world.submitted[#world.submitted+1]=support.copy(payload);return UUID.request end}
+ local types={NPC={objectIsInstance=function(o)return o==object end,
+  getBaseDisposition=function(o,p)eq(o,object);eq(p,current);if world.broken then error('unavailable') end;return world.base end,
+  getDisposition=function(o,p)eq(o,object);eq(p,current);return math.max(0,math.min(100,world.base+world.modifier)) end,
+  modifyBaseDisposition=function(o,p,delta)eq(o,object);eq(p,current);world.base=world.base+delta;world.writes=world.writes+1 end}}
+ local state=disposition.new(b,function(id)if identity.same(id,npc) then return object end end,
+  function()return current end,types,function(o)eq(o,current);return playerId end,function()return world.paused end)
+ local e=event(1,'relationship.adjust',1,{adjustment_id=UUID.message,actor=npc,player=playerId,delta=2,expires_at='2030-01-01T00:00:00Z'})
+ return state,world,e
+end
+
+test('AI disposition uses fresh game value after bribes and retains raw base modifiers',function()
+ local state,w,e=dispositionFixture();truthy(disposition.receive(state,e,UUID.session,1));w.base=60
+ disposition.pump(state,UUID.session,1,0,false);eq(w.base,62);eq(w.writes,1)
+ eq(w.submitted[1].disposition,62);eq(w.submitted[1].status,'applied')
+ local s,x,v=dispositionFixture();x.base=-10;x.modifier=50;v.payload.delta=-3
+ truthy(disposition.receive(s,v,UUID.session,1));disposition.pump(s,UUID.session,1,0,false)
+ eq(x.base,-13);eq(x.submitted[1].disposition,37)
+end)
+
+test('AI disposition defers paused dialogue and clamps effective endpoints',function()
+ local s,w,e=dispositionFixture();w.paused=true;truthy(disposition.receive(s,e,UUID.session,1))
+ disposition.pump(s,UUID.session,1,0,false);eq(w.writes,0);w.paused=false
+ disposition.pump(s,UUID.session,1,1,true);eq(w.writes,0)
+ w.base=99;disposition.pump(s,UUID.session,1,2,false);eq(w.base,100)
+ local a,b,c=dispositionFixture();b.base=1;c.payload.delta=-3;truthy(disposition.receive(a,c,UUID.session,1))
+ disposition.pump(a,UUID.session,1,0,false);eq(b.base,0)
+end)
+
+test('AI disposition paused expiry and receipt replay never apply deferred mutations',function()
+ local s,w,e=dispositionFixture();w.paused=true
+ truthy(disposition.receive(s,e,UUID.session,1));disposition.pump(s,UUID.session,1,0,false)
+ eq(w.writes,0);w.expired=true;disposition.pump(s,UUID.session,1,91,false)
+ eq(w.writes,0);eq(w.submitted[1].status,'rejected')
+ w.paused=false;truthy(disposition.receive(s,e,UUID.session,1))
+ disposition.pump(s,UUID.session,1,92,false);eq(w.writes,0);eq(w.submitted[2].status,'rejected')
+end)
+
+test('AI disposition replay resends outcome without repeating game mutation',function()
+ local s,w,e=dispositionFixture();truthy(disposition.receive(s,e,UUID.session,1))
+ disposition.pump(s,UUID.session,1,0,false);eq(w.writes,1)
+ truthy(disposition.receive(s,e,UUID.session,1));disposition.pump(s,UUID.session,1,1,false)
+ eq(w.writes,1);eq(#w.submitted,2);eq(w.submitted[2].adjustment_id,UUID.message)
+ e.payload.delta=3;eq(disposition.receive(s,e,UUID.session,1),false)
+end)
+
+test('AI disposition rejects stale scopes and never turns unavailable readings into zero',function()
+ local s,w,e=dispositionFixture();eq(disposition.receive(s,e,UUID.session,2),false)
+ e.generation=2;e.payload.player=npc;eq(disposition.receive(s,e,UUID.session,2),false)
+ e.payload.player=playerId;truthy(disposition.receive(s,e,UUID.session,2));w.broken=true
+ disposition.pump(s,UUID.session,2,0,false);eq(w.writes,0);eq(#w.submitted,0)
+ eq(disposition.observe(s,npc,UUID.session,2,false),false)
+ w.broken=false;w.expired=true;disposition.pump(s,UUID.session,2,1,false)
+ eq(w.writes,0);eq(w.submitted[1].status,'rejected')
+end)
+test('AI disposition retries read game again after a bribe and await async receipt',function()
+ local s,w,e=dispositionFixture();local attempts=0
+ s.bridge.submitDisposition=function(payload)
+  attempts=attempts+1;w.submitted[#w.submitted+1]=support.copy(payload)
+  if attempts==1 then return nil end;return UUID.request
+ end
+ s.bridge.pumpDispositionResult=function()return {ok=true} end
+ truthy(disposition.receive(s,e,UUID.session,1));disposition.pump(s,UUID.session,1,0,false)
+ eq(w.writes,1);w.base=80;disposition.pump(s,UUID.session,1,3,false)
+ eq(w.submitted[2].disposition,80);eq(w.writes,1)
+ disposition.pump(s,UUID.session,1,4,false);truthy(s.receipts[UUID.message].acked)
+ truthy(disposition.observe(s,npc,UUID.session,1,false));local before=#w.submitted
+ truthy(disposition.observe(s,npc,UUID.session,1,false));eq(#w.submitted,before)
+end)
+
+test('AI disposition throwing writes are rejected and unreadable post-write sends no fake reading',function()
+ local s,w,e=dispositionFixture();s.types.NPC.modifyBaseDisposition=function()error('denied')end
+ truthy(disposition.receive(s,e,UUID.session,1));disposition.pump(s,UUID.session,1,0,false)
+ eq(w.submitted[1].status,'rejected');eq(w.base,45)
+ local a,b,c=dispositionFixture();a.types.NPC.modifyBaseDisposition=function()b.broken=true;b.writes=b.writes+1 end
+ truthy(disposition.receive(a,c,UUID.session,1));disposition.pump(a,UUID.session,1,0,false)
+ eq(#b.submitted,0);eq(b.writes,1);truthy(disposition.receive(a,c,UUID.session,1))
+ disposition.pump(a,UUID.session,1,1,false);eq(b.writes,1);eq(#b.submitted,0)
+end)
 io.write(string.format('%d tests, %d failures\n',tests,failures))
 if failures>0 then os.exit(1) end

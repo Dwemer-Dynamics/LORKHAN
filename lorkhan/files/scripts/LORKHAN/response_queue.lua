@@ -182,9 +182,9 @@ end
 function M.head(state) return state.items[1] end
 
 function M.beginMediaPreparation(state,mediaId,prepareRequestId)
-    local item=state.items[1]
-    if not item or item.kind~='dialogue' or not item.media or item.media.media_id~=mediaId or item.status~='new' then
-        return nil,'media_not_queue_head'
+    local item=state.byMedia[mediaId]
+    if not item or item.kind~='dialogue' or item.status~='new' then
+        return nil,'media_not_queued'
     end
     item.status='preparing' item.prepareRequestId=prepareRequestId
     return true
@@ -229,6 +229,14 @@ end
 
 -- Consume a rechat decision that became knowable only when the final response arrived.
 function M.consumeRechat(state) return shouldAdvanceRechat(state) end
+
+-- Generate ahead only during the final spoken line of this completed turn, never across actions.
+function M.canStartRechat(state,turnId)
+    if #state.items==0 then return true end
+    local item=state.active
+    return #state.items==1 and item~=nil and item.kind=='dialogue' and item.media~=nil
+        and item.turnId==turnId and item.line.final_response_line==true
+end
 
 function M.completeAction(state,actionId)
     local item=state.active
