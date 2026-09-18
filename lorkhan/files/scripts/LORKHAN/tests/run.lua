@@ -1445,6 +1445,18 @@ end)
 test('player mood and typed prefixes stay separate from the saved dialogue mode',function()
  local uiState=require('scripts.LORKHAN.ui.state')
  local s=uiState.new()
+ local aimed={identity={kind='npc',display_name='Caius'},distance=300}
+ local nearest={identity={kind='npc',display_name='Guard'},distance=50}
+ local disabled={identity={kind='npc'},distance=10,available=false}
+ local dead={identity={kind='npc'},distance=20,dead=true}
+ local creature={identity={kind='creature'},distance=30}
+ s.target=aimed.identity
+ eq(uiState.targetPreview(aimed,{nearest},2048),aimed)
+ eq(uiState.targetPreview(nil,{disabled,dead,creature,nearest},2048),nearest)
+ eq(uiState.targetPreview(dead,{nearest},2048),nearest)
+ eq(uiState.targetPreview(nil,{nearest},40),nil)
+ eq(uiState.targetPreview(nil,{},2048),nil)
+ eq(s.target,aimed.identity)
  eq(s.mood,'None');eq(s.mode,'Standard');eq(uiState.moodSelection(s),nil);eq(uiState.effectiveMode(s),'Standard')
  eq(#uiState.MOODS,12);eq(uiState.MOODS[1],'None');eq(uiState.MOODS[#uiState.MOODS],'Custom')
  eq(#uiState.SHORTCUTS,9);eq(uiState.SHORTCUTS[1].prefix,'%%')

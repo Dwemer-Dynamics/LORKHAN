@@ -1079,7 +1079,7 @@ local function renderStatusHud()
         return
     end
     local text='LORKHAN  |  Speech: '..(speechActive() and 'speaking' or 'idle')..
-        '  |  Target: '..actorLabel(state.ui.target)..'  |  '..uiState.selectedChatMode(state.ui).label
+        '  |  Target: '..actorLabel(state.ui.previewTarget)..'  |  '..uiState.selectedChatMode(state.ui).label
     local width=520
     local height=42
     local layout={layer='HUD',type=openmwUi.TYPE.Container,
@@ -1618,7 +1618,7 @@ chooseTarget=function(maxDistance,deferRender)
     if not candidate then candidate,reason=adapter.resolveCameraTarget(maxDistance) end
     if not candidate then
         local nearby=adapter.nearbyActors(maxDistance)
-        candidate=nearby[1]
+        candidate=uiState.targetPreview(nil,nearby,maxDistance)
         if candidate then reason='nearest_actor_fallback' end
     end
     if candidate then
@@ -2099,10 +2099,15 @@ return {
             if aimScanElapsed>=AIM_SCAN_INTERVAL and not state.ui.visible and controlsAllowed() then
                 aimScanElapsed=0
                 local candidate=adapter.resolveActorRay(2048)
-                local signature=candidate and identity.key(candidate.identity) or ''
+                aimCandidate=candidate
+                local preview=uiState.targetPreview(candidate,nil,2048)
+                if not preview then preview=uiState.targetPreview(nil,adapter.nearbyActors(2048),2048) end
+                state.ui.previewTarget=preview and preview.identity or nil
+                local signature=preview and table.concat({identity.key(preview.identity),
+                    displayName(preview.identity),tostring(math.floor(preview.distance+0.5))},'|') or ''
                 if signature~=aimSignature then
-                    aimCandidate=candidate aimSignature=signature render()
-                elseif candidate then aimCandidate=candidate end
+                    aimSignature=signature render()
+                end
             end
             autoScanElapsed=autoScanElapsed+elapsed
             if autoScanElapsed>=AUTO_SCAN_INTERVAL then
