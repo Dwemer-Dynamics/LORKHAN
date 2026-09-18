@@ -906,7 +906,7 @@ local function selectModelSlot(key)
     render()
 end
 
--- Keep the simple Dynamic Profiles menu on screen while its bounded requests settle.
+-- Close after accepting the selection; the frame pump finishes the bounded request in the background.
 function settingsControls.requestProfiles(kind)
     if settingsControls.profileUpdates or controlsRequestActive then
         state.ui.status='Profile request already pending';render();return
@@ -931,6 +931,7 @@ function settingsControls.requestProfiles(kind)
     local pending,reason=requests.start(native,targets,kind=='narrator',core.getRealTime())
     settingsControls.profileUpdates=pending
     state.ui.status=pending and 'Sending profile update request...' or reason
+    if pending then state.ui.visible=false;leaveUiMode() end
     render()
 end
 

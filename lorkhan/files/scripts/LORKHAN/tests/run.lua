@@ -2811,6 +2811,34 @@ test('direct profile requests queue bound targets and narrator without opening a
  native.sessionControls=function()return{target=current,selected_profile_id=uuid(401)}end
  st=requests.start(native,{npc},true,0);requests.pump(st,native,1);requests.pump(st,native,2)
  eq(#calls,2);eq(st.failed,1)
+ -- Exercise the real menu handler and frame pump together: closing must not stop submission.
+ local file=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local source=file:read('*a');file:close()
+ local handler=assert(source:match('(function settingsControls.requestProfiles%(.+)\nlocal function generateSelectedProfile'))
+ local pump=assert(source:match('(            if settingsControls.profileUpdates then.-)            if not controlsRequestActive'))
+ local factory=assert((loadstring or load)([[return function(native,target)
+ local nativeOk=true
+ local settingsControls={}
+ local state={ui={visible=true,target=target,agents={{identity=target}}}}
+ local adapter={actorDistance=function()return 10 end,identity=function()return target end}
+ local core={getRealTime=function()return 0 end}
+ local self={}
+ local closed=0
+ local function leaveUiMode()closed=closed+1 end
+ local function render()end
+ ]]..handler..'\nlocal function tick()\n'..pump..[[end
+ return settingsControls,state,tick,function()return closed end
+ end]]))()
+ native.sessionControls=function()return{target=current,selected_profile_id=uuid(401),narrator_profile_id=uuid(402)}end
+ for _,kind in ipairs({'target','nearby','narrator'}) do
+  local controls,ui,tick,closed=factory(native,npc)
+  local count=#calls
+  controls.requestProfiles(kind);eq(ui.ui.visible,false);eq(closed(),1);truthy(controls.profileUpdates)
+  for n=1,4 do tick()end
+  eq(#calls,count+1);eq(controls.profileUpdates,nil);eq(ui.ui.visible,false)
+  eq(calls[#calls].kind,kind=='narrator' and 'narrator_profile_generate' or 'profile_generate')
+ end
+ local controls,ui,_,closed=factory(native,nil)
+ controls.requestProfiles('target');eq(ui.ui.visible,true);eq(closed(),0);eq(controls.profileUpdates,nil)
 end)
 io.write(string.format('%d tests, %d failures\n',tests,failures))
 if failures>0 then os.exit(1) end
