@@ -411,7 +411,8 @@
             "levelup",
             "combat_end",
             "sleep",
-            "wait"
+            "wait",
+            "lockpick"
           ]
         },
         "player": {

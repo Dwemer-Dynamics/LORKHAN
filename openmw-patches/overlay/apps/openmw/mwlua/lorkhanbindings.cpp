@@ -788,6 +788,26 @@ namespace MWLua
                         if (m_dispositionReceipts.size() >= 128)
                             return failure(lua, "disposition_queue_full");
                     }
+                    const bool commentary = type == lorkhan::GameDataType::rpg_event
+                        || type == lorkhan::GameDataType::quest_event || type == lorkhan::GameDataType::bored_event;
+                    const auto now = std::chrono::steady_clock::now();
+                    if (commentary) {
+                        for (auto item = m_commentRequests.begin(); item != m_commentRequests.end();) {
+                            if (now - item->second.created >= 30s) item = m_commentRequests.erase(item);
+                            else ++item;
+                        }
+                        if (m_commentRequests.size() >= 32) return failure(lua, "comment_queue_full");
+                    }
+                    CommentRequest comment;
+                    if (commentary) {
+                        comment.type = type == lorkhan::GameDataType::rpg_event ? "rpg_event"
+                            : type == lorkhan::GameDataType::quest_event ? "quest_event" : "bored_event";
+                        comment.kind = payload.get_or<std::string>("kind", "");
+                        comment.text = payload.get_or<std::string>("text", "");
+                        comment.created = now;
+                        if (comment.kind.size() > 32 || comment.text.size() > 4096)
+                            return failure(lua, "invalid_comment_observation");
+                    }
                     const lorkhan::RequestId request(uuid());
                     const std::string serialized = toJson(sol::make_object(lua, payload));
                     lorkhan::OutboundRequest outbound{request, *m_session, m_service->generation(),
@@ -797,6 +817,7 @@ namespace MWLua
                     auto accepted = m_service->enqueue(std::move(outbound));
                     if (!accepted) return failure(lua, accepted.error().message);
                     if (type == lorkhan::GameDataType::disposition) m_dispositionReceipts[request.value()] = "pending";
+                    if (commentary) m_commentRequests.emplace(request.value(), std::move(comment));
                     return success(lua, request.value());
                 }
                 catch (const std::exception& error) { return failure(lua, error.what()); }
@@ -2410,6 +2431,30 @@ namespace MWLua
                     if (settleDebugResult(result)) continue;
                     if (settleDiaryResult(result)) continue;
                     if (settlePlayerAutochatResult(result)) continue;
+                    const auto comment = m_commentRequests.find(result.request.value());
+                    if (comment != m_commentRequests.end()) {
+                        // Consume once; only a matching live server decision may initiate commentary.
+                        const auto pending = std::move(comment->second);
+                        m_commentRequests.erase(comment);
+                        if (result.kind != lorkhan::ResponseKind::accepted || !m_session
+                            || std::chrono::steady_clock::now() - pending.created >= 30s) continue;
+                        const auto parsed = lorkhan::parseGameDataAcceptedResponse(result.payload, jsonHeaders());
+                        if (!parsed || parsed.value().request != result.request || parsed.value().session != *m_session
+                            || parsed.value().generation != m_service->generation() || parsed.value().type != pending.type
+                            || parsed.value().duplicate) continue;
+                        if (pending.type != "bored_event" && !parsed.value().commentRequested) continue;
+                        sol::table event(lua, sol::create);
+                        event["type"] = pending.type == "bored_event" ? "bored.decision"
+                            : pending.type == "quest_event" ? "quest.comment" : "rpg.comment";
+                        event["request_id"] = result.request.value();
+                        event["session_id"] = parsed.value().session.value();
+                        event["generation"] = parsed.value().generation.value();
+                        event["comment_requested"] = parsed.value().commentRequested;
+                        event["kind"] = pending.kind;
+                        event["text"] = pending.text;
+                        output[outIndex++] = event;
+                        continue;
+                    }
                     if (result.kind == lorkhan::ResponseKind::failure)
                     {
                         if(m_initRequest&&result.request==*m_initRequest){
@@ -2633,7 +2678,7 @@ namespace MWLua
                 m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();
                 m_diaryRequest.reset();m_diaryReceipt.reset();m_diaryBook.reset();m_diaryReceiptDto.reset();m_diaryPending=false;
                 m_diaryState.clear();m_diaryReason.clear();m_diaryError.clear();m_diaryReceiptOk=false;
-                m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_dispositionReceipts.clear();m_turnRequests.clear();m_latestTurn.reset();m_controlsError.clear();m_debugError.clear();
+                m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_dispositionReceipts.clear();m_commentRequests.clear();m_turnRequests.clear();m_latestTurn.reset();m_controlsError.clear();m_debugError.clear();
                 m_initSnapshot.reset();m_initAttempts=0;m_retryInit=false;
                 if(identityChange){m_characterIdentity.clear();m_characterRejected=false;}
                 m_loadedSave=loadedSave;m_waitingLoadedCalendar=loadedSave;m_loadedCalendar.reset();beginSession();
@@ -2940,6 +2985,11 @@ namespace MWLua
             std::string m_debugError;
             static constexpr std::size_t kControlsPumpBatch = 8;
             static constexpr std::size_t kDeferredResultCapacity = lorkhan::kInboundCapacity;
+            struct CommentRequest {
+                std::string type, kind, text;
+                std::chrono::steady_clock::time_point created;
+            };
+            std::map<std::string, CommentRequest> m_commentRequests;
             std::map<std::string, std::string> m_dispositionReceipts;
             std::vector<lorkhan::InboundResult> m_deferredResults;
             std::map<std::string,std::string> m_turnRequests;
@@ -3018,6 +3068,15 @@ namespace MWLua
             };
             api["submitActorProfile"] = [lua](sol::table payload) {
                 return client().submitActorProfile(lua, std::move(payload));
+            };
+            api["submitRpgEvent"] = [lua](sol::table payload) {
+                return client().submitGameData(lua, lorkhan::GameDataType::rpg_event, std::move(payload));
+            };
+            api["submitQuestEvent"] = [lua](sol::table payload) {
+                return client().submitGameData(lua, lorkhan::GameDataType::quest_event, std::move(payload));
+            };
+            api["submitBoredEvent"] = [lua](sol::table payload) {
+                return client().submitGameData(lua, lorkhan::GameDataType::bored_event, std::move(payload));
             };
             api["submitAutomaticDiary"] = [lua](sol::table payload) {
                 return client().submitAutomaticDiary(lua, std::move(payload));

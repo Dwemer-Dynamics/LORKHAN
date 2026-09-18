@@ -492,9 +492,9 @@
       "sha256": "54775507bed10cd835a978d708d9ef50972f8986e4930def2a1a5688cc328b68"
     },
     {
-      "bytes": 4357,
+      "bytes": 4274,
       "path": "lorkhan/schemas/v1/client-settings.schema.json",
-      "sha256": "02bce1f707ca91f2a9aaeaedbb1008b132a970643e2554f869bb047aa5f2da5a"
+      "sha256": "423ba79244b94576a820517167c1408738a270740b56ca9f3fd9867773d1f59f"
     },
     {
       "bytes": 5015,
@@ -514,7 +514,7 @@
     {
       "bytes": 20725,
       "path": "lorkhan/schemas/v1/controls.schema.json",
-      "sha256": "2bf2dd9f18d2ebfdd7e820ff46450e0f5744ee488deb0a162d14e99c22e7c8dd"
+      "sha256": "c3fea6c8c059596c81a2021b87cdd238ccf1cd58342c1e55fd4971ca0a1326a9"
     },
     {
       "bytes": 771,
@@ -587,9 +587,9 @@
       "sha256": "66fb9b333958f5db965e5530e5f26e806947a490cde1e0dc435c2abe25628993"
     },
     {
-      "bytes": 31380,
+      "bytes": 31404,
       "path": "lorkhan/schemas/v1/gamedata.schema.json",
-      "sha256": "793dde11d165fc927edaef00ed905e12540ffbc9e6465c79e7ac98190ffc86ba"
+      "sha256": "26352779e79c00663c58e31d209a306353b4bd90faa8367152c856b31c4fc45d"
     },
     {
       "bytes": 295,

@@ -176,8 +176,8 @@
               "properties": {
                 "recent_turn_limit": {
                   "type": "integer",
-                  "minimum": 1,
-                  "maximum": 100
+                  "minimum": 0,
+                  "maximum": 200
                 },
                 "knowledge_limit": {
                   "type": "integer",

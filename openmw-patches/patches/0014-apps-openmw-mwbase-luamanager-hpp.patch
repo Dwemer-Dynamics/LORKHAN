@@ -1,11 +1,12 @@
 diff --git a/apps/openmw/mwbase/luamanager.hpp b/apps/openmw/mwbase/luamanager.hpp
-index bddfc3079a40c372d3725e206591fc5fa95a0ba7..3df30ffdc07534477f309e4312042ec30442e4a3 100644
+index bddfc3079a40c372d3725e206591fc5fa95a0ba7..a207873e006aa79fb586a9b74977406e6fd093ce 100644
 --- a/apps/openmw/mwbase/luamanager.hpp
 +++ b/apps/openmw/mwbase/luamanager.hpp
-@@ -91,9 +91,15 @@
+@@ -91,9 +91,16 @@
              = 0;
          virtual void exteriorCreated(MWWorld::CellStore& cell) = 0;
          virtual void actorDied(const MWWorld::Ptr& actor) = 0;
++        virtual void onLorkhanLockpick(const MWWorld::Ptr& actor) = 0;
 +        virtual void onLorkhanActorResurrected(const MWWorld::Ptr& actor) = 0;
 +        virtual void onLorkhanDialogueChoice(const MWWorld::Ptr& actor, const std::string& text) = 0;
          virtual void onDialogueResponse(

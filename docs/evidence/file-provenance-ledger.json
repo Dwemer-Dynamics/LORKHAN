@@ -509,7 +509,8 @@
         "apps/openmw/mwsound/openaloutput.hpp",
         "openmw-patches/patches/0031-apps-openmw-mwsound-openaloutput-hpp.patch",
         "apps/openmw/mwsound/openaloutput.cpp",
-        "openmw-patches/patches/0032-apps-openmw-mwsound-openaloutput-cpp.patch"
+        "openmw-patches/patches/0032-apps-openmw-mwsound-openaloutput-cpp.patch",
+        "apps/openmw/mwmechanics/security.cpp"
       ],
       "source_repository": "https://gitlab.com/OpenMW/openmw.git",
       "source_commit": "f4bec41444214a7903bebd178389ca22ca13f646",

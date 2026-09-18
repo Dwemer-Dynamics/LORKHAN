@@ -18,6 +18,32 @@ test('game script entrypoints compile in the active Lua runtime',function()
  end
 end)
 
+test('successful lockpick capture rejects stale sessions and preserves observed time',function()
+ local file=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local source=file:read('*a');file:close()
+ local handler=assert(source:match('LorkhanLockpick=function%(event%)(.-)\n        end,\n        LorkhanItemPickup'))
+ local harness=[[
+ local nativeOk=true
+ local session={session_id='current',generation=2}
+ local native={sessionInfo=function()return session end}
+ local calls=0
+ local function submitRpgEvent(kind,text,time)
+  assert(kind=='lockpick' and text=='The player successfully picked a lock.' and time==123)
+  calls=calls+1
+ end
+ ]]
+ local exercise=[[
+ handler({sessionId='old',generation=2,gameTime=123});assert(calls==0)
+ handler({sessionId='current',generation=1,gameTime=123});assert(calls==0)
+ handler({sessionId='current',generation=2,gameTime=-1});assert(calls==0)
+ handler({sessionId='current',generation=2});assert(calls==0)
+ handler({sessionId='current',generation=2,gameTime=123});assert(calls==1)
+ session=nil;handler({sessionId='current',generation=2,gameTime=123});assert(calls==1)
+ ]]
+ local chunk,reason=(loadstring or load)(harness..'\nlocal function handler(event)'..handler..'\nend\n'..exercise)
+ assert(chunk,reason);chunk()
+ assert(not source:find("submitAutomaticDiary('timer')",1,true))
+end)
+
 local identity=require('scripts.LORKHAN.identity')
 test('actor tools binds the later manual activation handler as a function',function()
  local file=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local source=file:read('*a');file:close()
@@ -200,7 +226,7 @@ test('RPG responder is typed and acknowledgements stay bounded and session owned
  local args={kind='sleep',player=playerId,responder=npc,game_time=120,text='The player slept.'}
  local dto=assert(protocol.rpgEvent(args));truthy(identity.same(dto.responder,npc));truthy(dto.responder~=npc)
  args.responder=playerId;eq(protocol.rpgEvent(args),nil)
- args.responder=enemy;truthy(protocol.rpgEvent(args));args.kind='lockpick';eq(protocol.rpgEvent(args),nil)
+ args.responder=enemy;truthy(protocol.rpgEvent(args));args.kind='lockpick';truthy(protocol.rpgEvent(args));args.kind='lockpick_attempt';eq(protocol.rpgEvent(args),nil)
  local s=player.new();local session={session_id=UUID.session,generation=7}
  local ack={request_id=UUID.request,session_id=UUID.session,generation=7}
  truthy(player.rememberRpgComment(s,UUID.request,npc,session,10))

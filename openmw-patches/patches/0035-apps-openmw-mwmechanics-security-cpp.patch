@@ -1,0 +1,20 @@
+diff --git a/apps/openmw/mwmechanics/security.cpp b/apps/openmw/mwmechanics/security.cpp
+index 233856d3440398cf502b33721a44c05e61ccce73..40a8057d17e8604685be47101d2d03bd5210fd79 100644
+--- a/apps/openmw/mwmechanics/security.cpp
++++ b/apps/openmw/mwmechanics/security.cpp
+@@ -8,6 +8,7 @@
+ 
+ #include "../mwbase/environment.hpp"
+ #include "../mwbase/mechanicsmanager.hpp"
++#include "../mwbase/luamanager.hpp"
+ #include "../mwbase/world.hpp"
+ 
+ #include "creaturestats.hpp"
+@@ -63,6 +64,7 @@
+             if (Misc::Rng::roll0to99(prng) <= x)
+             {
+                 lock.getCellRef().unlock();
++                MWBase::Environment::get().getLuaManager()->onLorkhanLockpick(mActor);
+                 resultMessage = "#{sLockSuccess}";
+                 resultSound = "Open Lock";
+                 mActor.getClass().skillUsageSucceeded(mActor, ESM::Skill::Security, ESM::Skill::Security_PickLock);

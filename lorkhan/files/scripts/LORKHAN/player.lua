@@ -47,7 +47,6 @@ local pendingActorProfileKeys={}
 local actorProfileFlushElapsed=0
 local pendingAutomaticDiaries={}
 local automaticDiaryFlushElapsed=0
-local automaticDiaryTimerElapsed=0
 local restDiaryState
 local observedPlayerLevel,observedRpgSession
 local ownsUiMode=false
@@ -95,7 +94,6 @@ local currentNarratorSettings={}
 local SETTINGS_REFRESH_INTERVAL=0.5
 local AIM_SCAN_INTERVAL=0.25
 local AUTO_SCAN_INTERVAL=1.0
-local AUTOMATIC_DIARY_POLL_INTERVAL=30
 local DEBUG_POLL_INTERVAL=0.25
 local GLOBAL_DEBUG_COMMANDS={
     ['npc.status']=true,['npc.visit']=true,['npc.teleport']=true,['npc.return']=true,
@@ -498,7 +496,7 @@ local function flushActorProfiles(dt)
 end
 
 -- Persist the observation and freeze the eligible responder before the server makes its profile policy decision.
-local function submitRpgEvent(kind,text)
+local function submitRpgEvent(kind,text,capturedTime)
     if not aiEnabled then return end
     if not nativeOk or not native.submitRpgEvent or not native.sessionInfo then return end
     local session=native.sessionInfo()
@@ -506,7 +504,7 @@ local function submitRpgEvent(kind,text)
     local responder=state.ui.target
     local distance=responder and adapter.actorDistance(responder)
     if turnActive or nearbyCombat or speechActive() or state.ui.visible or not distance or distance>2048 then responder=nil end
-    local payload=protocol.rpgEvent({kind=kind,player=adapter.identity(self),game_time=adapter.gameTime(),text=text,responder=responder})
+    local payload=protocol.rpgEvent({kind=kind,player=adapter.identity(self),game_time=capturedTime or adapter.gameTime(),text=text,responder=responder})
     if not payload then return end
     local request,reason=native.submitRpgEvent(payload)
     if request and responder then
@@ -2083,11 +2081,6 @@ return {
             flushActorProfiles(dt)
             flushAutomaticDiaries(dt)
             local elapsed=tonumber(dt) or 0
-            automaticDiaryTimerElapsed=automaticDiaryTimerElapsed+elapsed
-            if automaticDiaryTimerElapsed>=AUTOMATIC_DIARY_POLL_INTERVAL then
-                automaticDiaryTimerElapsed=0
-                submitAutomaticDiary('timer')
-            end
             settingsRefreshElapsed=settingsRefreshElapsed+elapsed
             if settingsRefreshElapsed>=SETTINGS_REFRESH_INTERVAL then
                 settingsRefreshElapsed=0
@@ -2195,6 +2188,13 @@ return {
             submitDebugResult(pendingGlobalDebugCommand.command,event.status or 'failed',
                 event.reason_code or 'global_command_failed',event.observed or {})
             pendingGlobalDebugCommand=nil
+        end,
+        LorkhanLockpick=function(event)
+            if not nativeOk or not native.sessionInfo or type(event)~='table' then return end
+            local session=native.sessionInfo()
+            if not session or event.sessionId~=session.session_id or event.generation~=session.generation then return end
+            if type(event.gameTime)~='number' or event.gameTime~=event.gameTime or event.gameTime<0 then return end
+            submitRpgEvent('lockpick','The player successfully picked a lock.',event.gameTime)
         end,
         LorkhanItemPickup=function(event)
             if not nativeOk or not native.submitItemPickup or not native.sessionInfo then return end

@@ -331,7 +331,7 @@ end
 
 -- Real RPG observations stay separate from spoken dialogue and model-authored event text.
 function M.rpgEvent(args)
-    if type(args)~='table' or not ({levelup=true,combat_end=true,sleep=true,wait=true})[args.kind] then
+    if type(args)~='table' or not ({levelup=true,combat_end=true,sleep=true,wait=true,lockpick=true})[args.kind] then
         return nil,'invalid_rpg_event'
     end
     if not identity.validate(args.player) or args.player.kind~='player' then return nil,'invalid_rpg_player' end
