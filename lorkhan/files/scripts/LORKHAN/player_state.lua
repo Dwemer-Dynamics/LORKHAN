@@ -69,7 +69,7 @@ function M.applyTargetSettings(settings,targetSettings)
     behavior.autoGreeting=remote.auto_greeting==true
     behavior.boredom=remote.boredom==true
     behavior.boredomDelaySeconds=remote.boredom_delay_seconds or 180
-    behavior.combatBarks=behavior.combatBarksMode=='Enabled' or (behavior.combatBarksMode~='Disabled' and remote.combat_barks==true)
+    behavior.combatBarks=behavior.combatBarks~=false
     -- CHIM schedules requests with the local timer; the server enforces its separate shared cooldown.
     local interval=tonumber(behavior.combatBarkInterval) or 30
     behavior.combatBarkPeriodSeconds=interval>=5 and math.min(120,interval) or 30

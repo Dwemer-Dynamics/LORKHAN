@@ -4,6 +4,7 @@ local context=require('scripts.LORKHAN.context')
 local conversation=require('scripts.LORKHAN.conversation')
 local director=require('scripts.LORKHAN.director')
 local identity=require('scripts.LORKHAN.identity')
+local hearing=require('scripts.LORKHAN.hearing')
 local protocol=require('scripts.LORKHAN.protocol')
 local playerInput=require('scripts.LORKHAN.player_input')
 local responseQueue=require('scripts.LORKHAN.response_queue')
@@ -908,25 +909,34 @@ function M.submitText(state,args)
             if key then selectedAudience[#selectedAudience+1]={identity=actor,key=key} end
         end
     end
-    if mode=='Whisper' and state.conversation.target then
-        selectedAudience={{identity=state.conversation.target,key=identity.key(state.conversation.target)}}
+    local hearingContext=args.context and args.context.hearing or {}
+    local hearingDistance,automaticDistance=hearing.ranges(state.settings and state.settings.autoActivate,
+        mode,hearingContext.sneaking==true)
+    local observations=hearingContext.actors or {}
+    local targetKey=identity.key(state.conversation.target)
+    local function canHear(entry)
+        local key=identity.key(entry.identity)
+        local observation=observations[key]
+        if hearingContext.actors and not observation then return false end
+        local speakerCell=args.speaker and args.speaker.cell
+        local cell=entry.identity.cell
+        if not cell or not speakerCell or cell.kind~=speakerCell.kind
+            or (cell.kind=='interior' and cell.name~=speakerCell.name) then return false end
+        return hearing.audible(observation and observation.distance or entry.distance,
+            hearingDistance,automaticDistance,observation,cell.kind=='interior')
     end
     for _,entry in ipairs(selectedAudience) do
-        table.insert(audience,entry.identity)
-        audienceKeys[entry.key]=true
+        local managed=agentRegistry.get(state.agents,entry.identity)
+        if isRechat or injectionAudience or entry.key==targetKey or canHear(managed or entry) then
+            table.insert(audience,entry.identity)
+            audienceKeys[entry.key]=true
+        end
     end
-    local hearingDistance=tonumber(state.settings and state.settings.autoActivate
-        and state.settings.autoActivate.hearingDistance) or 0
-    local hearingPreset=state.settings and state.settings.autoActivate and state.settings.autoActivate.hearingPreset
-    if hearingPreset=='TargetsOnly' then hearingDistance=0
-    elseif hearingPreset=='Wide' then hearingDistance=math.min(16384,hearingDistance*2) end
-    if mode=='Close' or mode=='Whisper' then hearingDistance=0
-    elseif mode=='Shout' then hearingDistance=math.min(32768,hearingDistance*2) end
     if hearingDistance>0 and not isRechat then
         for _,entry in ipairs(agentRegistry.snapshot(state.agents)) do
             local key=identity.key(entry.identity)
             if #audience>=constants.MAX_AUDIENCE then break end
-            if entry.distance<=hearingDistance and key and not audienceKeys[key] then
+            if key and not audienceKeys[key] and canHear(entry) then
                 table.insert(audience,entry.identity)
                 audienceKeys[key]=true
             end

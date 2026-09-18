@@ -853,6 +853,44 @@ function M.actionItems(target, modules, observedActors)
     return rows
 end
 
+-- Freeze bounded local hearing evidence. Keep this private to Lua rather than the wire context.
+function M.hearingContext(modules)
+    modules=modules or loaded()
+    local player=modules.self
+    local result={sneaking=player and safe(function() return player.controls.sneak end)==true,actors={}}
+    if not player then return result end
+    local actorIdentity=require('scripts.LORKHAN.identity')
+    local candidates={}
+    for index,object in ipairs(modules.nearby and modules.nearby.actors or {}) do
+        if index>256 then break end
+        local actor=M.identity(object,modules)
+        if actor and actor.kind~='player' then
+            local distance=safe(function()return (object.position-player.position):length() end)
+            if distance and distance==distance then
+                candidates[#candidates+1]={object=object,identity=actor,distance=distance}
+            end
+        end
+    end
+    table.sort(candidates,function(a,b)return a.distance<b.distance end)
+    for index=1,math.min(#candidates,32) do
+        local candidate=candidates[index]
+        local object=candidate.object
+        local available=sameSpace(player.cell,object.cell) and object.enabled~=false
+            and safe(modules.types and modules.types.Actor and modules.types.Actor.isDead,object)~=true
+        local visible=false
+        if available and modules.nearby.castRay then
+            local ray=safe(function()
+                return modules.nearby.castRay(player:getBoundingBox().center,object:getBoundingBox().center,
+                    {ignore=player})
+            end)
+            visible=ray and (not ray.hit or ray.hitObject==object) or false
+        end
+        result.actors[actorIdentity.key(candidate.identity)]={distance=candidate.distance,
+            available=available,visible=visible}
+    end
+    return result
+end
+
 function M.playerContext(target, modules, observeAllActors)
     modules=modules or loaded()
     local playerIdentity=M.identity(modules.self,modules)
@@ -871,7 +909,7 @@ function M.playerContext(target, modules, observeAllActors)
     local regionId=cell and safe(function() return cell.region end) or nil
     local regionRecord=regionId and modules.core and modules.core.regions and modules.core.regions.records
         and modules.core.regions.records[regionId] or nil
-    return {player=playerIdentity,target=target,nearbyActors=actors,nearbyObjects=nearbyObjects(2048,modules),
+    return {player=playerIdentity,target=target,hearing=M.hearingContext(modules),nearbyActors=actors,nearbyObjects=nearbyObjects(2048,modules),
         followers=followers,action_items=M.actionItems(target,modules,observeAllActors and actors or nil),
         inventory=inventory(modules.self,modules),activeEffects=effects(modules.self,modules),journal=journal(modules.self,modules),
         books=recentBooks,

@@ -57,6 +57,7 @@ local EQUIPMENT_SLOTS={'helmet','cuirass','greaves','left_pauldron','right_pauld
     'right_gauntlet','boots','shirt','pants','skirt','robe','left_ring','right_ring','amulet','belt',
     'carried_right','carried_left','ammunition'}
 local autoSettings=storageOk and openmwStorage.playerSection('SettingsLORKHANAutoActivate') or nil
+local hearingSettings=storageOk and openmwStorage.playerSection('SettingsLORKHANHearing') or nil
 local behaviorSettings=storageOk and openmwStorage.playerSection('SettingsLORKHANBehavior') or nil
 local soundSettings=storageOk and openmwStorage.playerSection('SettingsLORKHANSound') or nil
 local agentSettings=storageOk and openmwStorage.playerSection('SettingsLORKHANAgents') or nil
@@ -911,7 +912,7 @@ function settingsControls.requestProfiles(kind)
     local targets={}
     if kind=='nearby' then
         local exterior=self.cell and self.cell.isExterior==true
-        local limit=tonumber(autoSettings and autoSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')) or (exterior and 2400 or 1200)
+        local limit=tonumber(hearingSettings and hearingSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')) or (exterior and 2400 or 1200)
         for _,agent in ipairs(state.ui.agents) do
             if agent.identity and agent.identity.kind=='npc' and (adapter.actorDistance(agent.identity) or math.huge)<=limit then
                 targets[#targets+1]=agent.identity
@@ -1204,7 +1205,7 @@ render=function()
         transcript=settingsControls.build()
     elseif state.ui.panel=='nearby-profiles' then
         local exterior=self.cell and self.cell.isExterior==true
-        local distance=autoSettings and autoSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')
+        local distance=hearingSettings and hearingSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')
             or (exterior and 2400 or 1200)
         local nearby=adapter.nearbyActors(tonumber(distance) or (exterior and 2400 or 1200))
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Nearby AI NPC Profiles',textSize=20,
@@ -1749,7 +1750,7 @@ local function manualActivate()
     if candidate then send('LORKHAN_MANUAL_ACTIVATE_REQUEST',{candidate=candidate})
     else
         local exterior=self.cell and self.cell.isExterior==true
-        local distance=autoSettings and autoSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')
+        local distance=hearingSettings and hearingSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')
             or (exterior and 2400 or 1200)
         local candidates=adapter.nearbyActors(tonumber(distance) or (exterior and 2400 or 1200))
         while #candidates>12 do table.remove(candidates) end
@@ -1805,9 +1806,8 @@ applySettings=function(session,controls)
     local effective=controls and settingsTarget and identity.same(controls.target,settingsTarget)
         and controls.effective_settings or nil
     local targetSettings=effective and effective.settings or session and session.client_settings or {}
-    local legacyHearing=autoSettings and autoSettings:get('hearingDistance')
-    local interiorHearing=autoSettings and autoSettings:get('interiorHearingDistance') or legacyHearing or 500
-    local exteriorHearing=autoSettings and autoSettings:get('exteriorHearingDistance') or legacyHearing or 1000
+    local interiorHearing=hearingSettings and hearingSettings:get('interiorHearingDistance') or 1000
+    local exteriorHearing=hearingSettings and hearingSettings:get('exteriorHearingDistance') or 1800
     local actionsEnabled=agentSettings and agentSettings:get('actionsEnabled')
     if actionsEnabled==nil and behaviorSettings then actionsEnabled=behaviorSettings:get('actionsEnabled') end
     if actionsEnabled==nil then actionsEnabled=true end
@@ -1815,17 +1815,17 @@ applySettings=function(session,controls)
     if ttsVolumeBoost==nil and presentationSettings then ttsVolumeBoost=presentationSettings:get('ttsVolumeBoost') end
     local current={
         autoActivate={enabled=autoSettings and autoSettings:get('enabled'),
-            interiorDistance=autoSettings and autoSettings:get('interiorDistance'),
-            exteriorDistance=autoSettings and autoSettings:get('exteriorDistance'),
+            interiorDistance=hearingSettings and hearingSettings:get('interiorDistance'),
+            exteriorDistance=hearingSettings and hearingSettings:get('exteriorDistance'),
             hearingDistance=exterior and exteriorHearing or interiorHearing,
-            hearingPreset=autoSettings and autoSettings:get('hearingPreset') or 'Nearby',
+            autoHearingRadiusMeters=hearingSettings and hearingSettings:get('autoHearingRadiusMeters') or 10,
             interiorHearingDistance=interiorHearing,
             exteriorHearingDistance=exteriorHearing,
             addHostile=autoSettings and autoSettings:get('addHostile'),
             addCreatures=autoSettings and autoSettings:get('addCreatures')},
         behavior={actionsEnabled=actionsEnabled,
             allowCombatDialogue=not behaviorSettings or behaviorSettings:get('allowCombatDialogue')~=false,
-            combatBarksMode=behaviorSettings and behaviorSettings:get('combatBarksMode') or 'UseProfile',
+            combatBarks=not behaviorSettings or behaviorSettings:get('combatBarks')~=false,
             combatBarkInterval=tonumber(behaviorSettings and behaviorSettings:get('combatBarkInterval')) or 30,
             cancelDialogueOnCombat=behaviorSettings and behaviorSettings:get('cancelDialogueOnCombat')},
         presentation={showStatusHud=presentationSettings and presentationSettings:get('showStatusHud')==true,
@@ -1859,7 +1859,7 @@ applySettings=function(session,controls)
     narrator.questReady=narratorCooldownReady('lastQuestGameTime',narrator.quest_cooldown_minutes or 3)
     currentNarratorSettings=narrator
     local signature=table.concat({tostring(auto.enabled),tostring(auto.interiorDistance),tostring(auto.exteriorDistance),
-        tostring(auto.hearingPreset),tostring(auto.hearingDistance),tostring(auto.interiorHearingDistance),tostring(auto.exteriorHearingDistance),
+        tostring(auto.autoHearingRadiusMeters),tostring(auto.hearingDistance),tostring(auto.interiorHearingDistance),tostring(auto.exteriorHearingDistance),
         tostring(auto.addHostile),tostring(auto.addCreatures),tostring(behavior.actionsEnabled),
         table.concat(audioSignature,','),tostring(behavior.allowCombatDialogue),tostring(behavior.cancelDialogueOnCombat),tostring(behavior.aiEnabled),tostring(behavior.autoGreeting),tostring(behavior.boredom),
         tostring(behavior.boredomDelaySeconds),tostring(behavior.combatBarks),tostring(behavior.combatBarkPeriodSeconds),
@@ -2116,7 +2116,7 @@ return {
                 local candidates={}
                 if enabled then
                     local exterior=self.cell and self.cell.isExterior==true
-                    local distance=autoSettings and autoSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')
+                    local distance=hearingSettings and hearingSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')
                         or (exterior and 2400 or 1200)
                     candidates=adapter.nearbyActors(tonumber(distance) or (exterior and 2400 or 1200))
                     while #candidates>32 do table.remove(candidates) end

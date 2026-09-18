@@ -278,8 +278,8 @@ test('target settings preserve local presentation actions and target preferences
  eq(settings.behavior.boredomDelaySeconds,180);eq(settings.behavior.combatBarks,true)
  eq(settings.behavior.combatBarkPeriodSeconds,30);eq(settings.behavior.rechat_allow_actions,nil)
  eq(settings.memory.recent_turn_limit,0);eq(settings.narrator.enabled,false)
- settings.behavior.combatBarksMode='Disabled';player.applyTargetSettings(settings,target);eq(settings.behavior.combatBarks,false)
- settings.behavior.combatBarksMode='Enabled';settings.behavior.combatBarkInterval=5
+ settings.behavior.combatBarks=false;player.applyTargetSettings(settings,target);eq(settings.behavior.combatBarks,false)
+ settings.behavior.combatBarks=true;settings.behavior.combatBarkInterval=5
  target.behavior.combat_barks=false;player.applyTargetSettings(settings,target)
  eq(settings.behavior.combatBarks,true);eq(settings.behavior.combatBarkPeriodSeconds,5)
  target.behavior.combat_bark_period_seconds=600;player.applyTargetSettings(settings,target)
@@ -1298,12 +1298,39 @@ test('configured hearing distance adds nearby managed agents to the turn audienc
  eq(b.submitted[1].payload.audience[1].record_id,npc.record_id)
  eq(b.submitted[1].payload.audience[2].record_id,near.record_id)
  eq(b.submitted[1].payload.context.dialogueMode,'Standard')
+ -- API-129 hearing observations use world-coordinate bounding boxes and a physical ray.
+ local vector={}
+ vector.__index=vector
+ function vector:length()return math.abs(self.x) end
+ vector.__sub=function(a,c)return setmetatable({x=a.x-c.x},vector)end
+ local function position(x)return setmetatable({x=x},vector)end
+ local cell={isExterior=false,name='Balmora'}
+ local selfObject={id='@0x1',recordId='player',cell=cell,position=position(0),controls={sneak=true}}
+ local otherObject={id='0x000001f',recordId='ajira',cell=cell,position=position(300),enabled=true}
+ function selfObject:getBoundingBox()return {center=self.position}end
+ function otherObject:getBoundingBox()return {center=self.position}end
+ local rays=0
+ local modules={self=selfObject,core={contentFiles={list={'Morrowind.esm'}}},
+  types={Player={objectIsInstance=function(object)return object==selfObject end},
+   NPC={objectIsInstance=function()return true end},Actor={isDead=function()return false end}},
+  nearby={actors={otherObject},castRay=function(origin,destination,options)
+   rays=rays+1;eq(origin,selfObject.position);eq(destination,otherObject.position);eq(options.ignore,selfObject)
+   return {hit=false}
+  end}}
+ local observed=openmwAdapter.hearingContext(modules)
+ local key=identity.key(openmwAdapter.identity(otherObject,modules))
+ eq(observed.sneaking,true);eq(observed.actors[key].distance,300);eq(observed.actors[key].visible,true);eq(rays,1)
+ eq(context.snapshot({hearing=observed}).hearing,nil)
+ modules.nearby.castRay=function()return {hit=true,hitObject={}}end
+ eq(openmwAdapter.hearingContext(modules).actors[key].visible,false)
+ otherObject.cell={isExterior=false,name='Another room'}
+ eq(openmwAdapter.hearingContext(modules).actors[key].available,false)
 end)
-test('dialogue modes apply explicit bounded audience policies',function()
- local function submit(mode,explicitGroup,distance,preset)
+test('dialogue modes apply CHIM hearing radius and visibility policies',function()
+ local function submit(mode,explicitGroup,distance,sneaking,visible,automatic)
   local b=fake.bridge() local s=orchestrator.new(b,nil,nil,function()return true end)
   local other=fake.identity('npc','mode-actor',91)
-  s.settings={autoActivate={hearingDistance=500,hearingPreset=preset}}
+  s.settings={autoActivate={hearingDistance=500,autoHearingRadiusMeters=automatic or 10}}
   s.dialogueMode=mode
   orchestrator.configureSession(s,UUID.session)
   for _,actorId in ipairs({npc,other}) do orchestrator.activate(s,actorId,{}) end
@@ -1314,17 +1341,21 @@ test('dialogue modes apply explicit bounded audience policies',function()
   truthy(orchestrator.manageCandidate(s,candidate(other,distance),'auto'))
   if explicitGroup then truthy(orchestrator.addAudience(s,candidate(other,distance))) end
   local request=b.nextTurnMetadata();request.text='Mode test';request.input_key='mode-'..mode
-  request.language='en-US';request.speaker=playerId;request.context={dialogueMode='forged'}
+  request.language='en-US';request.speaker=playerId;request.context={dialogueMode='forged',
+   hearing={sneaking=sneaking,actors={[identity.key(other)]={distance=distance,available=true,visible=visible}}}}
   request.capabilities={'dialogue.text'};request.recent_action_results={};request.ui_source='lorkhan_text'
   truthy(orchestrator.submitText(s,request))
   return b.submitted[1].payload
  end
  local standard=submit('Standard',false,300);eq(#standard.audience,2);eq(standard.context.dialogueMode,'Standard')
- local close=submit('Close',true,300);eq(#close.audience,2);eq(close.context.dialogueMode,'Close')
+ local close=submit('Close',true,300);eq(#close.audience,1);eq(close.context.dialogueMode,'Close')
  local whisper=submit('Whisper',true,300);eq(#whisper.audience,1);eq(whisper.context.dialogueMode,'Whisper')
- eq(#submit('Standard',false,300,'TargetsOnly').audience,1)
- eq(#submit('Standard',true,300,'TargetsOnly').audience,2)
- eq(#submit('Standard',false,700,'Wide').audience,2)
+ eq(#submit('Whisper',false,100).audience,2)
+ eq(#submit('Standard',false,300,true).audience,1)
+ eq(#submit('Standard',false,300,false,false,1).audience,1)
+ eq(#submit('Standard',false,300,false,true,1).audience,2)
+ eq(#submit('Close',false,150,false,true).audience,2)
+ eq(#submit('Close',false,150,true,true).audience,1)
  local shout=submit('Shout',false,700);eq(#shout.audience,2);eq(shout.context.dialogueMode,'Shout')
 end)
 test('one-turn mode override strips its prefix and preserves the selected mode and rechat group',function()
@@ -1345,7 +1376,7 @@ test('one-turn mode override strips its prefix and preserves the selected mode a
  truthy(orchestrator.submitText(s,request))
  local payload=b.submitted[1].payload
  eq(payload.input.text,'keep this between us');eq(payload.input.mood.kind,'suspicious')
- eq(payload.context.dialogueMode,'Close');eq(#payload.audience,2);eq(s.dialogueMode,'Standard')
+ eq(payload.context.dialogueMode,'Close');eq(#payload.audience,1);eq(s.dialogueMode,'Standard')
  eq(s.rechatSeed.dialogueMode,'Close');eq(s.rechatSeed.mood,nil)
 end)
 test('spoken mood and selected mode survive transcription as typed protocol data',function()
@@ -1719,9 +1750,11 @@ test('LLM model panel keeps four semantic slots with async fallback and randomiz
 end)
 test('OpenMW settings page registers controls and seeds conflict-free defaults once',function()
  local data={OMWInputBindings={},LORKHANInputDefaults={}}
+ local subscriptions={}
  local function section(name)
   data[name]=data[name] or {}
-  return {get=function(_,key)return data[name][key]end,set=function(_,key,value)data[name][key]=value end}
+  return {get=function(_,key)return data[name][key]end,set=function(_,key,value)data[name][key]=value end,
+   subscribe=function(_,callback)subscriptions[name]=callback end}
  end
  local registered={triggers={},actions={},pages={},groups={}}
  package.preload['openmw.input']=function() return {
@@ -1730,6 +1763,8 @@ test('OpenMW settings page registers controls and seeds conflict-free defaults o
   registerAction=function(value)registered.actions[value.key]=value end,
  } end
  package.preload['openmw.storage']=function() return {playerSection=section} end
+ package.preload['openmw.async']=function() return {callback=function(_,fn)return fn end} end
+ package.loaded['openmw.async']=nil
  package.preload['openmw.interfaces']=function() return {Settings={
   registerPage=function(value)table.insert(registered.pages,value)end,
   registerGroup=function(value)table.insert(registered.groups,value)end,
@@ -1746,7 +1781,7 @@ package.preload['openmw.lorkhan']=function() return {
  package.loaded['scripts.LORKHAN.settings']=nil
  local settingsEntry=require('scripts.LORKHAN.settings')
  eq(next(settingsEntry),nil)
- eq(registered.pages[1].key,'LORKHAN');eq(#registered.groups,6);eq(registered.groups[1].page,'LORKHAN');eq(#registered.groups[1].settings,5)
+ eq(registered.pages[1].key,'LORKHAN');eq(#registered.groups,7);eq(registered.groups[1].page,'LORKHAN');eq(#registered.groups[1].settings,5)
  for _,setting in ipairs(registered.groups[1].settings) do truthy(setting.name);truthy(setting.description) end
  truthy(registered.triggers.LORKHAN_Talk);truthy(registered.triggers.LORKHAN_Halt)
  truthy(registered.triggers.LORKHAN_StopDialogue);truthy(registered.triggers.LORKHAN_ManualActivate)
@@ -1770,36 +1805,51 @@ package.preload['openmw.lorkhan']=function() return {
  for _,key in ipairs({'LORKHAN_ToggleMode','LORKHAN_ModelMenu','LORKHAN_ProfileMenu','LORKHAN_StatusHud',
   'LORKHAN_History','LORKHAN_Diagnostics'}) do truthy(registered.triggers[key]) end
  eq(registered.groups[2].key,'SettingsLORKHANAutoActivate');eq(setting(registered.groups[2],'enabled').default,true)
- eq(setting(registered.groups[2],'interiorDistance').default,1200);eq(setting(registered.groups[2],'exteriorDistance').default,2400)
- eq(setting(registered.groups[2],'interiorHearingDistance').default,500)
- eq(setting(registered.groups[2],'exteriorHearingDistance').default,1000)
- eq(registered.groups[3].key,'SettingsLORKHANBehavior');eq(#registered.groups[3].settings,9)
- eq(setting(registered.groups[3],'allowCombatDialogue').default,true)
- eq(setting(registered.groups[3],'combatBarksMode').default,'UseProfile')
- eq(setting(registered.groups[3],'combatBarkInterval').default,30)
- eq(setting(registered.groups[6],'connectionTimeoutSeconds').default,30)
- eq(setting(registered.groups[4],'audio_mode').default,'Normal3D')
- eq(setting(registered.groups[4],'pause_on_game_pause').default,false)
- eq(setting(registered.groups[3],'cancelDialogueOnCombat').default,true)
- eq(setting(registered.groups[3],'openMicEnabled').default,false)
- eq(setting(registered.groups[3],'openMicSensitivity').default,1000)
- eq(setting(registered.groups[3],'openMicEndDelayMs').default,1000)
- eq(setting(registered.groups[3],'recordingDevice').default,-1)
- eq(setting(registered.groups[3],'recordingDevice').renderer,'number')
- eq(setting(registered.groups[3],'recordingDevice').argument.min,-1)
- eq(setting(registered.groups[3],'recordingDevice').argument.max,4)
- eq(setting(registered.groups[3],'recordingDeviceName').default,'Test microphone')
- eq(setting(registered.groups[3],'recordingDeviceName').renderer,'textLine')
- eq(setting(registered.groups[3],'recordingDeviceName').argument.disabled,true)
+ eq(setting(registered.groups[3],'interiorDistance').default,1200);eq(setting(registered.groups[3],'exteriorDistance').default,2400)
+ eq(setting(registered.groups[3],'interiorHearingDistance').default,1000)
+ eq(setting(registered.groups[3],'exteriorHearingDistance').default,1800)
+ eq(registered.groups[4].key,'SettingsLORKHANBehavior');eq(#registered.groups[4].settings,9)
+ eq(setting(registered.groups[4],'allowCombatDialogue').default,true)
+ eq(setting(registered.groups[4],'combatBarks').default,true)
+ eq(setting(registered.groups[4],'combatBarkInterval').default,30)
+ eq(setting(registered.groups[7],'connectionTimeoutSeconds').default,30)
+ eq(setting(registered.groups[5],'audio_mode').default,'Normal3D')
+ eq(setting(registered.groups[5],'pause_on_game_pause').default,false)
+ eq(setting(registered.groups[4],'cancelDialogueOnCombat').default,true)
+ eq(setting(registered.groups[4],'openMicEnabled').default,false)
+ eq(setting(registered.groups[4],'openMicSensitivity').default,1000)
+ eq(setting(registered.groups[4],'openMicEndDelayMs').default,1000)
+ eq(setting(registered.groups[4],'recordingDevice').default,-1)
+ eq(setting(registered.groups[4],'recordingDevice').renderer,'number')
+ eq(setting(registered.groups[4],'recordingDevice').argument.min,-1)
+ eq(setting(registered.groups[4],'recordingDevice').argument.max,4)
+ eq(setting(registered.groups[4],'recordingDeviceName').default,'Test microphone')
+ eq(setting(registered.groups[4],'recordingDeviceName').renderer,'textLine')
+ eq(setting(registered.groups[4],'recordingDeviceName').argument.disabled,true)
  eq(data.SettingsLORKHANBehavior.recordingDeviceName,'Test microphone')
- eq(setting(registered.groups[3],'rechat'),nil);eq(setting(registered.groups[3],'boredom'),nil)
- eq(setting(registered.groups[3],'combatBarks'),nil);eq(setting(registered.groups[3],'autoGreeting'),nil)
- eq(registered.groups[4].key,'SettingsLORKHANSound');eq(setting(registered.groups[4],'ttsVolumeBoost'),nil)
- eq(setting(registered.groups[4],'voice_volume_percent').default,100)
- eq(setting(registered.groups[4],'voice_volume_percent').argument.min,0)
- eq(setting(registered.groups[4],'voice_volume_percent').argument.max,500)
- eq(registered.groups[5].key,'SettingsLORKHANAgents');eq(setting(registered.groups[5],'actionsEnabled').default,true)
- eq(registered.groups[6].key,'SettingsLORKHANPresentation');eq(setting(registered.groups[6],'showStatusHud').default,false)
+ eq(setting(registered.groups[4],'rechat'),nil);eq(setting(registered.groups[4],'boredom'),nil)
+ eq(setting(registered.groups[4],'combatBarksMode'),nil);eq(setting(registered.groups[4],'autoGreeting'),nil)
+ eq(registered.groups[3].key,'SettingsLORKHANHearing')
+ eq(setting(registered.groups[3],'autoHearingRadiusMeters').default,10)
+ eq(setting(registered.groups[2],'hearingPreset'),nil)
+ local hearing=section('SettingsLORKHANHearing')
+ local presets=require('scripts.LORKHAN.ui.hearing_settings')
+ eq(presets.preset(hearing),'Recommended')
+ hearing:set('hearingPreset','Realistic');subscriptions.SettingsLORKHANHearing(nil,'hearingPreset')
+ eq(hearing:get('autoHearingRadiusMeters'),4);eq(hearing:get('interiorHearingDistance'),600)
+ eq(hearing:get('exteriorHearingDistance'),1000);eq(hearing:get('interiorDistance'),1200)
+ hearing:set('hearingPreset','Extended');subscriptions.SettingsLORKHANHearing(nil,'hearingPreset')
+ eq(hearing:get('autoHearingRadiusMeters'),15);eq(hearing:get('interiorHearingDistance'),1600)
+ eq(hearing:get('exteriorHearingDistance'),2400)
+ hearing:set('interiorHearingDistance',1234);subscriptions.SettingsLORKHANHearing(nil,'interiorHearingDistance')
+ eq(hearing:get('hearingPreset'),'Custom')
+ subscriptions.SettingsLORKHANHearing(nil,'hearingPreset');eq(hearing:get('interiorHearingDistance'),1234)
+ eq(registered.groups[5].key,'SettingsLORKHANSound');eq(setting(registered.groups[5],'ttsVolumeBoost'),nil)
+ eq(setting(registered.groups[5],'voice_volume_percent').default,100)
+ eq(setting(registered.groups[5],'voice_volume_percent').argument.min,0)
+ eq(setting(registered.groups[5],'voice_volume_percent').argument.max,500)
+ eq(registered.groups[6].key,'SettingsLORKHANAgents');eq(setting(registered.groups[6],'actionsEnabled').default,true)
+ eq(registered.groups[7].key,'SettingsLORKHANPresentation');eq(setting(registered.groups[7],'showStatusHud').default,false)
  local talk=data.OMWInputBindings.LORKHAN_Talk_Binding
  local halt=data.OMWInputBindings.LORKHAN_Halt_Binding
  eq(talk.device,'keyboard');eq(talk.button,6);eq(talk.type,'trigger');eq(talk.key,'LORKHAN_Talk')
@@ -1812,6 +1862,7 @@ package.preload['openmw.lorkhan']=function() return {
  eq(data.OMWInputBindings.LORKHAN_Talk_Binding,nil)
  package.preload['openmw.input']=nil package.preload['openmw.storage']=nil package.preload['openmw.interfaces']=nil
  package.preload['openmw.lorkhan']=nil
+ package.preload['openmw.async']=nil package.loaded['openmw.async']=nil
  package.loaded['openmw.input']=nil package.loaded['openmw.storage']=nil package.loaded['openmw.interfaces']=nil
  package.loaded['openmw.lorkhan']=nil
  package.loaded['scripts.LORKHAN.settings']=nil
