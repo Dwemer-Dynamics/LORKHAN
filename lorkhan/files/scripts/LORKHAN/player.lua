@@ -1048,9 +1048,7 @@ local function renderStatusHud()
         if statusElement then statusElement:destroy() statusElement=nil end
         return
     end
-    local text='LORKHAN  |  Connection: '..tostring(nativeValue('status','unavailable'))..
-        '  |  Request: '..(turnActive and 'active' or 'idle')..
-        '  |  Speech: '..(speechActive() and 'speaking' or 'idle')..
+    local text='LORKHAN  |  Speech: '..(speechActive() and 'speaking' or 'idle')..
         '  |  Target: '..actorLabel(state.ui.target)..'  |  '..uiState.selectedChatMode(state.ui).label
     local width=520
     local height=42
@@ -1417,7 +1415,7 @@ render=function()
         },onClose=adapter.callback(function() state.ui.visible=false leaveUiMode() render() end)})
     elseif state.ui.panel=='profile-menu' then
         transcript=selector.build({ui=openmwUi,util=util,title='Dynamic Profiles',options={
-            {label='Targeted NPC',onSelect=adapter.callback(function() refreshSessionControls('profiles') end)},
+            {label='Targeted NPC: '..(state.ui.target and displayName(state.ui.target) or 'No target'),onSelect=adapter.callback(function() refreshSessionControls('profiles') end)},
             {label='Nearby AI NPCs',onSelect=adapter.callback(function() state.ui.panel='nearby-profiles' render() end)},
             {label='Narrator',onSelect=adapter.callback(function() refreshSessionControls('narrator') end)},
         },onBack=adapter.callback(function() state.ui.panel=uiState.backRoute(state.ui).panel render() end),

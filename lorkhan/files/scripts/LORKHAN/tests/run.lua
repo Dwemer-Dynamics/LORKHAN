@@ -1603,25 +1603,25 @@ test('LLM model panel keeps four semantic slots with async fallback and randomiz
  local loading=uiState.modelSlotView(nil,nil)
  eq(loading.selected,'standard');eq(loading.loaded,false);eq(#loading.rows,4)
  local rows=panel(loading,{standard=function()end})
- eq(#rows,8);eq(rows[1].props.text,'LLM Model');eq(rows[2].props.text,'Loading server-owned choices...')
+ eq(#rows,8);eq(rows[1].props.text,'LLM Model');eq(rows[2].props.text,'Loading...')
  eq(rows[3].props.text,'Standard');eq(rows[4].props.text,'Fast');eq(rows[5].props.text,'Powerful')
  eq(rows[6].props.text,'Experimental')
  for index=3,6 do eq(rows[index].events,nil) end -- opening the panel can never write a selection
  eq(rows[7].props.text,'Refresh choices');truthy(rows[7].events.mouseClick)
  eq(rows[8].props.text,'Back to conversation');truthy(rows[8].events.mouseClick)
- -- a loaded snapshot marks the active slot and carries one compact connector and model line per row
+ -- a loaded snapshot keeps plain slot labels; active state is shown by colour
  local ready=uiState.modelSlotView(controls('standard','standard'),nil)
- eq(ready.rows[1].text,'Standard  [active]  |  Local / model-standard')
- eq(ready.rows[2].text,'Fast  |  Local / model-fast')
+ eq(ready.rows[1].text,'Standard')
+ eq(ready.rows[2].text,'Fast')
  eq(ready.message,'Active: Standard.');eq(ready.refreshable,true)
  local clicked
  local readyRows=panel(ready,{fast=function() clicked='fast' end})
  readyRows[4].events.mouseClick();eq(clicked,'fast')
  -- an unavailable slot reads as not configured, keeps no click event, and still shows the fallback
  local fallback=uiState.modelSlotView(controls('experimental','standard',{unavailable={experimental=true}}),nil)
- eq(fallback.rows[4].text,'Experimental  [selected]  |  not configured')
+ eq(fallback.rows[4].text,'Experimental')
  eq(fallback.rows[4].clickable,false)
- eq(fallback.rows[1].text,'Standard  [active fallback]  |  Local / model-standard')
+ eq(fallback.rows[1].text,'Standard')
  eq(fallback.message,'Selected Experimental is not configured, so Standard is active.')
  local fallbackRows=panel(fallback,{experimental=function() clicked='experimental' end})
  eq(#fallbackRows,8);eq(fallbackRows[6].events,nil)
@@ -1630,7 +1630,7 @@ test('LLM model panel keeps four semantic slots with async fallback and randomiz
  truthy(uiState.beginModelSlot(s,'powerful'));eq(uiState.modelSlotBusy(s),true)
  eq(uiState.beginModelSlot(s,'fast'),false);eq(s.modelSlotPending,'powerful')
  local waiting=uiState.modelSlotView(controls('standard','standard',{pending=true}),s.modelSlotPending)
- eq(waiting.rows[3].text,'Powerful  [selecting...]  |  Local / model-powerful')
+ eq(waiting.rows[3].text,'Powerful')
  eq(waiting.message,'Selecting Powerful...');eq(waiting.refreshable,false)
  local waitingRows=panel(waiting,{standard=function()end,fast=function()end,
   powerful=function()end,experimental=function()end})
@@ -1642,16 +1642,16 @@ test('LLM model panel keeps four semantic slots with async fallback and randomiz
  truthy(uiState.settleModelSlot(s,controls('powerful','powerful')));eq(s.modelSlotPending,nil)
  -- random routing disables all four choices and says why, without changing the row count
  local randomized=uiState.modelSlotView(controls('fast','fast',{randomized=true}),nil)
- eq(randomized.message,'Random LLM is on, so the server picks a model every turn and these choices are disabled.')
+ eq(randomized.message,'Random LLM is enabled.')
  for _,row in ipairs(randomized.rows) do eq(row.clickable,false) end
  local randomRows=panel(randomized,{fast=function() clicked='randomized' end})
  eq(#randomRows,8);eq(randomRows[4].events,nil);truthy(randomRows[7].events.mouseClick)
- -- a long connector name is clipped instead of widening the row
+ -- connector and model names never appear in semantic slot labels
  local long=slots();long[2].configuration_name='A very long local connector configuration name'
  local clipped=uiState.modelSlotView({target=npc,selected_model_slot_key='standard',
   resolved_model_slot_key='standard',pending=false,model_slots=long,
   effective_settings={routing={llm_randomizer_enabled=false}}},nil)
- truthy(#clipped.rows[2].detail<=38);eq(clipped.rows[2].detail:sub(-3),'...')
+ eq(clipped.rows[2].detail,nil);eq(clipped.rows[2].text,'Fast')
  -- the Interact overlay pauses simulation, so the paused-frame pump is what settles a selection.
  -- Control polling stays gated; the only additional frame work observes disposition menu transitions.
  local playerSource=io.open(root..'/scripts/LORKHAN/player.lua')

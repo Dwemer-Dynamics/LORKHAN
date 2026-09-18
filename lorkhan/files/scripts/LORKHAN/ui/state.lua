@@ -21,9 +21,6 @@ local MODEL_SLOTS={{key='standard',label='Standard'},{key='fast',label='Fast'},
 local DEFAULT_MODEL_SLOT='standard'
 local MODEL_SLOT_LABELS={}
 for _,slot in ipairs(MODEL_SLOTS) do MODEL_SLOT_LABELS[slot.key]=slot.label end
--- A server connector name can be far longer than a menu row, so the detail is clipped instead of
--- widening the panel or wrapping a slot onto a second line.
-local MODEL_SLOT_DETAIL_LIMIT=38
 
 -- Panels that Interact and Targeted NPC Tools both reach remember which menu opened them, so the
 -- back row returns to the menu the player actually used instead of a fixed destination.
@@ -191,26 +188,11 @@ function M.modelRandomizerEnabled(controls)
     return type(routing)=='table' and routing.llm_randomizer_enabled==true
 end
 
--- One compact connector line. `driver` only separates a real connector from the mock one, so the
--- connector name and the model carry the detail and the row stays a single line.
-local function modelSlotDetail(slot)
-    local connector,model=trim(slot.configuration_name),trim(slot.model)
-    local detail
-    if connector~='' and model~='' then detail=connector..' / '..model
-    elseif model~='' then detail=model
-    elseif connector~='' then detail=connector end
-    if detail and trim(slot.driver)=='mock' then detail=detail..' (mock)' end
-    if not detail then return nil end
-    local shortened=clip(detail,MODEL_SLOT_DETAIL_LIMIT-3)
-    if shortened~=detail then return shortened..'...' end
-    return detail
-end
-
 -- One short state line so the four choices never have to explain themselves with extra rows.
 local function modelSlotMessage(view)
-    if not view.loaded then return 'Loading server-owned choices...' end
+    if not view.loaded then return 'Loading...' end
     if view.randomized then
-        return 'Random LLM is on, so the server picks a model every turn and these choices are disabled.'
+        return 'Random LLM is enabled.'
     end
     if view.pending then return 'Selecting '..MODEL_SLOT_LABELS[view.pending]..'...' end
     if view.busy then return 'Refreshing choices...' end
@@ -238,27 +220,23 @@ function M.modelSlotView(controls,pending)
     for _,entry in ipairs(MODEL_SLOTS) do
         local slot=slots[entry.key]
         local available=slot~=nil and slot.available~=false
-        local label=slot and trim(slot.label)~='' and trim(slot.label) or entry.label
-        local detail
-        if not view.loaded then detail=nil
-        elseif not available then detail='not configured'
-        else detail=modelSlotDetail(slot) end
-        -- The selected slot and the slot the server actually resolved are annotated separately, so a
+        local label=entry.label
+        -- The selected slot and the slot the server actually resolved retain separate colours, so a
         -- fallback is visible on its own row without the panel growing one.
         local isSelected=view.loaded and entry.key==view.selected
         local isResolved=view.loaded and entry.key==view.resolved
         if isSelected then view.selectedAvailable=available end
-        local mark,suffix
-        if view.pending==entry.key then mark,suffix='selecting','  [selecting...]'
-        elseif not view.loaded then mark,suffix='loading',''
-        elseif isSelected and isResolved then mark,suffix='active','  [active]'
-        elseif isSelected then mark,suffix='selected','  [selected]'
-        elseif isResolved then mark,suffix='fallback','  [active fallback]'
-        elseif not available then mark,suffix='unavailable',''
-        else mark,suffix='ready','' end
-        view.rows[#view.rows+1]={key=entry.key,label=label,mark=mark,detail=detail,
+        local mark
+        if view.pending==entry.key then mark='selecting'
+        elseif not view.loaded then mark='loading'
+        elseif isSelected and isResolved then mark='active'
+        elseif isSelected then mark='selected'
+        elseif isResolved then mark='fallback'
+        elseif not available then mark='unavailable'
+        else mark='ready' end
+        view.rows[#view.rows+1]={key=entry.key,label=label,mark=mark,
             clickable=view.loaded and available and not view.randomized and not view.busy,
-            text=label..suffix..(detail and ('  |  '..detail) or '')}
+            text=label}
     end
     view.message=modelSlotMessage(view)
     return view
