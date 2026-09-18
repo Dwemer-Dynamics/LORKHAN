@@ -261,7 +261,9 @@ local function updatePlayerSpeech()
     current.state=status.state
     if status.state=='ready' and status.media_id then
         local volume=tonumber(soundSettings and soundSettings:get('ttsVolumeBoost')) or 3
-        local ok,reason=adapter.playSpeech(status.media_id,current.subtitle or '',volume)
+        -- Vanilla dialogue already displays the selected topic; playback must not append it again.
+        local subtitle=current.menuDialogue and '' or (current.subtitle or '')
+        local ok,reason=adapter.playSpeech(status.media_id,subtitle,volume)
         if ok then current.state='playing';print('[LORKHAN] player TTS playback started: '..tostring(current.request_id))
         else print('[LORKHAN] player TTS playback failed: '..tostring(reason or 'playback_failed'));stopPlayerSpeech(true) end
     end

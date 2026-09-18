@@ -86,7 +86,7 @@ test('player speech hook releases the lane on missing provider failure completio
  requestMenuDialogueTts=function()if available then return 'tts-request' end return nil,'provider_unavailable' end,
  cancelMenuDialogueTts=function()end,menuDialogueTtsStatus=function()return status end}
  local adapter={stopSpeech=function()end,isSpeechActive=function()return false end,
- playSpeech=function()subtitles=subtitles+1;return true end,showSubtitle=function()subtitles=subtitles+1 end}
+ playSpeech=function(_,subtitle)assert(subtitle=='Hello.');subtitles=subtitles+1;return true end,showSubtitle=function()subtitles=subtitles+1 end}
  local function stopNarrator()end
  local function send(name)assert(name=='LORKHAN_PLAYER_SPEECH_COMPLETE');released=released+1 end
  ]]
@@ -118,7 +118,7 @@ test('menu choices speak before NPC audio and cancel on replacement or close',fu
   end,cancelMenuDialogueTts=function(id)cancelled[id]=true end,
   menuDialogueTtsStatus=function(id)return requests[tonumber(id)]end}
  local adapter={identity=function()return {kind='player'}end,stopSpeech=function()playing=false end,
-  playSpeech=function()spoken=spoken+1;playing=true;return true end,isSpeechActive=function()return playing end,
+  playSpeech=function(_,subtitle)assert(subtitle=='','menu choice must not repeat the topic');spoken=spoken+1;playing=true;return true end,isSpeechActive=function()return playing end,
   showSubtitle=function()error('menu choice must not add a disabled-TTS fallback caption')end}
  local interfacesOk=true
  local interfaces={UI={getMode=function()return opened and 'Dialogue' or nil end}}
