@@ -434,7 +434,11 @@
                   "code": {
                     "enum": [
                       "provider_timeout",
-                      "provider_unavailable"
+                      "provider_unavailable",
+                      "provider_invalid_output",
+                      "provider_invalid_action",
+                      "provider_action_not_allowed",
+                      "director_plan_failed"
                     ],
                     "type": "string"
                   },

@@ -2323,6 +2323,11 @@ return {
         end,
         LORKHAN_NARRATOR_STOP=function(event) stopNarrator(event and event.reason or 'client_interrupted') end,
         LORKHAN_PLAYER_SPEECH_STOP=function() stopPlayerSpeech() end,
+        LORKHAN_PLAYER_INTERRUPT=function()
+            turnActive=false pendingDirectorInput=nil
+            if pendingAutochat and nativeOk and native.cancelPlayerAutochat then pcall(native.cancelPlayerAutochat,pendingAutochat.request_id) end
+            pendingAutochat=nil
+        end,
         LORKHAN_PLAYER_SPEECH=function(event)
             local session=nativeOk and native and native.sessionInfo and native.sessionInfo()
             if not session or session.session_id~=event.session_id or session.generation~=event.generation then return end

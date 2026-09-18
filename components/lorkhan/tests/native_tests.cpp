@@ -632,6 +632,16 @@ void testProtocolEventResponses()
           {"schema":"lorkhan.autonomy-directive.v1","schedule_id":"01900000-0000-7000-8000-000000000010","kind":"rechat","issued_at":"2026-07-18T20:00:08Z"}
         ]
     })json";
+    // A provider rejection must deliver its terminal event, not poison polling forever.
+    for (const auto* code : {"provider_invalid_output", "provider_invalid_action",
+             "provider_action_not_allowed", "director_plan_failed"}) {
+        std::string rejected = events;
+        rejected.replace(rejected.find("provider_timeout"), std::string("provider_timeout").size(), code);
+        CHECK(lorkhan::parseEventsResponse(rejected, jsonHeaders));
+    }
+    std::string unknownFailure = events;
+    unknownFailure.replace(unknownFailure.find("provider_timeout"), std::string("provider_timeout").size(), "untrusted_failure");
+    CHECK(!lorkhan::parseEventsResponse(unknownFailure, jsonHeaders));
     auto parsed = lorkhan::parseEventsResponse(events, jsonHeaders);
     CHECK(parsed && parsed.value().session == lorkhan::SessionId(kSession)
         && parsed.value().generation == lorkhan::Generation(7)
@@ -988,6 +998,11 @@ void testBridgeDialogueDeliveryValidation()
     auto clock = std::make_shared<FakeClock>();
     lorkhan::BridgeService bridge(std::make_unique<FakeTransport>(state), clock);
     const auto generation = bridge.generation();
+    // A cancellation has its own operation ID but refers to the original dialogue request.
+    CHECK(bridge.enqueue({lorkhan::RequestId(uuidFor(79)), lorkhan::SessionId(kSession), generation,
+        lorkhan::RequestKind::interruption, lorkhan::InterruptionRequest{lorkhan::MessageId(kMessage),
+            lorkhan::RequestId(uuidFor(78)), lorkhan::TurnId(kTurn), lorkhan::SessionId(kSession),
+            generation, "2026-07-19T20:00:02.123Z", "superseded_by_player"}}));
     const auto makeDelivery = [&](std::string id) {
         return lorkhan::OutboundRequest{lorkhan::RequestId(id), lorkhan::SessionId(kSession), generation,
             lorkhan::RequestKind::dialogue_delivery_result,

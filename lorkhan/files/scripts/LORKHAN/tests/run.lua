@@ -718,6 +718,7 @@ test('Close rechat preserves its group through one correlated early or completed
   content_fingerprint='sha256:'..string.rep('a',64),text='Hello.',input_key='player:1',language='en-US',
   speaker=playerId,context={targetState={inventory={items={{record_id='old_dagger',count=1}},total=1,truncated=false}}},capabilities={'dialogue.text','speech.say'},recent_action_results={},ui_source='lorkhan_text'}))
  orchestrator.playerSpeechComplete(s,{request_id=UUID.request,session_id=UUID.session,generation=1})
+ orchestrator.pollRechatEligibility(s,3)
  local dialogue=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Greetings.'});dialogue.message_id=UUID.message
  eq(provenanceCalls,1);eq(b.submitted[1].payload.context.targetState.recordProvenance.winning_file,'Override.esp')
  b.actorRecordProvenance=function()error('record unavailable')end
@@ -809,6 +810,7 @@ test('rechat cancels when the previous speaker is freshly busy',function()
   language='en-US',speaker=playerId,context={},capabilities={'dialogue.text','speech.say'},
   recent_action_results={},ui_source='lorkhan_text'}))
  orchestrator.playerSpeechComplete(s,{request_id=UUID.request,session_id=UUID.session,generation=1})
+ orchestrator.pollRechatEligibility(s,3)
  local line=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Busy.'});line.message_id=UUID.message
  local media={media_id=uuid(5),dialogue_message_id=UUID.message,sha256=string.rep('a',64),bytes=4,
   codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
@@ -1453,6 +1455,33 @@ test('one-turn mode override strips its prefix and preserves the selected mode a
  eq(payload.context.dialogueMode,'Close');eq(#payload.audience,1);eq(s.dialogueMode,'Standard')
  eq(s.rechatSeed.dialogueMode,'Close');eq(s.rechatSeed.mood,nil)
 end)
+test('new voice and typed input supersede old turns without reconnecting or cancelling capture',function()
+ local b=fake.bridge();local cancelled={};local events={}
+ b.cancelTurn=function(id)cancelled[#cancelled+1]=id;return true end
+ local s=orchestrator.new(b,function(name,payload)events[#events+1]={name=name,payload=payload}end)
+ orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+ truthy(conversation.setTarget(s.conversation,npc))
+ s.conversation.turn={turnId=UUID.turn,requestId=UUID.request,generation=1,terminal=false}
+ s.pendingStt[uuid(199)]={target=npc,session_id=UUID.session,generation=1}
+ s.openMic=true
+ truthy(orchestrator.startVoice(s,{speaker=playerId,context={},language='en-US',capabilities={'dialogue.text'}}))
+ eq(cancelled[1],UUID.turn);eq(s.sessionId,UUID.session);eq(s.generation,1);eq(#b.cancelled,0)
+ truthy(s.pendingVoice);truthy(s.openMic);eq(s.conversation.turn,nil);eq(s.rechatSuppressionSeconds,3)
+ truthy(s.pendingStt[uuid(199)].superseded)
+ local late=event(1,'stt.transcript',1,{text='Old recording.',language='en-US'});late.request_id=uuid(199)
+ b.results={late};orchestrator.poll(s);eq(#b.submitted,0);truthy(s.pendingVoice)
+ s.conversation.turn={turnId=UUID.turn,requestId=UUID.request,generation=1,terminal=false}
+ local request=b.nextTurnMetadata();request.text='New input.';request.input_key='replacement'
+ request.language='en-US';request.speaker=playerId;request.context={};request.capabilities={'dialogue.text'}
+ request.recent_action_results={};request.ui_source='lorkhan_text'
+ truthy(orchestrator.submitText(s,request));eq(cancelled[2],UUID.turn)
+ local duplicate,duplicateReason=orchestrator.submitText(s,request)
+ eq(duplicate,nil);eq(duplicateReason,'duplicate_input');eq(#cancelled,2)
+ eq(s.conversation.turn.turnId,request.turn_id);eq(s.sessionId,UUID.session);eq(#b.cancelled,0)
+ local old=event(2,'turn.complete',1,{status='complete'});b.results={old};orchestrator.poll(s)
+ eq(s.conversation.turn.terminal,false);eq(s.conversation.turn.turnId,request.turn_id)
+end)
+
 test('spoken mood and selected mode survive transcription as typed protocol data',function()
  local b=fake.bridge() local emitted={} local s=orchestrator.new(b,function(name,payload)
   if name=='LORKHAN_PLAYER_SPEECH' then emitted[#emitted+1]=payload end

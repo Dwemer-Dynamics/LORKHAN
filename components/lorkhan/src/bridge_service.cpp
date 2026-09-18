@@ -97,7 +97,7 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
     }
     if (const auto* interruption = std::get_if<InterruptionRequest>(&request.payload)) {
         if (!validId(interruption->message) || !validId(interruption->request) || !validId(interruption->turn)
-            || !validId(interruption->session) || interruption->request != request.id
+            || !validId(interruption->session)
             || interruption->session != request.session || interruption->generation != request.generation)
             return Result<void>::failure(makeError(ErrorCode::invalid_argument, "interruption correlation contains malformed or inconsistent IDs"));
     }

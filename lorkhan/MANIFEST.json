@@ -577,9 +577,9 @@
       "sha256": "04ea0d56266d632fa97b90fea55725a8dfaedba81134823bae2d260152d21fc8"
     },
     {
-      "bytes": 37026,
+      "bytes": 37223,
       "path": "lorkhan/schemas/v1/events.schema.json",
-      "sha256": "07dbb5ef49c1a67582504f80283b5eb10026e14f38711a2dcc1f66351c020261"
+      "sha256": "53df8baa1c2e7c3a850154a87602946e02ae276a0e44f3363e3b44acd8441e30"
     },
     {
       "bytes": 968,

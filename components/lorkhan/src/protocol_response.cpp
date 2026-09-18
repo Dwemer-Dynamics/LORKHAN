@@ -1174,7 +1174,9 @@ Result<ProtocolEvent> parseEvent(const json::Value& value, const SessionId& resp
             return invalidSchemaValue<ProtocolEvent>("turn failed payload fields mismatch");
         auto code = requireString(*payload, "code");
         auto retriable = requireBoolean(*payload, "retriable");
-        if (!code || (code.value() != "provider_timeout" && code.value() != "provider_unavailable"))
+        if (!code || (code.value() != "provider_timeout" && code.value() != "provider_unavailable"
+            && code.value() != "provider_invalid_output" && code.value() != "provider_invalid_action"
+            && code.value() != "provider_action_not_allowed" && code.value() != "director_plan_failed"))
             return invalidSchemaValue<ProtocolEvent>("turn failed provider code mismatch");
         if (!retriable) return invalidSchemaValue<ProtocolEvent>(retriable.error().message);
         TurnFailedEventPayload failure{code.value() == "provider_timeout" ? ErrorCode::timeout : ErrorCode::provider_unavailable,

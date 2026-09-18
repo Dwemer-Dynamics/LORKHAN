@@ -758,6 +758,7 @@ namespace MWLua
                     auto accepted = m_service->enqueue(std::move(request));
                     if (!accepted) return failure(lua, accepted.error().message);
                     m_turnRequests.emplace(requestId,turnId);
+                    m_latestTurn = std::make_pair(turnId, requestId);
                     if (!m_transferSnapshots.contains(turnId)) {
                         if (m_transferSnapshots.size() >= 16) {
                             m_transferSnapshots.erase(m_transferOrder.front());m_transferOrder.pop_front();
@@ -2157,7 +2158,12 @@ namespace MWLua
 
             bool releaseMedia(const std::string& mediaId)
             {
-                return m_media.erase(mediaId) != 0;
+                const auto found = m_media.find(mediaId);
+                if (found == m_media.end()) return false;
+                if (found->second.request && m_service)
+                    static_cast<void>(m_service->cancel(*found->second.request));
+                m_media.erase(found);
+                return true;
             }
 
             std::tuple<sol::object, sol::object> submitActionResult(sol::state_view lua, sol::table dto)
@@ -2594,6 +2600,28 @@ namespace MWLua
                 return result;
             }
 
+            // Interrupt only the current conversation; capture, session and lifecycle generation survive.
+            bool cancelTurn(const std::string& turnId)
+            {
+                if (!ready() || !m_latestTurn || m_latestTurn->first != turnId) return false;
+                const lorkhan::RequestId original(m_latestTurn->second);
+                static_cast<void>(m_service->cancel(original));
+                m_turnRequests.erase(original.value());
+                if (m_pollRequest) {
+                    static_cast<void>(m_service->cancel(*m_pollRequest));
+                    m_pollRequest.reset();
+                }
+                const lorkhan::RequestId operation(uuid());
+                lorkhan::OutboundRequest request{operation, *m_session, m_service->generation(),
+                    lorkhan::RequestKind::interruption, lorkhan::InterruptionRequest{
+                        lorkhan::MessageId(uuid()), original, lorkhan::TurnId(turnId), *m_session,
+                        m_service->generation(), utcNow(), "superseded_by_player"}};
+                auto accepted = m_service->enqueue(std::move(request));
+                if (!accepted) { m_error = accepted.error().message; return false; }
+                m_latestTurn.reset();
+                return true;
+            }
+
             bool cancelGeneration(std::uint64_t generation, bool loadedSave = false, bool identityChange = false)
             {
                 if (!m_service) return false;
@@ -2605,7 +2633,7 @@ namespace MWLua
                 m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();
                 m_diaryRequest.reset();m_diaryReceipt.reset();m_diaryBook.reset();m_diaryReceiptDto.reset();m_diaryPending=false;
                 m_diaryState.clear();m_diaryReason.clear();m_diaryError.clear();m_diaryReceiptOk=false;
-                m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_dispositionReceipts.clear();m_turnRequests.clear();m_controlsError.clear();m_debugError.clear();
+                m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_dispositionReceipts.clear();m_turnRequests.clear();m_latestTurn.reset();m_controlsError.clear();m_debugError.clear();
                 m_initSnapshot.reset();m_initAttempts=0;m_retryInit=false;
                 if(identityChange){m_characterIdentity.clear();m_characterRejected=false;}
                 m_loadedSave=loadedSave;m_waitingLoadedCalendar=loadedSave;m_loadedCalendar.reset();beginSession();
@@ -2634,7 +2662,7 @@ namespace MWLua
             {
                 lorkhan::VoiceCaptureService::instance().halt();
                 if (m_service) m_service->halt();
-                m_turnRequests.clear();
+                m_turnRequests.clear();m_latestTurn.reset();
                 m_status = "halted";
             }
 
@@ -2915,6 +2943,7 @@ namespace MWLua
             std::map<std::string, std::string> m_dispositionReceipts;
             std::vector<lorkhan::InboundResult> m_deferredResults;
             std::map<std::string,std::string> m_turnRequests;
+            std::optional<std::pair<std::string,std::string>> m_latestTurn;
             std::string m_transferSession;
             std::uint64_t m_transferGeneration{};
             std::map<std::string,std::shared_ptr<TransferSnapshot>> m_transferSnapshots;
@@ -3087,6 +3116,7 @@ namespace MWLua
             api["submitDialogueDeliveryResult"] = [lua](sol::table dto) {
                 return client().submitDialogueDeliveryResult(lua, std::move(dto));
             };
+            api["cancelTurn"] = [](const std::string& turnId) { return client().cancelTurn(turnId); };
             api["cancelGeneration"] = [](std::uint64_t generation, sol::optional<bool> loadedSave, sol::optional<bool> identityChange) { return client().cancelGeneration(generation,loadedSave.value_or(false),identityChange.value_or(false)); };
             api["finishLoadedSave"] = [](sol::optional<sol::table> calendar) { return client().finishLoadedSave(calendar); };
             api["halt"] = [] { client().halt(); };

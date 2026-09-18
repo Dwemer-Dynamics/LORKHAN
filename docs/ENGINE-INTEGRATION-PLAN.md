@@ -197,3 +197,10 @@ server health returned HTTP 200. Local engine and six runtime Lua/localization f
 with matching SHA-256 hashes. No game was launched; audible behavior remains unverified in-game.
 The broad foundation suite retains a pre-existing typed-player-TTS source-string assertion failure.
 OpenMW audio modes adapt direction and distance curves; Skyrim-specific occlusion DSP is not ported.
+
+### Conversation interruption
+
+`cancelTurn(turnId)` reuses `lorkhan.interrupt.v1` for the most recently submitted
+conversation, cancelling its native submission and active event poll without changing
+the session, generation, or microphone capture. Lua stops/reports queued playback and
+fences late results by the replaced turn identity. Lifecycle cancellation stays separate.
