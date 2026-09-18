@@ -577,7 +577,7 @@ function M.runAutonomy(state,elapsed)
     if next(state.combatActors)~=nil then autonomy.combatSeconds=autonomy.combatSeconds+seconds
     else autonomy.combatSeconds=0 end
 
-    local combatPeriod=math.max(5,math.min(600,tonumber(behavior.combatBarkPeriodSeconds) or 20))
+    local combatPeriod=math.max(5,math.min(120,tonumber(behavior.combatBarkPeriodSeconds) or 30))
     if behavior.allowCombatDialogue~=false and behavior.combatBarks==true and autonomy.combatSeconds>=combatPeriod then
         local actor=nextCombatActor(state)
         if actor then return requestAutonomy(state,'combat_bark',actor) end

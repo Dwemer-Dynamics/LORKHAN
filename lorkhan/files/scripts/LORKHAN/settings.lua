@@ -117,7 +117,7 @@ I.Settings.registerGroup({
     settings={
         {key='allowCombatDialogue',renderer='checkbox',default=true,name='AllowCombatDialogue_name',description='AllowCombatDialogue_description'},
         {key='combatBarksMode',renderer='select',default='UseProfile',name='CombatBarks_name',description='CombatBarks_description',argument={l10n='LORKHAN',items={'UseProfile','Enabled','Disabled'}}},
-        {key='combatBarkInterval',renderer='number',default=30,name='CombatBarkPeriod_name',description='CombatBarkPeriod_description',argument={integer=true,min=0,max=600}},
+        {key='combatBarkInterval',renderer='number',default=30,name='CombatBarkPeriod_name',description='CombatBarkPeriod_description',argument={integer=true,min=5,max=120}},
         {key='cancelDialogueOnCombat',renderer='checkbox',default=true,name='CancelDialogueOnCombat_name',description='CancelDialogueOnCombat_description'},
         {key='openMicEnabled',renderer='checkbox',default=false,name='OpenMicEnabled_name',description='OpenMicEnabled_description'},
         {key='openMicSensitivity',renderer='number',default=1000,name='OpenMicSensitivity_name',description='OpenMicSensitivity_description',argument={integer=true,min=100,max=5000}},
