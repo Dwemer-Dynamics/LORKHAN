@@ -23,6 +23,7 @@ local element
 local statusElement
 local voiceRecording=false
 local pttHeld=false
+local pendingVoiceTarget=false
 local openMicEnabled=false
 local openMicMuted=false
 local openMicControl={suspended=false,retryAt=0}
@@ -1650,6 +1651,8 @@ local function handlePushToTalk(held,source)
             return
         end
         if not state.ui.target and state.ui.executionMode~='director' and state.ui.executionMode~='narrator' and state.ui.executionMode~='cheat' then
+            pttHeld=true
+            pendingVoiceTarget=true
             print('[LORKHAN] push-to-talk needs a target; starting target selection via '..tostring(source))
             chooseTarget(2048)
             return
@@ -1664,6 +1667,7 @@ local function handlePushToTalk(held,source)
         send('LORKHAN_VOICE_START',voicePayload('lorkhan_voice'))
     else
         pttHeld=false
+        pendingVoiceTarget=false
         if voiceRecording then
             voiceRecording=false
             print('[LORKHAN] push-to-talk released; stopping voice capture via '..tostring(source))
@@ -1918,6 +1922,7 @@ if inputOk then
         send('LORKHAN_STOP_DIALOGUE_REQUEST',{}) state.ui.status='dialogue stopped' render()
     end))
     input.registerTriggerHandler('LORKHAN_Halt',adapter.callback(function()
+        pendingVoiceTarget=false pttHeld=false
         if behaviorSettings and behaviorSettings:get('openMicEnabled')==true then openMicMuted=true end
         state.ui.pendingTargetAction=nil
         stopPlayerSpeech()
@@ -1965,7 +1970,7 @@ end
 return {
     engineHandlers={
         onInputAction=function(action)
-            if action=='LORKHAN_Halt' then stopPlayerSpeech() stopBookSpeech() end
+            if action=='LORKHAN_Halt' then pendingVoiceTarget=false pttHeld=false stopPlayerSpeech() stopBookSpeech() end
             return player.onAction(state,action,send)
         end,
         onKeyPress=function(event)
@@ -2378,6 +2383,11 @@ return {
         LORKHAN_PLAYER_RESOLVE_AUDIENCE=function(event) chooseAudience(event.maxDistance) end,
         LORKHAN_TARGET=function(event)
             state.ui.target=event.target state.ui.audience=event.audience or {event.target}
+            if pendingVoiceTarget and pttHeld then
+                pendingVoiceTarget=false
+                pttHeld=false
+                handlePushToTalk(true,'target_confirmation')
+            end
             state.ui.status='target: '..displayName(event.target)
             print('[LORKHAN] player target confirmed: '..displayName(event.target))
             local shouldSubmit=pendingTextSubmit and state.ui.visible and state.ui.panel=='conversation'
@@ -2391,6 +2401,7 @@ return {
             end
         end,
         LORKHAN_TARGET_REJECTED=function(event)
+            if pendingVoiceTarget then pendingVoiceTarget=false pttHeld=false end
             pendingTextSubmit=false
             pendingControlPanel=nil
             state.ui.status='target unavailable: '..tostring(event and event.reason or 'unknown')
@@ -2407,7 +2418,7 @@ return {
             if started and (not behaviorSettings or behaviorSettings:get('cancelDialogueOnCombat')~=false)
                 and (turnActive or voiceRecording or openMicEnabled or speechActive()) then
                 send('LORKHAN_STOP_DIALOGUE_REQUEST',{})
-                voiceRecording=false;openMicEnabled=false;pttHeld=false;turnActive=false
+                voiceRecording=false;openMicEnabled=false;pttHeld=false;pendingVoiceTarget=false;turnActive=false
                 stopPlayerSpeech()
                 speechActors={}
                 state.ui.status='dialogue stopped for combat'
