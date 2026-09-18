@@ -486,6 +486,8 @@
         "apps/openmw/mwworld/esmstore.hpp",
         "apps/openmw/mwworld/worldimp.cpp",
         "components/lua/scriptscontainer.cpp",
+        "components/lua_ui/textedit.cpp",
+        "components/lua_ui/textedit.hpp",
         "openmw-patches/patches/0014-apps-openmw-mwbase-luamanager-hpp.patch",
         "openmw-patches/patches/0015-apps-openmw-mwlua-luamanagerimp-hpp.patch",
         "openmw-patches/patches/0016-apps-openmw-mwmechanics-spellcasting-cpp.patch",

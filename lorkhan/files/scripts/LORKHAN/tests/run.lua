@@ -1785,6 +1785,7 @@ test('focused UI builders keep chat selectors tools and notifications independen
  eq(chat[1].props.text,'Text Chat and Interact: Fargoth');eq(chat[#chat-1].props.text,'Send');eq(chat[#chat].props.text,'Close')
  eq(chat[2].props.text,'Mood: None  |  Mode: Standard')
  eq(chat[4].props.text,'Press Enter or select Send')
+ eq(chat[3].content[1].props.autoFocus,true)
  -- the moved controls sit between the send hint and Send, in one compact clickable list
  local MENU_FIRST=5
  eq(#chatbox.MENU,9);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
@@ -1821,6 +1822,7 @@ test('focused UI builders keep chat selectors tools and notifications independen
   onCustomChanged=function()end,onCustomKeyPress=function()end,onBack=function()end,onClose=function()end})
  eq(moodPanel[1].props.text,'Player Mood');eq(moodPanel[3].props.text,'None  [active]')
  eq(moodPanel[4].props.text,'Custom');eq(moodPanel[5].props.text,'Custom delivery direction')
+ eq(moodPanel[6].content[1].props.autoFocus,false)
  eq(moodPanel[#moodPanel-1].props.text,'Back to conversation');eq(moodPanel[#moodPanel].props.text,'Close')
  local choices=require('scripts.LORKHAN.ui.selector').build({ui=ui,util=util,title='Dialogue Mode',
   options={{label='Standard',active=true,onSelect=function()end}},onClose=function()end})

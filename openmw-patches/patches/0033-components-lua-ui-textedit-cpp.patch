@@ -1,0 +1,42 @@
+diff --git a/components/lua_ui/textedit.cpp b/components/lua_ui/textedit.cpp
+index eee8bc6539e2850e5785f663a764ae9c54b3fe3c..d759fdd76ecc5cce4d54ca9a8eedffd842088e88 100644
+--- a/components/lua_ui/textedit.cpp
++++ b/components/lua_ui/textedit.cpp
+@@ -1,4 +1,6 @@
+ #include "textedit.hpp"
++
++#include <MyGUI_InputManager.h>
+ 
+ #include "alignment.hpp"
+ 
+@@ -60,9 +62,21 @@
+     void LuaTextEdit::updateChildren()
+     {
+         WidgetExtension::updateChildren();
++        auto& input = MyGUI::InputManager::getInstance();
++        const bool hadFocus = input.getKeyFocusWidget() == mEditBox;
+         // otherwise it won't be focusable
+         mEditBox->detachFromWidget();
+         mEditBox->attachToWidget(this);
++        // Focus once on creation or an explicit false-to-true request, never on every redraw.
++        const bool autoFocus = propertyValue("autoFocus", false);
++        const bool requestFocus = autoFocus && !mAutoFocus && !mEditBox->getEditStatic();
++        if ((autoFocus && hadFocus) || requestFocus)
++        {
++            input.setKeyFocusWidget(mEditBox);
++            if (requestFocus)
++                mEditBox->setTextCursor(mEditBox->getTextLength());
++        }
++        mAutoFocus = autoFocus;
+     }
+ 
+     MyGUI::IntSize LuaTextEdit::calculateSize() const
+@@ -81,7 +95,7 @@
+     {
+         static std::vector<std::string_view> usedProps = std::invoke([this] {
+             std::vector<std::string_view> props = { "text", "textSize", "textColor", "wordWrap", "textAlignH",
+-                "textAlignV", "multiline", "readOnly", "autoSize" };
++                "textAlignV", "multiline", "readOnly", "autoSize", "autoFocus" };
+             auto baseProps = WidgetExtension::allUsedProperties();
+             props.insert(props.end(), baseProps.begin(), baseProps.end());
+             return props;

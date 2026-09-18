@@ -214,3 +214,11 @@ sentences may prepare concurrently but cannot play until that player line finish
 or fails. A new choice or closing dialogue cancels both menu speech lanes. The
 frame callback advances playback while dialogue pauses simulation. No save data,
 dialogue results, or server settings are changed by the click hook.
+
+### Chat input focus
+
+The patched Lua TextEdit accepts opt-in `autoFocus`. It focuses the editable widget
+after attachment on creation or a false-to-true transition, with the caret at the
+end. Ordinary redraws preserve existing focus without stealing it from another
+control. Only the main Text Chat and Interact input opts in; other editors retain
+their existing behavior. Closing and reopening the overlay creates a fresh editor.
