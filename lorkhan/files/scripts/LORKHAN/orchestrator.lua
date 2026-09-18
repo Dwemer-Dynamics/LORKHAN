@@ -94,6 +94,8 @@ local function reportQueuedAction(state,item,status,reason)
 end
 
 local function cancelResponseLane(state,reason,stopSpeech)
+    state.playerSpeechRequest=nil
+    state.emit('LORKHAN_PLAYER_SPEECH_STOP',{reason=reason})
     for _,item in ipairs(state.responseQueue.items) do
         local command=item.intent
         if command and nativeActions.advanced[command.name] and state.bridge.cancelAdvanced then
@@ -689,7 +691,7 @@ end
 
 function M.enableOpenMic(state,args)
     state.openMic=true state.openMicMuted=false state.openMicRequested=false
-    if state.pendingVoice or next(state.pendingStt) or state.conversation.turn and not state.conversation.turn.terminal then
+    if state.playerSpeechRequest or state.pendingVoice or next(state.pendingStt) or state.conversation.turn and not state.conversation.turn.terminal then
         state.emit('LORKHAN_VOICE_STATUS',{status='open mic waiting',continuous=true});return true
     end
     args=args or {} args.automatic=true args.continuous=true args.ui_source='lorkhan_open_mic'
@@ -730,7 +732,7 @@ function M.muteOpenMic(state)
 end
 
 function M.pollOpenMic(state)
-    if state.directorPlan then return false end
+    if state.directorPlan or state.playerSpeechRequest then return false end
     if not state.openMic or state.openMicMuted or state.openMicRequested or state.pendingVoice or next(state.pendingStt) then return false end
     if state.conversation.turn and not state.conversation.turn.terminal then return false end
     if not state.conversation.target or not state.registry:resolve(state.conversation.target) then
@@ -741,7 +743,7 @@ end
 function M.runOpenMicContext(state,args)
     if not state.openMic or state.openMicMuted then return nil,'open_mic_disabled' end
     state.openMicRequested=false
-    if state.pendingVoice or next(state.pendingStt) or state.conversation.turn and not state.conversation.turn.terminal then return false end
+    if state.playerSpeechRequest or state.pendingVoice or next(state.pendingStt) or state.conversation.turn and not state.conversation.turn.terminal then return false end
     args=args or {};args.automatic=true;args.continuous=true;args.ui_source='lorkhan_open_mic'
     return M.startVoice(state,args)
 end
@@ -1002,6 +1004,16 @@ function M.submitText(state,args)
         state.rechat=nil state.rechatSeed=nil state.rechatEligibility=nil
     end
     state.recentVanillaDialogue={}
+    -- Accepted microphone and typed input share player playback; continuations never echo it.
+    if not isContinuation and args.speaker.kind=='player' and not args.player_speech_played
+        and (args.ui_source=='lorkhan_text' or args.ui_source=='lorkhan_voice' or args.ui_source=='lorkhan_open_mic'
+            or args.ui_source=='lorkhan_browser_speech')
+        and args.execution_mode~='director' and args.execution_mode~='cheat'
+        and args.execution_mode~='injection_log' and args.execution_mode~='injection_chat' then
+        state.playerSpeechRequest=requestId
+        state.emit('LORKHAN_PLAYER_SPEECH',{request_id=requestId,session_id=state.sessionId,
+            generation=state.generation,speaker=util.copy(args.speaker),text=args.text})
+    end
     state.emit('LORKHAN_TURN',{status='queued',message_id=args.message_id,request_id=requestId,turn_id=turnId,
         created_at=args.created_at,execution_mode=args.execution_mode,
         director_text=args.execution_mode=='director' and args.text or nil})
@@ -1048,6 +1060,7 @@ local function pumpResponseQueue(state)
             else responseQueue.updateMedia(state.responseQueue,item.media.media_id,'failed',reason or 'media_prepare_rejected') end
         end
     end
+    if state.playerSpeechRequest then return false,'player_speech_pending' end
     for _=1,64 do
         local item=responseQueue.head(state.responseQueue)
         if not item or state.responseQueue.active then return end
@@ -1329,6 +1342,16 @@ function M.pollRechatEligibility(state,dt)
     if not complete and probe.elapsed<0.5 then return false end
     state.rechatEligibility=nil
     return submitPlaybackRechat(state,probe)
+end
+
+-- Release only the current player clip; late completion cannot unlock a newer turn.
+function M.playerSpeechComplete(state,event)
+    if not state.playerSpeechRequest or type(event)~='table'
+        or event.request_id~=state.playerSpeechRequest or event.session_id~=state.sessionId
+        or event.generation~=state.generation then return false end
+    state.playerSpeechRequest=nil
+    pumpResponseQueue(state)
+    return true
 end
 
 -- Advance the single ordered speech lane only after the actor reports a terminal playback state.

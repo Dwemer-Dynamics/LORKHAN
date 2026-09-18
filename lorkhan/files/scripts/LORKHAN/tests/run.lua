@@ -19,6 +19,37 @@ test('game script entrypoints compile in the active Lua runtime',function()
 end)
 
 local identity=require('scripts.LORKHAN.identity')
+test('player speech hook releases the lane on missing provider failure completion and interruption',function()
+ local file=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local source=file:read('*a');file:close()
+ local functions=assert(source:match('(local function stopPlayerSpeech%(.+)\nlocal function dialogueMenuOpen'))
+ local handler=assert(source:match('LORKHAN_PLAYER_SPEECH=function%(event%)(.-)\n        end,\n        LORKHAN_AI_STATUS'))
+ local harness=[[
+ local playerSpeech,narratorSpeech
+ local released,subtitles=0,0
+ local nativeOk=true
+ local status={state='requesting'}
+ local available=true
+ local native={sessionInfo=function()return {session_id='session',generation=1}end,
+ requestMenuDialogueTts=function()if available then return 'tts-request' end return nil,'provider_unavailable' end,
+ cancelMenuDialogueTts=function()end,menuDialogueTtsStatus=function()return status end}
+ local adapter={stopSpeech=function()end,isSpeechActive=function()return false end,
+ playSpeech=function()return true end,showSubtitle=function()subtitles=subtitles+1 end}
+ local function stopNarrator()end
+ local function send(name)assert(name=='LORKHAN_PLAYER_SPEECH_COMPLETE');released=released+1 end
+ ]]
+ local exercise=[[
+ local event={session_id='session',generation=1,request_id='turn',speaker={},text='Hello.'}
+ handler(event);assert(playerSpeech and released==0 and subtitles==1)
+ status={state='failed',reason='provider_unavailable'};updatePlayerSpeech();assert(released==1)
+ available=false;handler(event);assert(released==2 and subtitles==2)
+ available=true;handler(event);stopPlayerSpeech();stopPlayerSpeech();assert(released==3)
+ handler(event);status={state='ready',media_id='audio'};updatePlayerSpeech();updatePlayerSpeech();assert(released==4)
+ event.generation=2;handler(event);assert(released==4 and playerSpeech==nil)
+ ]]
+ local chunk,reason=(loadstring or load)(harness..functions..'\nlocal function handler(event)'..handler..'\nend\n'..exercise)
+ assert(chunk,reason);chunk()
+end)
+
 test('push-to-talk resumes after targeting only while held and starts once',function()
  local source=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local text=source:read('*a');source:close()
  local handler=assert(text:match('(local function handlePushToTalk%(.+)\nlocal function chooseAudience'))
@@ -680,6 +711,7 @@ test('Close rechat preserves its group through one correlated early or completed
   playthrough_id='00000000-0000-4000-8000-000000000062',created_at='2026-07-19T20:00:00Z',platform='windows',
   content_fingerprint='sha256:'..string.rep('a',64),text='Hello.',input_key='player:1',language='en-US',
   speaker=playerId,context={targetState={inventory={items={{record_id='old_dagger',count=1}},total=1,truncated=false}}},capabilities={'dialogue.text','speech.say'},recent_action_results={},ui_source='lorkhan_text'}))
+ orchestrator.playerSpeechComplete(s,{request_id=UUID.request,session_id=UUID.session,generation=1})
  local dialogue=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Greetings.'});dialogue.message_id=UUID.message
  eq(provenanceCalls,1);eq(b.submitted[1].payload.context.targetState.recordProvenance.winning_file,'Override.esp')
  b.actorRecordProvenance=function()error('record unavailable')end
@@ -770,6 +802,7 @@ test('rechat cancels when the previous speaker is freshly busy',function()
   platform='windows',content_fingerprint='sha256:'..string.rep('a',64),text='Hello.',input_key='player:busy',
   language='en-US',speaker=playerId,context={},capabilities={'dialogue.text','speech.say'},
   recent_action_results={},ui_source='lorkhan_text'}))
+ orchestrator.playerSpeechComplete(s,{request_id=UUID.request,session_id=UUID.session,generation=1})
  local line=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Busy.'});line.message_id=UUID.message
  local media={media_id=uuid(5),dialogue_message_id=UUID.message,sha256=string.rep('a',64),bytes=4,
   codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
@@ -807,6 +840,9 @@ test('multi-speaker media plays in dialogue order without overlap',function()
   event(3,'speech.ready',1,one),second,event(5,'speech.ready',1,two)}
  eq(orchestrator.poll(s),5)
  b.media[one.media_id]={state='ready'}
+ s.playerSpeechRequest=UUID.request
+ orchestrator.poll(s);eq(#sent,0)
+ truthy(orchestrator.playerSpeechComplete(s,{request_id=UUID.request,session_id=UUID.session,generation=1}))
  orchestrator.poll(s);eq(#sent,1);eq(sent[1].payload.media_id,one.media_id)
  orchestrator.speechStatus(s,{media_id=one.media_id,active=false,status='played'})
  b.media[two.media_id]={state='ready'}
@@ -843,6 +879,7 @@ test('policy confirmation override and one result follow-up cross the ordered la
   platform='windows',content_fingerprint='sha256:'..string.rep('a',64),text='Start combat.',input_key='player:action',
   language='en-US',speaker=playerId,context={},capabilities={'dialogue.text','action.combat.start',
   'action.confirmation','action.result-followup'},recent_action_results={},ui_source='lorkhan_text'}))
+ orchestrator.playerSpeechComplete(s,{request_id=UUID.request,session_id=UUID.session,generation=1})
  local lineId=uuid(170);local actionId=uuid(171)
  local intent={schema='lorkhan.action-intent.v1',action_id=actionId,request_id=UUID.request,turn_id=UUID.turn,
   session_id=UUID.session,generation=1,name='combat.start',display_name='Engage',tier=2,actor=npc,target=playerId,
@@ -882,6 +919,7 @@ test('advanced actions require explicit player mode and a native confirmation su
    input_key='player:create',language='en-US',speaker=playerId,context={},capabilities={'dialogue.text','action.item.create'},
    recent_action_results={},ui_source=case.source,execution_mode=case.mode,
    selectedTargetPresent=case.noTarget==true}))
+ orchestrator.playerSpeechComplete(s,{request_id=UUID.request,session_id=UUID.session,generation=1})
   if case.noTarget then eq(b.submitted[1].payload.target.kind,'narrator') end
   local lineId=uuid(174);local actionId=uuid(175)
   local intent={schema='lorkhan.action-intent.v1',action_id=actionId,request_id=UUID.request,turn_id=UUID.turn,
@@ -1410,7 +1448,9 @@ test('one-turn mode override strips its prefix and preserves the selected mode a
  eq(s.rechatSeed.dialogueMode,'Close');eq(s.rechatSeed.mood,nil)
 end)
 test('spoken mood and selected mode survive transcription as typed protocol data',function()
- local b=fake.bridge() local s=orchestrator.new(b,nil,nil,function()return true end)
+ local b=fake.bridge() local emitted={} local s=orchestrator.new(b,function(name,payload)
+  if name=='LORKHAN_PLAYER_SPEECH' then emitted[#emitted+1]=payload end
+ end,nil,function()return true end)
  orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
  truthy(orchestrator.selectTarget(s,{identity=npc,distance=100,maxDistance=1200,dead=false,available=true}))
  truthy(orchestrator.startVoice(s,{speaker=playerId,context={},language='en-US',capabilities={'dialogue.text'},
@@ -1422,6 +1462,12 @@ test('spoken mood and selected mode survive transcription as typed protocol data
  local payload=b.submitted[1].payload
  eq(payload.input.kind,'stt');eq(payload.input.text,'Tell me more.');eq(payload.input.mood.kind,'playful')
  eq(payload.context.dialogueMode,'Close')
+ eq(#emitted,1);eq(emitted[1].text,'Tell me more.');truthy(identity.same(emitted[1].speaker,playerId))
+ eq(s.playerSpeechRequest,emitted[1].request_id)
+ eq(orchestrator.playerSpeechComplete(s,{request_id=uuid(999),session_id=UUID.session,generation=1}),false)
+ truthy(s.playerSpeechRequest)
+ truthy(orchestrator.playerSpeechComplete(s,emitted[1]));eq(s.playerSpeechRequest,nil)
+ eq(orchestrator.playerSpeechComplete(s,emitted[1]),false)
  local cheatBridge=fake.bridge();local cheat=orchestrator.new(cheatBridge)
  orchestrator.configureSession(cheat,UUID.session);orchestrator.activate(cheat,npc,{})
  conversation.setTarget(cheat.conversation,npc)

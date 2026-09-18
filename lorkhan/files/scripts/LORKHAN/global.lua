@@ -607,6 +607,9 @@ return {
             orchestrator.speechStatus(state,event)
             emit('LORKHAN_SPEECH_STATUS',event)
         end,
+        LORKHAN_PLAYER_SPEECH_COMPLETE=function(event)
+            orchestrator.playerSpeechComplete(state,event)
+        end,
         LORKHAN_MENU_DIALOGUE_SPEECH_STATUS=function(event)
             emit('LORKHAN_MENU_DIALOGUE_SPEECH_STATUS',event)
         end,

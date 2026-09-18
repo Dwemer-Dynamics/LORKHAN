@@ -225,6 +225,7 @@ local function stopPlayerSpeech(continueAfter)
         pcall(native.cancelMenuDialogueTts,current.request_id)
     end
     playerSpeech=nil
+    if current.onRelease then current.onRelease() end
     if continueAfter and current.onComplete then current.onComplete() end
 end
 
@@ -261,7 +262,7 @@ local function updatePlayerSpeech()
     if status.state=='ready' and status.media_id then
         local volume=tonumber(soundSettings and soundSettings:get('ttsVolumeBoost')) or 3
         local ok,reason=adapter.playSpeech(status.media_id,current.subtitle or '',volume)
-        if ok then current.state='playing'
+        if ok then current.state='playing';print('[LORKHAN] player TTS playback started: '..tostring(current.request_id))
         else print('[LORKHAN] player TTS playback failed: '..tostring(reason or 'playback_failed'));stopPlayerSpeech(true) end
     end
 end
@@ -626,10 +627,7 @@ local chooseTarget
 
 local function queueTypedTurn(args,speechAlreadyPlayed)
     if args.execution_mode=='director' then pendingDirectorInput={text=args.text} end
-    if not speechAlreadyPlayed and args.execution_mode~='director' and args.execution_mode~='cheat'
-        and args.execution_mode~='injection_log' and args.execution_mode~='injection_chat' then
-        startPlayerSpeech(args.speaker,args.text)
-    end
+    args.player_speech_played=speechAlreadyPlayed==true
     send('LORKHAN_SUBMIT_TEXT',args)
     pendingHistory=(args.execution_mode~='injection_log' and args.execution_mode~='injection_chat') and {speaker=args.speaker,text=args.text} or nil
     awaitingTextQueue=true
@@ -2180,7 +2178,6 @@ return {
             end
             if browserArgs and event.status=='succeeded' then
                 player.queued(state,browserArgs.speaker,browserArgs.text,event.observed or {})
-                startPlayerSpeech(browserArgs.speaker,browserArgs.text)
                 turnActive=true
                 state.ui.status='browser speech queued'
                 render()
@@ -2322,6 +2319,20 @@ return {
             reportNarrator(ok and 'played' or 'failed',ok and 'subtitle_displayed' or (reason or 'subtitle_unavailable'))
         end,
         LORKHAN_NARRATOR_STOP=function(event) stopNarrator(event and event.reason or 'client_interrupted') end,
+        LORKHAN_PLAYER_SPEECH_STOP=function() stopPlayerSpeech() end,
+        LORKHAN_PLAYER_SPEECH=function(event)
+            local session=nativeOk and native and native.sessionInfo and native.sessionInfo()
+            if not session or session.session_id~=event.session_id or session.generation~=event.generation then return end
+            local function complete()
+                send('LORKHAN_PLAYER_SPEECH_COMPLETE',{request_id=event.request_id,
+                    session_id=event.session_id,generation=event.generation})
+            end
+            if startPlayerSpeech(event.speaker,event.text) then
+                playerSpeech.onRelease=complete
+                print('[LORKHAN] player TTS queued for turn: '..tostring(event.request_id))
+            else complete() end
+            adapter.showSubtitle(event.text)
+        end,
         LORKHAN_AI_STATUS=function(event)
             aiEnabled=event.enabled~=false
             if not aiEnabled then
