@@ -59,24 +59,30 @@ test('push-to-talk resumes after targeting only while held and starts once',func
  local state={ui={executionMode='standard'}}
  local pttHeld,pendingVoiceTarget,voiceRecording,openMicEnabled=false,false,false,false
  local selections,starts,stops=0,0,0
+ local recordedTarget
  local function controlsAllowed()return true end
  local function render()end
- local function chooseTarget()selections=selections+1 end
- local function send(name)if name=='LORKHAN_VOICE_START' then starts=starts+1 elseif name=='LORKHAN_VOICE_STOP' then stops=stops+1 end end
- local function voicePayload()return {}end
+ local function chooseTarget(_,_,fresh)assert(fresh==true);selections=selections+1 end
+ local function send(name,payload)if name=='LORKHAN_VOICE_START' then starts=starts+1;recordedTarget=payload.target elseif name=='LORKHAN_VOICE_STOP' then stops=stops+1 end end
+ local function voicePayload()return {target=state.ui.target}end
  local function displayName()return 'NPC'end
  local function refreshSessionControls()end
  ]]..handler..'\nlocal function confirmed(event)'..target..'\nend\nlocal function rejected(event)'..rejected..[[
  end
  return {press=function(held)handlePushToTalk(held,'test')end,
- confirm=function()confirmed({target={}})end,reject=function()rejected({reason='no_target'})end,
- counts=function()return selections,starts,stops end}
+ confirm=function(target)confirmed({target=target or {}})end,reject=function()rejected({reason='no_target'})end,
+ counts=function()return selections,starts,stops end,target=function()return recordedTarget end}
  ]]
  local compile=loadstring or load
  local h=assert(compile(harness))()
  h.press(true);h.press(true);local selected,started=h.counts();eq(selected,1);eq(started,0)
  h.confirm();h.confirm();selected,started=h.counts();eq(started,1)
  h.press(false);local _,_,stopped=h.counts();eq(stopped,1)
+ h.press(true);h.press(true);selected,started=h.counts();eq(selected,2);eq(started,1)
+ local nextNpc={record_id='stargel'};h.confirm(nextNpc);eq(h.target(),nextNpc)
+ selected,started=h.counts();eq(selected,2);eq(started,2)
+ h.press(false);_,_,stopped=h.counts();eq(stopped,2)
+ h.press(true);h.reject();h.confirm();_,started=h.counts();eq(started,2)
  h=assert(compile(harness))();h.press(true);h.press(false);h.confirm();_,started=h.counts();eq(started,0)
  h=assert(compile(harness))();h.press(true);h.reject();h.confirm();_,started=h.counts();eq(started,0)
 end)

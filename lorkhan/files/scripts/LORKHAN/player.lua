@@ -1610,9 +1610,9 @@ render=function()
     else element=openmwUi.create(layout) end
 end
 
-chooseTarget=function(maxDistance,deferRender)
+chooseTarget=function(maxDistance,deferRender,freshAim)
     maxDistance=maxDistance or 2048
-    local candidate=aimCandidate and aimCandidate.distance<=maxDistance and not aimCandidate.dead
+    local candidate=not freshAim and aimCandidate and aimCandidate.distance<=maxDistance and not aimCandidate.dead
         and aimCandidate.available~=false and aimCandidate or nil
     local reason=candidate and 'live_aim_preview' or nil
     if not candidate then candidate,reason=adapter.resolveCameraTarget(maxDistance) end
@@ -1648,11 +1648,12 @@ local function handlePushToTalk(held,source)
             print('[LORKHAN] push-to-talk blocked by another UI mode via '..tostring(source))
             return
         end
-        if not state.ui.target and state.ui.executionMode~='director' and state.ui.executionMode~='narrator' and state.ui.executionMode~='cheat' then
+        -- Each new recording owns a fresh target; only its confirmation resumes without selecting again.
+        if source~='target_confirmation' and state.ui.executionMode~='director' and state.ui.executionMode~='narrator' and state.ui.executionMode~='cheat' then
             pttHeld=true
             pendingVoiceTarget=true
-            print('[LORKHAN] push-to-talk needs a target; starting target selection via '..tostring(source))
-            chooseTarget(2048)
+            print('[LORKHAN] push-to-talk refreshing target via '..tostring(source))
+            chooseTarget(2048,false,true)
             return
         end
         pttHeld=true
