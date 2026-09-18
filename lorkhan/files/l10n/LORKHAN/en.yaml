@@ -81,7 +81,7 @@ CancelDialogueOnCombat_description: Stop dialogue and recording when an NPC atta
 CombatBarks_name: Enable Combat Barks
 CombatBarks_description: Let combatants periodically shout combat barks.
 CombatBarkPeriod_name: Combat Bark Timer (seconds)
-CombatBarkPeriod_description: Seconds between combat bark requests (5–120). The server separately applies the profile's shared Combat Bark Cooldown.
+CombatBarkPeriod_description: Seconds between combat barks.
 OpenMicSensitivity_name: Open Mic Sensitivity
 OpenMicSensitivity_description: Higher values require louder speech.
 OpenMicEndDelay_name: Open Mic Silence (ms)

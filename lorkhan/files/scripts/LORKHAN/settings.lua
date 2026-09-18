@@ -18,6 +18,12 @@ local LAYOUT_MIGRATION_SECTION = 'LORKHANSettingsLayout'
 local DEFAULTS_VERSION = 7
 
 local behaviorSection = storage.playerSection(BEHAVIOR_GROUP_KEY)
+-- Defaults do not replace saved values; retire the old zero/use-profile timer value.
+local combatBarkInterval = tonumber(behaviorSection:get('combatBarkInterval'))
+if not combatBarkInterval or combatBarkInterval ~= combatBarkInterval
+    or combatBarkInterval < 5 or combatBarkInterval > 120 or combatBarkInterval % 1 ~= 0 then
+    behaviorSection:set('combatBarkInterval', 30)
+end
 local hearingSection = storage.playerSection(HEARING_GROUP_KEY)
 hearingSettings.migrate(hearingSection, storage.playerSection(AUTO_GROUP_KEY))
 if behaviorSection:get('combatBarks') == nil then

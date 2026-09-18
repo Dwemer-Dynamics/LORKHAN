@@ -1749,7 +1749,7 @@ test('LLM model panel keeps four semantic slots with async fallback and randomiz
  end
 end)
 test('OpenMW settings page registers controls and seeds conflict-free defaults once',function()
- local data={OMWInputBindings={},LORKHANInputDefaults={}}
+ local data={OMWInputBindings={},LORKHANInputDefaults={},SettingsLORKHANBehavior={combatBarkInterval=0}}
  local subscriptions={}
  local function section(name)
   data[name]=data[name] or {}
@@ -1780,6 +1780,7 @@ package.preload['openmw.lorkhan']=function() return {
  package.loaded['openmw.lorkhan']=nil
  package.loaded['scripts.LORKHAN.settings']=nil
  local settingsEntry=require('scripts.LORKHAN.settings')
+ eq(data.SettingsLORKHANBehavior.combatBarkInterval,30)
  eq(next(settingsEntry),nil)
  eq(registered.pages[1].key,'LORKHAN');eq(#registered.groups,7);eq(registered.groups[1].page,'LORKHAN');eq(#registered.groups[1].settings,5)
  for _,setting in ipairs(registered.groups[1].settings) do truthy(setting.name);truthy(setting.description) end
@@ -1857,8 +1858,10 @@ package.preload['openmw.lorkhan']=function() return {
  eq(data.OMWInputBindings.LORKHAN_MasterMenu_Binding,nil)
  eq(data.LORKHANInputDefaults.version,7)
  data.OMWInputBindings.LORKHAN_Talk_Binding=nil
+ data.SettingsLORKHANBehavior.combatBarkInterval=90
  package.loaded['scripts.LORKHAN.settings']=nil
  require('scripts.LORKHAN.settings')
+ eq(data.SettingsLORKHANBehavior.combatBarkInterval,90)
  eq(data.OMWInputBindings.LORKHAN_Talk_Binding,nil)
  package.preload['openmw.input']=nil package.preload['openmw.storage']=nil package.preload['openmw.interfaces']=nil
  package.preload['openmw.lorkhan']=nil
