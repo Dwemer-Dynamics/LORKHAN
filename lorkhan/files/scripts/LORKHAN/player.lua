@@ -827,6 +827,7 @@ local function pumpDebugCommands()
 end
 
 local function refreshSessionControls(panel,quiet)
+    if settingsControls.profileUpdates then return end
     local target=panel=='settings' and (state.ui.target or adapter.identity(self)) or state.ui.target
     if not target then state.ui.status='actor target required' render() return end
     if not nativeOk or not native or not native.requestSessionControls then
@@ -873,6 +874,7 @@ local function saveSessionSetting(value)
 end
 
 local function selectSessionControl(kind,selection)
+    if settingsControls.profileUpdates then return end
     if not state.ui.target or not nativeOk or not native or not native.selectSessionControl then
         state.ui.status='session controls unavailable' render() return
     end
@@ -884,7 +886,7 @@ end
 -- One semantic model slot write, and only from a player click. The clicked slot stays marked until
 -- the next controls snapshot settles, so a duplicate click cannot queue a second write.
 local function selectModelSlot(key)
-    if uiState.modelSlotBusy(state.ui) then return end
+    if settingsControls.profileUpdates or uiState.modelSlotBusy(state.ui) then return end
     if not state.ui.target or not nativeOk or not native or not native.selectSessionControl then
         state.ui.status='session controls unavailable' render() return
     end
@@ -895,6 +897,34 @@ local function selectModelSlot(key)
     else
         state.ui.status=tostring(error or 'model slot update failed')
     end
+    render()
+end
+
+-- Keep the simple Dynamic Profiles menu on screen while its bounded requests settle.
+function settingsControls.requestProfiles(kind)
+    if settingsControls.profileUpdates or controlsRequestActive then
+        state.ui.status='Profile request already pending';render();return
+    end
+    if not nativeOk or not native or not native.requestSessionControls or not native.selectSessionControl then
+        state.ui.status='Profile updates unavailable';render();return
+    end
+    local targets={}
+    if kind=='nearby' then
+        local exterior=self.cell and self.cell.isExterior==true
+        local limit=tonumber(autoSettings and autoSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')) or (exterior and 2400 or 1200)
+        for _,agent in ipairs(state.ui.agents) do
+            if agent.identity and agent.identity.kind=='npc' and (adapter.actorDistance(agent.identity) or math.huge)<=limit then
+                targets[#targets+1]=agent.identity
+            end
+        end
+    else
+        local target=state.ui.target or (kind=='narrator' and adapter.identity(self))
+        if target then targets[1]=target end
+    end
+    local requests=require('scripts.LORKHAN.ui.profile_requests')
+    local pending,reason=requests.start(native,targets,kind=='narrator',core.getRealTime())
+    settingsControls.profileUpdates=pending
+    state.ui.status=pending and 'Sending profile update request...' or reason
     render()
 end
 
@@ -1414,10 +1444,10 @@ render=function()
             end)},
         },onClose=adapter.callback(function() state.ui.visible=false leaveUiMode() render() end)})
     elseif state.ui.panel=='profile-menu' then
-        transcript=selector.build({ui=openmwUi,util=util,title='Dynamic Profiles',options={
-            {label='Targeted NPC: '..(state.ui.target and displayName(state.ui.target) or 'No target'),onSelect=adapter.callback(function() refreshSessionControls('profiles') end)},
-            {label='Nearby AI NPCs',onSelect=adapter.callback(function() state.ui.panel='nearby-profiles' render() end)},
-            {label='Narrator',onSelect=adapter.callback(function() refreshSessionControls('narrator') end)},
+        transcript=selector.build({ui=openmwUi,util=util,title='Dynamic Profiles',message=state.ui.status,options={
+            {label='Targeted NPC: '..(state.ui.target and displayName(state.ui.target) or 'No target'),onSelect=adapter.callback(function() settingsControls.requestProfiles('target') end)},
+            {label='Nearby AI NPCs',onSelect=adapter.callback(function() settingsControls.requestProfiles('nearby') end)},
+            {label='Narrator',onSelect=adapter.callback(function() settingsControls.requestProfiles('narrator') end)},
         },onBack=adapter.callback(function() state.ui.panel=uiState.backRoute(state.ui).panel render() end),
         onClose=adapter.callback(function() state.ui.visible=false leaveUiMode() render() end)})
     elseif state.ui.panel=='models' then
@@ -1960,6 +1990,14 @@ return {
             if pendingAutochat and nativeOk and native.pumpPlayerAutochat then pcall(native.pumpPlayerAutochat) end
             updatePlayerAutochat()
             updatePlayerSpeech()
+            if settingsControls.profileUpdates then
+                local ok,done,message=pcall(require('scripts.LORKHAN.ui.profile_requests').pump,
+                    settingsControls.profileUpdates,native,core.getRealTime())
+                if not ok then done=true;message='Profile update request failed' end
+                if done then settingsControls.profileUpdates=nil end
+                if message then state.ui.status=message;render() end
+                return
+            end
             if not controlsRequestActive or not state.ui.visible
                 or not SERVER_CONTROL_PANELS[state.ui.panel] then return end
             if not nativeOk or not native or not native.pumpSessionControls then

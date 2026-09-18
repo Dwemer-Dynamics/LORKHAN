@@ -2500,5 +2500,26 @@ test('AI disposition throwing writes are rejected and unreadable post-write send
  eq(#b.submitted,0);eq(b.writes,1);truthy(disposition.receive(a,c,UUID.session,1))
  disposition.pump(a,UUID.session,1,1,false);eq(b.writes,1);eq(#b.submitted,0)
 end)
+test('direct profile requests queue bound targets and narrator without opening a selector',function()
+ local requests=require('scripts.LORKHAN.ui.profile_requests')
+ local current,calls,generation=nil,{},1
+ local native={sessionInfo=function()return{session_id=UUID.session,generation=generation}end,
+  requestSessionControls=function(target)current=target;return 'query'end,
+  pumpSessionControls=function()return{pending=false}end,
+  sessionControls=function()return{target=current,selected_profile_id=uuid(401),narrator_profile_id=uuid(402)}end,
+  selectSessionControl=function(kind,id,target)calls[#calls+1]={kind=kind,id=id,target=target};return 'select'end}
+ local st=requests.start(native,{npc,npc},false,0);eq(#st.targets,1)
+ for n=1,3 do eq(requests.pump(st,native,n),false)end
+ local done,message=requests.pump(st,native,4);truthy(done);truthy(message:find('queued: 1',1,true))
+ eq(#calls,1);eq(calls[1].kind,'profile_generate');eq(calls[1].id,uuid(401))
+ st=requests.start(native,{npc},true,0);requests.pump(st,native,1);requests.pump(st,native,2)
+ eq(calls[2].kind,'narrator_profile_generate');eq(calls[2].id,uuid(402))
+ st=requests.start(native,{npc},false,0);generation=2
+ done,message=requests.pump(st,native,1);truthy(done);truthy(message:find('session changed',1,true));eq(#calls,2)
+ st=requests.start(native,{npc},false,0);done,message=requests.pump(st,native,36);truthy(done);eq(message,'Profile update timed out')
+ native.sessionControls=function()return{target=current,selected_profile_id=uuid(401)}end
+ st=requests.start(native,{npc},true,0);requests.pump(st,native,1);requests.pump(st,native,2)
+ eq(#calls,2);eq(st.failed,1)
+end)
 io.write(string.format('%d tests, %d failures\n',tests,failures))
 if failures>0 then os.exit(1) end
