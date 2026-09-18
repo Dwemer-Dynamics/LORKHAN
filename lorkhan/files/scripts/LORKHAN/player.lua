@@ -626,6 +626,7 @@ end
 local render
 local applySettings
 local chooseTarget
+local manualActivate
 
 local function queueTypedTurn(args,speechAlreadyPlayed)
     if args.execution_mode=='director' then pendingDirectorInput={text=args.text} end
@@ -1749,7 +1750,7 @@ local function togglePanel(panel)
     end
 end
 
-local function manualActivate()
+manualActivate=function()
     if not controlsAllowed() and not ownsUiMode then return end
     local candidate,reason=adapter.resolveCameraTarget(2048)
     if candidate then send('LORKHAN_MANUAL_ACTIVATE_REQUEST',{candidate=candidate})

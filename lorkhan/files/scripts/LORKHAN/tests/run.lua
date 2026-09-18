@@ -19,6 +19,33 @@ test('game script entrypoints compile in the active Lua runtime',function()
 end)
 
 local identity=require('scripts.LORKHAN.identity')
+test('actor tools binds the later manual activation handler as a function',function()
+ local file=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local source=file:read('*a');file:close()
+ local declarations=assert(source:match('(local render\n.-)\n\n'))
+ local panel=assert(source:match("elseif state.ui.panel=='actor%-tools' then(.-)elseif state.ui.panel=='profile%-menu' then"))
+ local first=source:find('local function manualActivate()',1,true) or source:find('manualActivate=function()',1,true)
+ local last=assert(source:find('local function confirmSecondaryTarget()',first,true))
+ local handler=source:sub(first,last-1)
+ local harness=[[
+ local state={ui={target={}}}
+ local sent,candidate=nil,{}
+ local function controlsAllowed()return true end
+ local function displayName()return 'NPC' end
+ local function send(name,payload)sent={name=name,payload=payload}end
+ local adapter={callback=function(fn)assert(type(fn)=='function','invalid UI callback');return fn end,
+ resolveCameraTarget=function()return candidate end}
+ local actorTools={build=function(context)return context.options end}
+ ]]
+ local exercise=[[
+ local rows=render()
+ rows[1].onSelect()
+ assert(sent.name=='LORKHAN_MANUAL_ACTIVATE_REQUEST' and sent.payload.candidate==candidate)
+ ]]
+ local chunk,reason=(loadstring or load)(harness..declarations..'\nrender=function() local transcript\n'..
+  panel..'\nreturn transcript end\n'..handler..exercise)
+ assert(chunk,reason);chunk()
+end)
+
 test('player speech hook releases the lane on missing provider failure completion and interruption',function()
  local file=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local source=file:read('*a');file:close()
  local functions=assert(source:match('(local function stopPlayerSpeech%(.+)\nlocal function dialogueMenuOpen'))
