@@ -77,6 +77,53 @@ test('player speech hook releases the lane on missing provider failure completio
  assert(chunk,reason);chunk()
 end)
 
+test('menu choices speak before NPC audio and cancel on replacement or close',function()
+ local file=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local source=file:read('*a');file:close()
+ local functions=assert(source:match('(local function stopPlayerSpeech%(.+)\n%-%- Persist vanilla ambient'))
+ local update=assert(source:match('(local function updateMenuDialogueSpeech%(.+)\nlocal function controlsAllowed'))
+ local handler=assert(source:match('LorkhanDialogueChoice=function%(event%)(.-)\n        end,\n        DialogueResponse'))
+ local harness=[[
+ local playerSpeech,menuDialogueSpeech,narratorSpeech,bookSpeech
+ local enabled,opened,playing=true,true,false
+ local requests,cancelled,spoken,npcLines={},{},0,0
+ local nativeOk=true
+ local native={requestMenuDialogueTts=function(actor,text)
+   local id=tostring(#requests+1);requests[#requests+1]={actor=actor,text=text,state='ready',media_id=id};return id
+  end,cancelMenuDialogueTts=function(id)cancelled[id]=true end,
+  menuDialogueTtsStatus=function(id)return requests[tonumber(id)]end}
+ local adapter={identity=function()return {kind='player'}end,stopSpeech=function()playing=false end,
+  playSpeech=function()spoken=spoken+1;playing=true;return true end,isSpeechActive=function()return playing end,
+  showSubtitle=function()error('menu choice must not add a disabled-TTS fallback caption')end}
+ local interfacesOk=true
+ local interfaces={UI={getMode=function()return opened and 'Dialogue' or nil end}}
+ local soundSettings={get=function(_,key)if key=='menuDialogueTts' then return enabled end end}
+ local support={splitSentences=function(text)return {text}end}
+ local function stopNarrator()end
+ local function send(name)if name=='LORKHAN_MENU_DIALOGUE_SPEAK' then npcLines=npcLines+1 end end
+ ]]
+ local exercise=[[
+ local response={actor={kind='npc'},text='Welcome.',dialogue_type='topic'}
+ enabled=false;choice({text='Hello'});assert(#requests==0)
+ enabled=true;choice({text='Hello'});startMenuDialogueSpeech(response)
+ assert(requests[1].actor.kind=='player' and requests[1].text=='Hello')
+ updateMenuDialogueSpeech();assert(npcLines==0)
+ updatePlayerSpeech();updateMenuDialogueSpeech();assert(spoken==1 and npcLines==0)
+ playing=false;updatePlayerSpeech();updateMenuDialogueSpeech();assert(npcLines==1)
+ -- The existing server route rejects player speech when disabled; NPC playback must unblock.
+ choice({text='Another topic'});requests[#requests].state='failed';requests[#requests].reason='provider_unavailable'
+ startMenuDialogueSpeech(response);updatePlayerSpeech();updateMenuDialogueSpeech()
+ assert(npcLines==2 and spoken==1 and playerSpeech==nil)
+ choice({text='First choice'});local old=playerSpeech.request_id;updatePlayerSpeech()
+ choice({text='Replacement'});assert(cancelled[old] and not playing)
+ startMenuDialogueSpeech(response);local pending=playerSpeech.request_id
+ opened=false;updateMenuDialogueSpeech();assert(cancelled[pending] and playerSpeech==nil and menuDialogueSpeech==nil)
+ assert(npcLines==2)
+ ]]
+ local chunk,reason=(loadstring or load)(harness..functions..'\n'..update..
+  '\nlocal function choice(event)'..handler..'\nend\n'..exercise)
+ assert(chunk,reason);chunk()
+end)
+
 test('push-to-talk resumes after targeting only while held and starts once',function()
  local source=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local text=source:read('*a');source:close()
  local handler=assert(text:match('(local function handlePushToTalk%(.+)\nlocal function chooseAudience'))

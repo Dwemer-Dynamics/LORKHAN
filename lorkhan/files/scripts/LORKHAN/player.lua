@@ -226,7 +226,7 @@ local function stopPlayerSpeech(continueAfter)
     end
     playerSpeech=nil
     -- Failed/unavailable synthesis still gets one caption; successful speech supplies its own.
-    if continueAfter and current.state~='playing' then adapter.showSubtitle(current.subtitle or '') end
+    if continueAfter and current.state~='playing' and not current.menuDialogue then adapter.showSubtitle(current.subtitle or '') end
     if current.onRelease then current.onRelease() end
     if continueAfter and current.onComplete then current.onComplete() end
 end
@@ -277,7 +277,8 @@ local function dialogueMenuOpen()
 end
 
 -- Stop only the regular-menu speech lane so a newly selected response replaces it immediately.
-local function stopMenuDialogueSpeech()
+local function stopMenuDialogueSpeech(preservePlayer)
+    if not preservePlayer and playerSpeech and playerSpeech.menuDialogue then stopPlayerSpeech() end
     local current=menuDialogueSpeech
     if current then
         local active=current.sentences and current.sentences[current.index]
@@ -365,7 +366,7 @@ local function submitMenuDialogueSentence(current,sentence)
 end
 
 local function startMenuDialogueSpeech(response)
-    stopMenuDialogueSpeech()
+    stopMenuDialogueSpeech(true)
     if not response or not ({greeting=true,persuasion=true,topic=true})[response.dialogue_type] then return end
     local enabled=not soundSettings or soundSettings:get('menuDialogueTts')~=false
     if not enabled or not nativeOk or not native or not native.requestMenuDialogueTts then return end
@@ -567,6 +568,8 @@ local function flushAutomaticDiaries(dt)
 end
 
 local function updateMenuDialogueSpeech()
+    if playerSpeech and playerSpeech.menuDialogue and (dialogueMenuOpen()==false
+        or (soundSettings and soundSettings:get('menuDialogueTts')==false)) then stopPlayerSpeech() end
     if not menuDialogueSpeech then return end
     local menuOpen=dialogueMenuOpen()
     if menuOpen==true then menuDialogueSpeech.dialogueSeenOpen=true
@@ -598,7 +601,7 @@ local function updateMenuDialogueSpeech()
         sentence=menuDialogueSpeech.sentences[menuDialogueSpeech.index]
     end
     if not sentence then menuDialogueSpeech=nil return end
-    if sentence.state=='ready' and not sentence.dispatched then
+    if sentence.state=='ready' and not sentence.dispatched and not (playerSpeech and playerSpeech.menuDialogue) then
         local volume=tonumber(soundSettings and soundSettings:get('ttsVolumeBoost')) or 3
         sentence.dispatched=true
         send('LORKHAN_MENU_DIALOGUE_SPEAK',{actor=menuDialogueSpeech.actor,request_id=sentence.request_id,
@@ -2015,7 +2018,9 @@ return {
             pumpDebugCommands()
             if pendingAutochat and nativeOk and native.pumpPlayerAutochat then pcall(native.pumpPlayerAutochat) end
             updatePlayerAutochat()
+            if playerSpeech and playerSpeech.menuDialogue and dispositionOpen==false then stopPlayerSpeech() end
             updatePlayerSpeech()
+            updateMenuDialogueSpeech()
             if settingsControls.profileUpdates then
                 local ok,done,message=pcall(require('scripts.LORKHAN.ui.profile_requests').pump,
                     settingsControls.profileUpdates,native,core.getRealTime())
@@ -2201,6 +2206,14 @@ return {
         LorkhanSpellCast=function(event)
             if not nativeOk or not native.submitSpellCast or not native.sessionInfo then return end
             player.captureSpellCast(state,event,native.sessionInfo(),adapter.spellCastObservation,native.submitSpellCast,core.getRealTime())
+        end,
+        -- The server's player connector owns the enabled switch; never fall back to an NPC voice.
+        LorkhanDialogueChoice=function(event)
+            stopMenuDialogueSpeech()
+            if soundSettings and soundSettings:get('menuDialogueTts')==false then return end
+            if not event or type(event.text)~='string' or not event.text:find('%S') then return end
+            local speaker=adapter.identity(self)
+            if speaker and startPlayerSpeech(speaker,event.text) then playerSpeech.menuDialogue=true end
         end,
         DialogueResponse=function(event)
             local response=adapter.dialogueResponse(event)

@@ -1,8 +1,16 @@
 diff --git a/apps/openmw/mwgui/dialogue.cpp b/apps/openmw/mwgui/dialogue.cpp
-index 7f2ec6e972fd201f47813d049dc1c4618b4f088e..5ffe33ae453ecd728ba945b893af1bb9a7326eee 100644
+index 7f2ec6e972fd201f47813d049dc1c4618b4f088e..11ce0f6a968af3b107d1418d0f1db6a307f40631 100644
 --- a/apps/openmw/mwgui/dialogue.cpp
 +++ b/apps/openmw/mwgui/dialogue.cpp
-@@ -406,6 +406,38 @@
+@@ -16,6 +16,7 @@
+ 
+ #include "../mwbase/dialoguemanager.hpp"
+ #include "../mwbase/environment.hpp"
++#include "../mwbase/luamanager.hpp"
+ #include "../mwbase/mechanicsmanager.hpp"
+ #include "../mwbase/windowmanager.hpp"
+ #include "../mwbase/world.hpp"
+@@ -406,6 +407,38 @@
          {
              MWBase::Environment::get().getWindowManager()->removeGuiMode(GM_Dialogue);
          }
@@ -41,3 +49,26 @@ index 7f2ec6e972fd201f47813d049dc1c4618b4f088e..5ffe33ae453ecd728ba945b893af1bb9
      }
  
      void DialogueWindow::onSelectListItem(const std::string& topic, int /*id*/)
+@@ -747,6 +780,7 @@
+         if (mGoodbye)
+             return;
+ 
++        MWBase::Environment::get().getLuaManager()->onLorkhanDialogueChoice(mPtr, topicId);
+         MWBase::Environment::get().getDialogueManager()->keywordSelected(topicId, mCallback.get());
+         updateTopics();
+     }
+@@ -757,6 +791,14 @@
+         {
+             onGoodbyeActivated();
+             return;
++        }
++        for (const auto& choice : mChoices)
++        {
++            if (choice.second == id)
++            {
++                MWBase::Environment::get().getLuaManager()->onLorkhanDialogueChoice(mPtr, choice.first);
++                break;
++            }
+         }
+         MWBase::Environment::get().getDialogueManager()->questionAnswered(id, mCallback.get());
+         updateTopics();

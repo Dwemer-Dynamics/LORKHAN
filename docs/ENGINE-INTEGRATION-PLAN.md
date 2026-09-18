@@ -204,3 +204,13 @@ OpenMW audio modes adapt direction and distance curves; Skyrim-specific occlusio
 conversation, cancelling its native submission and active event poll without changing
 the session, generation, or microphone capture. Lua stops/reports queued playback and
 fences late results by the replaced turn identity. Lifecycle cancellation stays separate.
+
+### Player speech in vanilla dialogue menus
+
+The dialogue window emits `LorkhanDialogueChoice` with the clicked topic or answer text
+before executing the vanilla response. Lua reuses the player TTS route; the server's
+player connector remains the authority for whether player speech is enabled. NPC
+sentences may prepare concurrently but cannot play until that player line finishes
+or fails. A new choice or closing dialogue cancels both menu speech lanes. The
+frame callback advances playback while dialogue pauses simulation. No save data,
+dialogue results, or server settings are changed by the click hook.
