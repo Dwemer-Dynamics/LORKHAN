@@ -1129,9 +1129,7 @@ local function pumpResponseQueue(state)
             local marked,markReason=responseQueue.markDispatched(state.responseQueue,item)
             if not marked then print('[LORKHAN] action dispatch rejected: '..tostring(markReason)) return end
             emitQueue(state)
-            local confirmationRequired=command.confirmation_required
-            if confirmationRequired==nil then confirmationRequired=command.tier>=2 end
-            if confirmationRequired then
+            if command.confirmation_required==true then
                 local summary
                 if nativeActions.advanced[command.name] then
                     local ok,value=false,nil

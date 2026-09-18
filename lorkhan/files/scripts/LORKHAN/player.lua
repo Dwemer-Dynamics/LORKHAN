@@ -1177,6 +1177,18 @@ function renderPanels.conversation()
     return transcript
 end
 
+-- Resolve the pending prompt once and leave the menu before the queued action resumes.
+local function answerActionConfirmation(approved)
+    local pending=state.ui.pendingAction
+    if not pending then return end
+    state.ui.pendingAction=nil
+    state.ui.visible=false
+    state.ui.panel='conversation'
+    leaveUiMode()
+    send('LORKHAN_CONFIRM_ACTION',{action_id=pending.action_id,approved=approved==true})
+    render()
+end
+
 render=function()
     renderStatusHud()
     if not state.ui.visible or not uiOk or not utilOk then
@@ -1184,7 +1196,9 @@ render=function()
         return
     end
     local transcript={}
-    if state.ui.panel=='conversation' then
+    if state.ui.pendingAction then
+        -- The standalone confirmation below replaces every normal menu while pending.
+    elseif state.ui.panel=='conversation' then
         transcript=renderPanels.conversation()
     elseif state.ui.panel=='settings' then
         transcript=settingsControls.build()
@@ -1548,8 +1562,8 @@ render=function()
             end)}}
     end
     if state.ui.pendingAction then
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Confirm action: '..
-            (state.ui.pendingAction.display_name or state.ui.pendingAction.name),textSize=17,
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Allow '..
+            (state.ui.pendingAction.display_name or state.ui.pendingAction.name)..'?',textSize=17,
             textColor=util.color.rgb(218/255,187/255,120/255)}}
         local pending=state.ui.pendingAction
         local parameters=pending.parameters or {}
@@ -1567,28 +1581,27 @@ render=function()
         end
         if advanced then details[#details+1]='Changes affect this save. Cancelling afterward does not undo them.' end
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=table.concat(details,'\n'),textSize=15,
+            multiline=true,wordWrap=true,size=util.vector2(500,200),autoSize=false,
             textColor=util.color.rgb(0.88,0.85,0.78)}}
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Approve',textSize=16,textColor=util.color.rgb(0.45,0.9,0.45)},
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Yes',textSize=16,textColor=util.color.rgb(0.45,0.9,0.45)},
             events={mouseClick=adapter.callback(function()
-                send('LORKHAN_CONFIRM_ACTION',{action_id=state.ui.pendingAction.action_id,approved=true})
-                state.ui.pendingAction=nil render()
+                answerActionConfirmation(true)
             end)}}
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Reject',textSize=16,textColor=util.color.rgb(1.0,0.45,0.35)},
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='No',textSize=16,textColor=util.color.rgb(1.0,0.45,0.35)},
             events={mouseClick=adapter.callback(function()
-                send('LORKHAN_CONFIRM_ACTION',{action_id=state.ui.pendingAction.action_id,approved=false})
-                state.ui.pendingAction=nil render()
+                answerActionConfirmation(false)
             end)}}
     end
     local panelSizes={conversation={560,400},['actor-tools']={540,360},['profile-menu']={520,300},
         settings={660,600},modes={540,480},moods={520,470},models={580,420},profiles={580,420},narrator={580,330},
         ['nearby-profiles']={680,460},history={760,620},diagnostics={760,620}}
-    local panelSize=panelSizes[state.ui.panel] or {680,460}
+    local panelSize=state.ui.pendingAction and {540,320} or panelSizes[state.ui.panel] or {680,460}
     local contentWidth=panelSize[1]-20
     local contentHeight=panelSize[2]-20
     local layout={layer='Windows',type=openmwUi.TYPE.Container,
         props={position=util.vector2(30,60),size=util.vector2(panelSize[1],panelSize[2])},content=openmwUi.content({
             {type=openmwUi.TYPE.Flex,props={horizontal=false,size=util.vector2(contentWidth,contentHeight)},content=openmwUi.content({
-                {type=openmwUi.TYPE.Text,props={text='LORKHAN  |  '..state.ui.status,textSize=16,
+                {type=openmwUi.TYPE.Text,props={text=state.ui.pendingAction and 'LORKHAN' or 'LORKHAN  |  '..state.ui.status,textSize=16,
                     textColor=util.color.rgb(188/255,157/255,90/255)}},
                 unpackValues(transcript),
             })},
@@ -1669,6 +1682,7 @@ local function chooseAudience(maxDistance)
 end
 
 local function toggleTalk()
+    if state.ui.pendingAction then answerActionConfirmation(false) return end
     if not state.ui.visible and not controlsAllowed() then return end
     state.ui.pendingTargetAction=nil
     state.ui.visible=not state.ui.visible
@@ -1711,6 +1725,7 @@ local function isConfiguredPushToTalkKey(event)
 end
 
 local function openPanel(panel)
+    if state.ui.pendingAction then return end
     if not controlsAllowed() and not ownsUiMode then return end
     -- Saved hotkeys still open these panels directly, so they keep the Targeted NPC Tools back route.
     uiState.setPanel(state.ui,panel,'actor-tools') state.ui.visible=true
@@ -1954,6 +1969,10 @@ return {
             return player.onAction(state,action,send)
         end,
         onKeyPress=function(event)
+            if inputOk and state.ui.pendingAction and event and event.code==input.KEY.Escape then
+                answerActionConfirmation(false)
+                return
+            end
             if inputOk and state.ui.visible and state.ui.panel=='conversation' and event
                 and (event.code==input.KEY.Enter or event.code==input.KEY.NP_Enter) then
                 print('[LORKHAN] text chat Enter accepted by engine fallback')
@@ -2426,7 +2445,7 @@ return {
             end
         end,
         LORKHAN_ACTION_CONFIRMATION=function(event)
-            state.ui.pendingAction=event state.ui.panel='actions' state.ui.actionView='root'
+            state.ui.pendingAction=event state.ui.panel='confirmation'
             state.ui.visible=true enterUiMode() render()
         end,
         LORKHAN_ACTION_STATUS=function(event)

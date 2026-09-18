@@ -1322,7 +1322,7 @@ namespace MWLua
             {
                 using K=lorkhan::ActionIntentKind;const auto& intent=*record.intent;
                 record.reason="advanced_precondition_failed";
-                if(!record.snapshot->advanced||intent.confirmationRequired!=true||!actor||!target||!player
+                if(!record.snapshot->advanced||!intent.confirmationRequired.has_value()||!actor||!target||!player
                     ||actor->identity.kind!="player"||!sameTransferActor(actor->identity,player->identity))return;
                 auto world=MWBase::Environment::get().getWorld();
                 const auto playerPtr=player->object.ptrOrEmpty(),targetPtr=target->object.ptrOrEmpty();

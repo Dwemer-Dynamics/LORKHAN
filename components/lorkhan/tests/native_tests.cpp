@@ -780,7 +780,7 @@ void testProtocolEventResponses()
         CHECK(lorkhan::parseEventsResponse(wire,jsonHeaders));
         auto noApproval=wire;const auto approval=noApproval.find("\"confirmation_required\":true",approachName);
         noApproval.replace(approval,std::string("\"confirmation_required\":true").size(),"\"confirmation_required\":false");
-        CHECK(!lorkhan::parseEventsResponse(noApproval,jsonHeaders));
+        CHECK(lorkhan::parseEventsResponse(noApproval,jsonHeaders));
         auto unknown=wire;const auto parametersStart=unknown.find("\"parameters\":{",approachName);
         unknown.insert(parametersStart+std::string("\"parameters\":{").size(),"\"script\":\"bad\",");
         CHECK(!lorkhan::parseEventsResponse(unknown,jsonHeaders));
@@ -818,7 +818,7 @@ void testProtocolEventResponses()
         CHECK(lorkhan::parseEventsResponse(wire,jsonHeaders));
         auto noApproval=wire;const auto approval=noApproval.find("\"confirmation_required\":true",approachName);
         noApproval.replace(approval,std::string("\"confirmation_required\":true").size(),"\"confirmation_required\":false");
-        CHECK(!lorkhan::parseEventsResponse(noApproval,jsonHeaders));
+        CHECK(lorkhan::parseEventsResponse(noApproval,jsonHeaders));
         auto wrongTier=wire;wrongTier.replace(wrongTier.find("\"tier\":2",approachName),8,"\"tier\":1");
         CHECK(!lorkhan::parseEventsResponse(wrongTier,jsonHeaders));
         auto arbitrary=wire;const auto position=arbitrary.find("\"parameters\":",approachName);
@@ -845,7 +845,7 @@ void testProtocolEventResponses()
         CHECK(lorkhan::parseEventsResponse(wire,jsonHeaders));
         auto denied=wire;const auto approval=denied.find("\"confirmation_required\":true",approachName);
         denied.replace(approval,std::string("\"confirmation_required\":true").size(),"\"confirmation_required\":false");
-        CHECK(!lorkhan::parseEventsResponse(denied,jsonHeaders));
+        CHECK(lorkhan::parseEventsResponse(denied,jsonHeaders));
         auto empty=wire;empty.replace(empty.find("fire bite",params),std::string("fire bite").size(),"");
         CHECK(!lorkhan::parseEventsResponse(empty,jsonHeaders));
     }

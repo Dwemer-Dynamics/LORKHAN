@@ -418,7 +418,8 @@ test('transfer queue waits for persisted receipts and freezes the committed outc
  local queue=transfers.new(bridge,function(event)finished[#finished+1]=event end)
  local command={name='item.give',action_id=UUID.action or UUID.message,message_id=UUID.message,request_id=UUID.request,
   turn_id=UUID.turn,session_id=UUID.session,generation=7,actor=npc,confirmation_required=false}
- eq(transfers.enqueue(queue,command),nil);command.confirmation_required=true;truthy(transfers.enqueue(queue,command))
+ command.confirmation_required=nil;eq(transfers.enqueue(queue,command),nil)
+ command.confirmation_required=false;truthy(transfers.enqueue(queue,command))
  transfers.pump(queue,UUID.session,7,0);eq(#submitted,0);eq(#finished,0)
  outcome={status='succeeded',reason_code='item_transferred',observed={count=2}}
  transfers.pump(queue,UUID.session,7,1);eq(#submitted,1);eq(#finished,0)
@@ -444,7 +445,8 @@ test('advanced native queue validates exact shapes and uses retained cancellatio
   command.target=(name=='actor.teleport_to_player' or name=='actor.resurrect' or name=='actor.kill') and npc or playerId
   truthy(transfers.validateAdvanced(command))
   command.tier=1;eq(transfers.validateAdvanced(command),nil);command.tier=2
-  command.confirmation_required=false;eq(transfers.validateAdvanced(command),nil);command.confirmation_required=true
+  command.confirmation_required=false;truthy(transfers.validateAdvanced(command))
+  command.confirmation_required=nil;eq(transfers.validateAdvanced(command),nil);command.confirmation_required=true
   params.untrusted=true;eq(transfers.validateAdvanced(command),nil);params.untrusted=nil
  end
  command.name='actor.spawn';command.parameters={record_id='mudcrab',count=5};command.target=playerId
@@ -827,6 +829,7 @@ end)
 test('advanced actions require explicit player mode and a native confirmation summary',function()
  for _,case in ipairs({{mode='cheat',source='lorkhan_text',allowed=true},
   {mode='cheat',source='lorkhan_text',noTarget=true,allowed=true},
+  {mode='cheat',source='lorkhan_text',confirmation=false,allowed=true},
   {mode='narrator',source='lorkhan_text',noTarget=true,allowed=true},
   {mode='cheat',source='lorkhan_voice',allowed=true},
   {mode='standard',source='lorkhan_text',allowed=false},
@@ -850,12 +853,16 @@ test('advanced actions require explicit player mode and a native confirmation su
   local lineId=uuid(174);local actionId=uuid(175)
   local intent={schema='lorkhan.action-intent.v1',action_id=actionId,request_id=UUID.request,turn_id=UUID.turn,
    session_id=UUID.session,generation=1,name='item.create',tier=2,actor=playerId,target=playerId,
-   confirmation_required=true,parameters={record_id='exquisite_robe_01',count=2},expires_at='2026-07-19T21:00:00Z'}
+   confirmation_required=case.confirmation~=false,parameters={record_id='exquisite_robe_01',count=2},expires_at='2026-07-19T21:00:00Z'}
   local actionEvent=event(2,'action.intent',1,intent);actionEvent.message_id=lineId
   b.results={responseEvent(1,{actionLine(0,lineId,playerId,playerId,'item.create',{'record_id=exquisite_robe_01','count=2'})},1),
    actionEvent,event(3,'turn.complete',1,{status='complete'})}
   orchestrator.poll(s)
-  if case.allowed then
+  if case.allowed and case.confirmation==false then
+   eq(#confirmations,0);eq(next(s.pendingConfirmations),nil)
+   eq(#sent,1);eq(sent[1].name,'LORKHAN_ACTOR_ACTION')
+   orchestrator.haltActions(s);eq(cancelled,1)
+  elseif case.allowed then
    eq(#sent,0)
    eq(#confirmations,1);eq(confirmations[1].parameters.count,2)
    eq(confirmations[1].summary,'Create 2 Exquisite Robes for Player.')

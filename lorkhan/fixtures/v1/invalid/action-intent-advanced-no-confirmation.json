@@ -1,5 +1,5 @@
 {
-  "description": "Reject advanced action no-confirmation",
+  "description": "Reject advanced action without an explicit confirmation policy",
   "instance": {
     "action_id": "00000000-0000-4000-8000-000000000020",
     "actor": {
@@ -16,7 +16,6 @@
         "index": 0
       }
     },
-    "confirmation_required": false,
     "display_name": "actor.spawn",
     "expires_at": "2026-07-18T20:00:10Z",
     "followup_enabled": false,

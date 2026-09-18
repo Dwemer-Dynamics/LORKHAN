@@ -586,8 +586,8 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     double destinationX=0,destinationY=0,destinationZ=0;
     std::string destinationCell;
     if (advanced) {
-        if (confirmationRequired != true || actor.value().kind != "player")
-            return invalidSchemaValue<ActionIntent>("advanced action requires player authority and explicit confirmation");
+        if (!confirmationRequired.has_value() || actor.value().kind != "player")
+            return invalidSchemaValue<ActionIntent>("advanced action requires player authority and an explicit confirmation policy");
         if (target.value().kind != "player" && target.value().kind != "npc" && target.value().kind != "creature")
             return invalidSchemaValue<ActionIntent>("advanced action requires a physical target");
         if ((name.value()=="actor.kill"||name.value()=="actor.resurrect"||name.value()=="actor.teleport_to_player") && target.value().kind=="player")
@@ -779,8 +779,8 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
 
     if ((intentKind == ActionIntentKind::item_give || intentKind == ActionIntentKind::item_take
             || intentKind == ActionIntentKind::item_pickup || intentKind == ActionIntentKind::gold_give
-            || intentKind == ActionIntentKind::gold_take || intentKind == ActionIntentKind::spell_cast) && confirmationRequired != true)
-        return invalidSchemaValue<ActionIntent>("transfer requires explicit confirmation");
+            || intentKind == ActionIntentKind::gold_take || intentKind == ActionIntentKind::spell_cast) && !confirmationRequired.has_value())
+        return invalidSchemaValue<ActionIntent>("transfer requires an explicit confirmation policy");
 
     return Result<ActionIntent>::success({ActionId(std::move(action).value()),
         TurnId(std::move(turn).value()), std::move(actor).value(), std::move(target).value(),

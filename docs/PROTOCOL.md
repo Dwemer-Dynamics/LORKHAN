@@ -389,7 +389,7 @@ model-provided coordinates, paths or URLs. No Rapport dependency or expanded fol
 
 Actions: item.create (count1..100), gold.create (amount1..100000), actor.spawn (count1..4),
 actor.teleport_to_player, player.teleport, actor.restore, actor.resurrect, actor.kill.
-Each action has tier2 and mandatory one-intent player confirmation. Follow-up actions are disabled.
+Each action has tier2 and an explicit `confirmation_required` boolean selected by the server's Action Editor policy. Confirmation defaults on for advanced actions, but may be disabled in the editor. When enabled, the client shows a one-intent Yes/No prompt before execution. Follow-up actions are disabled.
 Only explicit player text or push-to-talk in Cheat/Narrator mode can expose them; open microphone,
 Rechat, automatic dialogue and Director children cannot inherit this authority. The world executor
 is the exact current player identity, never an NPC policy or the body of the Narrator.
