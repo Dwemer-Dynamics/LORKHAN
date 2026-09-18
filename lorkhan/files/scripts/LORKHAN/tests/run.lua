@@ -33,17 +33,17 @@ test('player speech hook releases the lane on missing provider failure completio
  requestMenuDialogueTts=function()if available then return 'tts-request' end return nil,'provider_unavailable' end,
  cancelMenuDialogueTts=function()end,menuDialogueTtsStatus=function()return status end}
  local adapter={stopSpeech=function()end,isSpeechActive=function()return false end,
- playSpeech=function()return true end,showSubtitle=function()subtitles=subtitles+1 end}
+ playSpeech=function()subtitles=subtitles+1;return true end,showSubtitle=function()subtitles=subtitles+1 end}
  local function stopNarrator()end
  local function send(name)assert(name=='LORKHAN_PLAYER_SPEECH_COMPLETE');released=released+1 end
  ]]
  local exercise=[[
  local event={session_id='session',generation=1,request_id='turn',speaker={},text='Hello.'}
- handler(event);assert(playerSpeech and released==0 and subtitles==1)
- status={state='failed',reason='provider_unavailable'};updatePlayerSpeech();assert(released==1)
+ handler(event);assert(playerSpeech and released==0 and subtitles==0)
+ status={state='failed',reason='provider_unavailable'};updatePlayerSpeech();assert(released==1 and subtitles==1)
  available=false;handler(event);assert(released==2 and subtitles==2)
- available=true;handler(event);stopPlayerSpeech();stopPlayerSpeech();assert(released==3)
- handler(event);status={state='ready',media_id='audio'};updatePlayerSpeech();updatePlayerSpeech();assert(released==4)
+ available=true;handler(event);stopPlayerSpeech();stopPlayerSpeech();assert(released==3 and subtitles==2)
+ handler(event);status={state='ready',media_id='audio'};updatePlayerSpeech();updatePlayerSpeech();assert(released==4 and subtitles==3)
  event.generation=2;handler(event);assert(released==4 and playerSpeech==nil)
  ]]
  local chunk,reason=(loadstring or load)(harness..functions..'\nlocal function handler(event)'..handler..'\nend\n'..exercise)

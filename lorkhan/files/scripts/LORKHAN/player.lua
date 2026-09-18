@@ -225,6 +225,8 @@ local function stopPlayerSpeech(continueAfter)
         pcall(native.cancelMenuDialogueTts,current.request_id)
     end
     playerSpeech=nil
+    -- Failed/unavailable synthesis still gets one caption; successful speech supplies its own.
+    if continueAfter and current.state~='playing' then adapter.showSubtitle(current.subtitle or '') end
     if current.onRelease then current.onRelease() end
     if continueAfter and current.onComplete then current.onComplete() end
 end
@@ -2331,8 +2333,10 @@ return {
             if startPlayerSpeech(event.speaker,event.text) then
                 playerSpeech.onRelease=complete
                 print('[LORKHAN] player TTS queued for turn: '..tostring(event.request_id))
-            else complete() end
-            adapter.showSubtitle(event.text)
+            else
+                adapter.showSubtitle(event.text)
+                complete()
+            end
         end,
         LORKHAN_AI_STATUS=function(event)
             aiEnabled=event.enabled~=false
