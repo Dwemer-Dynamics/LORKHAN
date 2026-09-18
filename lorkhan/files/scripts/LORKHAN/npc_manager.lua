@@ -6,10 +6,10 @@ local function finite(value)
     return type(value)=='number' and value==value and value~=math.huge and value~=-math.huge
 end
 
--- Movement changes cell identity; reference identity remains stable for matching its saved return pose.
+-- Return poses use the same stable reference key as live actor routing.
 local function actorKey(actor)
     if not identity.validate(actor) or (actor.kind~='npc' and actor.kind~='creature') then return nil end
-    return table.concat({actor.kind,actor.record_id,actor.content_file,tostring(actor.refnum.content_file),tostring(actor.refnum.index)},'|')
+    return identity.key(actor)
 end
 
 local function pose(object)
@@ -63,7 +63,7 @@ local function resolve(state,actor,allowLoad)
     local formId=modules.core.getFormId(actor.content_file,actor.refnum.index)
     local function exact()
         local object=modules.world.getObjectByFormId(formId)
-        if not object or not object:isValid() or object.recordId~=actor.record_id then return nil end
+        if not object or not object:isValid() or string.lower(object.recordId)~=string.lower(actor.record_id) then return nil end
         local kind=actor.kind=='npc' and modules.types.NPC or modules.types.Creature
         if not kind or not kind.objectIsInstance(object) then return nil end
         return object

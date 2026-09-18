@@ -460,9 +460,33 @@ test('advanced native queue validates exact shapes and uses retained cancellatio
  receipt='accepted';transfers.pump(queue,UUID.session,1,1);eq(executed,1);eq(finished,1)
 end)
 
+test('scoped reference profiles do not relax UUID fields',function()
+ local prefix='ref:'..UUID.message..':'..UUID.turn..':'
+ truthy(protocol.isProfileId(prefix..'morrowind.esm|4294967295'))
+ eq(protocol.isUuid(prefix..'morrowind.esm|1'),false)
+ for _,tail in ipairs({'Morrowind.esm|1','../morrowind.esm|1','morrowind.esm|01','morrowind.esm|4294967296','morrowind.esm|1\n'}) do
+  eq(protocol.isProfileId(prefix..tail),false)
+ end
+end)
+
 test('identity registry refuses substitution and ambiguity',function()
  local r=identity.Registry() local one={} truthy(r:activate(npc,one)); eq(r:activate(npc,{}),nil)
  local clone=fake.identity('npc','fargoth',9);eq(r:resolve(clone),nil);eq(r:resolve(npc),one)
+ local moved=support.copy(npc);moved.cell={kind='interior',name='Another room'}
+ moved.refnum.content_file=7;moved.content_file=string.upper(moved.content_file)
+ moved.record_id=string.upper(moved.record_id);moved.display_name='A renamed Fargoth'
+ eq(identity.key(moved),identity.key(npc));truthy(identity.same(moved,npc));eq(r:resolve(moved),one)
+ truthy(r:activate(moved,one));eq(r:size(),1)
+ local wrong=support.copy(moved);wrong.record_id='other_record'
+ eq(identity.key(wrong),identity.key(npc));eq(identity.same(wrong,npc),false)
+ eq(r:resolve(wrong),nil);eq(r:activate(wrong,one),nil);eq(r:deactivate(wrong,one),false)
+ wrong=support.copy(moved);wrong.kind='creature';eq(identity.same(wrong,npc),false);eq(r:resolve(wrong),nil)
+ wrong=support.copy(moved);wrong.content_file='Other.esm';eq(identity.same(wrong,npc),false)
+ wrong=support.copy(moved);wrong.refnum.index=1.5;eq(identity.key(wrong),nil)
+ wrong.refnum.index=math.huge;eq(identity.key(wrong),nil)
+ local narrator=support.copy(playerId);narrator.kind='narrator';truthy(identity.key(narrator)~=identity.key(playerId))
+ local agents=agentRegistry.new();truthy(agentRegistry.activate(agents,npc,'auto',1))
+ truthy(agentRegistry.markSeen(agents,moved,2));eq(agentRegistry.get(agents,npc).identity.cell.name,'Another room')
 end)
 test('conversation stale generation and exact terminal',function()
  local s=conversation.new(1);truthy(conversation.setTarget(s,npc));truthy(conversation.begin(s,UUID.request,UUID.turn,'input'))
@@ -1089,7 +1113,11 @@ test('NPC manager uses exact references and verifies deferred movement with save
  status,reason=manager.start(controls,command('npc.teleport'),UUID.session,1,1)
  eq(status,'rejected');eq(reason,'return_pending')
  local saved=manager.save(controls);manager.load(controls,saved)
- eq(manager.start(controls,command('npc.return'),UUID.session,1,2),nil)
+ local returnCommand=command('npc.return');returnCommand.command.parameters.actor=support.copy(npc)
+ returnCommand.command.parameters.actor.cell={kind='interior',name='Destination'}
+ returnCommand.command.parameters.actor.refnum.content_file=7
+ returnCommand.command.parameters.actor.record_id=string.upper(npc.record_id)
+ eq(manager.start(controls,returnCommand,UUID.session,1,2),nil)
  eq(manager.poll(controls,UUID.session,1,3),nil)
  table.remove(pending,1)();result=manager.poll(controls,UUID.session,1,4)
  eq(result.status,'succeeded');eq(result.observed.return_available,false);eq(actorObject.cell,origin);eq(actorObject.position.x,10)

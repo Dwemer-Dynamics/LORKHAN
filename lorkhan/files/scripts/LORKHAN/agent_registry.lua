@@ -15,7 +15,8 @@ end
 
 function M.get(state,actor)
     local key=identity.key(actor)
-    return key and state.entries[key] or nil
+    local entry=key and state.entries[key] or nil
+    return entry and identity.same(entry.identity,actor) and entry or nil
 end
 
 function M.activate(state,actor,source,distance)
@@ -25,6 +26,8 @@ function M.activate(state,actor,source,distance)
     source=(source=='manual' or targetPromotion) and 'manual' or 'auto'
     local entry=state.entries[key]
     if entry then
+        if not identity.same(entry.identity,actor) then return nil,'actor_identity_mismatch' end
+        entry.identity=util.copy(actor)
         entry.distance=distance or entry.distance
         entry.lastSeenScan=state.scan
         if source=='manual' and entry.source=='manual' and not targetPromotion then
@@ -47,6 +50,7 @@ end
 function M.markSeen(state,actor,distance)
     local entry=M.get(state,actor)
     if not entry then return false end
+    entry.identity=util.copy(actor)
     entry.lastSeenScan=state.scan entry.distance=distance or entry.distance
     return true
 end
@@ -71,7 +75,7 @@ end
 function M.remove(state,actor)
     local key=identity.key(actor)
     local entry=key and state.entries[key]
-    if not entry then return nil,'agent_not_found' end
+    if not entry or not identity.same(entry.identity,actor) then return nil,'agent_not_found' end
     state.entries[key]=nil
     return util.copy(entry.identity)
 end

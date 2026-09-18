@@ -497,9 +497,9 @@
       "sha256": "02bce1f707ca91f2a9aaeaedbb1008b132a970643e2554f869bb047aa5f2da5a"
     },
     {
-      "bytes": 4501,
+      "bytes": 5015,
       "path": "lorkhan/schemas/v1/common.schema.json",
-      "sha256": "94b573b535f434469493eba47ef784bbb152191be21841f26125e39696ab3378"
+      "sha256": "b9734824a9066865e6900ef0527cce62fc8af05cacb9ca69c81d9c02c6d837e0"
     },
     {
       "bytes": 1038,
@@ -507,14 +507,14 @@
       "sha256": "859c7eeee280bc21ab09ad295c314e7384e1757371da086a513af49c33c61330"
     },
     {
-      "bytes": 2614,
+      "bytes": 2620,
       "path": "lorkhan/schemas/v1/controls-select.schema.json",
-      "sha256": "b0b31dfaac124b2700d397834d1783ccb14c6dd2a9d436afcdda4852128f56ad"
+      "sha256": "72b5e94dfeb956e0f9fcd242443a2445334056b619487bd42bc74de602d064d8"
     },
     {
-      "bytes": 20509,
+      "bytes": 20725,
       "path": "lorkhan/schemas/v1/controls.schema.json",
-      "sha256": "9e524356a759da54df7cf413450ff16b4fbb6b3682705c70f0a9683080a9ef48"
+      "sha256": "2bf2dd9f18d2ebfdd7e820ff46450e0f5744ee488deb0a162d14e99c22e7c8dd"
     },
     {
       "bytes": 771,
@@ -597,9 +597,9 @@
       "sha256": "4606d60a8b1c0f216afc5aac02d5b0f1f6aa7cb7c2bbe252f7323c9146eab412"
     },
     {
-      "bytes": 2312,
+      "bytes": 2318,
       "path": "lorkhan/schemas/v1/input.schema.json",
-      "sha256": "8006f678a7e5e72be41d7423ac0d689aa2315fef80b8da518e86e02d0b416380"
+      "sha256": "68daf9c9762ed1a1ca268255a39a7b05f7bb9d1b85eb5d3a4eaab4a3386e4932"
     },
     {
       "bytes": 1016,
@@ -642,9 +642,9 @@
       "sha256": "12c97704dd00ca584bec21b8a3a065bce5a110c996e5779cf9c57289907ac9bf"
     },
     {
-      "bytes": 1715,
+      "bytes": 1721,
       "path": "lorkhan/schemas/v1/response.schema.json",
-      "sha256": "56688538b56f927f83a98a131c07364de6886049c2f08bb4bf74485d1a98e94e"
+      "sha256": "7834e28a4e872ba572fb7126f610a21456710b3b2958dc5f02d50bb3d830568b"
     },
     {
       "bytes": 2097,
@@ -677,9 +677,9 @@
       "sha256": "52ca2b7555cd4b11becf70373ce02dda7f58f72fd8780db4ea9f5c3043641c08"
     },
     {
-      "bytes": 10623,
+      "bytes": 10629,
       "path": "lorkhan/schemas/v1/turn.schema.json",
-      "sha256": "489c7828093100d43508e4a3edbe38da861aff07333972ce2843bb21ac2526f3"
+      "sha256": "a546e34b53abe7569fb947dc3b775be926da1e96c74d9216a90beffcf9f09b9b"
     }
   ],
   "format": "lorkhan.protocol-manifest.v1",

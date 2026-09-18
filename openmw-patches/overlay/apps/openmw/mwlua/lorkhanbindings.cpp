@@ -1620,7 +1620,8 @@ namespace MWLua
                     if(semanticModel&&(!selection||(*selection!="standard"&&*selection!="fast"
                         &&*selection!="powerful"&&*selection!="experimental")))
                         throw std::runtime_error("invalid_session_control_selection");
-                    if(!semanticModel&&selection&&!lorkhan::isCanonicalUuid(*selection))
+                    if(!semanticModel&&selection&&!(mapped==lorkhan::SessionControlKind::narrator_profile_generate
+                        ? lorkhan::isCanonicalUuid(*selection) : lorkhan::isProfileId(*selection)))
                         throw std::runtime_error("invalid_session_control_selection");
                     const lorkhan::RequestId request(uuid());const lorkhan::MessageId message(uuid());
                     lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),

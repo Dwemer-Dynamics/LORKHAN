@@ -144,6 +144,25 @@ bool isCanonicalUuid(std::string_view input) noexcept
     return true;
 }
 
+bool isProfileId(std::string_view input) noexcept
+{
+    if (isCanonicalUuid(input)) return true;
+    if (input.size() > 300 || input.size() < 81 || !input.starts_with("ref:")
+        || !isCanonicalUuid(input.substr(4,36)) || input[40] != ':'
+        || !isCanonicalUuid(input.substr(41,36)) || input[77] != ':') return false;
+    const auto separator=input.find('|',78);
+    if (separator==std::string_view::npos || separator==78) return false;
+    const auto file=input.substr(78,separator-78);
+    if (!isValidUtf8(file) || std::ranges::any_of(file,[](unsigned char c){
+        return c<=0x1f || c==0x7f || (c>='A' && c<='Z') || c=='/' || c=='\\' || c==':' || c=='|';
+    })) return false;
+    const auto index=input.substr(separator+1);
+    if (index.empty() || (index.size()>1 && index.front()=='0')) return false;
+    std::uint32_t parsed{};
+    const auto result=std::from_chars(index.data(),index.data()+index.size(),parsed);
+    return result.ec==std::errc{} && result.ptr==index.data()+index.size();
+}
+
 bool isCanonicalUtcTimestamp(std::string_view value) noexcept
 {
     if (value.size() < 20 || value.size() > 30 || value[4] != '-' || value[7] != '-'

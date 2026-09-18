@@ -18,7 +18,7 @@
     "mode": {"enum": ["stt", "text"], "type": "string"},
     "player": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"},
     "playthrough_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "profile_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "profile_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/profile_id"},
     "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
     "runtime": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/runtime"},
     "runtime_generation": {"maximum": 9007199254740991, "minimum": 1, "type": "integer"},

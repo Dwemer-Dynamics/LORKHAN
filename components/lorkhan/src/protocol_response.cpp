@@ -90,6 +90,14 @@ Result<std::string> requireUuid(const json::Object& object, std::string_view key
     return value;
 }
 
+Result<std::string> requireProfileId(const json::Object& object, std::string_view key)
+{
+    auto value=requireString(object,key,1,300);
+    if (!value) return value;
+    if (!isProfileId(value.value())) return invalidSchemaValue<std::string>(std::string(key)+" must be a profile key");
+    return value;
+}
+
 Result<std::uint64_t> requireUnsigned(const json::Object& object, std::string_view key,
     std::uint64_t maximum = kMaximumProtocolInteger, std::uint64_t minimum = 0)
 {
@@ -413,7 +421,7 @@ Result<CanonicalResponse> parseCanonicalResponse(const json::Value& value, const
     auto schema = requireString(*object, "schema");
     auto responseId = requireUuid(*object, "response_id");
     auto installationId = requireUuid(*object, "installation_id");
-    auto profileId = requireUuid(*object, "profile_id");
+    auto profileId = requireProfileId(*object, "profile_id");
     auto playthroughId = requireUuid(*object, "playthrough_id");
     auto sessionId = requireUuid(*object, "session_id");
     auto turnId = requireUuid(*object, "turn_id");
@@ -854,7 +862,7 @@ Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::V
     const auto nullableUuid=[&](std::string_view key)->Result<std::optional<std::string>>{
         const auto* item=json::find(*root,key);if(!item)return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" is missing");
         if(item->isNull())return Result<std::optional<std::string>>::success(std::nullopt);
-        if(!item->string()||!isCanonicalUuid(*item->string()))
+        if(!item->string()||!(key=="profile_id" ? isProfileId(*item->string()) : isCanonicalUuid(*item->string())))
             return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" must be null or a canonical UUID");
         return Result<std::optional<std::string>>::success(*item->string());};
     const auto nullableRevision=[&](std::string_view key)->Result<std::optional<std::uint64_t>>{
@@ -1771,7 +1779,7 @@ Result<ControlsResponse> parseControlsResponse(
         const auto* value=json::find(object.value(),key);
         if(!value)return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" is missing");
         if(value->isNull())return Result<std::optional<std::string>>::success(std::nullopt);
-        if(!value->string()||!isCanonicalUuid(*value->string()))
+        if(!value->string()||!(key=="selected_profile_id" ? isProfileId(*value->string()) : isCanonicalUuid(*value->string())))
             return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" must be null or a canonical UUID");
         return Result<std::optional<std::string>>::success(*value->string());
     };
@@ -1841,7 +1849,7 @@ Result<ControlsResponse> parseControlsResponse(
     for(const auto& value:*profiles){const auto* row=value.object();
         if(!row||!hasExactly(*row,{"profile_id","name","revision"}))
             return invalidSchemaValue<ControlsResponse>("profile fields mismatch");
-        auto id=requireUuid(*row,"profile_id");auto name=requireString(*row,"name",1,256);
+        auto id=requireProfileId(*row,"profile_id");auto name=requireString(*row,"name",1,256);
         auto revision=requireUnsigned(*row,"revision",kMaximumProtocolInteger,1);
         if(!id)return invalidSchemaValue<ControlsResponse>(id.error().message);
         if(!name)return invalidSchemaValue<ControlsResponse>(name.error().message);
