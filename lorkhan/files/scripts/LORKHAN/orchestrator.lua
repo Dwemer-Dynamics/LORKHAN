@@ -92,7 +92,14 @@ local function reportQueuedAction(state,item,status,reason)
     return state.bridge.submitActionResult(result)~=nil
 end
 
+-- Clear scene ownership once so every terminal path produces only one stop notice.
+local function stopDirectorScene(state)
+    if state.directorPlan then state.emit('LORKHAN_DIRECTOR_NOTICE',{started=false}) end
+    state.directorPlan=nil state.directorSeed=nil
+end
+
 local function cancelResponseLane(state,reason,stopSpeech)
+    stopDirectorScene(state)
     for _,item in ipairs(state.responseQueue.items) do
         local command=item.intent
         if command and nativeActions.advanced[command.name] and state.bridge.cancelAdvanced then
@@ -123,7 +130,6 @@ function M.setAiEnabled(state,enabled)
         cancelResponseLane(state,'ai_disabled',true)
         signalAllActors(state,'LORKHAN_ACTOR_STOP','ai_disabled')
         state.conversation.turn=nil -- Late results cannot match a cancelled turn after re-enabling.
-        state.directorPlan=nil state.directorSeed=nil
         state.rechat=nil state.rechatSeed=nil state.rechatEligibility=nil
         state.advancedAuthority=nil state.pendingConfirmations={}
         state.actionFollowups={seen={},pending={}}
@@ -832,7 +838,7 @@ function M.submitText(state,args)
         if state.rechat and state.rechat.requestInFlight and state.conversation.turn then
             state.conversation.turn.terminal=true
         end
-        state.directorPlan=nil state.directorSeed=nil
+        stopDirectorScene(state)
         state.rechat=nil state.rechatEligibility=nil
         if not responseQueue.idle(state.responseQueue) then cancelResponseLane(state,'superseded_by_player',true) end
         local targetKey=identity.key(state.conversation.target)
@@ -1371,6 +1377,7 @@ local function applyTransportFailure(state,event)
     local turn=state.conversation.turn
     if not turn or turn.terminal or event.request_id~=turn.requestId then return false end
     turn.terminal=true turn.status='failed' turn.reason=event.reason or 'transport_failure'
+    if state.directorPlan then state.directorPlan.cancelled=true end
     if state.rechat then state.rechat.cancelled=true state.rechat.requestInFlight=false end
     local failed={type='turn.failed',request_id=turn.requestId,turn_id=turn.turnId,
         session_id=state.sessionId,generation=state.generation,
@@ -1459,12 +1466,16 @@ function M.poll(state)
                 elseif event.type=='director.instructions' then
                     state.directorPlan=director.receive(event,state.directorSeed)
                     laneOk=state.directorPlan~=nil;laneReason='invalid_director_plan'
+                    if laneOk then state.emit('LORKHAN_DIRECTOR_NOTICE',{started=true}) end
                 end
                 if not laneOk then applied=false applyReason=laneReason
                 else
                     if event.type=='response.complete' or event.type=='dialogue.complete'
                         or event.type=='speech.ready' or event.type=='action.intent' then emitQueue(state) end
                     accepted=accepted+1
+                    if (event.type=='turn.failed' or event.type=='turn.cancelled') and state.directorPlan then
+                        state.directorPlan.cancelled=true
+                    end
                     if event.type=='dialogue.complete' and state.rechat then
                         state.rechat.lastSpeaker=util.copy(event.payload.speaker)
                         state.rechat.lastAddressee=util.copy(event.payload.addressee)
@@ -1501,7 +1512,7 @@ function M.poll(state)
         if state.directorPlan.sessionId==state.sessionId and state.directorPlan.generation==state.generation then
             restoreModeTarget(state,previous)
         end
-        state.directorPlan=nil state.directorSeed=nil
+        stopDirectorScene(state)
     end
     submitActionFollowup(state)
     local advanceRechat=responseQueue.consumeRechat(state.responseQueue)

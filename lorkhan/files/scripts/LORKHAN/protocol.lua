@@ -5,7 +5,7 @@ local util = require('scripts.LORKHAN.util')
 
 local M = {}
 local knownInternalEvents = {['turn.accepted']=true, ['dialogue.delta']=true, ['dialogue.complete']=true,
-    ['speech.ready']=true, ['action.intent']=true, ['relationship.adjust']=true, ['response.complete']=true, ['turn.complete']=true,
+    ['speech.ready']=true, ['action.intent']=true, ['director.instructions']=true, ['relationship.adjust']=true, ['response.complete']=true, ['turn.complete']=true,
     ['turn.failed']=true, ['turn.cancelled']=true, ['stt.transcript']=true,
     ['stt.failed']=true}
 

@@ -2304,6 +2304,9 @@ return {
             state.ui.status=aiEnabled and 'AI on' or 'AI off; transcription and observations remain active'
             render()
         end,
+        LORKHAN_DIRECTOR_NOTICE=function(event)
+            if uiOk then openmwUi.showMessage(event.started and 'Director scene started.' or 'Director scene stopped.') end
+        end,
         LORKHAN_STATUS=function(event) state.ui.status=event.status state.ui.diagnostics=event.reason render() end,
         LORKHAN_WAIT_HERE_STATUS=function(event)
             if not event or not identity.same(event.target,state.ui.target) then return end
