@@ -2,7 +2,8 @@
 
 ## Scope and baseline
 
-- Read `CLAUDEX-TASK.md` and every document it marks required before editing implementation files.
+- Read relevant architecture, protocol, and packaging documents in `docs/` before editing.
+- `docs/archive/` contains historical task assignments, not current operating instructions.
 - Pin OpenMW `openmw-0.51.0` commit `f4bec41444214a7903bebd178389ca22ca13f646`.
 - Keep the OpenMW fork/patch rebaseable: isolate LORKHAN integration files and minimize changes to
   upstream files. Record every upstream-file modification in the patch manifest.

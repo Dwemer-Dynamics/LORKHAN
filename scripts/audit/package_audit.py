@@ -17,7 +17,8 @@ def audit(args: argparse.Namespace) -> None:
     repository = Path(args.repository).resolve()
     archive = Path(args.archive).resolve()
     policy = read_json(repository / args.policy)
-    entries, findings = audit_archive_content(archive, policy[f"{args.kind}_allowlist"], policy["denylist"])
+    denylist = policy["denylist"] + (policy.get("runtime_denylist", []) if args.kind != "source" else [])
+    entries, findings = audit_archive_content(archive, policy[f"{args.kind}_allowlist"], denylist)
     if args.kind == "runtime":
         findings.extend(audit_notices(entries, policy["notices_required"], archive.name, sha256_file(archive)))
     else:

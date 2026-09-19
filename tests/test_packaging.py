@@ -291,6 +291,15 @@ class PackagingTests(unittest.TestCase):
         self.assertIn("archive-allowlist", {x["audit"] for x in audit_archive_content(
             bad, self.policy["runtime_allowlist"], self.policy["denylist"])[1]})
 
+        # Development-only files belong in source archives, never player packages.
+        dev = self.temp / "fixture-development.zip"
+        with zipfile.ZipFile(dev, "w") as z:
+            z.writestr("lorkhan/files/scripts/LORKHAN/tests/run.lua", b"-- fixture")
+            z.writestr("docs/archive/CLAUDEX-TASK.md", b"Historical task")
+        runtime_denies = self.policy["denylist"] + self.policy["runtime_denylist"]
+        self.assertTrue(audit_archive_content(dev, self.policy["runtime_allowlist"], runtime_denies)[1])
+        self.assertEqual(audit_archive_content(dev, self.policy["source_allowlist"], self.policy["denylist"])[1], [])
+
     def test_provenance_completeness_canary(self):
         ledger = read_json(ROOT / self.policy["provenance_ledger"])
         recorded = [path for item in ledger["records"] for path in item["target_paths"]]
