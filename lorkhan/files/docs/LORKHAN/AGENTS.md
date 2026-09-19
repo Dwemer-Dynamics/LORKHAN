@@ -6,6 +6,9 @@ and custom Lua work, and [building.md](building.md) before rebuilding.
 
 - Client source: https://github.com/RANGROO/LORKHAN
 - Companion server: https://github.com/RANGROO/LorkhanServer
+- Both source repositories are currently private. Their source and example links require
+  authorized GitHub access; otherwise ask the maintainer for access or a complete source
+  archive matching the installed revision. No public source download is provided here.
 - Identify the installed build and matching source revision before proposing changes.
   An installed Data folder is not a complete source checkout. Read the source root
   AGENTS.md after obtaining source; this packaged guide does not replace its rules.

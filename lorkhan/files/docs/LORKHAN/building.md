@@ -5,6 +5,11 @@ the intended package. Installed Lua files alone cannot rebuild OpenMW. Read root
 and docs/build/BUILD-CONTRACT.md before native work. Historical plans can contain proposed
 commands; check the actual script parameters before using them.
 
+The client and companion server repositories are currently private. GitHub source/example
+links require authorized access. Without it, ask the maintainer for access or a complete
+matching source archive before following source-build instructions; no public clone route
+is provided here.
+
 ## Prerequisites and pins
 
 - Git and Python 3.10+; Python jsonschema for authoritative protocol validation.

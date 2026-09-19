@@ -29,7 +29,7 @@ Source locations, relative to a client checkout:
 | Actions and actor execution | lorkhan/files/scripts/LORKHAN/actions.lua, actor_executor.lua, actor.lua |
 | Speech ordering | lorkhan/files/scripts/LORKHAN/response_queue.lua |
 | Native transport and validation | components/lorkhan/ |
-| Actual engine patch | openmw-patches/patch-spec.json, patches/, overlay/ |
+| Actual engine patch | openmw-patches/patch-spec.json, openmw-patches/patches/, openmw-patches/overlay/ |
 | Wire contracts | lorkhan/schemas/v1, lorkhan/fixtures/v1 |
 | Installation assembly | scripts/deploy/full-local.ps1 |
 
