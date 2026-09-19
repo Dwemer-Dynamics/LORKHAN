@@ -128,15 +128,17 @@
           "type": "string"
         },
         "lua_api_revision": {
-          "const": 129,
+          "minimum": 1,
           "type": "integer"
         },
         "openmw_commit": {
-          "const": "f4bec41444214a7903bebd178389ca22ca13f646",
+          "minLength": 1,
+          "maxLength": 64,
           "type": "string"
         },
         "openmw_version": {
-          "const": "0.51.0",
+          "minLength": 1,
+          "maxLength": 64,
           "type": "string"
         },
         "platform": {
