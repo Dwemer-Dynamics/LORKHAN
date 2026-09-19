@@ -492,9 +492,9 @@
       "sha256": "54775507bed10cd835a978d708d9ef50972f8986e4930def2a1a5688cc328b68"
     },
     {
-      "bytes": 4357,
+      "bytes": 4274,
       "path": "lorkhan/schemas/v1/client-settings.schema.json",
-      "sha256": "02bce1f707ca91f2a9aaeaedbb1008b132a970643e2554f869bb047aa5f2da5a"
+      "sha256": "1e7185984f2cad6b2209b73a0d6775e85454c0d3ccaaa2c960ce7bd4f35c20a3"
     },
     {
       "bytes": 4501,

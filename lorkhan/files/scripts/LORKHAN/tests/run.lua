@@ -1034,6 +1034,41 @@ test('Director children request fresh context and fence identity, order and expi
  plan.complete=nil;plan.expiresAt='2026-09-13T23:59:59Z'
  eq(director.next(plan,bridge,UUID.session,1,true),nil);truthy(plan.cancelled)
 end)
+test('Director scene notices start once and stop on completion and cancellation',function()
+ local function scene()
+  local b=fake.bridge();local notices={}
+  local s=orchestrator.new(b,function(name,payload)
+   if name=='LORKHAN_DIRECTOR_NOTICE' then notices[#notices+1]=payload.started end
+  end)
+  s.sessionId=UUID.session;s.events=protocol.CursoredEvents(UUID.session,1)
+  truthy(conversation.setTarget(s.conversation,npc));truthy(conversation.begin(s.conversation,UUID.request,UUID.turn,'input'))
+  s.directorSeed={turn_id=UUID.turn,target=npc,speaker=playerId}
+  b.results={event(1,'director.instructions',1,{plan_id=UUID.request,origin_turn_id=UUID.turn,
+   expires_at='2026-09-20T00:00:00Z',instructions={{instruction_id=UUID.message,actor=npc,
+    recipient=playerId,instruction='Hello there.',scene_note=''}}})}
+  eq(orchestrator.poll(s),1);eq(#notices,1);eq(notices[1],true)
+  orchestrator.poll(s);eq(#notices,1)
+  return s,b,notices
+ end
+ local s,b,notices=scene()
+ s.directorPlan.index=2
+ orchestrator.poll(s);eq(#notices,1) -- The child turn must finish before the scene stops.
+ s.conversation.turn.terminal=true
+ s.responseQueue.active={kind='dialogue'}
+ orchestrator.poll(s);eq(#notices,1) -- Terminal text alone cannot end still-playing speech.
+ s.responseQueue.active=nil
+ orchestrator.poll(s);eq(#notices,2);eq(notices[2],false);eq(s.directorPlan,nil)
+ orchestrator.poll(s);eq(#notices,2)
+ for _,ending in ipairs({'halt','load','disabled','transport'}) do
+  s,b,notices=scene()
+  if ending=='halt' then orchestrator.halt(s)
+  elseif ending=='load' then orchestrator.lifecycle(s,'load')
+  elseif ending=='disabled' then orchestrator.setAiEnabled(s,false)
+  else b.results={{type='transport.failure',request_id=UUID.request,reason='network_error'}};orchestrator.poll(s) end
+  eq(#notices,2);eq(notices[2],false);eq(s.directorPlan,nil)
+ end
+end)
+
 test('resurrection observations preserve actor and calendar without inventing a spell',function()
  local args={actor=npc,audience={enemy},game_time=20,calendar={year=427,month=0,day=1,hour=12}}
  local payload,reason=protocol.actorResurrected(args);truthy(payload,reason)
