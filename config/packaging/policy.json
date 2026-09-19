@@ -6,11 +6,11 @@
   "provenance_ledger": "docs/evidence/file-provenance-ledger.json",
   "dependency_lock_globs": ["config/source-pins/*.json", "config/dependencies/*.lock.json"],
   "required_product_paths": {
-    "runtime": ["bin/lorkhan-openmw.exe", "lorkhan/files/LORKHAN.omwscripts", "lorkhan/files/scripts/LORKHAN/global.lua"],
-    "lua": ["lorkhan/files/LORKHAN.omwscripts", "lorkhan/files/scripts/LORKHAN/global.lua"]
+    "runtime": ["lorkhan/files/README-LORKHAN.md", "lorkhan/files/docs/LORKHAN/AGENTS.md", "lorkhan/files/docs/LORKHAN/agent-guide.md", "lorkhan/files/docs/LORKHAN/building.md", "bin/lorkhan-openmw.exe", "lorkhan/files/LORKHAN.omwscripts", "lorkhan/files/scripts/LORKHAN/global.lua"],
+    "lua": ["lorkhan/files/README-LORKHAN.md", "lorkhan/files/docs/LORKHAN/AGENTS.md", "lorkhan/files/docs/LORKHAN/agent-guide.md", "lorkhan/files/docs/LORKHAN/building.md", "lorkhan/files/LORKHAN.omwscripts", "lorkhan/files/scripts/LORKHAN/global.lua"]
   },
   "required_corresponding_source_paths": ["manifests/corresponding-source.json", "manifests/openmw-source-materialization.json"],
-  "required_source_paths": ["manifests/openmw-source-materialization.json", "openmw-patches/patch-manifest.json", "docs/evidence/file-provenance-ledger.json", "lorkhan/files/LORKHAN.omwscripts"],
+  "required_source_paths": ["AGENTS.md", "lorkhan/files/README-LORKHAN.md", "lorkhan/files/docs/LORKHAN/AGENTS.md", "lorkhan/files/docs/LORKHAN/agent-guide.md", "lorkhan/files/docs/LORKHAN/building.md", "manifests/openmw-source-materialization.json", "openmw-patches/patch-manifest.json", "docs/evidence/file-provenance-ledger.json", "lorkhan/files/LORKHAN.omwscripts"],
   "runtime_allowlist": ["bin/*", "bin/**/*", "lib/*", "lib/**/*", "resources/*", "resources/**/*", "lorkhan/*", "lorkhan/**/*", "config/*", "config/**/*", "docs/*", "docs/**/*", "licenses/*", "licenses/**/*", "notices/*", "notices/**/*", "sbom/*", "sbom/**/*", "manifests/*", "manifests/**/*", "README*", "LICENSE*"],
   "lua_allowlist": ["lorkhan/*", "lorkhan/**/*", "docs/*", "docs/**/*", "licenses/*", "licenses/**/*", "notices/*", "notices/**/*", "sbom/*", "sbom/**/*", "manifests/*", "manifests/**/*", "README*", "LICENSE*"],
   "source_allowlist": ["engine/*", "engine/**/*", "lorkhan/*", "lorkhan/**/*", "cmake/*", "cmake/**/*", "config/*", "config/**/*", "openmw-patches/*", "openmw-patches/**/*", "scripts/*", "scripts/**/*", "schemas/*", "schemas/**/*", "tests/*", "tests/**/*", "docs/*", "docs/**/*", "patches/*", "patches/**/*", "sbom/*", "sbom/**/*", "manifests/*", "manifests/**/*", "patch-manifest.json", "CMakeLists.txt", "CMakePresets.json", "README*", "LICENSE*", "AGENTS.md"],

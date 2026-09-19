@@ -4,6 +4,13 @@ LORKHAN is the OpenMW/Morrowind client for a CHIM- and Dialectic-style AI charac
 combines a narrowly scoped OpenMW engine integration with an ordinary OpenMW Lua mod, and talks to
 the separate `RANGROO/LorkhanServer` backend over authenticated loopback HTTP.
 
+## For AI assistants and coding agents
+
+Start with [AGENTS.md](AGENTS.md) and the [offline agent guide](lorkhan/files/docs/LORKHAN/agent-guide.md).
+The [build guide](lorkhan/files/docs/LORKHAN/building.md) covers current commands; the agent guide
+also routes custom Lua mods, native changes and server integrations. These canonical guides ship
+inside the Lua data tree, at docs/LORKHAN, with README-LORKHAN.md as the installed entry point.
+
 ## Status
 
 The playable development stack is implemented through the no-game gate. The exact-pinned OpenMW
