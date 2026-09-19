@@ -1418,6 +1418,34 @@ test('inventory observations are changed-only bounded and fenced from failed rea
  eq(orchestrator.pollInventoryObservations(scheduler,1),false);eq(emitted,1)
  truthy(orchestrator.pollInventoryObservations(scheduler,1));eq(emitted,2)
 end)
+test('named creature characters auto-activate and request profiles with creatures disabled',function()
+ for _,record in ipairs({'vivec_god','yagrum bagarn','almalexia','Almalexia_warrior',
+   'BM_hircine','BM_hircine2','BM_hircine_huntaspect','BM_hircine_straspect','BM_hircine_spdaspect',
+   'dagoth_ur_1','dagoth_ur_2','dagoth gares','dagoth odros','dagoth vemyn','dagoth endus',
+   'dagoth tureynul','dagoth gilvoth','dagoth araynys','dagoth uthol'}) do
+  local requests=0
+  local s=orchestrator.new(fake.bridge(),function(name,payload)
+   if name=='LORKHAN_AUTO_ACTIVATED' then requests=requests+1;eq(payload.actor.record_id,record) end
+  end,nil,function()return true end)
+  s.settings={autoActivate={enabled=true,addCreatures=false,addHostile=false}}
+  local id=fake.identity('creature',record,81);orchestrator.activate(s,id,{})
+  local candidate={identity=id,distance=10,maxDistance=100,available=true}
+  candidate.dead=true;eq(orchestrator.scanAgents(s,{candidate}),0);candidate.dead=false
+  candidate.hostile=true;eq(orchestrator.scanAgents(s,{candidate}),0);candidate.hostile=false
+  candidate.distance=101;eq(orchestrator.scanAgents(s,{candidate}),0);candidate.distance=10
+  candidate.available=false;eq(orchestrator.scanAgents(s,{candidate}),0);candidate.available=true
+  s.settings.autoActivate.enabled=false;eq(orchestrator.scanAgents(s,{candidate}),0)
+  s.settings.autoActivate.enabled=true;eq(orchestrator.scanAgents(s,{candidate}),1);eq(requests,1)
+  eq(orchestrator.scanAgents(s,{candidate}),0);eq(requests,1)
+ end
+ for _,record in ipairs({'mudcrab','dagoth_ur_1_imposter','vivec_god_copy'}) do
+  local s=orchestrator.new(fake.bridge(),nil,nil,function()return true end)
+  s.settings={autoActivate={enabled=true,addCreatures=false}}
+  local id=fake.identity('creature',record,82);orchestrator.activate(s,id,{})
+  eq(orchestrator.scanAgents(s,{{identity=id,distance=10,maxDistance=100}}),0)
+ end
+end)
+
 test('managed agents activate in bounded batches and manual pins survive distance cleanup',function()
  local b=fake.bridge() local managed=0 local detached=0 local agentEvents=0 local profileEvents=0
  local s=orchestrator.new(b,function(name,payload)

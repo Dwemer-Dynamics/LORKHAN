@@ -295,8 +295,10 @@ function M.scanAgents(state,candidates)
                 local actor,status=M.manageCandidate(state,candidate,'auto',true)
                 if actor and status=='activated' then
                     added=added+1
-                    if actor.kind=='npc' then
+                    if actor.kind=='npc' or targeting.isNamedCharacter(actor) then
                         state.emit('LORKHAN_AUTO_ACTIVATED',{actor=util.copy(actor)})
+                    end
+                    if actor.kind=='npc' then
                         local key=identity.key(actor)
                         if key and not state.autonomy.greeted[key] and not state.autonomy.interacted[key]
                             and #state.autonomy.greetingQueue<32 then
