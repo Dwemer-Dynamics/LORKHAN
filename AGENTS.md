@@ -1,5 +1,12 @@
 # LORKHAN engineering instructions
 
+## Start here
+
+- Client source: https://github.com/RANGROO/LORKHAN; server: https://github.com/RANGROO/LorkhanServer.
+- Read [the packaged agent guide](lorkhan/files/docs/LORKHAN/agent-guide.md) for architecture, diagnostics and custom Lua/native work.
+- Read [building.md](lorkhan/files/docs/LORKHAN/building.md) for current commands and source/package boundaries.
+- Installed instructions live under docs/LORKHAN inside the Lua data tree. Keep those files canonical.
+
 ## Scope and baseline
 
 - Read relevant architecture, protocol, and packaging documents in `docs/` before editing.

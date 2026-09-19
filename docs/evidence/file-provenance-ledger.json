@@ -383,6 +383,10 @@
       "classification": "original",
       "target_paths": [
         "README.md",
+        "lorkhan/files/README-LORKHAN.md",
+        "lorkhan/files/docs/LORKHAN/AGENTS.md",
+        "lorkhan/files/docs/LORKHAN/agent-guide.md",
+        "lorkhan/files/docs/LORKHAN/building.md",
         "docs/ARCHITECTURE.md",
         "docs/CHIM-DIALECTIC-INTEGRATION-PLAN.md",
         "docs/CHIM-DIALECTIC-PARITY-CLEANUP-PLAN.md",

@@ -345,6 +345,9 @@ if ($process.ExitCode -ne 0) { throw "LORKHAN OpenMW exited with code $($process
     Write-Utf8NoBom -Path (Join-Path $Root 'README.txt') -Content @"
 LORKHAN OpenMW local installation
 
+AI assistants and coding agents: Data\docs\LORKHAN\AGENTS.md
+Source and custom-mod/build guidance: Data\README-LORKHAN.md
+
 Play: Play-LORKHAN.cmd
 Play with the recommended compatibility mods: Play-LORKHAN-Compatibility.cmd
 Manage OpenMW content: Manage-LORKHAN-Mods.cmd
