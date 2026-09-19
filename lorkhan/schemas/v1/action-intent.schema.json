@@ -1359,8 +1359,7 @@
           "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
         },
         "confirmation_required": {
-          "type": "boolean",
-          "const": true
+          "type": "boolean"
         },
         "display_name": {
           "maxLength": 128,
@@ -1448,8 +1447,7 @@
           "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
         },
         "confirmation_required": {
-          "type": "boolean",
-          "const": true
+          "type": "boolean"
         },
         "display_name": {
           "maxLength": 128,
@@ -1530,8 +1528,7 @@
           "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
         },
         "confirmation_required": {
-          "type": "boolean",
-          "const": true
+          "type": "boolean"
         },
         "display_name": {
           "maxLength": 128,
@@ -1612,8 +1609,7 @@
           "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
         },
         "confirmation_required": {
-          "type": "boolean",
-          "const": true
+          "type": "boolean"
         },
         "display_name": {
           "maxLength": 128,
@@ -1691,8 +1687,7 @@
           "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
         },
         "confirmation_required": {
-          "type": "boolean",
-          "const": true
+          "type": "boolean"
         },
         "display_name": {
           "maxLength": 128,
@@ -1778,8 +1773,7 @@
           "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
         },
         "confirmation_required": {
-          "type": "boolean",
-          "const": true
+          "type": "boolean"
         },
         "display_name": {
           "maxLength": 128,
@@ -1859,8 +1853,7 @@
           "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
         },
         "confirmation_required": {
-          "type": "boolean",
-          "const": true
+          "type": "boolean"
         },
         "display_name": {
           "maxLength": 128,
@@ -1946,8 +1939,7 @@
           "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
         },
         "confirmation_required": {
-          "type": "boolean",
-          "const": true
+          "type": "boolean"
         },
         "display_name": {
           "maxLength": 128,
@@ -2018,8 +2010,7 @@
           "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
         },
         "confirmation_required": {
-          "type": "boolean",
-          "const": true
+          "type": "boolean"
         },
         "display_name": {
           "maxLength": 128,
@@ -2099,8 +2090,7 @@
           "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
         },
         "confirmation_required": {
-          "type": "boolean",
-          "const": true
+          "type": "boolean"
         },
         "display_name": {
           "maxLength": 128,
@@ -2171,8 +2161,7 @@
           "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
         },
         "confirmation_required": {
-          "type": "boolean",
-          "const": true
+          "type": "boolean"
         },
         "display_name": {
           "maxLength": 128,
@@ -2243,8 +2232,7 @@
           "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
         },
         "confirmation_required": {
-          "type": "boolean",
-          "const": true
+          "type": "boolean"
         },
         "display_name": {
           "maxLength": 128,

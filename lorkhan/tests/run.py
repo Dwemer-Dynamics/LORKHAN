@@ -21,7 +21,8 @@ def text(path):
 
 manifest = text(FILES / "LORKHAN.omwscripts")
 allowed_manifest_declarations = [
-    "GLOBAL: scripts/LORKHAN/global.lua", "PLAYER: scripts/LORKHAN/settings.lua",
+    "GLOBAL: scripts/LORKHAN/global.lua", "MENU: scripts/LORKHAN/settings_menu.lua",
+    "PLAYER: scripts/LORKHAN/settings.lua",
     "PLAYER: scripts/LORKHAN/player.lua", "CUSTOM: scripts/LORKHAN/actor.lua"]
 manifest_declarations = [line.strip() for line in manifest.splitlines() if line.strip() and not line.lstrip().startswith("#")]
 check("production manifest has exact pinned-source-verified contexts and paths",
@@ -74,7 +75,7 @@ check("safe action allowlist is explicit", all(name in actions for name in (
     "'inspect.report'", "'inventory.inspect'", "'ai.follow'", "'ai.stop'", "'ai.approach'", "'ai.wait'",
     "'ai.travel'", "'ai.escort'", "'ai.face'", "'ai.wander'", "'combat.start'", "'combat.stop'",
     "'animation.play'", "'item.use'", "'item.equip'", "'item.unequip'")))
-check("combat start requires player confirmation", "command.tier>=2" in text(SCRIPTS / "orchestrator.lua")
+check("action confirmation follows the server action policy", "command.confirmation_required==true" in text(SCRIPTS / "orchestrator.lua")
       and "LORKHAN_ACTION_CONFIRMATION" in text(SCRIPTS / "player.lua"))
 check("ai.follow accepts exact integer distance 192", "distance%1~=0 or distance~=192" in actions)
 check("invented ai.follow range absent", "distance < 64" not in actions and "distance > 512" not in actions)
@@ -95,10 +96,9 @@ check("vanilla Activate not consumed", "return false -- built-in Activate" in te
 settings = text(SCRIPTS / "settings.lua")
 settings_l10n = text(FILES / "l10n" / "LORKHAN" / "en.yaml")
 player_script = text(SCRIPTS / "player.lua")
-check("OpenMW Scripts page exposes Interact and focused gameplay hotkeys", settings.count("renderer='inputBinding'") == 8
+check("OpenMW Scripts page exposes five focused gameplay hotkeys", settings.count("renderer='lorkhanBinding'") == 5
       and all(fragment in settings for fragment in ["I.Settings.registerPage", "key='LORKHAN_Talk'",
-          "key='LORKHAN_StopDialogue'", "key='LORKHAN_ManualActivate'", "key='LORKHAN_Halt'",
-          "key='LORKHAN_ActionsMenu'", "key='LORKHAN_OpenMic'", "key='LORKHAN_OpenMicMute'"])
+          "key='LORKHAN_ManualActivate'", "key='LORKHAN_Halt'", "key='LORKHAN_OpenMicMute'"])
       and all("trigger('" + key + "'" in settings for key in [
           "LORKHAN_ToggleMode", "LORKHAN_ModelMenu", "LORKHAN_ProfileMenu", "LORKHAN_StatusHud",
           "LORKHAN_History", "LORKHAN_Diagnostics"]))
@@ -150,10 +150,13 @@ check("diagnostics use configured server and native bridge state", all(fragment 
     "nativeValue('serverBaseUrl',nil)", "'/ui/home.php'", "'Server connection: '",
     "'Session ID: '", "'Bridge queue: '", "nativeValue('lastError','none')",
 ]) and 'http://127.0.0.1:7514/LorkhanServer/manage' not in player_lua)
-check("status HUD exposes connection request speech and target state", all(fragment in player_lua for fragment in [
-    "'  |  Request: '", "'  |  Speech: '", "'  |  Target: '", "nativeValue('status','unavailable')"]))
-check("history exposes bounded ordered timestamped request state", all(fragment in player_lua for fragment in [
-    "local pageSize=5", "line.createdAt", "line.status", "line.requestId", "state.ui.historyPage"]))
+hud = player_lua.split("local text='LORKHAN  |  Speech: '", 1)[1].split("return", 1)[0]
+check("status HUD shows speech and target without connection/request noise",
+      "'  |  Target: '" in hud and "Request:" not in hud and "Connection:" not in hud)
+history = player_lua.split("local pageSize=5", 1)[1].split("elseif", 1)[0]
+check("history is paged dialogue without debugging metadata",
+      "state.ui.historyPage" in history and "line.requestId" not in history
+      and "line.status" not in history and "line.createdAt" not in history)
 check("diagnostic correlation IDs are selectable", all(fragment in player_lua for fragment in [
     "state.ui.lastCorrelation", "Correlation IDs (click, select, Ctrl+C)", "readOnly=true"]))
 check("player-local vanilla dialogue is forwarded as bounded context", all(fragment in player_lua for fragment in [
@@ -172,27 +175,26 @@ check("target-effective settings are strict and keep local presentation client-o
           'auto_greeting', 'boredom', 'boredom_delay_seconds', 'combat_barks', 'combat_bark_period_seconds',
           'rechat', 'rechat_max_depth', 'rechat_probability_percent', 'rechat_mode',
           'rechat_strict_targeting', 'open_rechat', 'end_conversation_cooldown_seconds']))
-check("OpenMW Scripts page exposes bounded LORKHAN TTS volume boost", all(fragment in settings for fragment in [
-    "key='ttsVolumeBoost'", "default=3", "integer=true,min=1,max=4"]))
+check("OpenMW Scripts page exposes bounded voice volume percent", all(fragment in settings for fragment in [
+    "key='voice_volume_percent'", "default=100", "integer=true,min=0,max=500"]))
 check("conflict-free F6 and F7 defaults seed only once", all(fragment in settings for fragment in [
     "LORKHANInputDefaults", "defaultsSection:get('version') == nil", "input.KEY.F6", "input.KEY.F7"])
       and "input.KEY.F8" not in settings and "input.KEY.F9" not in settings)
 check("OpenMW settings rows have required localization metadata", all(fragment in settings for fragment in [
     "name='Talk_name',description='Talk_description'", "name='Halt_name',description='Halt_description'",
-    "name='ActorTools_name',description='ActorTools_description'"]))
-compact_hotkey_order = ["key='TalkBinding'", "key='PushToTalkBinding'", "key='OpenMicBinding'",
-                        "key='OpenMicMuteBinding'", "key='StopDialogueBinding'", "key='HaltBinding'",
-                        "key='ManualActivateBinding'", "key='ActorToolsBinding'"]
+    "name='ManualActivate_name',description='ManualActivate_description'"]))
+compact_hotkey_order = ["key='TalkBinding'", "key='PushToTalkBinding'", "key='OpenMicMuteBinding'",
+                        "key='HaltBinding'", "key='ManualActivateBinding'"]
 check("OpenMW settings follow the compact conversation-first menu order",
       all(item in settings for item in compact_hotkey_order)
       and [settings.index(item) for item in compact_hotkey_order]
           == sorted(settings.index(item) for item in compact_hotkey_order))
 check("OpenMW settings use compact labels and visible numeric units", all(fragment in settings_l10n for fragment in [
-    "Talk_name: Interact", "PushToTalk_name: Voice Chat",
+    "Talk_name: Text Chat and Interact", "PushToTalk_name: Voice Chat",
     "BehaviorGroup_name: Conversation & Microphone", "ToolsGroup_name: Display",
-    "InteriorDistance_name: Interior Auto Activate Distance (units)",
-    "OpenMicEndDelay_name: Open Microphone End Delay (ms)",
-    "TtsVolumeBoost_name: AI Voice Volume Boost (x)"]))
+    "AutoHearingRadius_name: Auto Hearing Radius (meters)",
+    "OpenMicEndDelay_name: Open Mic Silence (ms)",
+    "voice_volume_percent_name: AI Voice Volume (%)"]))
 actor_script = text(SCRIPTS / "actor.lua")
 check("dialogue playback uses native Morrowind subtitles without a duplicate status-HUD notification",
       "playSpeech=function(mediaId,actorIdentity,subtitle,volumeBoost) return adapter.playSpeech(mediaId,subtitle,volumeBoost) end" in actor_script
@@ -233,7 +235,7 @@ check("LLM model panel offers only the four semantic slots with async selection 
         "llm_randomizer_enabled==true", "function M.modelSlotView", "function M.settleModelSlot"]))
 check("paused control panels settle from a player frame without stealing the global result lane", all(
     fragment in player_script for fragment in [
-        "local SERVER_CONTROL_PANELS={models=true,profiles=true,narrator=true}",
+        "local SERVER_CONTROL_PANELS={models=true,profiles=true,narrator=true,settings=true}",
         "onFrame=function()", "if not controlsRequestActive or not state.ui.visible",
         "not SERVER_CONTROL_PANELS[state.ui.panel] then return end",
         "local ok,status=pcall(native.pumpSessionControls)", "if status.pending==true then return end",
@@ -270,7 +272,7 @@ check("vanilla actor activation only supplies a passive target hint", all(fragme
     "orchestrator.activate(state,candidate.identity,object)", "orchestrator.selectTarget(state,candidate)"])
     and "return false" not in global_script.split("local function observeActivatedActor", 1)[1].split("end", 1)[0])
 check("loaded actors are reactivated before target validation", all(fragment in global_script for fragment in [
-    "world.activeActors", "orchestrator.load(state,data)\n            activateWorldActors()",
+    "world.activeActors", "orchestrator.load(state,data)", "activateWorldActors()\n            flushPlayerEvents()",
     "local function selectCandidate(candidate,source)",
     "emit('LORKHAN_TARGET_REJECTED',{reason=reason})"]))
 check("global nearest actor fallback handles empty local target searches", all(fragment in global_script for fragment in [

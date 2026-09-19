@@ -197,3 +197,28 @@ server health returned HTTP 200. Local engine and six runtime Lua/localization f
 with matching SHA-256 hashes. No game was launched; audible behavior remains unverified in-game.
 The broad foundation suite retains a pre-existing typed-player-TTS source-string assertion failure.
 OpenMW audio modes adapt direction and distance curves; Skyrim-specific occlusion DSP is not ported.
+
+### Conversation interruption
+
+`cancelTurn(turnId)` reuses `lorkhan.interrupt.v1` for the most recently submitted
+conversation, cancelling its native submission and active event poll without changing
+the session, generation, or microphone capture. Lua stops/reports queued playback and
+fences late results by the replaced turn identity. Lifecycle cancellation stays separate.
+
+### Player speech in vanilla dialogue menus
+
+The dialogue window emits `LorkhanDialogueChoice` with the clicked topic or answer text
+before executing the vanilla response. Lua reuses the player TTS route; the server's
+player connector remains the authority for whether player speech is enabled. NPC
+sentences may prepare concurrently but cannot play until that player line finishes
+or fails. A new choice or closing dialogue cancels both menu speech lanes. The
+frame callback advances playback while dialogue pauses simulation. No save data,
+dialogue results, or server settings are changed by the click hook.
+
+### Chat input focus
+
+The patched Lua TextEdit accepts opt-in `autoFocus`. It focuses the editable widget
+after attachment on creation or a false-to-true transition, with the caret at the
+end. Ordinary redraws preserve existing focus without stealing it from another
+control. Only the main Text Chat and Interact input opts in; other editors retain
+their existing behavior. Closing and reopening the overlay creates a fresh editor.

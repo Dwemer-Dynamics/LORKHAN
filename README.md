@@ -40,8 +40,8 @@ is Windows x64. Linux x64 and macOS arm64 are build/test lanes; Android is defer
 
 ## Start here
 
-1. `CLAUDEX-TASK.md` — self-contained Azure/Claude Code execution assignment.
-2. `RUN-AZURE-CLAUDE-CODE.md` — exact launch, supervision, resume, and completion procedure.
+1. `docs/archive/CLAUDEX-TASK.md` — historical implementation assignment (archived).
+2. `docs/archive/RUN-AZURE-CLAUDE-CODE.md` — historical Azure execution procedure (archived).
 3. `docs/PROGRAM-PLAN.md` — program phases, decisions, gates, and completion rules.
 4. `docs/REFERENCE-STACK-DATAFLOW.md` — CHIM/Dialectic/SYNTH/OpenMW ownership and data flow.
 5. `docs/ENGINE-INTEGRATION-PLAN.md` — exact native patch boundary.

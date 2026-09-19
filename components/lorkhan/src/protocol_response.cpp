@@ -90,6 +90,14 @@ Result<std::string> requireUuid(const json::Object& object, std::string_view key
     return value;
 }
 
+Result<std::string> requireProfileId(const json::Object& object, std::string_view key)
+{
+    auto value=requireString(object,key,1,300);
+    if (!value) return value;
+    if (!isProfileId(value.value())) return invalidSchemaValue<std::string>(std::string(key)+" must be a profile key");
+    return value;
+}
+
 Result<std::uint64_t> requireUnsigned(const json::Object& object, std::string_view key,
     std::uint64_t maximum = kMaximumProtocolInteger, std::uint64_t minimum = 0)
 {
@@ -413,7 +421,7 @@ Result<CanonicalResponse> parseCanonicalResponse(const json::Value& value, const
     auto schema = requireString(*object, "schema");
     auto responseId = requireUuid(*object, "response_id");
     auto installationId = requireUuid(*object, "installation_id");
-    auto profileId = requireUuid(*object, "profile_id");
+    auto profileId = requireProfileId(*object, "profile_id");
     auto playthroughId = requireUuid(*object, "playthrough_id");
     auto sessionId = requireUuid(*object, "session_id");
     auto turnId = requireUuid(*object, "turn_id");
@@ -578,8 +586,8 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
     double destinationX=0,destinationY=0,destinationZ=0;
     std::string destinationCell;
     if (advanced) {
-        if (confirmationRequired != true || actor.value().kind != "player")
-            return invalidSchemaValue<ActionIntent>("advanced action requires player authority and explicit confirmation");
+        if (!confirmationRequired.has_value() || actor.value().kind != "player")
+            return invalidSchemaValue<ActionIntent>("advanced action requires player authority and an explicit confirmation policy");
         if (target.value().kind != "player" && target.value().kind != "npc" && target.value().kind != "creature")
             return invalidSchemaValue<ActionIntent>("advanced action requires a physical target");
         if ((name.value()=="actor.kill"||name.value()=="actor.resurrect"||name.value()=="actor.teleport_to_player") && target.value().kind=="player")
@@ -771,8 +779,8 @@ Result<ActionIntent> parseActionIntent(const json::Value& value, const TurnId& e
 
     if ((intentKind == ActionIntentKind::item_give || intentKind == ActionIntentKind::item_take
             || intentKind == ActionIntentKind::item_pickup || intentKind == ActionIntentKind::gold_give
-            || intentKind == ActionIntentKind::gold_take || intentKind == ActionIntentKind::spell_cast) && confirmationRequired != true)
-        return invalidSchemaValue<ActionIntent>("transfer requires explicit confirmation");
+            || intentKind == ActionIntentKind::gold_take || intentKind == ActionIntentKind::spell_cast) && !confirmationRequired.has_value())
+        return invalidSchemaValue<ActionIntent>("transfer requires an explicit confirmation policy");
 
     return Result<ActionIntent>::success({ActionId(std::move(action).value()),
         TurnId(std::move(turn).value()), std::move(actor).value(), std::move(target).value(),
@@ -806,7 +814,7 @@ Result<ClientSettings> parseClientSettings(const json::Value& value)
     auto rechatActions=requireBoolean(*behavior,"rechat_allow_actions");auto conversationCooldown=requireUnsigned(*behavior,"end_conversation_cooldown_seconds",300);
     auto boredom=requireBoolean(*behavior,"boredom");auto boredomDelay=requireUnsigned(*behavior,"boredom_delay_seconds",86400,30);
     auto combatBarks=requireBoolean(*behavior,"combat_barks");auto combatPeriod=requireUnsigned(*behavior,"combat_bark_period_seconds",600,5);
-    auto recentTurns=requireUnsigned(*memory,"recent_turn_limit",100,1);auto knowledgeLimit=requireUnsigned(*memory,"knowledge_limit",20);
+    auto recentTurns=requireUnsigned(*memory,"recent_turn_limit",200);auto knowledgeLimit=requireUnsigned(*memory,"knowledge_limit",20);
     auto narratorEnabled=requireBoolean(*narrator,"enabled");auto narratorName=requireString(*narrator,"name",1,128);
     auto contextVisibility=requireBoolean(*narrator,"context_visibility");auto inlineMode=requireString(*narrator,"inline_mode",1,16);
     auto welcomeEvents=requireBoolean(*narrator,"welcome_events");auto welcomeCooldown=requireUnsigned(*narrator,"welcome_cooldown_minutes",1440,1);
@@ -854,7 +862,7 @@ Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::V
     const auto nullableUuid=[&](std::string_view key)->Result<std::optional<std::string>>{
         const auto* item=json::find(*root,key);if(!item)return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" is missing");
         if(item->isNull())return Result<std::optional<std::string>>::success(std::nullopt);
-        if(!item->string()||!isCanonicalUuid(*item->string()))
+        if(!item->string()||!(key=="profile_id" ? isProfileId(*item->string()) : isCanonicalUuid(*item->string())))
             return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" must be null or a canonical UUID");
         return Result<std::optional<std::string>>::success(*item->string());};
     const auto nullableRevision=[&](std::string_view key)->Result<std::optional<std::uint64_t>>{
@@ -891,7 +899,7 @@ Result<ControlsResponse::EffectiveSettings> parseEffectiveSettings(const json::V
     auto rechatActions=requireBoolean(*behavior,"rechat_allow_actions");auto conversationCooldown=requireUnsigned(*behavior,"end_conversation_cooldown_seconds",300);
     auto boredom=requireBoolean(*behavior,"boredom");auto boredomDelay=requireUnsigned(*behavior,"boredom_delay_seconds",86400,30);
     auto combatBarks=requireBoolean(*behavior,"combat_barks");auto combatPeriod=requireUnsigned(*behavior,"combat_bark_period_seconds",600,5);
-    auto recentTurns=requireUnsigned(*memory,"recent_turn_limit",100,1);auto knowledgeLimit=requireUnsigned(*memory,"knowledge_limit",20);
+    auto recentTurns=requireUnsigned(*memory,"recent_turn_limit",200);auto knowledgeLimit=requireUnsigned(*memory,"knowledge_limit",20);
     auto narratorEnabled=requireBoolean(*narrator,"enabled");auto narratorName=requireString(*narrator,"name",1,128);
     auto contextVisibility=requireBoolean(*narrator,"context_visibility");auto inlineMode=requireString(*narrator,"inline_mode",1,16);
     auto welcomeEvents=requireBoolean(*narrator,"welcome_events");auto welcomeCooldown=requireUnsigned(*narrator,"welcome_cooldown_minutes",1440,1);
@@ -1166,7 +1174,9 @@ Result<ProtocolEvent> parseEvent(const json::Value& value, const SessionId& resp
             return invalidSchemaValue<ProtocolEvent>("turn failed payload fields mismatch");
         auto code = requireString(*payload, "code");
         auto retriable = requireBoolean(*payload, "retriable");
-        if (!code || (code.value() != "provider_timeout" && code.value() != "provider_unavailable"))
+        if (!code || (code.value() != "provider_timeout" && code.value() != "provider_unavailable"
+            && code.value() != "provider_invalid_output" && code.value() != "provider_invalid_action"
+            && code.value() != "provider_action_not_allowed" && code.value() != "director_plan_failed"))
             return invalidSchemaValue<ProtocolEvent>("turn failed provider code mismatch");
         if (!retriable) return invalidSchemaValue<ProtocolEvent>(retriable.error().message);
         TurnFailedEventPayload failure{code.value() == "provider_timeout" ? ErrorCode::timeout : ErrorCode::provider_unavailable,
@@ -1771,7 +1781,7 @@ Result<ControlsResponse> parseControlsResponse(
         const auto* value=json::find(object.value(),key);
         if(!value)return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" is missing");
         if(value->isNull())return Result<std::optional<std::string>>::success(std::nullopt);
-        if(!value->string()||!isCanonicalUuid(*value->string()))
+        if(!value->string()||!(key=="selected_profile_id" ? isProfileId(*value->string()) : isCanonicalUuid(*value->string())))
             return invalidSchemaValue<std::optional<std::string>>(std::string(key)+" must be null or a canonical UUID");
         return Result<std::optional<std::string>>::success(*value->string());
     };
@@ -1841,7 +1851,7 @@ Result<ControlsResponse> parseControlsResponse(
     for(const auto& value:*profiles){const auto* row=value.object();
         if(!row||!hasExactly(*row,{"profile_id","name","revision"}))
             return invalidSchemaValue<ControlsResponse>("profile fields mismatch");
-        auto id=requireUuid(*row,"profile_id");auto name=requireString(*row,"name",1,256);
+        auto id=requireProfileId(*row,"profile_id");auto name=requireString(*row,"name",1,256);
         auto revision=requireUnsigned(*row,"revision",kMaximumProtocolInteger,1);
         if(!id)return invalidSchemaValue<ControlsResponse>(id.error().message);
         if(!name)return invalidSchemaValue<ControlsResponse>(name.error().message);

@@ -11,7 +11,7 @@
     "lines": {"items": {"$ref": "https://lorkhan.invalid/schemas/v1/response-line.schema.json"}, "maxItems": 64, "type": "array", "uniqueItems": true},
     "ok": {"type": "boolean"},
     "playthrough_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
-    "profile_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "profile_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/profile_id"},
     "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
     "response_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
     "runtime_generation": {"maximum": 9007199254740991, "minimum": 1, "type": "integer"},

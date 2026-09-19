@@ -29,7 +29,7 @@
       "additionalProperties": false,
       "properties": {
         "knowledge_limit": {"maximum": 20, "minimum": 0, "type": "integer"},
-        "recent_turn_limit": {"maximum": 100, "minimum": 1, "type": "integer"}
+        "recent_turn_limit": {"maximum": 200, "minimum": 0, "type": "integer"}
       },
       "required": ["recent_turn_limit", "knowledge_limit"],
       "type": "object"

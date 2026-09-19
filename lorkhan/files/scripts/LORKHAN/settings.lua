@@ -1,11 +1,14 @@
 local input = require('openmw.input')
 local storage = require('openmw.storage')
+local async = require('openmw.async')
+local hearingSettings = require('scripts.LORKHAN.ui.hearing_settings')
 local I = require('openmw.interfaces')
 local nativeOk,native = pcall(require,'openmw.lorkhan')
 
 local PAGE_KEY = 'LORKHAN'
 local HOTKEY_GROUP_KEY = 'SettingsLORKHANControls'
 local AUTO_GROUP_KEY = 'SettingsLORKHANAutoActivate'
+local HEARING_GROUP_KEY = 'SettingsLORKHANHearing'
 local BEHAVIOR_GROUP_KEY = 'SettingsLORKHANBehavior'
 local SOUND_GROUP_KEY = 'SettingsLORKHANSound'
 local AGENTS_GROUP_KEY = 'SettingsLORKHANAgents'
@@ -15,6 +18,17 @@ local LAYOUT_MIGRATION_SECTION = 'LORKHANSettingsLayout'
 local DEFAULTS_VERSION = 7
 
 local behaviorSection = storage.playerSection(BEHAVIOR_GROUP_KEY)
+-- Defaults do not replace saved values; retire the old zero/use-profile timer value.
+local combatBarkInterval = tonumber(behaviorSection:get('combatBarkInterval'))
+if not combatBarkInterval or combatBarkInterval ~= combatBarkInterval
+    or combatBarkInterval < 5 or combatBarkInterval > 120 or combatBarkInterval % 1 ~= 0 then
+    behaviorSection:set('combatBarkInterval', 30)
+end
+local hearingSection = storage.playerSection(HEARING_GROUP_KEY)
+hearingSettings.migrate(hearingSection, storage.playerSection(AUTO_GROUP_KEY))
+if behaviorSection:get('combatBarks') == nil then
+    behaviorSection:set('combatBarks', behaviorSection:get('combatBarksMode') ~= 'Disabled')
+end
 local recordingDeviceId = math.floor(tonumber(behaviorSection:get('recordingDevice')) or -1)
 local recordingDeviceMax = 31
 local recordingDeviceName = 'Windows default'
@@ -101,23 +115,34 @@ I.Settings.registerGroup({
     description='AutoActivateGroup_description',permanentStorage=true,order=1,
     settings={
         {key='enabled',renderer='checkbox',default=true,name='AutoActivateEnabled_name',description='AutoActivateEnabled_description'},
-        {key='interiorDistance',renderer='number',default=1200,name='InteriorDistance_name',description='InteriorDistance_description',argument={integer=true,min=128,max=8192}},
-        {key='exteriorDistance',renderer='number',default=2400,name='ExteriorDistance_name',description='ExteriorDistance_description',argument={integer=true,min=128,max=16384}},
-        {key='hearingPreset',renderer='select',default='Nearby',name='HearingPreset_name',description='HearingPreset_description',argument={l10n='LORKHAN',items={'TargetsOnly','Nearby','Wide'}}},
-        {key='interiorHearingDistance',renderer='number',default=500,name='InteriorHearingDistance_name',description='InteriorHearingDistance_description',argument={integer=true,min=128,max=8192}},
-        {key='exteriorHearingDistance',renderer='number',default=1000,name='ExteriorHearingDistance_name',description='ExteriorHearingDistance_description',argument={integer=true,min=128,max=16384}},
         {key='addHostile',renderer='checkbox',default=false,name='AddHostile_name',description='AddHostile_description'},
         {key='addCreatures',renderer='checkbox',default=false,name='AddCreatures_name',description='AddCreatures_description'},
     },
 })
 
 I.Settings.registerGroup({
+    key=HEARING_GROUP_KEY,page=PAGE_KEY,l10n='LORKHAN',name='HearingGroup_name',
+    description='HearingGroup_description',permanentStorage=true,order=2,
+    settings={
+        {key='hearingPreset',renderer='select',default='Recommended',name='HearingPreset_name',description='HearingPreset_description',argument={l10n='LORKHAN',items={'Realistic','Recommended','Extended','Custom'}}},
+        {key='autoHearingRadiusMeters',renderer='number',default=10,name='AutoHearingRadius_name',description='AutoHearingRadius_description',argument={integer=true,min=1,max=20}},
+        {key='interiorHearingDistance',renderer='number',default=1000,name='InteriorHearingDistance_name',description='InteriorHearingDistance_description',argument={integer=true,min=50,max=5000}},
+        {key='exteriorHearingDistance',renderer='number',default=1800,name='ExteriorHearingDistance_name',description='ExteriorHearingDistance_description',argument={integer=true,min=50,max=5000}},
+        {key='interiorDistance',renderer='number',default=1200,name='InteriorDistance_name',description='InteriorDistance_description',argument={integer=true,min=10,max=5000}},
+        {key='exteriorDistance',renderer='number',default=2400,name='ExteriorDistance_name',description='ExteriorDistance_description',argument={integer=true,min=10,max=5000}},
+    },
+})
+hearingSection:subscribe(async:callback(function(_, key)
+    hearingSettings.changed(hearingSection, key)
+end))
+
+I.Settings.registerGroup({
     key=BEHAVIOR_GROUP_KEY,page=PAGE_KEY,l10n='LORKHAN',name='BehaviorGroup_name',
-    description='BehaviorGroup_description',permanentStorage=true,order=2,
+    description='BehaviorGroup_description',permanentStorage=true,order=3,
     settings={
         {key='allowCombatDialogue',renderer='checkbox',default=true,name='AllowCombatDialogue_name',description='AllowCombatDialogue_description'},
-        {key='combatBarksMode',renderer='select',default='UseProfile',name='CombatBarks_name',description='CombatBarks_description',argument={l10n='LORKHAN',items={'UseProfile','Enabled','Disabled'}}},
-        {key='combatBarkInterval',renderer='number',default=30,name='CombatBarkPeriod_name',description='CombatBarkPeriod_description',argument={integer=true,min=0,max=600}},
+        {key='combatBarks',renderer='checkbox',default=true,name='CombatBarks_name',description='CombatBarks_description'},
+        {key='combatBarkInterval',renderer='number',default=30,name='CombatBarkPeriod_name',description='CombatBarkPeriod_description',argument={integer=true,min=5,max=120}},
         {key='cancelDialogueOnCombat',renderer='checkbox',default=true,name='CancelDialogueOnCombat_name',description='CancelDialogueOnCombat_description'},
         {key='openMicEnabled',renderer='checkbox',default=false,name='OpenMicEnabled_name',description='OpenMicEnabled_description'},
         {key='openMicSensitivity',renderer='number',default=1000,name='OpenMicSensitivity_name',description='OpenMicSensitivity_description',argument={integer=true,min=100,max=5000}},
@@ -131,7 +156,7 @@ behaviorSection:set('recordingDeviceName',recordingDeviceName)
 
 I.Settings.registerGroup({
     key=SOUND_GROUP_KEY,page=PAGE_KEY,l10n='LORKHAN',name='SoundGroup_name',
-    description='SoundGroup_description',permanentStorage=true,order=3,
+    description='SoundGroup_description',permanentStorage=true,order=4,
     settings={
         {key='voice_volume_percent',renderer='number',default=100,name='voice_volume_percent_name',description='voice_volume_percent_description',argument={integer=true,min=0,max=500}},
         {key='audio_mode',renderer='select',default='Normal3D',name='audio_mode_name',description='audio_mode_description',argument={l10n='LORKHAN',items={'Flat3D','Normal3D','Realistic3D','Mono','MonoEffects'}}},
@@ -154,7 +179,7 @@ I.Settings.registerGroup({
 
 I.Settings.registerGroup({
     key=AGENTS_GROUP_KEY,page=PAGE_KEY,l10n='LORKHAN',name='AgentsGroup_name',
-    description='AgentsGroup_description',permanentStorage=true,order=4,
+    description='AgentsGroup_description',permanentStorage=true,order=5,
     settings={
         {key='actionsEnabled',renderer='checkbox',default=true,name='ActionsEnabled_name',description='ActionsEnabled_description'},
     },
@@ -162,7 +187,7 @@ I.Settings.registerGroup({
 
 I.Settings.registerGroup({
     key=TOOLS_GROUP_KEY,page=PAGE_KEY,l10n='LORKHAN',name='ToolsGroup_name',
-    description='ToolsGroup_description',permanentStorage=true,order=5,
+    description='ToolsGroup_description',permanentStorage=true,order=6,
     settings={
         {key='showStatusHud',renderer='checkbox',default=false,name='ShowStatusHud_name',description='ShowStatusHud_description'},
         {key='connectionTimeoutSeconds',renderer='number',default=30,name='ConnectionTimeout_name',description='ConnectionTimeout_description',argument={integer=true,min=15,max=300}},

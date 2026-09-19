@@ -105,6 +105,13 @@ void testUtf8()
     CHECK(!lorkhan::isValidUtf8(std::string("\xF4\x90\x80\x80", 4)));
     CHECK(!lorkhan::requireValidUtf8("abcd", 3));
     CHECK(lorkhan::isCanonicalUuid(kSession));
+    const auto referenceProfile=std::string("ref:")+kInstallation+":"+kPlaythrough+":morrowind.esm|4294967295";
+    CHECK(lorkhan::isProfileId(referenceProfile));
+    CHECK(!lorkhan::isCanonicalUuid(referenceProfile));
+    CHECK(!lorkhan::isProfileId(referenceProfile+"0"));
+    CHECK(!lorkhan::isProfileId(std::string("ref:")+kInstallation+":"+kPlaythrough+":Morrowind.esm|1"));
+    CHECK(!lorkhan::isProfileId(std::string("ref:")+kInstallation+":"+kPlaythrough+":../morrowind.esm|1"));
+    CHECK(!lorkhan::isProfileId(std::string("ref:")+kInstallation+":"+kPlaythrough+":morrowind.esm|01"));
     CHECK(!lorkhan::isCanonicalUuid("01900000-0000-7000-8000-00000000000"));
     CHECK(!lorkhan::isCanonicalUuid("01900000-0000-7000-8000-00000000000g"));
     CHECK(!lorkhan::isCanonicalUuid("01900000-0000-7000-8000-00000000000A"));
@@ -284,6 +291,14 @@ void testAcceptedProtocolResponses()
     const std::string sessionBody = R"({"schema":"lorkhan.session.accepted.v1","message_id":"01900000-0000-7000-8000-000000000006","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"capabilities":["dialogue.text","speech.say"],"config_revision":"revision-9","client_settings":{"schema":"lorkhan.client-settings.v1","behavior":{"auto_greeting":false,"rechat":false,"rechat_delay_seconds":45,"rechat_max_depth":2,"rechat_probability_percent":50,"rechat_mode":"random","rechat_strict_targeting":false,"open_rechat":true,"rechat_allow_actions":false,"end_conversation_cooldown_seconds":60,"boredom":false,"boredom_delay_seconds":180,"combat_barks":false,"combat_bark_period_seconds":600},"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"welcome_cooldown_minutes":10,"random_events":false,"random_chance_percent":15,"random_cooldown_rounds":2,"bored_events":false,"bored_chance_percent":25,"quest_events":false,"quest_chance_percent":10,"quest_cooldown_minutes":3,"book_events":false},"presentation":{"show_status_hud":true,"transcript_rows":8,"tts_volume_boost":3},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"event_cursor":3})";
     auto session = lorkhan::parseSessionAcceptedResponse(sessionBody,jsonHeaders);
     CHECK(session && session.value().clientSettings.behavior.aiEnabled);
+    for (const int limit : {0, 200, 201, -1}) {
+        auto changed = sessionBody;
+        const std::string original = "\"recent_turn_limit\":20";
+        changed.replace(changed.find(original), original.size(), "\"recent_turn_limit\":" + std::to_string(limit));
+        auto parsed = lorkhan::parseSessionAcceptedResponse(changed, jsonHeaders);
+        if (limit == 0 || limit == 200) CHECK(parsed);
+        else CHECK(!parsed);
+    }
     for(const auto& identity : {std::string(kMessage),std::string("invalid")}) {
         auto changed=sessionBody;changed.insert(1,"\"character_id\":\""+identity+"\",");
         auto parsed=lorkhan::parseSessionAcceptedResponse(changed,jsonHeaders);
@@ -482,6 +497,20 @@ void testAcceptedProtocolResponses()
 
     const std::string controlsJson =
         R"({"schema":"lorkhan.controls.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"target":{"kind":"npc","record_id":"fargoth","refnum":{"index":42,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"interior","name":"Seyda Neen, Census and Excise Office"},"display_name":"Fargoth"},"selected_model_slot_key":"standard","resolved_model_slot_key":"standard","selected_profile_id":null,"narrator_profile_id":"10000000-0000-4000-8000-000000000408","effective_settings":{"schema":"lorkhan.effective-settings.v1","change_token":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","profile_id":null,"profile_revision":null,"core_profile_id":"10000000-0000-4000-8000-000000000409","core_profile_revision":1,"settings":{"behavior":{"auto_greeting":false,"rechat":false,"rechat_delay_seconds":45,"rechat_max_depth":2,"rechat_probability_percent":50,"rechat_mode":"random","rechat_strict_targeting":false,"open_rechat":true,"rechat_allow_actions":false,"end_conversation_cooldown_seconds":60,"boredom":false,"boredom_delay_seconds":180,"combat_barks":false,"combat_bark_period_seconds":600},"memory":{"recent_turn_limit":20,"knowledge_limit":5},"narrator":{"enabled":false,"name":"The Narrator","context_visibility":true,"inline_mode":"Disabled","welcome_events":false,"welcome_cooldown_minutes":10,"random_events":false,"random_chance_percent":15,"random_cooldown_rounds":2,"bored_events":false,"bored_chance_percent":25,"quest_events":false,"quest_chance_percent":10,"quest_cooldown_minutes":3,"book_events":false},"presentation":{"show_status_hud":true,"transcript_rows":8,"tts_volume_boost":3},"safety":{"actions_enabled":true,"allow_hostile":false,"allow_creatures":false}},"routing":{"llm_configuration_id":"10000000-0000-4000-8000-000000000406"},"source_map":{"settings.memory.recent_turn_limit":"global","settings.memory.knowledge_limit":"global","settings.narrator.enabled":"global","settings.narrator.name":"global","settings.narrator.context_visibility":"global","settings.narrator.inline_mode":"global","settings.narrator.welcome_events":"narrator_profile","settings.narrator.random_events":"global","settings.narrator.quest_events":"global","settings.narrator.book_events":"global","settings.safety.actions_enabled":"global","settings.safety.allow_hostile":"global","settings.safety.allow_creatures":"global","routing.llm_configuration_id":"core_profile"}},"model_slots":[{"key":"standard","label":"Standard","available":true,"configuration_id":"10000000-0000-4000-8000-000000000406","configuration_name":"Dialogue","revision":1,"driver":"configured","model":"gpt-5-mini"},{"key":"fast","label":"Fast","available":false,"configuration_id":null,"configuration_name":null,"revision":null,"driver":null,"model":null},{"key":"powerful","label":"Powerful","available":false,"configuration_id":null,"configuration_name":null,"revision":null,"driver":null,"model":null},{"key":"experimental","label":"Experimental","available":false,"configuration_id":null,"configuration_name":null,"revision":null,"driver":null,"model":null}],"profiles":[{"profile_id":"10000000-0000-4000-8000-000000000407","name":"Fargoth","revision":2}]})";
+    // Exercise actual response parsing, not only the standalone key validator.
+    const auto npcProfile=std::string("ref:")+kInstallation+":"+kPlaythrough+":morrowind.esm|42";
+    auto scopedControls=controlsJson;
+    const std::string oldNpc="10000000-0000-4000-8000-000000000407";
+    scopedControls.replace(scopedControls.find(oldNpc),oldNpc.size(),npcProfile);
+    const std::string selected="\"selected_profile_id\":null";
+    scopedControls.replace(scopedControls.find(selected),selected.size(),"\"selected_profile_id\":\""+npcProfile+"\"");
+    const std::string effective="\"profile_id\":null,\"profile_revision\":null";
+    scopedControls.replace(scopedControls.find(effective),effective.size(),"\"profile_id\":\""+npcProfile+"\",\"profile_revision\":2");
+    auto scoped=lorkhan::parseControlsResponse(scopedControls,jsonHeaders);
+    CHECK(scoped && scoped.value().selectedProfileId==npcProfile && scoped.value().effectiveSettings.profileId==npcProfile);
+    const std::string core="10000000-0000-4000-8000-000000000409";
+    scopedControls.replace(scopedControls.find(core),core.size(),npcProfile);
+    CHECK(!lorkhan::parseControlsResponse(scopedControls,jsonHeaders));
     auto controls = lorkhan::parseControlsResponse(controlsJson, jsonHeaders);
     CHECK(controls && controls.value().effectiveSettings.behavior.aiEnabled);
     for (const std::string value : {"false", "null", "1"}) {
@@ -611,6 +640,16 @@ void testProtocolEventResponses()
           {"schema":"lorkhan.autonomy-directive.v1","schedule_id":"01900000-0000-7000-8000-000000000010","kind":"rechat","issued_at":"2026-07-18T20:00:08Z"}
         ]
     })json";
+    // A provider rejection must deliver its terminal event, not poison polling forever.
+    for (const auto* code : {"provider_invalid_output", "provider_invalid_action",
+             "provider_action_not_allowed", "director_plan_failed"}) {
+        std::string rejected = events;
+        rejected.replace(rejected.find("provider_timeout"), std::string("provider_timeout").size(), code);
+        CHECK(lorkhan::parseEventsResponse(rejected, jsonHeaders));
+    }
+    std::string unknownFailure = events;
+    unknownFailure.replace(unknownFailure.find("provider_timeout"), std::string("provider_timeout").size(), "untrusted_failure");
+    CHECK(!lorkhan::parseEventsResponse(unknownFailure, jsonHeaders));
     auto parsed = lorkhan::parseEventsResponse(events, jsonHeaders);
     CHECK(parsed && parsed.value().session == lorkhan::SessionId(kSession)
         && parsed.value().generation == lorkhan::Generation(7)
@@ -759,7 +798,7 @@ void testProtocolEventResponses()
         CHECK(lorkhan::parseEventsResponse(wire,jsonHeaders));
         auto noApproval=wire;const auto approval=noApproval.find("\"confirmation_required\":true",approachName);
         noApproval.replace(approval,std::string("\"confirmation_required\":true").size(),"\"confirmation_required\":false");
-        CHECK(!lorkhan::parseEventsResponse(noApproval,jsonHeaders));
+        CHECK(lorkhan::parseEventsResponse(noApproval,jsonHeaders));
         auto unknown=wire;const auto parametersStart=unknown.find("\"parameters\":{",approachName);
         unknown.insert(parametersStart+std::string("\"parameters\":{").size(),"\"script\":\"bad\",");
         CHECK(!lorkhan::parseEventsResponse(unknown,jsonHeaders));
@@ -797,7 +836,7 @@ void testProtocolEventResponses()
         CHECK(lorkhan::parseEventsResponse(wire,jsonHeaders));
         auto noApproval=wire;const auto approval=noApproval.find("\"confirmation_required\":true",approachName);
         noApproval.replace(approval,std::string("\"confirmation_required\":true").size(),"\"confirmation_required\":false");
-        CHECK(!lorkhan::parseEventsResponse(noApproval,jsonHeaders));
+        CHECK(lorkhan::parseEventsResponse(noApproval,jsonHeaders));
         auto wrongTier=wire;wrongTier.replace(wrongTier.find("\"tier\":2",approachName),8,"\"tier\":1");
         CHECK(!lorkhan::parseEventsResponse(wrongTier,jsonHeaders));
         auto arbitrary=wire;const auto position=arbitrary.find("\"parameters\":",approachName);
@@ -824,7 +863,7 @@ void testProtocolEventResponses()
         CHECK(lorkhan::parseEventsResponse(wire,jsonHeaders));
         auto denied=wire;const auto approval=denied.find("\"confirmation_required\":true",approachName);
         denied.replace(approval,std::string("\"confirmation_required\":true").size(),"\"confirmation_required\":false");
-        CHECK(!lorkhan::parseEventsResponse(denied,jsonHeaders));
+        CHECK(lorkhan::parseEventsResponse(denied,jsonHeaders));
         auto empty=wire;empty.replace(empty.find("fire bite",params),std::string("fire bite").size(),"");
         CHECK(!lorkhan::parseEventsResponse(empty,jsonHeaders));
     }
@@ -967,6 +1006,11 @@ void testBridgeDialogueDeliveryValidation()
     auto clock = std::make_shared<FakeClock>();
     lorkhan::BridgeService bridge(std::make_unique<FakeTransport>(state), clock);
     const auto generation = bridge.generation();
+    // A cancellation has its own operation ID but refers to the original dialogue request.
+    CHECK(bridge.enqueue({lorkhan::RequestId(uuidFor(79)), lorkhan::SessionId(kSession), generation,
+        lorkhan::RequestKind::interruption, lorkhan::InterruptionRequest{lorkhan::MessageId(kMessage),
+            lorkhan::RequestId(uuidFor(78)), lorkhan::TurnId(kTurn), lorkhan::SessionId(kSession),
+            generation, "2026-07-19T20:00:02.123Z", "superseded_by_player"}}));
     const auto makeDelivery = [&](std::string id) {
         return lorkhan::OutboundRequest{lorkhan::RequestId(id), lorkhan::SessionId(kSession), generation,
             lorkhan::RequestKind::dialogue_delivery_result,

@@ -15,6 +15,16 @@ function M.isUuid(value)
     return a and #a==8 and #b==4 and #c==4 and #d==4 and #e==12 or false
 end
 
+-- Only NPC profile fields accept the scoped placed-reference key; other IDs remain UUIDs.
+function M.isProfileId(value)
+    if M.isUuid(value) then return true end
+    if type(value)~='string' or #value>300 then return false end
+    local installation,playthrough,file,index=value:match('^ref:([^:]+):([^:]+):([^|]+)|(%d+)$')
+    return installation~=nil and M.isUuid(installation) and M.isUuid(playthrough)
+        and not file:find('[A-Z%c/\\:|]') and index==tostring(tonumber(index))
+        and tonumber(index)<=4294967295 or false
+end
+
 local function validInteger(value,minimum,maximum)
     return type(value)=='number' and value%1==0 and value>=(minimum or 0) and value<=(maximum or 9007199254740991)
 end
@@ -36,7 +46,7 @@ end
 function M.validateCanonicalResponse(response,event)
     if type(response)~='table' or response.schema~='lorkhan.response.v1' then return nil,'invalid_response_schema' end
     for _,key in ipairs({'response_id','installation_id','profile_id','playthrough_id','session_id','turn_id','request_id'}) do
-        if not M.isUuid(response[key]) then return nil,'invalid_response_'..key end
+        if not (key=='profile_id' and M.isProfileId(response[key]) or key~='profile_id' and M.isUuid(response[key])) then return nil,'invalid_response_'..key end
     end
     if event and (response.response_id~=event.message_id or response.request_id~=event.request_id
         or response.turn_id~=event.turn_id or response.session_id~=event.session_id
@@ -115,7 +125,7 @@ function M.turn(args)
         'session_id','generation','runtime_generation','created_at','platform','content_fingerprint','text','language','speaker','target','audience','context','ui_source'}
     for _, key in ipairs(required) do if args[key] == nil then return nil, 'missing_' .. key end end
     for _, key in ipairs({'message_id','request_id','turn_id','installation_id','profile_id','playthrough_id','session_id'}) do
-        if not M.isUuid(args[key]) then return nil,'invalid_'..key end
+        if not (key=='profile_id' and M.isProfileId(args[key]) or key~='profile_id' and M.isUuid(args[key])) then return nil,'invalid_'..key end
     end
     for _,key in ipairs({'generation','runtime_generation'}) do
         if type(args[key])~='number' or args[key]%1~=0 or args[key]<1 or args[key]>9007199254740991 then
@@ -321,7 +331,7 @@ end
 
 -- Real RPG observations stay separate from spoken dialogue and model-authored event text.
 function M.rpgEvent(args)
-    if type(args)~='table' or not ({levelup=true,combat_end=true,sleep=true,wait=true})[args.kind] then
+    if type(args)~='table' or not ({levelup=true,combat_end=true,sleep=true,wait=true,lockpick=true})[args.kind] then
         return nil,'invalid_rpg_event'
     end
     if not identity.validate(args.player) or args.player.kind~='player' then return nil,'invalid_rpg_player' end
@@ -435,7 +445,7 @@ function M.dialogueDeliveryResult(args)
     local required={'message_id','request_id','dialogue_message_id','turn_id','session_id','generation','speaker','status','reason_code','completed_at'}
     for _,key in ipairs(required) do if args[key]==nil then return nil,'missing_'..key end end
     for _,key in ipairs({'message_id','request_id','dialogue_message_id','turn_id','session_id'}) do
-        if not M.isUuid(args[key]) then return nil,'invalid_'..key end
+        if not (key=='profile_id' and M.isProfileId(args[key]) or key~='profile_id' and M.isUuid(args[key])) then return nil,'invalid_'..key end
     end
     if type(args.generation)~='number' or args.generation%1~=0 or args.generation<0 then return nil,'invalid_generation' end
     if not identity.validate(args.speaker) then return nil,'invalid_speaker' end

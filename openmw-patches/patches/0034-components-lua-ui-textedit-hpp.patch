@@ -1,0 +1,11 @@
+diff --git a/components/lua_ui/textedit.hpp b/components/lua_ui/textedit.hpp
+index 2b8425f22ed60821b1cb07d878e30994d913126f..5f4608216233911f1ebf9916bd468f4125ce5d03 100644
+--- a/components/lua_ui/textedit.hpp
++++ b/components/lua_ui/textedit.hpp
+@@ -32,6 +32,7 @@
+         MyGUI::EditBox* mEditBox = nullptr;
+         bool mMultiline{ false };
+         bool mAutoSize{ false };
++        bool mAutoFocus{ false };
+     };
+ }

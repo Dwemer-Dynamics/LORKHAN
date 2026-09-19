@@ -238,7 +238,8 @@
         "lorkhan/tests/test_contract_harness.py",
         "scripts/protocol/generate_manifest.py",
         "scripts/protocol/validate.py",
-        "tests/test_protocol.py"
+        "tests/test_protocol.py",
+        "lorkhan/fixtures/v1/valid/gamedata-disposition.json"
       ],
       "source_repository": null,
       "source_commit": null,
@@ -340,7 +341,11 @@
         "lorkhan/files/scripts/LORKHAN/ui/selector.lua",
         "lorkhan/files/scripts/LORKHAN/ui/settings.lua",
         "lorkhan/files/scripts/LORKHAN/ui/state.lua",
-        "lorkhan/files/scripts/LORKHAN/util.lua"
+        "lorkhan/files/scripts/LORKHAN/util.lua",
+        "lorkhan/files/scripts/LORKHAN/disposition.lua",
+        "lorkhan/files/scripts/LORKHAN/hearing.lua",
+        "lorkhan/files/scripts/LORKHAN/ui/hearing_settings.lua",
+        "lorkhan/files/scripts/LORKHAN/ui/profile_requests.lua"
       ],
       "source_repository": null,
       "source_commit": null,
@@ -405,7 +410,11 @@
         "docs/evidence/proof-ledger.json",
         "docs/evidence/source-ledger.json",
         "docs/evidence/source-pins.md",
-        "docs/evidence/start-gate-blocker.md"
+        "docs/evidence/start-gate-blocker.md",
+        "docs/SOURCE-LAYOUT.md",
+        "docs/archive/CLAUDEX-TASK.md",
+        "docs/archive/CONTINUATION-NOTES.md",
+        "docs/archive/RUN-AZURE-CLAUDE-CODE.md"
       ],
       "source_repository": null,
       "source_commit": null,
@@ -486,6 +495,8 @@
         "apps/openmw/mwworld/esmstore.hpp",
         "apps/openmw/mwworld/worldimp.cpp",
         "components/lua/scriptscontainer.cpp",
+        "components/lua_ui/textedit.cpp",
+        "components/lua_ui/textedit.hpp",
         "openmw-patches/patches/0014-apps-openmw-mwbase-luamanager-hpp.patch",
         "openmw-patches/patches/0015-apps-openmw-mwlua-luamanagerimp-hpp.patch",
         "openmw-patches/patches/0016-apps-openmw-mwmechanics-spellcasting-cpp.patch",
@@ -507,7 +518,11 @@
         "apps/openmw/mwsound/openaloutput.hpp",
         "openmw-patches/patches/0031-apps-openmw-mwsound-openaloutput-hpp.patch",
         "apps/openmw/mwsound/openaloutput.cpp",
-        "openmw-patches/patches/0032-apps-openmw-mwsound-openaloutput-cpp.patch"
+        "openmw-patches/patches/0032-apps-openmw-mwsound-openaloutput-cpp.patch",
+        "apps/openmw/mwmechanics/security.cpp",
+        "openmw-patches/patches/0033-components-lua-ui-textedit-cpp.patch",
+        "openmw-patches/patches/0034-components-lua-ui-textedit-hpp.patch",
+        "openmw-patches/patches/0035-apps-openmw-mwmechanics-security-cpp.patch"
       ],
       "source_repository": "https://gitlab.com/OpenMW/openmw.git",
       "source_commit": "f4bec41444214a7903bebd178389ca22ca13f646",

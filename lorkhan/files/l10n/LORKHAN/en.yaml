@@ -42,14 +42,14 @@ AutoActivateGroup_name: Auto Activate
 AutoActivateGroup_description: Manage nearby NPCs automatically.
 AutoActivateEnabled_name: Enable Auto Activate
 AutoActivateEnabled_description: Activate nearby NPCs automatically.
-InteriorDistance_name: Interior Activation Range
-InteriorDistance_description: Activation distance indoors, in game units.
-ExteriorDistance_name: Exterior Activation Range
-ExteriorDistance_description: Activation distance outdoors, in game units.
-InteriorHearingDistance_name: Interior Hearing Range
-InteriorHearingDistance_description: Conversation range indoors, in game units.
-ExteriorHearingDistance_name: Exterior Hearing Range
-ExteriorHearingDistance_description: Conversation range outdoors, in game units.
+InteriorDistance_name: Interior Auto Activate Distance
+InteriorDistance_description: Auto Activate NPCs within this distance indoors.
+ExteriorDistance_name: Exterior Auto Activate Distance
+ExteriorDistance_description: Auto Activate NPCs within this distance outdoors.
+InteriorHearingDistance_name: Interior Hearing Distance
+InteriorHearingDistance_description: Indoor range for listeners and the audience, in game units. Closed doors can block hearing outside the Auto Hearing Radius. Speech mode and sneaking adjust the range.
+ExteriorHearingDistance_name: Exterior Hearing Distance
+ExteriorHearingDistance_description: Outdoor range for listeners and the audience, in game units. Distance fading can reduce audibility. Speech mode and sneaking adjust the range.
 AddHostile_name: Include Hostile NPCs
 AddHostile_description: Include hostile NPCs in automatic activation.
 AddCreatures_name: Include Creatures
@@ -78,10 +78,10 @@ AvoidAutonomyWhenSneaking_name: Pause autonomous dialogue while sneaking
 AvoidAutonomyWhenSneaking_description: Pause idle conversations while sneaking.
 CancelDialogueOnCombat_name: Stop Dialogue in Combat
 CancelDialogueOnCombat_description: Stop dialogue and recording when an NPC attacks you.
-CombatBarks_name: Combat Barks
-CombatBarks_description: Use the server profile, enable, or disable short combat remarks. Requires Allow Combat Dialogue.
-CombatBarkPeriod_name: Combat bark interval
-CombatBarkPeriod_description: Seconds between combat remarks. Zero uses the profile. The server profile remains the minimum cooldown.
+CombatBarks_name: Enable Combat Barks
+CombatBarks_description: Let combatants periodically shout combat barks.
+CombatBarkPeriod_name: Combat Bark Timer (seconds)
+CombatBarkPeriod_description: Seconds between combat barks.
 OpenMicSensitivity_name: Open Mic Sensitivity
 OpenMicSensitivity_description: Higher values require louder speech.
 OpenMicEndDelay_name: Open Mic Silence (ms)
@@ -156,9 +156,6 @@ invert_heading_description: "Reverse the directional audio heading."
 pause_on_game_pause_name: Pause Audio with Game
 pause_on_game_pause_description: "Pause dialogue playback while the game is paused. Leave off to hear dialogue in menus."
 
-UseProfile: Use Profile
-Enabled: On
-Disabled: Off
 Flat3D: Flat Directional
 Normal3D: Normal 3D
 Realistic3D: Realistic 3D
@@ -168,8 +165,13 @@ MonoEffects: Mono + Effects
 voice_volume_percent_name: AI Voice Volume (%)
 voice_volume_percent_description: "Scale AI speech volume. Zero mutes audio. Existing saved volume boost is preserved internally."
 
-HearingPreset_name: Nearby Hearing
-HearingPreset_description: "Targets Only excludes incidental listeners. Nearby uses the interior/exterior hearing radius. Wide doubles it. Selected targets and groups remain included; no wall occlusion is simulated."
-TargetsOnly: Targets Only
-Nearby: Nearby
-Wide: Wide
+HearingPreset_name: Hearing Preset
+HearingPreset_description: Realistic keeps conversations close. Recommended balances range and filtering. Extended gives groups more room. Custom uses your sliders. Presets change only hearing ranges.
+HearingGroup_name: Hearing & Awareness
+HearingGroup_description: Hearing ranges and automatic activation.
+AutoHearingRadius_name: Auto Hearing Radius (meters)
+AutoHearingRadius_description: Nearby NPCs hear you without door or path checks, within the hearing distance. In meters; 1 meter is 70 game units. Whispering and sneaking reduce it. Close mode does not use this allowance.
+Realistic: Realistic
+Recommended: Recommended
+Extended: Extended
+Custom: Custom

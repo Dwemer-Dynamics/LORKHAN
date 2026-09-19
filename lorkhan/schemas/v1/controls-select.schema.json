@@ -35,7 +35,7 @@
     "selection_id": {
       "oneOf": [
         {
-          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+          "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/profile_id"
         },
         {
           "type": "null"

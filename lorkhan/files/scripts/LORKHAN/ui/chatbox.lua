@@ -17,7 +17,7 @@ local function text(ui,util,value,size,color,events)
 end
 
 -- One single-line editor drawn the same way everywhere so focus behaviour stays identical.
-local function lineEdit(context,width,value,events)
+local function lineEdit(context,width,value,events,autoFocus)
     local ui,util=context.ui,context.util
     local content={}
     if context.whiteTexture then
@@ -27,7 +27,7 @@ local function lineEdit(context,width,value,events)
     end
     content[#content+1]={type=ui.TYPE.TextEdit,props={position=util.vector2(8,4),
         text=value or '',size=util.vector2(width-16,34),multiline=false,wordWrap=false,
-        readOnly=false,autoSize=false,textSize=18,textColor=util.color.rgb(1.0,0.92,0.72),
+        readOnly=false,autoSize=false,autoFocus=autoFocus==true,textSize=18,textColor=util.color.rgb(1.0,0.92,0.72),
         propagateEvents=false},events=events}
     return {type=ui.TYPE.Container,props={size=util.vector2(width,44)},content=ui.content(content)}
 end
@@ -64,7 +64,7 @@ function M.build(context)
     rows[#rows+1]=text(ui,util,'Mood: '..mood..'  |  Mode: '..(turnMode or savedMode)..
         (turnMode and ' (this turn)' or ''),15,turnMode and 'highlight' or 'status')
     rows[#rows+1]=lineEdit(context,520,context.text,
-        {textChanged=context.onTextChanged,keyPress=context.onKeyPress})
+        {textChanged=context.onTextChanged,keyPress=context.onKeyPress},true)
     rows[#rows+1]=text(ui,util,'Press Enter or select Send',14,'detail')
     for _,entry in ipairs(MENU) do
         if entry.key=='aiEnabled' then

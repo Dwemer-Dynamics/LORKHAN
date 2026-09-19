@@ -313,7 +313,7 @@
       "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
     },
     "profile_id": {
-      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+      "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/profile_id"
     },
     "request_id": {
       "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"

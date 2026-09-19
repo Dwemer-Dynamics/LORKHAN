@@ -1322,7 +1322,7 @@ namespace MWLua
             {
                 using K=lorkhan::ActionIntentKind;const auto& intent=*record.intent;
                 record.reason="advanced_precondition_failed";
-                if(!record.snapshot->advanced||intent.confirmationRequired!=true||!actor||!target||!player
+                if(!record.snapshot->advanced||!intent.confirmationRequired.has_value()||!actor||!target||!player
                     ||actor->identity.kind!="player"||!sameTransferActor(actor->identity,player->identity))return;
                 auto world=MWBase::Environment::get().getWorld();
                 const auto playerPtr=player->object.ptrOrEmpty(),targetPtr=target->object.ptrOrEmpty();
@@ -1620,7 +1620,8 @@ namespace MWLua
                     if(semanticModel&&(!selection||(*selection!="standard"&&*selection!="fast"
                         &&*selection!="powerful"&&*selection!="experimental")))
                         throw std::runtime_error("invalid_session_control_selection");
-                    if(!semanticModel&&selection&&!lorkhan::isCanonicalUuid(*selection))
+                    if(!semanticModel&&selection&&!(mapped==lorkhan::SessionControlKind::narrator_profile_generate
+                        ? lorkhan::isCanonicalUuid(*selection) : lorkhan::isProfileId(*selection)))
                         throw std::runtime_error("invalid_session_control_selection");
                     const lorkhan::RequestId request(uuid());const lorkhan::MessageId message(uuid());
                     lorkhan::OutboundRequest outbound{request,*m_session,m_service->generation(),

@@ -4,7 +4,7 @@ Recorded: 2026-07-19
 
 ## Required gate
 
-`CLAUDEX-TASK.md` requires both `RANGROO/SYNTH` and `RANGROO/Synthserver` to complete their documented non-game stop conditions before source import. The import source must be each final tested `main` SHA. Planning documents and original LORKHAN work may continue, but predecessor source must not be imported while this gate is open.
+`docs/archive/CLAUDEX-TASK.md` requires both `RANGROO/SYNTH` and `RANGROO/Synthserver` to complete their documented non-game stop conditions before source import. The import source must be each final tested `main` SHA. Planning documents and original LORKHAN work may continue, but predecessor source must not be imported while this gate is open.
 
 ## Observed repositories
 

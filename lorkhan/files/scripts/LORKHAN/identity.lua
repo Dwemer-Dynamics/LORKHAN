@@ -23,7 +23,9 @@ function M.validate(identity)
     if type(identity.record_id) ~= 'string' or identity.record_id == '' then return nil, 'identity_record_invalid' end
     if type(identity.content_file) ~= 'string' or identity.content_file == '' then return nil, 'identity_content_invalid' end
     if type(identity.refnum) ~= 'table' or type(identity.refnum.index) ~= 'number'
-        or type(identity.refnum.content_file) ~= 'number' then return nil, 'identity_refnum_invalid' end
+        or type(identity.refnum.content_file) ~= 'number'
+        or identity.refnum.index % 1 ~= 0 or identity.refnum.index < 0 or identity.refnum.index > 4294967295
+        then return nil, 'identity_refnum_invalid' end
     if not cellKey(identity.cell) then return nil, 'identity_cell_invalid' end
     return true
 end
@@ -31,14 +33,17 @@ end
 function M.key(identity)
     local ok, reason = M.validate(identity)
     if not ok then return nil, reason end
-    return table.concat({identity.kind, identity.record_id, identity.content_file,
-        tostring(identity.refnum.content_file), tostring(identity.refnum.index), cellKey(identity.cell)}, '|')
+    -- Player and Narrator are session-owned identities, not placed references.
+    if identity.kind == 'player' or identity.kind == 'narrator' then return identity.kind end
+    -- The file-local reference survives cell movement, renames and load-order changes.
+    return string.lower(identity.content_file) .. '|' .. string.format('%.0f', identity.refnum.index)
 end
 
 function M.same(left, right)
     local leftKey = M.key(left)
     local rightKey = M.key(right)
-    return leftKey ~= nil and leftKey == rightKey
+    return leftKey ~= nil and leftKey == rightKey and left.kind == right.kind
+        and string.lower(left.record_id) == string.lower(right.record_id)
 end
 
 function M.Registry()
@@ -48,14 +53,14 @@ function M.Registry()
             local key, reason = M.key(identity)
             if not key then return nil, reason end
             local previous = entries[key]
-            if previous and previous.object ~= object then return nil, 'ambiguous_active_identity' end
+            if previous and (previous.object ~= object or not M.same(previous.identity, identity)) then return nil, 'ambiguous_active_identity' end
             entries[key] = {identity = identity, object = object}
             return key
         end,
         deactivate = function(_, identity, object)
             local key = M.key(identity)
             local entry = key and entries[key]
-            if entry and (object == nil or entry.object == object) then entries[key] = nil return true end
+            if entry and M.same(entry.identity, identity) and (object == nil or entry.object == object) then entries[key] = nil return true end
             return false
         end,
         resolve = function(_, identity)
@@ -63,6 +68,7 @@ function M.Registry()
             if not key then return nil, reason end
             local entry = entries[key]
             if not entry then return nil, 'actor_inactive' end
+            if not M.same(entry.identity, identity) then return nil, 'actor_identity_mismatch' end
             return entry.object, entry.identity
         end,
         clear = function() entries = {} end,

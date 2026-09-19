@@ -23,6 +23,7 @@ local element
 local statusElement
 local voiceRecording=false
 local pttHeld=false
+local pendingVoiceTarget=false
 local openMicEnabled=false
 local openMicMuted=false
 local openMicControl={suspended=false,retryAt=0}
@@ -46,7 +47,6 @@ local pendingActorProfileKeys={}
 local actorProfileFlushElapsed=0
 local pendingAutomaticDiaries={}
 local automaticDiaryFlushElapsed=0
-local automaticDiaryTimerElapsed=0
 local restDiaryState
 local observedPlayerLevel,observedRpgSession
 local ownsUiMode=false
@@ -57,6 +57,7 @@ local EQUIPMENT_SLOTS={'helmet','cuirass','greaves','left_pauldron','right_pauld
     'right_gauntlet','boots','shirt','pants','skirt','robe','left_ring','right_ring','amulet','belt',
     'carried_right','carried_left','ammunition'}
 local autoSettings=storageOk and openmwStorage.playerSection('SettingsLORKHANAutoActivate') or nil
+local hearingSettings=storageOk and openmwStorage.playerSection('SettingsLORKHANHearing') or nil
 local behaviorSettings=storageOk and openmwStorage.playerSection('SettingsLORKHANBehavior') or nil
 local soundSettings=storageOk and openmwStorage.playerSection('SettingsLORKHANSound') or nil
 local agentSettings=storageOk and openmwStorage.playerSection('SettingsLORKHANAgents') or nil
@@ -93,7 +94,6 @@ local currentNarratorSettings={}
 local SETTINGS_REFRESH_INTERVAL=0.5
 local AIM_SCAN_INTERVAL=0.25
 local AUTO_SCAN_INTERVAL=1.0
-local AUTOMATIC_DIARY_POLL_INTERVAL=30
 local DEBUG_POLL_INTERVAL=0.25
 local GLOBAL_DEBUG_COMMANDS={
     ['npc.status']=true,['npc.visit']=true,['npc.teleport']=true,['npc.return']=true,
@@ -223,6 +223,9 @@ local function stopPlayerSpeech(continueAfter)
         pcall(native.cancelMenuDialogueTts,current.request_id)
     end
     playerSpeech=nil
+    -- Failed/unavailable synthesis still gets one caption; successful speech supplies its own.
+    if continueAfter and current.state~='playing' and not current.menuDialogue then adapter.showSubtitle(current.subtitle or '') end
+    if current.onRelease then current.onRelease() end
     if continueAfter and current.onComplete then current.onComplete() end
 end
 
@@ -258,8 +261,10 @@ local function updatePlayerSpeech()
     current.state=status.state
     if status.state=='ready' and status.media_id then
         local volume=tonumber(soundSettings and soundSettings:get('ttsVolumeBoost')) or 3
-        local ok,reason=adapter.playSpeech(status.media_id,current.subtitle or '',volume)
-        if ok then current.state='playing'
+        -- Vanilla dialogue already displays the selected topic; playback must not append it again.
+        local subtitle=current.menuDialogue and '' or (current.subtitle or '')
+        local ok,reason=adapter.playSpeech(status.media_id,subtitle,volume)
+        if ok then current.state='playing';print('[LORKHAN] player TTS playback started: '..tostring(current.request_id))
         else print('[LORKHAN] player TTS playback failed: '..tostring(reason or 'playback_failed'));stopPlayerSpeech(true) end
     end
 end
@@ -272,7 +277,8 @@ local function dialogueMenuOpen()
 end
 
 -- Stop only the regular-menu speech lane so a newly selected response replaces it immediately.
-local function stopMenuDialogueSpeech()
+local function stopMenuDialogueSpeech(preservePlayer)
+    if not preservePlayer and playerSpeech and playerSpeech.menuDialogue then stopPlayerSpeech() end
     local current=menuDialogueSpeech
     if current then
         local active=current.sentences and current.sentences[current.index]
@@ -360,7 +366,7 @@ local function submitMenuDialogueSentence(current,sentence)
 end
 
 local function startMenuDialogueSpeech(response)
-    stopMenuDialogueSpeech()
+    stopMenuDialogueSpeech(true)
     if not response or not ({greeting=true,persuasion=true,topic=true})[response.dialogue_type] then return end
     local enabled=not soundSettings or soundSettings:get('menuDialogueTts')~=false
     if not enabled or not nativeOk or not native or not native.requestMenuDialogueTts then return end
@@ -492,7 +498,7 @@ local function flushActorProfiles(dt)
 end
 
 -- Persist the observation and freeze the eligible responder before the server makes its profile policy decision.
-local function submitRpgEvent(kind,text)
+local function submitRpgEvent(kind,text,capturedTime)
     if not aiEnabled then return end
     if not nativeOk or not native.submitRpgEvent or not native.sessionInfo then return end
     local session=native.sessionInfo()
@@ -500,7 +506,7 @@ local function submitRpgEvent(kind,text)
     local responder=state.ui.target
     local distance=responder and adapter.actorDistance(responder)
     if turnActive or nearbyCombat or speechActive() or state.ui.visible or not distance or distance>2048 then responder=nil end
-    local payload=protocol.rpgEvent({kind=kind,player=adapter.identity(self),game_time=adapter.gameTime(),text=text,responder=responder})
+    local payload=protocol.rpgEvent({kind=kind,player=adapter.identity(self),game_time=capturedTime or adapter.gameTime(),text=text,responder=responder})
     if not payload then return end
     local request,reason=native.submitRpgEvent(payload)
     if request and responder then
@@ -562,6 +568,8 @@ local function flushAutomaticDiaries(dt)
 end
 
 local function updateMenuDialogueSpeech()
+    if playerSpeech and playerSpeech.menuDialogue and (dialogueMenuOpen()==false
+        or (soundSettings and soundSettings:get('menuDialogueTts')==false)) then stopPlayerSpeech() end
     if not menuDialogueSpeech then return end
     local menuOpen=dialogueMenuOpen()
     if menuOpen==true then menuDialogueSpeech.dialogueSeenOpen=true
@@ -593,7 +601,7 @@ local function updateMenuDialogueSpeech()
         sentence=menuDialogueSpeech.sentences[menuDialogueSpeech.index]
     end
     if not sentence then menuDialogueSpeech=nil return end
-    if sentence.state=='ready' and not sentence.dispatched then
+    if sentence.state=='ready' and not sentence.dispatched and not (playerSpeech and playerSpeech.menuDialogue) then
         local volume=tonumber(soundSettings and soundSettings:get('ttsVolumeBoost')) or 3
         sentence.dispatched=true
         send('LORKHAN_MENU_DIALOGUE_SPEAK',{actor=menuDialogueSpeech.actor,request_id=sentence.request_id,
@@ -621,13 +629,11 @@ end
 local render
 local applySettings
 local chooseTarget
+local manualActivate
 
 local function queueTypedTurn(args,speechAlreadyPlayed)
     if args.execution_mode=='director' then pendingDirectorInput={text=args.text} end
-    if not speechAlreadyPlayed and args.execution_mode~='director' and args.execution_mode~='cheat'
-        and args.execution_mode~='injection_log' and args.execution_mode~='injection_chat' then
-        startPlayerSpeech(args.speaker,args.text)
-    end
+    args.player_speech_played=speechAlreadyPlayed==true
     send('LORKHAN_SUBMIT_TEXT',args)
     pendingHistory=(args.execution_mode~='injection_log' and args.execution_mode~='injection_chat') and {speaker=args.speaker,text=args.text} or nil
     awaitingTextQueue=true
@@ -900,7 +906,7 @@ local function selectModelSlot(key)
     render()
 end
 
--- Keep the simple Dynamic Profiles menu on screen while its bounded requests settle.
+-- Close after accepting the selection; the frame pump finishes the bounded request in the background.
 function settingsControls.requestProfiles(kind)
     if settingsControls.profileUpdates or controlsRequestActive then
         state.ui.status='Profile request already pending';render();return
@@ -911,7 +917,7 @@ function settingsControls.requestProfiles(kind)
     local targets={}
     if kind=='nearby' then
         local exterior=self.cell and self.cell.isExterior==true
-        local limit=tonumber(autoSettings and autoSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')) or (exterior and 2400 or 1200)
+        local limit=tonumber(hearingSettings and hearingSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')) or (exterior and 2400 or 1200)
         for _,agent in ipairs(state.ui.agents) do
             if agent.identity and agent.identity.kind=='npc' and (adapter.actorDistance(agent.identity) or math.huge)<=limit then
                 targets[#targets+1]=agent.identity
@@ -925,6 +931,7 @@ function settingsControls.requestProfiles(kind)
     local pending,reason=requests.start(native,targets,kind=='narrator',core.getRealTime())
     settingsControls.profileUpdates=pending
     state.ui.status=pending and 'Sending profile update request...' or reason
+    if pending then state.ui.visible=false;leaveUiMode() end
     render()
 end
 
@@ -1079,7 +1086,7 @@ local function renderStatusHud()
         return
     end
     local text='LORKHAN  |  Speech: '..(speechActive() and 'speaking' or 'idle')..
-        '  |  Target: '..actorLabel(state.ui.target)..'  |  '..uiState.selectedChatMode(state.ui).label
+        '  |  Target: '..actorLabel(state.ui.previewTarget)..'  |  '..uiState.selectedChatMode(state.ui).label
     local width=520
     local height=42
     local layout={layer='HUD',type=openmwUi.TYPE.Container,
@@ -1177,6 +1184,18 @@ function renderPanels.conversation()
     return transcript
 end
 
+-- Resolve the pending prompt once and leave the menu before the queued action resumes.
+local function answerActionConfirmation(approved)
+    local pending=state.ui.pendingAction
+    if not pending then return end
+    state.ui.pendingAction=nil
+    state.ui.visible=false
+    state.ui.panel='conversation'
+    leaveUiMode()
+    send('LORKHAN_CONFIRM_ACTION',{action_id=pending.action_id,approved=approved==true})
+    render()
+end
+
 render=function()
     renderStatusHud()
     if not state.ui.visible or not uiOk or not utilOk then
@@ -1184,13 +1203,15 @@ render=function()
         return
     end
     local transcript={}
-    if state.ui.panel=='conversation' then
+    if state.ui.pendingAction then
+        -- The standalone confirmation below replaces every normal menu while pending.
+    elseif state.ui.panel=='conversation' then
         transcript=renderPanels.conversation()
     elseif state.ui.panel=='settings' then
         transcript=settingsControls.build()
     elseif state.ui.panel=='nearby-profiles' then
         local exterior=self.cell and self.cell.isExterior==true
-        local distance=autoSettings and autoSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')
+        local distance=hearingSettings and hearingSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')
             or (exterior and 2400 or 1200)
         local nearby=adapter.nearbyActors(tonumber(distance) or (exterior and 2400 or 1200))
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Nearby AI NPC Profiles',textSize=20,
@@ -1548,8 +1569,8 @@ render=function()
             end)}}
     end
     if state.ui.pendingAction then
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Confirm action: '..
-            (state.ui.pendingAction.display_name or state.ui.pendingAction.name),textSize=17,
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Allow '..
+            (state.ui.pendingAction.display_name or state.ui.pendingAction.name)..'?',textSize=17,
             textColor=util.color.rgb(218/255,187/255,120/255)}}
         local pending=state.ui.pendingAction
         local parameters=pending.parameters or {}
@@ -1567,28 +1588,27 @@ render=function()
         end
         if advanced then details[#details+1]='Changes affect this save. Cancelling afterward does not undo them.' end
         transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text=table.concat(details,'\n'),textSize=15,
+            multiline=true,wordWrap=true,size=util.vector2(500,200),autoSize=false,
             textColor=util.color.rgb(0.88,0.85,0.78)}}
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Approve',textSize=16,textColor=util.color.rgb(0.45,0.9,0.45)},
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Yes',textSize=16,textColor=util.color.rgb(0.45,0.9,0.45)},
             events={mouseClick=adapter.callback(function()
-                send('LORKHAN_CONFIRM_ACTION',{action_id=state.ui.pendingAction.action_id,approved=true})
-                state.ui.pendingAction=nil render()
+                answerActionConfirmation(true)
             end)}}
-        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='Reject',textSize=16,textColor=util.color.rgb(1.0,0.45,0.35)},
+        transcript[#transcript+1]={type=openmwUi.TYPE.Text,props={text='No',textSize=16,textColor=util.color.rgb(1.0,0.45,0.35)},
             events={mouseClick=adapter.callback(function()
-                send('LORKHAN_CONFIRM_ACTION',{action_id=state.ui.pendingAction.action_id,approved=false})
-                state.ui.pendingAction=nil render()
+                answerActionConfirmation(false)
             end)}}
     end
     local panelSizes={conversation={560,400},['actor-tools']={540,360},['profile-menu']={520,300},
         settings={660,600},modes={540,480},moods={520,470},models={580,420},profiles={580,420},narrator={580,330},
         ['nearby-profiles']={680,460},history={760,620},diagnostics={760,620}}
-    local panelSize=panelSizes[state.ui.panel] or {680,460}
+    local panelSize=state.ui.pendingAction and {540,320} or panelSizes[state.ui.panel] or {680,460}
     local contentWidth=panelSize[1]-20
     local contentHeight=panelSize[2]-20
     local layout={layer='Windows',type=openmwUi.TYPE.Container,
         props={position=util.vector2(30,60),size=util.vector2(panelSize[1],panelSize[2])},content=openmwUi.content({
             {type=openmwUi.TYPE.Flex,props={horizontal=false,size=util.vector2(contentWidth,contentHeight)},content=openmwUi.content({
-                {type=openmwUi.TYPE.Text,props={text='LORKHAN  |  '..state.ui.status,textSize=16,
+                {type=openmwUi.TYPE.Text,props={text=state.ui.pendingAction and 'LORKHAN' or 'LORKHAN  |  '..state.ui.status,textSize=16,
                     textColor=util.color.rgb(188/255,157/255,90/255)}},
                 unpackValues(transcript),
             })},
@@ -1597,15 +1617,15 @@ render=function()
     else element=openmwUi.create(layout) end
 end
 
-chooseTarget=function(maxDistance,deferRender)
+chooseTarget=function(maxDistance,deferRender,freshAim)
     maxDistance=maxDistance or 2048
-    local candidate=aimCandidate and aimCandidate.distance<=maxDistance and not aimCandidate.dead
+    local candidate=not freshAim and aimCandidate and aimCandidate.distance<=maxDistance and not aimCandidate.dead
         and aimCandidate.available~=false and aimCandidate or nil
     local reason=candidate and 'live_aim_preview' or nil
     if not candidate then candidate,reason=adapter.resolveCameraTarget(maxDistance) end
     if not candidate then
         local nearby=adapter.nearbyActors(maxDistance)
-        candidate=nearby[1]
+        candidate=uiState.targetPreview(nil,nearby,maxDistance)
         if candidate then reason='nearest_actor_fallback' end
     end
     if candidate then
@@ -1635,9 +1655,12 @@ local function handlePushToTalk(held,source)
             print('[LORKHAN] push-to-talk blocked by another UI mode via '..tostring(source))
             return
         end
-        if not state.ui.target and state.ui.executionMode~='director' and state.ui.executionMode~='narrator' and state.ui.executionMode~='cheat' then
-            print('[LORKHAN] push-to-talk needs a target; starting target selection via '..tostring(source))
-            chooseTarget(2048)
+        -- Each new recording owns a fresh target; only its confirmation resumes without selecting again.
+        if source~='target_confirmation' and state.ui.executionMode~='director' and state.ui.executionMode~='narrator' and state.ui.executionMode~='cheat' then
+            pttHeld=true
+            pendingVoiceTarget=true
+            print('[LORKHAN] push-to-talk refreshing target via '..tostring(source))
+            chooseTarget(2048,false,true)
             return
         end
         pttHeld=true
@@ -1650,6 +1673,7 @@ local function handlePushToTalk(held,source)
         send('LORKHAN_VOICE_START',voicePayload('lorkhan_voice'))
     else
         pttHeld=false
+        pendingVoiceTarget=false
         if voiceRecording then
             voiceRecording=false
             print('[LORKHAN] push-to-talk released; stopping voice capture via '..tostring(source))
@@ -1669,6 +1693,7 @@ local function chooseAudience(maxDistance)
 end
 
 local function toggleTalk()
+    if state.ui.pendingAction then answerActionConfirmation(false) return end
     if not state.ui.visible and not controlsAllowed() then return end
     state.ui.pendingTargetAction=nil
     state.ui.visible=not state.ui.visible
@@ -1711,6 +1736,7 @@ local function isConfiguredPushToTalkKey(event)
 end
 
 local function openPanel(panel)
+    if state.ui.pendingAction then return end
     if not controlsAllowed() and not ownsUiMode then return end
     -- Saved hotkeys still open these panels directly, so they keep the Targeted NPC Tools back route.
     uiState.setPanel(state.ui,panel,'actor-tools') state.ui.visible=true
@@ -1728,13 +1754,13 @@ local function togglePanel(panel)
     end
 end
 
-local function manualActivate()
+manualActivate=function()
     if not controlsAllowed() and not ownsUiMode then return end
     local candidate,reason=adapter.resolveCameraTarget(2048)
     if candidate then send('LORKHAN_MANUAL_ACTIVATE_REQUEST',{candidate=candidate})
     else
         local exterior=self.cell and self.cell.isExterior==true
-        local distance=autoSettings and autoSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')
+        local distance=hearingSettings and hearingSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')
             or (exterior and 2400 or 1200)
         local candidates=adapter.nearbyActors(tonumber(distance) or (exterior and 2400 or 1200))
         while #candidates>12 do table.remove(candidates) end
@@ -1790,9 +1816,8 @@ applySettings=function(session,controls)
     local effective=controls and settingsTarget and identity.same(controls.target,settingsTarget)
         and controls.effective_settings or nil
     local targetSettings=effective and effective.settings or session and session.client_settings or {}
-    local legacyHearing=autoSettings and autoSettings:get('hearingDistance')
-    local interiorHearing=autoSettings and autoSettings:get('interiorHearingDistance') or legacyHearing or 500
-    local exteriorHearing=autoSettings and autoSettings:get('exteriorHearingDistance') or legacyHearing or 1000
+    local interiorHearing=hearingSettings and hearingSettings:get('interiorHearingDistance') or 1000
+    local exteriorHearing=hearingSettings and hearingSettings:get('exteriorHearingDistance') or 1800
     local actionsEnabled=agentSettings and agentSettings:get('actionsEnabled')
     if actionsEnabled==nil and behaviorSettings then actionsEnabled=behaviorSettings:get('actionsEnabled') end
     if actionsEnabled==nil then actionsEnabled=true end
@@ -1800,17 +1825,17 @@ applySettings=function(session,controls)
     if ttsVolumeBoost==nil and presentationSettings then ttsVolumeBoost=presentationSettings:get('ttsVolumeBoost') end
     local current={
         autoActivate={enabled=autoSettings and autoSettings:get('enabled'),
-            interiorDistance=autoSettings and autoSettings:get('interiorDistance'),
-            exteriorDistance=autoSettings and autoSettings:get('exteriorDistance'),
+            interiorDistance=hearingSettings and hearingSettings:get('interiorDistance'),
+            exteriorDistance=hearingSettings and hearingSettings:get('exteriorDistance'),
             hearingDistance=exterior and exteriorHearing or interiorHearing,
-            hearingPreset=autoSettings and autoSettings:get('hearingPreset') or 'Nearby',
+            autoHearingRadiusMeters=hearingSettings and hearingSettings:get('autoHearingRadiusMeters') or 10,
             interiorHearingDistance=interiorHearing,
             exteriorHearingDistance=exteriorHearing,
             addHostile=autoSettings and autoSettings:get('addHostile'),
             addCreatures=autoSettings and autoSettings:get('addCreatures')},
         behavior={actionsEnabled=actionsEnabled,
             allowCombatDialogue=not behaviorSettings or behaviorSettings:get('allowCombatDialogue')~=false,
-            combatBarksMode=behaviorSettings and behaviorSettings:get('combatBarksMode') or 'UseProfile',
+            combatBarks=not behaviorSettings or behaviorSettings:get('combatBarks')~=false,
             combatBarkInterval=tonumber(behaviorSettings and behaviorSettings:get('combatBarkInterval')) or 30,
             cancelDialogueOnCombat=behaviorSettings and behaviorSettings:get('cancelDialogueOnCombat')},
         presentation={showStatusHud=presentationSettings and presentationSettings:get('showStatusHud')==true,
@@ -1844,7 +1869,7 @@ applySettings=function(session,controls)
     narrator.questReady=narratorCooldownReady('lastQuestGameTime',narrator.quest_cooldown_minutes or 3)
     currentNarratorSettings=narrator
     local signature=table.concat({tostring(auto.enabled),tostring(auto.interiorDistance),tostring(auto.exteriorDistance),
-        tostring(auto.hearingPreset),tostring(auto.hearingDistance),tostring(auto.interiorHearingDistance),tostring(auto.exteriorHearingDistance),
+        tostring(auto.autoHearingRadiusMeters),tostring(auto.hearingDistance),tostring(auto.interiorHearingDistance),tostring(auto.exteriorHearingDistance),
         tostring(auto.addHostile),tostring(auto.addCreatures),tostring(behavior.actionsEnabled),
         table.concat(audioSignature,','),tostring(behavior.allowCombatDialogue),tostring(behavior.cancelDialogueOnCombat),tostring(behavior.aiEnabled),tostring(behavior.autoGreeting),tostring(behavior.boredom),
         tostring(behavior.boredomDelaySeconds),tostring(behavior.combatBarks),tostring(behavior.combatBarkPeriodSeconds),
@@ -1903,6 +1928,7 @@ if inputOk then
         send('LORKHAN_STOP_DIALOGUE_REQUEST',{}) state.ui.status='dialogue stopped' render()
     end))
     input.registerTriggerHandler('LORKHAN_Halt',adapter.callback(function()
+        pendingVoiceTarget=false pttHeld=false
         if behaviorSettings and behaviorSettings:get('openMicEnabled')==true then openMicMuted=true end
         state.ui.pendingTargetAction=nil
         stopPlayerSpeech()
@@ -1950,10 +1976,14 @@ end
 return {
     engineHandlers={
         onInputAction=function(action)
-            if action=='LORKHAN_Halt' then stopPlayerSpeech() stopBookSpeech() end
+            if action=='LORKHAN_Halt' then pendingVoiceTarget=false pttHeld=false stopPlayerSpeech() stopBookSpeech() end
             return player.onAction(state,action,send)
         end,
         onKeyPress=function(event)
+            if inputOk and state.ui.pendingAction and event and event.code==input.KEY.Escape then
+                answerActionConfirmation(false)
+                return
+            end
             if inputOk and state.ui.visible and state.ui.panel=='conversation' and event
                 and (event.code==input.KEY.Enter or event.code==input.KEY.NP_Enter) then
                 print('[LORKHAN] text chat Enter accepted by engine fallback')
@@ -1989,7 +2019,9 @@ return {
             pumpDebugCommands()
             if pendingAutochat and nativeOk and native.pumpPlayerAutochat then pcall(native.pumpPlayerAutochat) end
             updatePlayerAutochat()
+            if playerSpeech and playerSpeech.menuDialogue and dispositionOpen==false then stopPlayerSpeech() end
             updatePlayerSpeech()
+            updateMenuDialogueSpeech()
             if settingsControls.profileUpdates then
                 local ok,done,message=pcall(require('scripts.LORKHAN.ui.profile_requests').pump,
                     settingsControls.profileUpdates,native,core.getRealTime())
@@ -2051,11 +2083,6 @@ return {
             flushActorProfiles(dt)
             flushAutomaticDiaries(dt)
             local elapsed=tonumber(dt) or 0
-            automaticDiaryTimerElapsed=automaticDiaryTimerElapsed+elapsed
-            if automaticDiaryTimerElapsed>=AUTOMATIC_DIARY_POLL_INTERVAL then
-                automaticDiaryTimerElapsed=0
-                submitAutomaticDiary('timer')
-            end
             settingsRefreshElapsed=settingsRefreshElapsed+elapsed
             if settingsRefreshElapsed>=SETTINGS_REFRESH_INTERVAL then
                 settingsRefreshElapsed=0
@@ -2080,10 +2107,15 @@ return {
             if aimScanElapsed>=AIM_SCAN_INTERVAL and not state.ui.visible and controlsAllowed() then
                 aimScanElapsed=0
                 local candidate=adapter.resolveActorRay(2048)
-                local signature=candidate and identity.key(candidate.identity) or ''
+                aimCandidate=candidate
+                local preview=uiState.targetPreview(candidate,nil,2048)
+                if not preview then preview=uiState.targetPreview(nil,adapter.nearbyActors(2048),2048) end
+                state.ui.previewTarget=preview and preview.identity or nil
+                local signature=preview and table.concat({identity.key(preview.identity),
+                    displayName(preview.identity),tostring(math.floor(preview.distance+0.5))},'|') or ''
                 if signature~=aimSignature then
-                    aimCandidate=candidate aimSignature=signature render()
-                elseif candidate then aimCandidate=candidate end
+                    aimSignature=signature render()
+                end
             end
             autoScanElapsed=autoScanElapsed+elapsed
             if autoScanElapsed>=AUTO_SCAN_INTERVAL then
@@ -2092,7 +2124,7 @@ return {
                 local candidates={}
                 if enabled then
                     local exterior=self.cell and self.cell.isExterior==true
-                    local distance=autoSettings and autoSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')
+                    local distance=hearingSettings and hearingSettings:get(exterior and 'exteriorDistance' or 'interiorDistance')
                         or (exterior and 2400 or 1200)
                     candidates=adapter.nearbyActors(tonumber(distance) or (exterior and 2400 or 1200))
                     while #candidates>32 do table.remove(candidates) end
@@ -2151,7 +2183,6 @@ return {
             end
             if browserArgs and event.status=='succeeded' then
                 player.queued(state,browserArgs.speaker,browserArgs.text,event.observed or {})
-                startPlayerSpeech(browserArgs.speaker,browserArgs.text)
                 turnActive=true
                 state.ui.status='browser speech queued'
                 render()
@@ -2159,6 +2190,13 @@ return {
             submitDebugResult(pendingGlobalDebugCommand.command,event.status or 'failed',
                 event.reason_code or 'global_command_failed',event.observed or {})
             pendingGlobalDebugCommand=nil
+        end,
+        LorkhanLockpick=function(event)
+            if not nativeOk or not native.sessionInfo or type(event)~='table' then return end
+            local session=native.sessionInfo()
+            if not session or event.sessionId~=session.session_id or event.generation~=session.generation then return end
+            if type(event.gameTime)~='number' or event.gameTime~=event.gameTime or event.gameTime<0 then return end
+            submitRpgEvent('lockpick','The player successfully picked a lock.',event.gameTime)
         end,
         LorkhanItemPickup=function(event)
             if not nativeOk or not native.submitItemPickup or not native.sessionInfo then return end
@@ -2171,6 +2209,14 @@ return {
         LorkhanSpellCast=function(event)
             if not nativeOk or not native.submitSpellCast or not native.sessionInfo then return end
             player.captureSpellCast(state,event,native.sessionInfo(),adapter.spellCastObservation,native.submitSpellCast,core.getRealTime())
+        end,
+        -- The server's player connector owns the enabled switch; never fall back to an NPC voice.
+        LorkhanDialogueChoice=function(event)
+            stopMenuDialogueSpeech()
+            if soundSettings and soundSettings:get('menuDialogueTts')==false then return end
+            if not event or type(event.text)~='string' or not event.text:find('%S') then return end
+            local speaker=adapter.identity(self)
+            if speaker and startPlayerSpeech(speaker,event.text) then playerSpeech.menuDialogue=true end
         end,
         DialogueResponse=function(event)
             local response=adapter.dialogueResponse(event)
@@ -2293,6 +2339,27 @@ return {
             reportNarrator(ok and 'played' or 'failed',ok and 'subtitle_displayed' or (reason or 'subtitle_unavailable'))
         end,
         LORKHAN_NARRATOR_STOP=function(event) stopNarrator(event and event.reason or 'client_interrupted') end,
+        LORKHAN_PLAYER_SPEECH_STOP=function() stopPlayerSpeech() end,
+        LORKHAN_PLAYER_INTERRUPT=function()
+            turnActive=false pendingDirectorInput=nil
+            if pendingAutochat and nativeOk and native.cancelPlayerAutochat then pcall(native.cancelPlayerAutochat,pendingAutochat.request_id) end
+            pendingAutochat=nil
+        end,
+        LORKHAN_PLAYER_SPEECH=function(event)
+            local session=nativeOk and native and native.sessionInfo and native.sessionInfo()
+            if not session or session.session_id~=event.session_id or session.generation~=event.generation then return end
+            local function complete()
+                send('LORKHAN_PLAYER_SPEECH_COMPLETE',{request_id=event.request_id,
+                    session_id=event.session_id,generation=event.generation})
+            end
+            if startPlayerSpeech(event.speaker,event.text) then
+                playerSpeech.onRelease=complete
+                print('[LORKHAN] player TTS queued for turn: '..tostring(event.request_id))
+            else
+                adapter.showSubtitle(event.text)
+                complete()
+            end
+        end,
         LORKHAN_AI_STATUS=function(event)
             aiEnabled=event.enabled~=false
             if not aiEnabled then
@@ -2357,6 +2424,11 @@ return {
         LORKHAN_PLAYER_RESOLVE_AUDIENCE=function(event) chooseAudience(event.maxDistance) end,
         LORKHAN_TARGET=function(event)
             state.ui.target=event.target state.ui.audience=event.audience or {event.target}
+            if pendingVoiceTarget and pttHeld then
+                pendingVoiceTarget=false
+                pttHeld=false
+                handlePushToTalk(true,'target_confirmation')
+            end
             state.ui.status='target: '..displayName(event.target)
             print('[LORKHAN] player target confirmed: '..displayName(event.target))
             local shouldSubmit=pendingTextSubmit and state.ui.visible and state.ui.panel=='conversation'
@@ -2370,6 +2442,7 @@ return {
             end
         end,
         LORKHAN_TARGET_REJECTED=function(event)
+            if pendingVoiceTarget then pendingVoiceTarget=false pttHeld=false end
             pendingTextSubmit=false
             pendingControlPanel=nil
             state.ui.status='target unavailable: '..tostring(event and event.reason or 'unknown')
@@ -2386,7 +2459,7 @@ return {
             if started and (not behaviorSettings or behaviorSettings:get('cancelDialogueOnCombat')~=false)
                 and (turnActive or voiceRecording or openMicEnabled or speechActive()) then
                 send('LORKHAN_STOP_DIALOGUE_REQUEST',{})
-                voiceRecording=false;openMicEnabled=false;pttHeld=false;turnActive=false
+                voiceRecording=false;openMicEnabled=false;pttHeld=false;pendingVoiceTarget=false;turnActive=false
                 stopPlayerSpeech()
                 speechActors={}
                 state.ui.status='dialogue stopped for combat'
@@ -2429,7 +2502,7 @@ return {
             end
         end,
         LORKHAN_ACTION_CONFIRMATION=function(event)
-            state.ui.pendingAction=event state.ui.panel='actions' state.ui.actionView='root'
+            state.ui.pendingAction=event state.ui.panel='confirmation'
             state.ui.visible=true enterUiMode() render()
         end,
         LORKHAN_ACTION_STATUS=function(event)

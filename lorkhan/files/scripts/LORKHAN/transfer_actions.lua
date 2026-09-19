@@ -26,7 +26,7 @@ function M.enqueue(state,command)
         local valid,reason=M.validateAdvanced(command)
         if not valid then return nil,reason end
     end
-    if not service and command.confirmation_required~=true then return nil,'transfer_confirmation_required' end
+    if not service and type(command.confirmation_required)~='boolean' then return nil,'transfer_confirmation_policy_required' end
     local execute=advanced and 'executeAdvanced' or service and 'executeService' or spell and 'executeSpell' or 'executeTransfer'
     local cancel=advanced and 'cancelAdvanced' or service and 'cancelService' or spell and 'cancelSpell' or 'cancelTransfer'
     local receipt=advanced and 'advancedReceiptStatus' or service and 'serviceReceiptStatus' or spell and 'spellReceiptStatus' or 'transferReceiptStatus'
@@ -46,7 +46,7 @@ function M.validateAdvanced(command)
     if not M.advanced[command.name] then return nil,'not_advanced_action' end
     if not identity.validate(command.actor) or command.actor.kind~='player'
         or not identity.validate(command.target) or command.target.kind=='narrator' then return nil,'invalid_advanced_actor' end
-    if command.confirmation_required~=true then return nil,'advanced_confirmation_required' end
+    if type(command.confirmation_required)~='boolean' then return nil,'advanced_confirmation_policy_required' end
     if command.tier~=2 then return nil,'invalid_advanced_tier' end
     local name=command.name
     local playerTarget=name=='gold.create' or name=='actor.spawn' or name=='player.teleport'

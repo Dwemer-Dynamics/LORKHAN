@@ -51,6 +51,18 @@ function M.new(policy)
         statusHudVisible=false,policy=util.copy(policy or {})}
 end
 
+-- Preview the crosshair actor first; nearby candidates are ordered by distance by the adapter.
+function M.targetPreview(aim,nearby,maxDistance)
+    local function eligible(candidate)
+        return candidate and candidate.identity and not candidate.dead and candidate.available~=false
+            and type(candidate.distance)=='number' and candidate.distance<=(maxDistance or 2048)
+    end
+    if eligible(aim) then return aim end
+    for _,candidate in ipairs(nearby or {}) do
+        if eligible(candidate) and candidate.identity.kind=='npc' then return candidate end
+    end
+end
+
 local function trim(value)
     if type(value)~='string' then return '' end
     return (value:gsub('^%s+',''):gsub('%s+$',''))

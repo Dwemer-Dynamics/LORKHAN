@@ -141,6 +141,19 @@ memory leakage.
 
 ## Lua tests
 
+### CHIM hearing settings parity
+
+The Hearing & Awareness controls follow CHIM unstable `002e2243244e3265c5de700a91ad6dcdf6ddc2d2`
+(`AIAgentMCMConfigScript.psc`, `PlayerConversationRouter.cpp`, `SpatialAwareness.cpp`).
+Realistic, Recommended and Extended write the three hearing values; Custom retains manual values.
+Activation distances remain independent. Enable Combat Barks is a local boolean, default true;
+its request timer and the server's shared profile cooldown remain separate.
+
+OpenMW uses bounded player-context collision rays outside the automatic hearing radius.
+This does not implement Skyrim's door-corridor/navmesh/detection fallback. Hearing observations
+remain private Lua data and are excluded from the server context snapshot. In-game validation
+of walls, doors and the new settings layout remains required.
+
 Use extracted pure modules and an OpenMW API fake for identity, schema mapping, budgets/truncation,
 target/audience state, input actions, UI view models, save migration, dedupe/order, generation/halt,
 media queue, action validation/ownership/results and unavailable capabilities. In-engine tests prove

@@ -128,3 +128,12 @@ checklist remains deliberately unclaimed.
 - Development checkpoint only: not deployed or merged to main. NPC/Player ownership remains the
   rollout gate; full new/switch UI, portable transfer and retention remain later stages. Shared
   Narrator configuration and Core Profiles must remain global. No in-game proof or game launch.
+
+
+### 2026-09-18 Profile commentary parity
+
+- AUTOMATED: 117 Lua tests, 10 patch tests and exact-pin patch audit pass. Native settings accept history0..200, paired with server protocol136-file manifest.
+- WINDOWS BUILD PROVEN: Release OpenMW plus native/Beast tests pass. Successful player Security::pickLock queues a fenced, bounded Lua observation. No key/magic/attempt-only trigger.
+- AUTOMATED: native RPG/Quest/Bored exports and matching live decision delivery wired; requests expire after30seconds, reset on generation change and reject duplicate/stale replies. Diary timer requests removed; sleep/wait remain server-profile-controlled.
+- DEPLOYED: C:/Modlists/LORKHAN engine SHA256 `359E473A3BD9FAE8AED520F5CA1DA6FD6C96257FF0D10BA73755F81A5C665203`; source/deployed player.lua hashes match. Server health/worker verified separately.
+- IN-GAME PROVEN: not yet. No game launch. User must test successful lockpick and RPG/Quest/Bored responses with an eligible nearby NPC and enabled profile chance, then sleep/wait diaries with a Diary connector assigned.

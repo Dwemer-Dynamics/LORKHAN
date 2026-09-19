@@ -25,7 +25,8 @@ def package(args: argparse.Namespace) -> None:
     release_name_guard(args.name, root, input_root, policy, args.kind)
     manifest = content_manifest(input_root)
     allowlist_kind = "lua" if RELEASE_NAME.match(args.name) and "lua" in args.name.lower() else args.kind
-    enforce_allowlist(manifest["files"], policy[f"{allowlist_kind}_allowlist"], policy["denylist"])
+    denylist = policy["denylist"] + (policy.get("runtime_denylist", []) if allowlist_kind != "source" else [])
+    enforce_allowlist(manifest["files"], policy[f"{allowlist_kind}_allowlist"], denylist)
     linkage = package_set_linkage(root, policy)
     suffix = ".zip" if args.format == "zip" else ".tar"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -38,7 +39,7 @@ def package(args: argparse.Namespace) -> None:
         shutil.copytree(input_root, stage, symlinks=True)
         write_json(stage / "sbom/lorkhan.spdx.json", sbom)
         staged_manifest = content_manifest(stage)
-        enforce_allowlist(staged_manifest["files"], policy[f"{allowlist_kind}_allowlist"], policy["denylist"])
+        enforce_allowlist(staged_manifest["files"], policy[f"{allowlist_kind}_allowlist"], denylist)
         if args.format == "zip":
             create_zip(stage, archive, epoch)
         else:

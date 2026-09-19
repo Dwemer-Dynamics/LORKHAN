@@ -1,23 +1,26 @@
 diff --git a/apps/openmw/mwlua/luamanagerimp.hpp b/apps/openmw/mwlua/luamanagerimp.hpp
-index c1fe00d1f3821fafafa7f8c67ef7de421bbc4ec3..59601aecda73dac5820378ea9d1aa437989a4d87 100644
+index c1fe00d1f3821fafafa7f8c67ef7de421bbc4ec3..bfa29d095f65c402d97898b63f6d59fd6353afd8 100644
 --- a/apps/openmw/mwlua/luamanagerimp.hpp
 +++ b/apps/openmw/mwlua/luamanagerimp.hpp
-@@ -110,6 +110,11 @@
+@@ -110,6 +110,13 @@
          void questUpdated(const ESM::RefId& questId, int stage) override;
          void uiModeChanged(const MWWorld::Ptr& arg) override;
          void actorDied(const MWWorld::Ptr& actor) override;
++        void onLorkhanLockpick(const MWWorld::Ptr& actor) override;
 +        void onLorkhanActorResurrected(const MWWorld::Ptr& actor) override;
 +        void onLorkhanItemPickup(const MWWorld::Ptr& player, const MWWorld::Ptr& item,
 +            int count, const MWWorld::Ptr& source) override;
 +        void onLorkhanSpellCast(const MWWorld::Ptr& caster, const MWWorld::Ptr& target,
 +            const std::string& spellId, const std::string& spellName) override;
++        void onLorkhanDialogueChoice(const MWWorld::Ptr& actor, const std::string& text) override;
          void onDialogueResponse(
              const MWWorld::Ptr& actor, const ESM::DialInfo& info, const ESM::Dialogue& record) override;
  
-@@ -230,6 +235,9 @@
+@@ -230,6 +237,10 @@
              sol::main_object mArg;
          };
          std::vector<CallbackWithData> mQueuedCallbacks;
++        std::size_t mLorkhanLockpickCount = 0;
 +        std::size_t mLorkhanSpellCastCount = 0;
 +        std::size_t mLorkhanResurrectionCount = 0;
 +        std::size_t mLorkhanItemPickupCount = 0;

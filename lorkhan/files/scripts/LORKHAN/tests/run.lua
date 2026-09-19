@@ -18,7 +18,174 @@ test('game script entrypoints compile in the active Lua runtime',function()
  end
 end)
 
+test('successful lockpick capture rejects stale sessions and preserves observed time',function()
+ local file=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local source=file:read('*a');file:close()
+ local handler=assert(source:match('LorkhanLockpick=function%(event%)(.-)\n        end,\n        LorkhanItemPickup'))
+ local harness=[[
+ local nativeOk=true
+ local session={session_id='current',generation=2}
+ local native={sessionInfo=function()return session end}
+ local calls=0
+ local function submitRpgEvent(kind,text,time)
+  assert(kind=='lockpick' and text=='The player successfully picked a lock.' and time==123)
+  calls=calls+1
+ end
+ ]]
+ local exercise=[[
+ handler({sessionId='old',generation=2,gameTime=123});assert(calls==0)
+ handler({sessionId='current',generation=1,gameTime=123});assert(calls==0)
+ handler({sessionId='current',generation=2,gameTime=-1});assert(calls==0)
+ handler({sessionId='current',generation=2});assert(calls==0)
+ handler({sessionId='current',generation=2,gameTime=123});assert(calls==1)
+ session=nil;handler({sessionId='current',generation=2,gameTime=123});assert(calls==1)
+ ]]
+ local chunk,reason=(loadstring or load)(harness..'\nlocal function handler(event)'..handler..'\nend\n'..exercise)
+ assert(chunk,reason);chunk()
+ assert(not source:find("submitAutomaticDiary('timer')",1,true))
+end)
+
 local identity=require('scripts.LORKHAN.identity')
+test('actor tools binds the later manual activation handler as a function',function()
+ local file=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local source=file:read('*a');file:close()
+ local declarations=assert(source:match('(local render\n.-)\n\n'))
+ local panel=assert(source:match("elseif state.ui.panel=='actor%-tools' then(.-)elseif state.ui.panel=='profile%-menu' then"))
+ local first=source:find('local function manualActivate()',1,true) or source:find('manualActivate=function()',1,true)
+ local last=assert(source:find('local function confirmSecondaryTarget()',first,true))
+ local handler=source:sub(first,last-1)
+ local harness=[[
+ local state={ui={target={}}}
+ local sent,candidate=nil,{}
+ local function controlsAllowed()return true end
+ local function displayName()return 'NPC' end
+ local function send(name,payload)sent={name=name,payload=payload}end
+ local adapter={callback=function(fn)assert(type(fn)=='function','invalid UI callback');return fn end,
+ resolveCameraTarget=function()return candidate end}
+ local actorTools={build=function(context)return context.options end}
+ ]]
+ local exercise=[[
+ local rows=render()
+ rows[1].onSelect()
+ assert(sent.name=='LORKHAN_MANUAL_ACTIVATE_REQUEST' and sent.payload.candidate==candidate)
+ ]]
+ local chunk,reason=(loadstring or load)(harness..declarations..'\nrender=function() local transcript\n'..
+  panel..'\nreturn transcript end\n'..handler..exercise)
+ assert(chunk,reason);chunk()
+end)
+
+test('player speech hook releases the lane on missing provider failure completion and interruption',function()
+ local file=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local source=file:read('*a');file:close()
+ local functions=assert(source:match('(local function stopPlayerSpeech%(.+)\nlocal function dialogueMenuOpen'))
+ local handler=assert(source:match('LORKHAN_PLAYER_SPEECH=function%(event%)(.-)\n        end,\n        LORKHAN_AI_STATUS'))
+ local harness=[[
+ local playerSpeech,narratorSpeech
+ local released,subtitles=0,0
+ local nativeOk=true
+ local status={state='requesting'}
+ local available=true
+ local native={sessionInfo=function()return {session_id='session',generation=1}end,
+ requestMenuDialogueTts=function()if available then return 'tts-request' end return nil,'provider_unavailable' end,
+ cancelMenuDialogueTts=function()end,menuDialogueTtsStatus=function()return status end}
+ local adapter={stopSpeech=function()end,isSpeechActive=function()return false end,
+ playSpeech=function(_,subtitle)assert(subtitle=='Hello.');subtitles=subtitles+1;return true end,showSubtitle=function()subtitles=subtitles+1 end}
+ local function stopNarrator()end
+ local function send(name)assert(name=='LORKHAN_PLAYER_SPEECH_COMPLETE');released=released+1 end
+ ]]
+ local exercise=[[
+ local event={session_id='session',generation=1,request_id='turn',speaker={},text='Hello.'}
+ handler(event);assert(playerSpeech and released==0 and subtitles==0)
+ status={state='failed',reason='provider_unavailable'};updatePlayerSpeech();assert(released==1 and subtitles==1)
+ available=false;handler(event);assert(released==2 and subtitles==2)
+ available=true;handler(event);stopPlayerSpeech();stopPlayerSpeech();assert(released==3 and subtitles==2)
+ handler(event);status={state='ready',media_id='audio'};updatePlayerSpeech();updatePlayerSpeech();assert(released==4 and subtitles==3)
+ event.generation=2;handler(event);assert(released==4 and playerSpeech==nil)
+ ]]
+ local chunk,reason=(loadstring or load)(harness..functions..'\nlocal function handler(event)'..handler..'\nend\n'..exercise)
+ assert(chunk,reason);chunk()
+end)
+
+test('menu choices speak before NPC audio and cancel on replacement or close',function()
+ local file=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local source=file:read('*a');file:close()
+ local functions=assert(source:match('(local function stopPlayerSpeech%(.+)\n%-%- Persist vanilla ambient'))
+ local update=assert(source:match('(local function updateMenuDialogueSpeech%(.+)\nlocal function controlsAllowed'))
+ local handler=assert(source:match('LorkhanDialogueChoice=function%(event%)(.-)\n        end,\n        DialogueResponse'))
+ local harness=[[
+ local playerSpeech,menuDialogueSpeech,narratorSpeech,bookSpeech
+ local enabled,opened,playing=true,true,false
+ local requests,cancelled,spoken,npcLines={},{},0,0
+ local nativeOk=true
+ local native={requestMenuDialogueTts=function(actor,text)
+   local id=tostring(#requests+1);requests[#requests+1]={actor=actor,text=text,state='ready',media_id=id};return id
+  end,cancelMenuDialogueTts=function(id)cancelled[id]=true end,
+  menuDialogueTtsStatus=function(id)return requests[tonumber(id)]end}
+ local adapter={identity=function()return {kind='player'}end,stopSpeech=function()playing=false end,
+  playSpeech=function(_,subtitle)assert(subtitle=='','menu choice must not repeat the topic');spoken=spoken+1;playing=true;return true end,isSpeechActive=function()return playing end,
+  showSubtitle=function()error('menu choice must not add a disabled-TTS fallback caption')end}
+ local interfacesOk=true
+ local interfaces={UI={getMode=function()return opened and 'Dialogue' or nil end}}
+ local soundSettings={get=function(_,key)if key=='menuDialogueTts' then return enabled end end}
+ local support={splitSentences=function(text)return {text}end}
+ local function stopNarrator()end
+ local function send(name)if name=='LORKHAN_MENU_DIALOGUE_SPEAK' then npcLines=npcLines+1 end end
+ ]]
+ local exercise=[[
+ local response={actor={kind='npc'},text='Welcome.',dialogue_type='topic'}
+ enabled=false;choice({text='Hello'});assert(#requests==0)
+ enabled=true;choice({text='Hello'});startMenuDialogueSpeech(response)
+ assert(requests[1].actor.kind=='player' and requests[1].text=='Hello')
+ updateMenuDialogueSpeech();assert(npcLines==0)
+ updatePlayerSpeech();updateMenuDialogueSpeech();assert(spoken==1 and npcLines==0)
+ playing=false;updatePlayerSpeech();updateMenuDialogueSpeech();assert(npcLines==1)
+ -- The existing server route rejects player speech when disabled; NPC playback must unblock.
+ choice({text='Another topic'});requests[#requests].state='failed';requests[#requests].reason='provider_unavailable'
+ startMenuDialogueSpeech(response);updatePlayerSpeech();updateMenuDialogueSpeech()
+ assert(npcLines==2 and spoken==1 and playerSpeech==nil)
+ choice({text='First choice'});local old=playerSpeech.request_id;updatePlayerSpeech()
+ choice({text='Replacement'});assert(cancelled[old] and not playing)
+ startMenuDialogueSpeech(response);local pending=playerSpeech.request_id
+ opened=false;updateMenuDialogueSpeech();assert(cancelled[pending] and playerSpeech==nil and menuDialogueSpeech==nil)
+ assert(npcLines==2)
+ ]]
+ local chunk,reason=(loadstring or load)(harness..functions..'\n'..update..
+  '\nlocal function choice(event)'..handler..'\nend\n'..exercise)
+ assert(chunk,reason);chunk()
+end)
+
+test('push-to-talk resumes after targeting only while held and starts once',function()
+ local source=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local text=source:read('*a');source:close()
+ local handler=assert(text:match('(local function handlePushToTalk%(.+)\nlocal function chooseAudience'))
+ local target=assert(text:match('LORKHAN_TARGET=function%(event%)(.-)\n        end,\n        LORKHAN_TARGET_REJECTED'))
+ local rejected=assert(text:match('LORKHAN_TARGET_REJECTED=function%(event%)(.-)\n        end,\n        LORKHAN_AUDIENCE'))
+ local harness=[[
+ local state={ui={executionMode='standard'}}
+ local pttHeld,pendingVoiceTarget,voiceRecording,openMicEnabled=false,false,false,false
+ local selections,starts,stops=0,0,0
+ local recordedTarget
+ local function controlsAllowed()return true end
+ local function render()end
+ local function chooseTarget(_,_,fresh)assert(fresh==true);selections=selections+1 end
+ local function send(name,payload)if name=='LORKHAN_VOICE_START' then starts=starts+1;recordedTarget=payload.target elseif name=='LORKHAN_VOICE_STOP' then stops=stops+1 end end
+ local function voicePayload()return {target=state.ui.target}end
+ local function displayName()return 'NPC'end
+ local function refreshSessionControls()end
+ ]]..handler..'\nlocal function confirmed(event)'..target..'\nend\nlocal function rejected(event)'..rejected..[[
+ end
+ return {press=function(held)handlePushToTalk(held,'test')end,
+ confirm=function(target)confirmed({target=target or {}})end,reject=function()rejected({reason='no_target'})end,
+ counts=function()return selections,starts,stops end,target=function()return recordedTarget end}
+ ]]
+ local compile=loadstring or load
+ local h=assert(compile(harness))()
+ h.press(true);h.press(true);local selected,started=h.counts();eq(selected,1);eq(started,0)
+ h.confirm();h.confirm();selected,started=h.counts();eq(started,1)
+ h.press(false);local _,_,stopped=h.counts();eq(stopped,1)
+ h.press(true);h.press(true);selected,started=h.counts();eq(selected,2);eq(started,1)
+ local nextNpc={record_id='stargel'};h.confirm(nextNpc);eq(h.target(),nextNpc)
+ selected,started=h.counts();eq(selected,2);eq(started,2)
+ h.press(false);_,_,stopped=h.counts();eq(stopped,2)
+ h.press(true);h.reject();h.confirm();_,started=h.counts();eq(started,2)
+ h=assert(compile(harness))();h.press(true);h.press(false);h.confirm();_,started=h.counts();eq(started,0)
+ h=assert(compile(harness))();h.press(true);h.reject();h.confirm();_,started=h.counts();eq(started,0)
+end)
 local protocol=require('scripts.LORKHAN.protocol')
 local playerInput=require('scripts.LORKHAN.player_input')
 local conversation=require('scripts.LORKHAN.conversation')
@@ -59,7 +226,7 @@ test('RPG responder is typed and acknowledgements stay bounded and session owned
  local args={kind='sleep',player=playerId,responder=npc,game_time=120,text='The player slept.'}
  local dto=assert(protocol.rpgEvent(args));truthy(identity.same(dto.responder,npc));truthy(dto.responder~=npc)
  args.responder=playerId;eq(protocol.rpgEvent(args),nil)
- args.responder=enemy;truthy(protocol.rpgEvent(args));args.kind='lockpick';eq(protocol.rpgEvent(args),nil)
+ args.responder=enemy;truthy(protocol.rpgEvent(args));args.kind='lockpick';truthy(protocol.rpgEvent(args));args.kind='lockpick_attempt';eq(protocol.rpgEvent(args),nil)
  local s=player.new();local session={session_id=UUID.session,generation=7}
  local ack={request_id=UUID.request,session_id=UUID.session,generation=7}
  truthy(player.rememberRpgComment(s,UUID.request,npc,session,10))
@@ -278,10 +445,13 @@ test('target settings preserve local presentation actions and target preferences
  eq(settings.behavior.boredomDelaySeconds,180);eq(settings.behavior.combatBarks,true)
  eq(settings.behavior.combatBarkPeriodSeconds,30);eq(settings.behavior.rechat_allow_actions,nil)
  eq(settings.memory.recent_turn_limit,0);eq(settings.narrator.enabled,false)
- settings.behavior.combatBarksMode='Disabled';player.applyTargetSettings(settings,target);eq(settings.behavior.combatBarks,false)
- settings.behavior.combatBarksMode='Enabled';settings.behavior.combatBarkInterval=5
+ settings.behavior.combatBarks=false;player.applyTargetSettings(settings,target);eq(settings.behavior.combatBarks,false)
+ settings.behavior.combatBarks=true;settings.behavior.combatBarkInterval=5
  target.behavior.combat_barks=false;player.applyTargetSettings(settings,target)
- eq(settings.behavior.combatBarks,true);eq(settings.behavior.combatBarkPeriodSeconds,20)
+ eq(settings.behavior.combatBarks,true);eq(settings.behavior.combatBarkPeriodSeconds,5)
+ target.behavior.combat_bark_period_seconds=600;player.applyTargetSettings(settings,target)
+ eq(settings.behavior.combatBarkPeriodSeconds,5)
+ settings.behavior.combatBarkInterval=0;player.applyTargetSettings(settings,target);eq(settings.behavior.combatBarkPeriodSeconds,30)
  settings.behavior.combatBarkInterval=90;player.applyTargetSettings(settings,target);eq(settings.behavior.combatBarkPeriodSeconds,90)
  settings=localSettings();settings.behavior.actionsEnabled=false
  settings.autoActivate.addHostile=false;settings.autoActivate.addCreatures=false
@@ -418,7 +588,8 @@ test('transfer queue waits for persisted receipts and freezes the committed outc
  local queue=transfers.new(bridge,function(event)finished[#finished+1]=event end)
  local command={name='item.give',action_id=UUID.action or UUID.message,message_id=UUID.message,request_id=UUID.request,
   turn_id=UUID.turn,session_id=UUID.session,generation=7,actor=npc,confirmation_required=false}
- eq(transfers.enqueue(queue,command),nil);command.confirmation_required=true;truthy(transfers.enqueue(queue,command))
+ command.confirmation_required=nil;eq(transfers.enqueue(queue,command),nil)
+ command.confirmation_required=false;truthy(transfers.enqueue(queue,command))
  transfers.pump(queue,UUID.session,7,0);eq(#submitted,0);eq(#finished,0)
  outcome={status='succeeded',reason_code='item_transferred',observed={count=2}}
  transfers.pump(queue,UUID.session,7,1);eq(#submitted,1);eq(#finished,0)
@@ -444,7 +615,8 @@ test('advanced native queue validates exact shapes and uses retained cancellatio
   command.target=(name=='actor.teleport_to_player' or name=='actor.resurrect' or name=='actor.kill') and npc or playerId
   truthy(transfers.validateAdvanced(command))
   command.tier=1;eq(transfers.validateAdvanced(command),nil);command.tier=2
-  command.confirmation_required=false;eq(transfers.validateAdvanced(command),nil);command.confirmation_required=true
+  command.confirmation_required=false;truthy(transfers.validateAdvanced(command))
+  command.confirmation_required=nil;eq(transfers.validateAdvanced(command),nil);command.confirmation_required=true
   params.untrusted=true;eq(transfers.validateAdvanced(command),nil);params.untrusted=nil
  end
  command.name='actor.spawn';command.parameters={record_id='mudcrab',count=5};command.target=playerId
@@ -460,9 +632,33 @@ test('advanced native queue validates exact shapes and uses retained cancellatio
  receipt='accepted';transfers.pump(queue,UUID.session,1,1);eq(executed,1);eq(finished,1)
 end)
 
+test('scoped reference profiles do not relax UUID fields',function()
+ local prefix='ref:'..UUID.message..':'..UUID.turn..':'
+ truthy(protocol.isProfileId(prefix..'morrowind.esm|4294967295'))
+ eq(protocol.isUuid(prefix..'morrowind.esm|1'),false)
+ for _,tail in ipairs({'Morrowind.esm|1','../morrowind.esm|1','morrowind.esm|01','morrowind.esm|4294967296','morrowind.esm|1\n'}) do
+  eq(protocol.isProfileId(prefix..tail),false)
+ end
+end)
+
 test('identity registry refuses substitution and ambiguity',function()
  local r=identity.Registry() local one={} truthy(r:activate(npc,one)); eq(r:activate(npc,{}),nil)
  local clone=fake.identity('npc','fargoth',9);eq(r:resolve(clone),nil);eq(r:resolve(npc),one)
+ local moved=support.copy(npc);moved.cell={kind='interior',name='Another room'}
+ moved.refnum.content_file=7;moved.content_file=string.upper(moved.content_file)
+ moved.record_id=string.upper(moved.record_id);moved.display_name='A renamed Fargoth'
+ eq(identity.key(moved),identity.key(npc));truthy(identity.same(moved,npc));eq(r:resolve(moved),one)
+ truthy(r:activate(moved,one));eq(r:size(),1)
+ local wrong=support.copy(moved);wrong.record_id='other_record'
+ eq(identity.key(wrong),identity.key(npc));eq(identity.same(wrong,npc),false)
+ eq(r:resolve(wrong),nil);eq(r:activate(wrong,one),nil);eq(r:deactivate(wrong,one),false)
+ wrong=support.copy(moved);wrong.kind='creature';eq(identity.same(wrong,npc),false);eq(r:resolve(wrong),nil)
+ wrong=support.copy(moved);wrong.content_file='Other.esm';eq(identity.same(wrong,npc),false)
+ wrong=support.copy(moved);wrong.refnum.index=1.5;eq(identity.key(wrong),nil)
+ wrong.refnum.index=math.huge;eq(identity.key(wrong),nil)
+ local narrator=support.copy(playerId);narrator.kind='narrator';truthy(identity.key(narrator)~=identity.key(playerId))
+ local agents=agentRegistry.new();truthy(agentRegistry.activate(agents,npc,'auto',1))
+ truthy(agentRegistry.markSeen(agents,moved,2));eq(agentRegistry.get(agents,npc).identity.cell.name,'Another room')
 end)
 test('conversation stale generation and exact terminal',function()
  local s=conversation.new(1);truthy(conversation.setTarget(s,npc));truthy(conversation.begin(s,UUID.request,UUID.turn,'input'))
@@ -621,6 +817,8 @@ test('Close rechat preserves its group through one correlated early or completed
   playthrough_id='00000000-0000-4000-8000-000000000062',created_at='2026-07-19T20:00:00Z',platform='windows',
   content_fingerprint='sha256:'..string.rep('a',64),text='Hello.',input_key='player:1',language='en-US',
   speaker=playerId,context={targetState={inventory={items={{record_id='old_dagger',count=1}},total=1,truncated=false}}},capabilities={'dialogue.text','speech.say'},recent_action_results={},ui_source='lorkhan_text'}))
+ orchestrator.playerSpeechComplete(s,{request_id=UUID.request,session_id=UUID.session,generation=1})
+ orchestrator.pollRechatEligibility(s,3)
  local dialogue=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Greetings.'});dialogue.message_id=UUID.message
  eq(provenanceCalls,1);eq(b.submitted[1].payload.context.targetState.recordProvenance.winning_file,'Override.esp')
  b.actorRecordProvenance=function()error('record unavailable')end
@@ -711,6 +909,8 @@ test('rechat cancels when the previous speaker is freshly busy',function()
   platform='windows',content_fingerprint='sha256:'..string.rep('a',64),text='Hello.',input_key='player:busy',
   language='en-US',speaker=playerId,context={},capabilities={'dialogue.text','speech.say'},
   recent_action_results={},ui_source='lorkhan_text'}))
+ orchestrator.playerSpeechComplete(s,{request_id=UUID.request,session_id=UUID.session,generation=1})
+ orchestrator.pollRechatEligibility(s,3)
  local line=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Busy.'});line.message_id=UUID.message
  local media={media_id=uuid(5),dialogue_message_id=UUID.message,sha256=string.rep('a',64),bytes=4,
   codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
@@ -748,6 +948,9 @@ test('multi-speaker media plays in dialogue order without overlap',function()
   event(3,'speech.ready',1,one),second,event(5,'speech.ready',1,two)}
  eq(orchestrator.poll(s),5)
  b.media[one.media_id]={state='ready'}
+ s.playerSpeechRequest=UUID.request
+ orchestrator.poll(s);eq(#sent,0)
+ truthy(orchestrator.playerSpeechComplete(s,{request_id=UUID.request,session_id=UUID.session,generation=1}))
  orchestrator.poll(s);eq(#sent,1);eq(sent[1].payload.media_id,one.media_id)
  orchestrator.speechStatus(s,{media_id=one.media_id,active=false,status='played'})
  b.media[two.media_id]={state='ready'}
@@ -784,6 +987,7 @@ test('policy confirmation override and one result follow-up cross the ordered la
   platform='windows',content_fingerprint='sha256:'..string.rep('a',64),text='Start combat.',input_key='player:action',
   language='en-US',speaker=playerId,context={},capabilities={'dialogue.text','action.combat.start',
   'action.confirmation','action.result-followup'},recent_action_results={},ui_source='lorkhan_text'}))
+ orchestrator.playerSpeechComplete(s,{request_id=UUID.request,session_id=UUID.session,generation=1})
  local lineId=uuid(170);local actionId=uuid(171)
  local intent={schema='lorkhan.action-intent.v1',action_id=actionId,request_id=UUID.request,turn_id=UUID.turn,
   session_id=UUID.session,generation=1,name='combat.start',display_name='Engage',tier=2,actor=npc,target=playerId,
@@ -803,6 +1007,7 @@ end)
 test('advanced actions require explicit player mode and a native confirmation summary',function()
  for _,case in ipairs({{mode='cheat',source='lorkhan_text',allowed=true},
   {mode='cheat',source='lorkhan_text',noTarget=true,allowed=true},
+  {mode='cheat',source='lorkhan_text',confirmation=false,allowed=true},
   {mode='narrator',source='lorkhan_text',noTarget=true,allowed=true},
   {mode='cheat',source='lorkhan_voice',allowed=true},
   {mode='standard',source='lorkhan_text',allowed=false},
@@ -822,16 +1027,21 @@ test('advanced actions require explicit player mode and a native confirmation su
    input_key='player:create',language='en-US',speaker=playerId,context={},capabilities={'dialogue.text','action.item.create'},
    recent_action_results={},ui_source=case.source,execution_mode=case.mode,
    selectedTargetPresent=case.noTarget==true}))
+ orchestrator.playerSpeechComplete(s,{request_id=UUID.request,session_id=UUID.session,generation=1})
   if case.noTarget then eq(b.submitted[1].payload.target.kind,'narrator') end
   local lineId=uuid(174);local actionId=uuid(175)
   local intent={schema='lorkhan.action-intent.v1',action_id=actionId,request_id=UUID.request,turn_id=UUID.turn,
    session_id=UUID.session,generation=1,name='item.create',tier=2,actor=playerId,target=playerId,
-   confirmation_required=true,parameters={record_id='exquisite_robe_01',count=2},expires_at='2026-07-19T21:00:00Z'}
+   confirmation_required=case.confirmation~=false,parameters={record_id='exquisite_robe_01',count=2},expires_at='2026-07-19T21:00:00Z'}
   local actionEvent=event(2,'action.intent',1,intent);actionEvent.message_id=lineId
   b.results={responseEvent(1,{actionLine(0,lineId,playerId,playerId,'item.create',{'record_id=exquisite_robe_01','count=2'})},1),
    actionEvent,event(3,'turn.complete',1,{status='complete'})}
   orchestrator.poll(s)
-  if case.allowed then
+  if case.allowed and case.confirmation==false then
+   eq(#confirmations,0);eq(next(s.pendingConfirmations),nil)
+   eq(#sent,1);eq(sent[1].name,'LORKHAN_ACTOR_ACTION')
+   orchestrator.haltActions(s);eq(cancelled,1)
+  elseif case.allowed then
    eq(#sent,0)
    eq(#confirmations,1);eq(confirmations[1].parameters.count,2)
    eq(confirmations[1].summary,'Create 2 Exquisite Robes for Player.')
@@ -1124,7 +1334,11 @@ test('NPC manager uses exact references and verifies deferred movement with save
  status,reason=manager.start(controls,command('npc.teleport'),UUID.session,1,1)
  eq(status,'rejected');eq(reason,'return_pending')
  local saved=manager.save(controls);manager.load(controls,saved)
- eq(manager.start(controls,command('npc.return'),UUID.session,1,2),nil)
+ local returnCommand=command('npc.return');returnCommand.command.parameters.actor=support.copy(npc)
+ returnCommand.command.parameters.actor.cell={kind='interior',name='Destination'}
+ returnCommand.command.parameters.actor.refnum.content_file=7
+ returnCommand.command.parameters.actor.record_id=string.upper(npc.record_id)
+ eq(manager.start(controls,returnCommand,UUID.session,1,2),nil)
  eq(manager.poll(controls,UUID.session,1,3),nil)
  table.remove(pending,1)();result=manager.poll(controls,UUID.session,1,4)
  eq(result.status,'succeeded');eq(result.observed.return_available,false);eq(actorObject.cell,origin);eq(actorObject.position.x,10)
@@ -1239,6 +1453,34 @@ test('inventory observations are changed-only bounded and fenced from failed rea
  eq(orchestrator.pollInventoryObservations(scheduler,1),false);eq(emitted,1)
  truthy(orchestrator.pollInventoryObservations(scheduler,1));eq(emitted,2)
 end)
+test('named creature characters auto-activate and request profiles with creatures disabled',function()
+ for _,record in ipairs({'vivec_god','yagrum bagarn','almalexia','Almalexia_warrior',
+   'BM_hircine','BM_hircine2','BM_hircine_huntaspect','BM_hircine_straspect','BM_hircine_spdaspect',
+   'dagoth_ur_1','dagoth_ur_2','dagoth gares','dagoth odros','dagoth vemyn','dagoth endus',
+   'dagoth tureynul','dagoth gilvoth','dagoth araynys','dagoth uthol'}) do
+  local requests=0
+  local s=orchestrator.new(fake.bridge(),function(name,payload)
+   if name=='LORKHAN_AUTO_ACTIVATED' then requests=requests+1;eq(payload.actor.record_id,record) end
+  end,nil,function()return true end)
+  s.settings={autoActivate={enabled=true,addCreatures=false,addHostile=false}}
+  local id=fake.identity('creature',record,81);orchestrator.activate(s,id,{})
+  local candidate={identity=id,distance=10,maxDistance=100,available=true}
+  candidate.dead=true;eq(orchestrator.scanAgents(s,{candidate}),0);candidate.dead=false
+  candidate.hostile=true;eq(orchestrator.scanAgents(s,{candidate}),0);candidate.hostile=false
+  candidate.distance=101;eq(orchestrator.scanAgents(s,{candidate}),0);candidate.distance=10
+  candidate.available=false;eq(orchestrator.scanAgents(s,{candidate}),0);candidate.available=true
+  s.settings.autoActivate.enabled=false;eq(orchestrator.scanAgents(s,{candidate}),0)
+  s.settings.autoActivate.enabled=true;eq(orchestrator.scanAgents(s,{candidate}),1);eq(requests,1)
+  eq(orchestrator.scanAgents(s,{candidate}),0);eq(requests,1)
+ end
+ for _,record in ipairs({'mudcrab','dagoth_ur_1_imposter','vivec_god_copy'}) do
+  local s=orchestrator.new(fake.bridge(),nil,nil,function()return true end)
+  s.settings={autoActivate={enabled=true,addCreatures=false}}
+  local id=fake.identity('creature',record,82);orchestrator.activate(s,id,{})
+  eq(orchestrator.scanAgents(s,{{identity=id,distance=10,maxDistance=100}}),0)
+ end
+end)
+
 test('managed agents activate in bounded batches and manual pins survive distance cleanup',function()
  local b=fake.bridge() local managed=0 local detached=0 local agentEvents=0 local profileEvents=0
  local s=orchestrator.new(b,function(name,payload)
@@ -1295,12 +1537,39 @@ test('configured hearing distance adds nearby managed agents to the turn audienc
  eq(b.submitted[1].payload.audience[1].record_id,npc.record_id)
  eq(b.submitted[1].payload.audience[2].record_id,near.record_id)
  eq(b.submitted[1].payload.context.dialogueMode,'Standard')
+ -- API-129 hearing observations use world-coordinate bounding boxes and a physical ray.
+ local vector={}
+ vector.__index=vector
+ function vector:length()return math.abs(self.x) end
+ vector.__sub=function(a,c)return setmetatable({x=a.x-c.x},vector)end
+ local function position(x)return setmetatable({x=x},vector)end
+ local cell={isExterior=false,name='Balmora'}
+ local selfObject={id='@0x1',recordId='player',cell=cell,position=position(0),controls={sneak=true}}
+ local otherObject={id='0x000001f',recordId='ajira',cell=cell,position=position(300),enabled=true}
+ function selfObject:getBoundingBox()return {center=self.position}end
+ function otherObject:getBoundingBox()return {center=self.position}end
+ local rays=0
+ local modules={self=selfObject,core={contentFiles={list={'Morrowind.esm'}}},
+  types={Player={objectIsInstance=function(object)return object==selfObject end},
+   NPC={objectIsInstance=function()return true end},Actor={isDead=function()return false end}},
+  nearby={actors={otherObject},castRay=function(origin,destination,options)
+   rays=rays+1;eq(origin,selfObject.position);eq(destination,otherObject.position);eq(options.ignore,selfObject)
+   return {hit=false}
+  end}}
+ local observed=openmwAdapter.hearingContext(modules)
+ local key=identity.key(openmwAdapter.identity(otherObject,modules))
+ eq(observed.sneaking,true);eq(observed.actors[key].distance,300);eq(observed.actors[key].visible,true);eq(rays,1)
+ eq(context.snapshot({hearing=observed}).hearing,nil)
+ modules.nearby.castRay=function()return {hit=true,hitObject={}}end
+ eq(openmwAdapter.hearingContext(modules).actors[key].visible,false)
+ otherObject.cell={isExterior=false,name='Another room'}
+ eq(openmwAdapter.hearingContext(modules).actors[key].available,false)
 end)
-test('dialogue modes apply explicit bounded audience policies',function()
- local function submit(mode,explicitGroup,distance,preset)
+test('dialogue modes apply CHIM hearing radius and visibility policies',function()
+ local function submit(mode,explicitGroup,distance,sneaking,visible,automatic)
   local b=fake.bridge() local s=orchestrator.new(b,nil,nil,function()return true end)
   local other=fake.identity('npc','mode-actor',91)
-  s.settings={autoActivate={hearingDistance=500,hearingPreset=preset}}
+  s.settings={autoActivate={hearingDistance=500,autoHearingRadiusMeters=automatic or 10}}
   s.dialogueMode=mode
   orchestrator.configureSession(s,UUID.session)
   for _,actorId in ipairs({npc,other}) do orchestrator.activate(s,actorId,{}) end
@@ -1311,17 +1580,21 @@ test('dialogue modes apply explicit bounded audience policies',function()
   truthy(orchestrator.manageCandidate(s,candidate(other,distance),'auto'))
   if explicitGroup then truthy(orchestrator.addAudience(s,candidate(other,distance))) end
   local request=b.nextTurnMetadata();request.text='Mode test';request.input_key='mode-'..mode
-  request.language='en-US';request.speaker=playerId;request.context={dialogueMode='forged'}
+  request.language='en-US';request.speaker=playerId;request.context={dialogueMode='forged',
+   hearing={sneaking=sneaking,actors={[identity.key(other)]={distance=distance,available=true,visible=visible}}}}
   request.capabilities={'dialogue.text'};request.recent_action_results={};request.ui_source='lorkhan_text'
   truthy(orchestrator.submitText(s,request))
   return b.submitted[1].payload
  end
  local standard=submit('Standard',false,300);eq(#standard.audience,2);eq(standard.context.dialogueMode,'Standard')
- local close=submit('Close',true,300);eq(#close.audience,2);eq(close.context.dialogueMode,'Close')
+ local close=submit('Close',true,300);eq(#close.audience,1);eq(close.context.dialogueMode,'Close')
  local whisper=submit('Whisper',true,300);eq(#whisper.audience,1);eq(whisper.context.dialogueMode,'Whisper')
- eq(#submit('Standard',false,300,'TargetsOnly').audience,1)
- eq(#submit('Standard',true,300,'TargetsOnly').audience,2)
- eq(#submit('Standard',false,700,'Wide').audience,2)
+ eq(#submit('Whisper',false,100).audience,2)
+ eq(#submit('Standard',false,300,true).audience,1)
+ eq(#submit('Standard',false,300,false,false,1).audience,1)
+ eq(#submit('Standard',false,300,false,true,1).audience,2)
+ eq(#submit('Close',false,150,false,true).audience,2)
+ eq(#submit('Close',false,150,true,true).audience,1)
  local shout=submit('Shout',false,700);eq(#shout.audience,2);eq(shout.context.dialogueMode,'Shout')
 end)
 test('one-turn mode override strips its prefix and preserves the selected mode and rechat group',function()
@@ -1342,11 +1615,40 @@ test('one-turn mode override strips its prefix and preserves the selected mode a
  truthy(orchestrator.submitText(s,request))
  local payload=b.submitted[1].payload
  eq(payload.input.text,'keep this between us');eq(payload.input.mood.kind,'suspicious')
- eq(payload.context.dialogueMode,'Close');eq(#payload.audience,2);eq(s.dialogueMode,'Standard')
+ eq(payload.context.dialogueMode,'Close');eq(#payload.audience,1);eq(s.dialogueMode,'Standard')
  eq(s.rechatSeed.dialogueMode,'Close');eq(s.rechatSeed.mood,nil)
 end)
+test('new voice and typed input supersede old turns without reconnecting or cancelling capture',function()
+ local b=fake.bridge();local cancelled={};local events={}
+ b.cancelTurn=function(id)cancelled[#cancelled+1]=id;return true end
+ local s=orchestrator.new(b,function(name,payload)events[#events+1]={name=name,payload=payload}end)
+ orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+ truthy(conversation.setTarget(s.conversation,npc))
+ s.conversation.turn={turnId=UUID.turn,requestId=UUID.request,generation=1,terminal=false}
+ s.pendingStt[uuid(199)]={target=npc,session_id=UUID.session,generation=1}
+ s.openMic=true
+ truthy(orchestrator.startVoice(s,{speaker=playerId,context={},language='en-US',capabilities={'dialogue.text'}}))
+ eq(cancelled[1],UUID.turn);eq(s.sessionId,UUID.session);eq(s.generation,1);eq(#b.cancelled,0)
+ truthy(s.pendingVoice);truthy(s.openMic);eq(s.conversation.turn,nil);eq(s.rechatSuppressionSeconds,3)
+ truthy(s.pendingStt[uuid(199)].superseded)
+ local late=event(1,'stt.transcript',1,{text='Old recording.',language='en-US'});late.request_id=uuid(199)
+ b.results={late};orchestrator.poll(s);eq(#b.submitted,0);truthy(s.pendingVoice)
+ s.conversation.turn={turnId=UUID.turn,requestId=UUID.request,generation=1,terminal=false}
+ local request=b.nextTurnMetadata();request.text='New input.';request.input_key='replacement'
+ request.language='en-US';request.speaker=playerId;request.context={};request.capabilities={'dialogue.text'}
+ request.recent_action_results={};request.ui_source='lorkhan_text'
+ truthy(orchestrator.submitText(s,request));eq(cancelled[2],UUID.turn)
+ local duplicate,duplicateReason=orchestrator.submitText(s,request)
+ eq(duplicate,nil);eq(duplicateReason,'duplicate_input');eq(#cancelled,2)
+ eq(s.conversation.turn.turnId,request.turn_id);eq(s.sessionId,UUID.session);eq(#b.cancelled,0)
+ local old=event(2,'turn.complete',1,{status='complete'});b.results={old};orchestrator.poll(s)
+ eq(s.conversation.turn.terminal,false);eq(s.conversation.turn.turnId,request.turn_id)
+end)
+
 test('spoken mood and selected mode survive transcription as typed protocol data',function()
- local b=fake.bridge() local s=orchestrator.new(b,nil,nil,function()return true end)
+ local b=fake.bridge() local emitted={} local s=orchestrator.new(b,function(name,payload)
+  if name=='LORKHAN_PLAYER_SPEECH' then emitted[#emitted+1]=payload end
+ end,nil,function()return true end)
  orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
  truthy(orchestrator.selectTarget(s,{identity=npc,distance=100,maxDistance=1200,dead=false,available=true}))
  truthy(orchestrator.startVoice(s,{speaker=playerId,context={},language='en-US',capabilities={'dialogue.text'},
@@ -1358,6 +1660,12 @@ test('spoken mood and selected mode survive transcription as typed protocol data
  local payload=b.submitted[1].payload
  eq(payload.input.kind,'stt');eq(payload.input.text,'Tell me more.');eq(payload.input.mood.kind,'playful')
  eq(payload.context.dialogueMode,'Close')
+ eq(#emitted,1);eq(emitted[1].text,'Tell me more.');truthy(identity.same(emitted[1].speaker,playerId))
+ eq(s.playerSpeechRequest,emitted[1].request_id)
+ eq(orchestrator.playerSpeechComplete(s,{request_id=uuid(999),session_id=UUID.session,generation=1}),false)
+ truthy(s.playerSpeechRequest)
+ truthy(orchestrator.playerSpeechComplete(s,emitted[1]));eq(s.playerSpeechRequest,nil)
+ eq(orchestrator.playerSpeechComplete(s,emitted[1]),false)
  local cheatBridge=fake.bridge();local cheat=orchestrator.new(cheatBridge)
  orchestrator.configureSession(cheat,UUID.session);orchestrator.activate(cheat,npc,{})
  conversation.setTarget(cheat.conversation,npc)
@@ -1445,6 +1753,18 @@ end)
 test('player mood and typed prefixes stay separate from the saved dialogue mode',function()
  local uiState=require('scripts.LORKHAN.ui.state')
  local s=uiState.new()
+ local aimed={identity={kind='npc',display_name='Caius'},distance=300}
+ local nearest={identity={kind='npc',display_name='Guard'},distance=50}
+ local disabled={identity={kind='npc'},distance=10,available=false}
+ local dead={identity={kind='npc'},distance=20,dead=true}
+ local creature={identity={kind='creature'},distance=30}
+ s.target=aimed.identity
+ eq(uiState.targetPreview(aimed,{nearest},2048),aimed)
+ eq(uiState.targetPreview(nil,{disabled,dead,creature,nearest},2048),nearest)
+ eq(uiState.targetPreview(dead,{nearest},2048),nearest)
+ eq(uiState.targetPreview(nil,{nearest},40),nil)
+ eq(uiState.targetPreview(nil,{},2048),nil)
+ eq(s.target,aimed.identity)
  eq(s.mood,'None');eq(s.mode,'Standard');eq(uiState.moodSelection(s),nil);eq(uiState.effectiveMode(s),'Standard')
  eq(#uiState.MOODS,12);eq(uiState.MOODS[1],'None');eq(uiState.MOODS[#uiState.MOODS],'Custom')
  eq(#uiState.SHORTCUTS,9);eq(uiState.SHORTCUTS[1].prefix,'%%')
@@ -1554,6 +1874,7 @@ test('focused UI builders keep chat selectors tools and notifications independen
  eq(chat[1].props.text,'Text Chat and Interact: Fargoth');eq(chat[#chat-1].props.text,'Send');eq(chat[#chat].props.text,'Close')
  eq(chat[2].props.text,'Mood: None  |  Mode: Standard')
  eq(chat[4].props.text,'Press Enter or select Send')
+ eq(chat[3].content[1].props.autoFocus,true)
  -- the moved controls sit between the send hint and Send, in one compact clickable list
  local MENU_FIRST=5
  eq(#chatbox.MENU,9);eq(#chat,MENU_FIRST+#chatbox.MENU+1)
@@ -1590,6 +1911,7 @@ test('focused UI builders keep chat selectors tools and notifications independen
   onCustomChanged=function()end,onCustomKeyPress=function()end,onBack=function()end,onClose=function()end})
  eq(moodPanel[1].props.text,'Player Mood');eq(moodPanel[3].props.text,'None  [active]')
  eq(moodPanel[4].props.text,'Custom');eq(moodPanel[5].props.text,'Custom delivery direction')
+ eq(moodPanel[6].content[1].props.autoFocus,false)
  eq(moodPanel[#moodPanel-1].props.text,'Back to conversation');eq(moodPanel[#moodPanel].props.text,'Close')
  local choices=require('scripts.LORKHAN.ui.selector').build({ui=ui,util=util,title='Dialogue Mode',
   options={{label='Standard',active=true,onSelect=function()end}},onClose=function()end})
@@ -1703,10 +2025,12 @@ test('LLM model panel keeps four semantic slots with async fallback and randomiz
  end
 end)
 test('OpenMW settings page registers controls and seeds conflict-free defaults once',function()
- local data={OMWInputBindings={},LORKHANInputDefaults={}}
+ local data={OMWInputBindings={},LORKHANInputDefaults={},SettingsLORKHANBehavior={combatBarkInterval=0}}
+ local subscriptions={}
  local function section(name)
   data[name]=data[name] or {}
-  return {get=function(_,key)return data[name][key]end,set=function(_,key,value)data[name][key]=value end}
+  return {get=function(_,key)return data[name][key]end,set=function(_,key,value)data[name][key]=value end,
+   subscribe=function(_,callback)subscriptions[name]=callback end}
  end
  local registered={triggers={},actions={},pages={},groups={}}
  package.preload['openmw.input']=function() return {
@@ -1715,6 +2039,8 @@ test('OpenMW settings page registers controls and seeds conflict-free defaults o
   registerAction=function(value)registered.actions[value.key]=value end,
  } end
  package.preload['openmw.storage']=function() return {playerSection=section} end
+ package.preload['openmw.async']=function() return {callback=function(_,fn)return fn end} end
+ package.loaded['openmw.async']=nil
  package.preload['openmw.interfaces']=function() return {Settings={
   registerPage=function(value)table.insert(registered.pages,value)end,
   registerGroup=function(value)table.insert(registered.groups,value)end,
@@ -1730,8 +2056,9 @@ package.preload['openmw.lorkhan']=function() return {
  package.loaded['openmw.lorkhan']=nil
  package.loaded['scripts.LORKHAN.settings']=nil
  local settingsEntry=require('scripts.LORKHAN.settings')
+ eq(data.SettingsLORKHANBehavior.combatBarkInterval,30)
  eq(next(settingsEntry),nil)
- eq(registered.pages[1].key,'LORKHAN');eq(#registered.groups,6);eq(registered.groups[1].page,'LORKHAN');eq(#registered.groups[1].settings,5)
+ eq(registered.pages[1].key,'LORKHAN');eq(#registered.groups,7);eq(registered.groups[1].page,'LORKHAN');eq(#registered.groups[1].settings,5)
  for _,setting in ipairs(registered.groups[1].settings) do truthy(setting.name);truthy(setting.description) end
  truthy(registered.triggers.LORKHAN_Talk);truthy(registered.triggers.LORKHAN_Halt)
  truthy(registered.triggers.LORKHAN_StopDialogue);truthy(registered.triggers.LORKHAN_ManualActivate)
@@ -1755,36 +2082,51 @@ package.preload['openmw.lorkhan']=function() return {
  for _,key in ipairs({'LORKHAN_ToggleMode','LORKHAN_ModelMenu','LORKHAN_ProfileMenu','LORKHAN_StatusHud',
   'LORKHAN_History','LORKHAN_Diagnostics'}) do truthy(registered.triggers[key]) end
  eq(registered.groups[2].key,'SettingsLORKHANAutoActivate');eq(setting(registered.groups[2],'enabled').default,true)
- eq(setting(registered.groups[2],'interiorDistance').default,1200);eq(setting(registered.groups[2],'exteriorDistance').default,2400)
- eq(setting(registered.groups[2],'interiorHearingDistance').default,500)
- eq(setting(registered.groups[2],'exteriorHearingDistance').default,1000)
- eq(registered.groups[3].key,'SettingsLORKHANBehavior');eq(#registered.groups[3].settings,9)
- eq(setting(registered.groups[3],'allowCombatDialogue').default,true)
- eq(setting(registered.groups[3],'combatBarksMode').default,'UseProfile')
- eq(setting(registered.groups[3],'combatBarkInterval').default,30)
- eq(setting(registered.groups[6],'connectionTimeoutSeconds').default,30)
- eq(setting(registered.groups[4],'audio_mode').default,'Normal3D')
- eq(setting(registered.groups[4],'pause_on_game_pause').default,false)
- eq(setting(registered.groups[3],'cancelDialogueOnCombat').default,true)
- eq(setting(registered.groups[3],'openMicEnabled').default,false)
- eq(setting(registered.groups[3],'openMicSensitivity').default,1000)
- eq(setting(registered.groups[3],'openMicEndDelayMs').default,1000)
- eq(setting(registered.groups[3],'recordingDevice').default,-1)
- eq(setting(registered.groups[3],'recordingDevice').renderer,'number')
- eq(setting(registered.groups[3],'recordingDevice').argument.min,-1)
- eq(setting(registered.groups[3],'recordingDevice').argument.max,4)
- eq(setting(registered.groups[3],'recordingDeviceName').default,'Test microphone')
- eq(setting(registered.groups[3],'recordingDeviceName').renderer,'textLine')
- eq(setting(registered.groups[3],'recordingDeviceName').argument.disabled,true)
+ eq(setting(registered.groups[3],'interiorDistance').default,1200);eq(setting(registered.groups[3],'exteriorDistance').default,2400)
+ eq(setting(registered.groups[3],'interiorHearingDistance').default,1000)
+ eq(setting(registered.groups[3],'exteriorHearingDistance').default,1800)
+ eq(registered.groups[4].key,'SettingsLORKHANBehavior');eq(#registered.groups[4].settings,9)
+ eq(setting(registered.groups[4],'allowCombatDialogue').default,true)
+ eq(setting(registered.groups[4],'combatBarks').default,true)
+ eq(setting(registered.groups[4],'combatBarkInterval').default,30)
+ eq(setting(registered.groups[7],'connectionTimeoutSeconds').default,30)
+ eq(setting(registered.groups[5],'audio_mode').default,'Normal3D')
+ eq(setting(registered.groups[5],'pause_on_game_pause').default,false)
+ eq(setting(registered.groups[4],'cancelDialogueOnCombat').default,true)
+ eq(setting(registered.groups[4],'openMicEnabled').default,false)
+ eq(setting(registered.groups[4],'openMicSensitivity').default,1000)
+ eq(setting(registered.groups[4],'openMicEndDelayMs').default,1000)
+ eq(setting(registered.groups[4],'recordingDevice').default,-1)
+ eq(setting(registered.groups[4],'recordingDevice').renderer,'number')
+ eq(setting(registered.groups[4],'recordingDevice').argument.min,-1)
+ eq(setting(registered.groups[4],'recordingDevice').argument.max,4)
+ eq(setting(registered.groups[4],'recordingDeviceName').default,'Test microphone')
+ eq(setting(registered.groups[4],'recordingDeviceName').renderer,'textLine')
+ eq(setting(registered.groups[4],'recordingDeviceName').argument.disabled,true)
  eq(data.SettingsLORKHANBehavior.recordingDeviceName,'Test microphone')
- eq(setting(registered.groups[3],'rechat'),nil);eq(setting(registered.groups[3],'boredom'),nil)
- eq(setting(registered.groups[3],'combatBarks'),nil);eq(setting(registered.groups[3],'autoGreeting'),nil)
- eq(registered.groups[4].key,'SettingsLORKHANSound');eq(setting(registered.groups[4],'ttsVolumeBoost'),nil)
- eq(setting(registered.groups[4],'voice_volume_percent').default,100)
- eq(setting(registered.groups[4],'voice_volume_percent').argument.min,0)
- eq(setting(registered.groups[4],'voice_volume_percent').argument.max,500)
- eq(registered.groups[5].key,'SettingsLORKHANAgents');eq(setting(registered.groups[5],'actionsEnabled').default,true)
- eq(registered.groups[6].key,'SettingsLORKHANPresentation');eq(setting(registered.groups[6],'showStatusHud').default,false)
+ eq(setting(registered.groups[4],'rechat'),nil);eq(setting(registered.groups[4],'boredom'),nil)
+ eq(setting(registered.groups[4],'combatBarksMode'),nil);eq(setting(registered.groups[4],'autoGreeting'),nil)
+ eq(registered.groups[3].key,'SettingsLORKHANHearing')
+ eq(setting(registered.groups[3],'autoHearingRadiusMeters').default,10)
+ eq(setting(registered.groups[2],'hearingPreset'),nil)
+ local hearing=section('SettingsLORKHANHearing')
+ local presets=require('scripts.LORKHAN.ui.hearing_settings')
+ eq(presets.preset(hearing),'Recommended')
+ hearing:set('hearingPreset','Realistic');subscriptions.SettingsLORKHANHearing(nil,'hearingPreset')
+ eq(hearing:get('autoHearingRadiusMeters'),4);eq(hearing:get('interiorHearingDistance'),600)
+ eq(hearing:get('exteriorHearingDistance'),1000);eq(hearing:get('interiorDistance'),1200)
+ hearing:set('hearingPreset','Extended');subscriptions.SettingsLORKHANHearing(nil,'hearingPreset')
+ eq(hearing:get('autoHearingRadiusMeters'),15);eq(hearing:get('interiorHearingDistance'),1600)
+ eq(hearing:get('exteriorHearingDistance'),2400)
+ hearing:set('interiorHearingDistance',1234);subscriptions.SettingsLORKHANHearing(nil,'interiorHearingDistance')
+ eq(hearing:get('hearingPreset'),'Custom')
+ subscriptions.SettingsLORKHANHearing(nil,'hearingPreset');eq(hearing:get('interiorHearingDistance'),1234)
+ eq(registered.groups[5].key,'SettingsLORKHANSound');eq(setting(registered.groups[5],'ttsVolumeBoost'),nil)
+ eq(setting(registered.groups[5],'voice_volume_percent').default,100)
+ eq(setting(registered.groups[5],'voice_volume_percent').argument.min,0)
+ eq(setting(registered.groups[5],'voice_volume_percent').argument.max,500)
+ eq(registered.groups[6].key,'SettingsLORKHANAgents');eq(setting(registered.groups[6],'actionsEnabled').default,true)
+ eq(registered.groups[7].key,'SettingsLORKHANPresentation');eq(setting(registered.groups[7],'showStatusHud').default,false)
  local talk=data.OMWInputBindings.LORKHAN_Talk_Binding
  local halt=data.OMWInputBindings.LORKHAN_Halt_Binding
  eq(talk.device,'keyboard');eq(talk.button,6);eq(talk.type,'trigger');eq(talk.key,'LORKHAN_Talk')
@@ -1792,11 +2134,14 @@ package.preload['openmw.lorkhan']=function() return {
  eq(data.OMWInputBindings.LORKHAN_MasterMenu_Binding,nil)
  eq(data.LORKHANInputDefaults.version,7)
  data.OMWInputBindings.LORKHAN_Talk_Binding=nil
+ data.SettingsLORKHANBehavior.combatBarkInterval=90
  package.loaded['scripts.LORKHAN.settings']=nil
  require('scripts.LORKHAN.settings')
+ eq(data.SettingsLORKHANBehavior.combatBarkInterval,90)
  eq(data.OMWInputBindings.LORKHAN_Talk_Binding,nil)
  package.preload['openmw.input']=nil package.preload['openmw.storage']=nil package.preload['openmw.interfaces']=nil
  package.preload['openmw.lorkhan']=nil
+ package.preload['openmw.async']=nil package.loaded['openmw.async']=nil
  package.loaded['openmw.input']=nil package.loaded['openmw.storage']=nil package.loaded['openmw.interfaces']=nil
  package.loaded['openmw.lorkhan']=nil
  package.loaded['scripts.LORKHAN.settings']=nil
@@ -1882,14 +2227,14 @@ test('boredom and combat barks share idle and period fences',function()
  eq(orchestrator.runAutonomy(s,1),false)
  truthy(orchestrator.runAutonomy(s,4)) -- a lost player event is retried only after the watchdog expires
 end)
-test('combat cooldown accepts the full profile range without a 300 second clamp',function()
+test('combat request timer uses the CHIM client range independently of the server cooldown',function()
  local b=fake.bridge() local emitted={}
  local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end,nil,function()return true end)
  s.settings={autoActivate={enabled=true},behavior={combatBarks=true,combatBarkPeriodSeconds=600}}
  orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
  orchestrator.scanAgents(s,{{identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true}})
  orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,activity='combat',conversation_state='busy'})
- for _=1,119 do eq(orchestrator.runAutonomy(s,5),false) end
+ for _=1,23 do eq(orchestrator.runAutonomy(s,5),false) end
  eq(orchestrator.runAutonomy(s,4),false);truthy(orchestrator.runAutonomy(s,1))
  eq(emitted[#emitted].payload.kind,'combat_bark')
  s.autonomy.pending=nil;s.settings.behavior.allowCombatDialogue=false
@@ -2555,6 +2900,34 @@ test('direct profile requests queue bound targets and narrator without opening a
  native.sessionControls=function()return{target=current,selected_profile_id=uuid(401)}end
  st=requests.start(native,{npc},true,0);requests.pump(st,native,1);requests.pump(st,native,2)
  eq(#calls,2);eq(st.failed,1)
+ -- Exercise the real menu handler and frame pump together: closing must not stop submission.
+ local file=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local source=file:read('*a');file:close()
+ local handler=assert(source:match('(function settingsControls.requestProfiles%(.+)\nlocal function generateSelectedProfile'))
+ local pump=assert(source:match('(            if settingsControls.profileUpdates then.-)            if not controlsRequestActive'))
+ local factory=assert((loadstring or load)([[return function(native,target)
+ local nativeOk=true
+ local settingsControls={}
+ local state={ui={visible=true,target=target,agents={{identity=target}}}}
+ local adapter={actorDistance=function()return 10 end,identity=function()return target end}
+ local core={getRealTime=function()return 0 end}
+ local self={}
+ local closed=0
+ local function leaveUiMode()closed=closed+1 end
+ local function render()end
+ ]]..handler..'\nlocal function tick()\n'..pump..[[end
+ return settingsControls,state,tick,function()return closed end
+ end]]))()
+ native.sessionControls=function()return{target=current,selected_profile_id=uuid(401),narrator_profile_id=uuid(402)}end
+ for _,kind in ipairs({'target','nearby','narrator'}) do
+  local controls,ui,tick,closed=factory(native,npc)
+  local count=#calls
+  controls.requestProfiles(kind);eq(ui.ui.visible,false);eq(closed(),1);truthy(controls.profileUpdates)
+  for n=1,4 do tick()end
+  eq(#calls,count+1);eq(controls.profileUpdates,nil);eq(ui.ui.visible,false)
+  eq(calls[#calls].kind,kind=='narrator' and 'narrator_profile_generate' or 'profile_generate')
+ end
+ local controls,ui,_,closed=factory(native,nil)
+ controls.requestProfiles('target');eq(ui.ui.visible,true);eq(closed(),0);eq(controls.profileUpdates,nil)
 end)
 io.write(string.format('%d tests, %d failures\n',tests,failures))
 if failures>0 then os.exit(1) end

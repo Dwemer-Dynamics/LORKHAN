@@ -26,7 +26,7 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
 {
     const auto validId = [](const auto& id) { return isCanonicalUuid(id.value()); };
     const auto validEnvelope = [&validId](const EnvelopeIds& ids, bool sessionRequired) {
-        return validId(ids.installation) && validId(ids.profile) && validId(ids.playthrough)
+        return validId(ids.installation) && isProfileId(ids.profile.value()) && validId(ids.playthrough)
             && (!sessionRequired || validId(ids.session)) && (sessionRequired || ids.session.empty() || validId(ids.session))
             && validId(ids.request) && validId(ids.turn) && validId(ids.message);
     };
@@ -70,7 +70,7 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
             return Result<void>::failure(makeError(ErrorCode::invalid_argument,"invalid saved character binding"));
         if (init->loadedCalendar && (!init->loadedSave || !init->loadedCalendar->valid()))
             return Result<void>::failure(makeError(ErrorCode::invalid_argument, "invalid loaded-save calendar"));
-        if (!validEnvelope(init->ids, false) || !envelopeMatches(init->ids))
+        if (!validId(init->ids.profile) || !validEnvelope(init->ids, false) || !envelopeMatches(init->ids))
             return Result<void>::failure(makeError(ErrorCode::invalid_argument, "init envelope contains malformed or inconsistent IDs"));
     }
     if (const auto* turn = std::get_if<TurnRequest>(&request.payload)) {
@@ -97,7 +97,7 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
     }
     if (const auto* interruption = std::get_if<InterruptionRequest>(&request.payload)) {
         if (!validId(interruption->message) || !validId(interruption->request) || !validId(interruption->turn)
-            || !validId(interruption->session) || interruption->request != request.id
+            || !validId(interruption->session)
             || interruption->session != request.session || interruption->generation != request.generation)
             return Result<void>::failure(makeError(ErrorCode::invalid_argument, "interruption correlation contains malformed or inconsistent IDs"));
     }
@@ -164,7 +164,8 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
             || !validId(controls->correlation.session) || controls->correlation.request != request.id
             || controls->correlation.session != request.session || controls->correlation.generation != request.generation
             || (modelSlot ? (controls->selectionId || !validModelKey)
-                          : (controls->selectionKey || (controls->selectionId && !isCanonicalUuid(*controls->selectionId))))
+                          : (controls->selectionKey || (controls->selectionId && !(controls->kind==SessionControlKind::narrator_profile_generate
+                              ? isCanonicalUuid(*controls->selectionId) : isProfileId(*controls->selectionId)))))
             || !isCanonicalUtcTimestamp(controls->createdAt))
             return Result<void>::failure(makeError(ErrorCode::invalid_argument,
                 "controls-select correlation or selection is invalid"));
