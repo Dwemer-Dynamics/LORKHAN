@@ -300,6 +300,23 @@ class PackagingTests(unittest.TestCase):
         self.assertTrue(audit_archive_content(dev, self.policy["runtime_allowlist"], runtime_denies)[1])
         self.assertEqual(audit_archive_content(dev, self.policy["source_allowlist"], self.policy["denylist"])[1], [])
 
+    def test_reviewed_resource_requires_exact_bytes_and_keeps_signature_checks(self):
+        archive = self.temp / "resource.zip"
+        path = "bin/resources/menu.png"
+        data = b"upstream fixture image"
+        assets = {path: hashlib.sha256(data).hexdigest()}
+        with zipfile.ZipFile(archive, "w") as z:
+            z.writestr(path, data)
+        self.assertEqual(audit_archive_content(archive, ["bin/*"], ["*.png"], assets)[1], [])
+        with zipfile.ZipFile(archive, "w") as z:
+            z.writestr(path, data + b"changed")
+        self.assertTrue(audit_archive_content(archive, ["bin/*"], ["*.png"], assets)[1])
+        data = b"TE" + b"S3" + b"fixture"
+        with zipfile.ZipFile(archive, "w") as z:
+            z.writestr(path, data)
+        findings = audit_archive_content(archive, ["bin/*"], ["*.png"], {path: hashlib.sha256(data).hexdigest()})[1]
+        self.assertTrue(any(item["message"] == "TES3/BSA binary signature" for item in findings))
+
     def test_provenance_completeness_canary(self):
         ledger = read_json(ROOT / self.policy["provenance_ledger"])
         recorded = [path for item in ledger["records"] for path in item["target_paths"]]

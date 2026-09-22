@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
 from lorkhan_foundation import read_json, sha256_file, write_json
-from lorkhan_packaging import (PackagingError, apply_suppressions, audit_archive_content, audit_notices,
+from lorkhan_packaging import (reviewed_assets, PackagingError, apply_suppressions, audit_archive_content, audit_notices,
                                audit_source_inputs, audit_tree, load_suppressions, normalized_archive_comparison,
                                tracked_implementation_paths, validate_package_set, validate_provenance, validate_spdx)
 
@@ -18,7 +18,7 @@ def audit(args: argparse.Namespace) -> None:
     archive = Path(args.archive).resolve()
     policy = read_json(repository / args.policy)
     denylist = policy["denylist"] + (policy.get("runtime_denylist", []) if args.kind != "source" else [])
-    entries, findings = audit_archive_content(archive, policy[f"{args.kind}_allowlist"], denylist)
+    entries, findings = audit_archive_content(archive, policy[f"{args.kind}_allowlist"], denylist, reviewed_assets(repository, policy))
     if args.kind == "runtime":
         findings.extend(audit_notices(entries, policy["notices_required"], archive.name, sha256_file(archive)))
     else:

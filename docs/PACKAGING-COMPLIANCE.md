@@ -33,3 +33,12 @@ The install dry-run computes targets beneath an isolated root and records only p
 ## Release proof still required
 
 Before any release-named package can pass, supply the staged built branded runtime and Lua product files, an exact pinned OpenMW source archive/materialization manifest, the authoritative patch manifest, complete dependency locks/licenses/notices/provenance, clean source rebuild evidence, Windows x64 package evidence, and legal-data in-game/install/uninstall acceptance. The generated/ignored `engine/openmw` checkout is not itself a committed prerequisite. No release, signing, or publication is performed by these scripts.
+
+## Pinned OpenMW runtime resources
+
+The runtime uses OpenMW's own menu textures and images. `config/packaging/openmw-assets.json`
+records the exact packaged path, SHA-256 and upstream source path for each of these resources
+at the pinned OpenMW commit. Only those exact bytes may pass the media-extension gate. Changed
+or additional images still fail; secret, privacy, archive safety and TES3/BSA signature checks
+remain active. The runtime must include `licenses/OpenMW-LICENSE.txt` and the upstream font notices.
+Bethesda game data, personal profiles and cached voice audio remain excluded.

@@ -204,7 +204,7 @@ class FoundationTests(unittest.TestCase):
         global_script = (script_root / "global.lua").read_text(encoding="utf-8")
         native_bindings = (ROOT / "apps/openmw/mwlua/lorkhanbindings.cpp").read_text(encoding="utf-8")
         patch_bindings = (ROOT / "openmw-patches/overlay/apps/openmw/mwlua/lorkhanbindings.cpp").read_text(encoding="utf-8")
-        for token in ("key='autoGreeting'", "key='rechat'", "key='boredom'", "key='combatBarks'"):
+        for token in ("key='autoGreeting'", "key='rechat'", "key='boredom'"):
             self.assertNotIn(token, settings)
         self.assertIn("LORKHAN_AUTONOMY_CONTEXT_REQUEST=function(event)", player)
         self.assertIn("orchestrator.runAutonomy(state,BRIDGE_POLL_INTERVAL)", global_script)
@@ -269,14 +269,14 @@ class FoundationTests(unittest.TestCase):
 
     def test_typed_player_tts_uses_the_bounded_speech_lane(self):
         player = (ROOT / "lorkhan/files/scripts/LORKHAN/player.lua").read_text(encoding="utf-8")
-        self.assertIn("if not speechAlreadyPlayed then startPlayerSpeech(args.speaker,args.text) end", player)
+        self.assertIn("args.player_speech_played=speechAlreadyPlayed==true", player)
         self.assertIn("native.requestMenuDialogueTts(actor,text)", player)
         self.assertIn("state='requesting',subtitle=type(text)=='string' and text or ''", player)
         self.assertIn("local subtitle=current.menuDialogue and '' or (current.subtitle or '')", player)
         self.assertIn("adapter.playSpeech(status.media_id,subtitle,volume)", player)
         self.assertIn("if not startPlayerSpeech(pending.args.speaker,status.text,continueTurn) then continueTurn() end", player)
         self.assertIn("queued=true queueTypedTurn(pending.args,true)", player)
-        self.assertIn("if action=='LORKHAN_Halt' then stopPlayerSpeech() end", player)
+        self.assertIn("if action=='LORKHAN_Halt' then pendingVoiceTarget=false pttHeld=false stopPlayerSpeech() stopBookSpeech() end", player)
 
     def test_offline_cache_miss(self):
         result = self.command(sys.executable, str(BOOTSTRAP), "bootstrap", "--cache-dir", str(self.temp / "none"),

@@ -400,11 +400,33 @@ def match_any(path: str, patterns: Sequence[str]) -> bool:
     return any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
 
 
-def enforce_allowlist(entries: Sequence[Mapping[str, Any]], allow: Sequence[str], deny: Sequence[str]) -> None:
+def reviewed_assets(repository: Path, policy: Mapping[str, Any]) -> dict[str, str]:
+    """Allow only the exact bundled OpenMW resource bytes, never arbitrary game assets."""
+    relative = policy.get("reviewed_assets")
+    if not relative:
+        return {}
+    document = read_json(repository / normalize_path(relative))
+    pin = read_json(repository / policy["openmw_pin"])
+    if document.get("commit") != pin["commit"] or not document.get("license") or not document.get("notice"):
+        raise PackagingError("reviewed OpenMW assets lack pinned provenance or notices")
+    result = {}
+    for item in document["files"]:
+        path = normalize_path(item["path"])
+        if not path.startswith("bin/resources/") or not HEX64.fullmatch(item["sha256"]):
+            raise PackagingError("reviewed assets must name exact resource paths and hashes")
+        if path in result:
+            raise PackagingError("duplicate reviewed asset")
+        result[path] = item["sha256"]
+    return result
+
+
+def enforce_allowlist(entries: Sequence[Mapping[str, Any]], allow: Sequence[str], deny: Sequence[str],
+                      assets: Mapping[str, str] | None = None) -> None:
     findings = []
     for entry in entries:
         path = entry["path"]
-        if match_any(path, deny):
+        reviewed = bool(assets and assets.get(path) == entry.get("sha256"))
+        if match_any(path, deny) and not reviewed:
             findings.append(f"denylisted path: {path}")
         elif not match_any(path, allow):
             findings.append(f"path not allowlisted: {path}")
@@ -614,11 +636,12 @@ def audit_tree(root: Path) -> list[dict[str, str]]:
     return findings
 
 
-def audit_archive_content(path: Path, allow: Sequence[str], deny: Sequence[str]) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+def audit_archive_content(path: Path, allow: Sequence[str], deny: Sequence[str],
+                          assets: Mapping[str, str] | None = None) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     entries = inspect_archive(path)
     findings: list[dict[str, str]] = []
     try:
-        enforce_allowlist(entries, allow, deny)
+        enforce_allowlist(entries, allow, deny, assets)
     except PackagingError as exc:
         findings.append(_finding("archive-allowlist", path.name, sha256_file(path), str(exc)))
     if zipfile.is_zipfile(path):
@@ -634,6 +657,12 @@ def audit_archive_content(path: Path, allow: Sequence[str], deny: Sequence[str])
                     stream = archive.extractfile(info)
                     if stream is not None:
                         findings.extend(audit_bytes(normalize_path(info.name), stream.read()))
+    # Only the extension finding is exempted for hash-verified upstream resources.
+    # Secret, privacy, signature and traversal checks still apply to these files.
+    findings = [item for item in findings if not (
+        assets and assets.get(item["path"]) == item["sha256"]
+        and item["audit"] == "proprietary-data"
+        and item["message"].startswith("prohibited game/media/asset extension"))]
     return entries, findings
 
 

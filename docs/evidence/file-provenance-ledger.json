@@ -170,6 +170,7 @@
         "lorkhan/fixtures/v1/valid/gamedata-automatic-diary.json",
         "lorkhan/fixtures/v1/valid/gamedata-bored-responder.json",
         "lorkhan/fixtures/v1/valid/gamedata-captured-dialogue.json",
+        "lorkhan/fixtures/v1/valid/gamedata-disposition.json",
         "lorkhan/fixtures/v1/valid/gamedata-item-pickup.json",
         "lorkhan/fixtures/v1/valid/gamedata-morrowind.json",
         "lorkhan/fixtures/v1/valid/gamedata-quest-responder.json",
@@ -184,6 +185,7 @@
         "lorkhan/fixtures/v1/valid/response-utf8-and-action.json",
         "lorkhan/fixtures/v1/valid/session-accepted.json",
         "lorkhan/fixtures/v1/valid/session-ended.json",
+        "lorkhan/fixtures/v1/valid/session-future-runtime.json",
         "lorkhan/fixtures/v1/valid/session-init.json",
         "lorkhan/fixtures/v1/valid/session-loaded-save-unknown.json",
         "lorkhan/fixtures/v1/valid/session-loaded-save.json",
@@ -238,8 +240,7 @@
         "lorkhan/tests/test_contract_harness.py",
         "scripts/protocol/generate_manifest.py",
         "scripts/protocol/validate.py",
-        "tests/test_protocol.py",
-        "lorkhan/fixtures/v1/valid/gamedata-disposition.json"
+        "tests/test_protocol.py"
       ],
       "source_repository": null,
       "source_commit": null,
@@ -359,6 +360,7 @@
       "id": "lorkhan-original-packaging-audits",
       "classification": "original",
       "target_paths": [
+        "config/packaging/openmw-assets.json",
         "config/packaging/policy.json",
         "config/packaging/suppressions.json",
         "scripts/audit/package.ps1",

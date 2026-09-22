@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
 from lorkhan_foundation import canonical_json, read_json, write_json
-from lorkhan_packaging import (RELEASE_NAME, PackagingError, archive_manifest, content_manifest, create_tar, create_zip,
+from lorkhan_packaging import (reviewed_assets, RELEASE_NAME, PackagingError, archive_manifest, content_manifest, create_tar, create_zip,
                                enforce_allowlist, generate_spdx, install_plan, package_set_linkage,
                                release_name_guard, sha256sums, source_date_epoch, uninstall_plan,
                                validate_spdx, write_release_manifest)
@@ -26,7 +26,7 @@ def package(args: argparse.Namespace) -> None:
     manifest = content_manifest(input_root)
     allowlist_kind = "lua" if RELEASE_NAME.match(args.name) and "lua" in args.name.lower() else args.kind
     denylist = policy["denylist"] + (policy.get("runtime_denylist", []) if allowlist_kind != "source" else [])
-    enforce_allowlist(manifest["files"], policy[f"{allowlist_kind}_allowlist"], denylist)
+    enforce_allowlist(manifest["files"], policy[f"{allowlist_kind}_allowlist"], denylist, reviewed_assets(root, policy))
     linkage = package_set_linkage(root, policy)
     suffix = ".zip" if args.format == "zip" else ".tar"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -39,7 +39,7 @@ def package(args: argparse.Namespace) -> None:
         shutil.copytree(input_root, stage, symlinks=True)
         write_json(stage / "sbom/lorkhan.spdx.json", sbom)
         staged_manifest = content_manifest(stage)
-        enforce_allowlist(staged_manifest["files"], policy[f"{allowlist_kind}_allowlist"], denylist)
+        enforce_allowlist(staged_manifest["files"], policy[f"{allowlist_kind}_allowlist"], denylist, reviewed_assets(root, policy))
         if args.format == "zip":
             create_zip(stage, archive, epoch)
         else:
