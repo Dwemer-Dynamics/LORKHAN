@@ -6,16 +6,7 @@ The canonical LORKHAN v1 bytes are under `lorkhan/schemas/v1` and `lorkhan/fixtu
 
 The original planning lock deferred server-owned response details until an authoritative server existed. On 2026-07-19 the sibling LorkhanServer independently implemented the no-game PostgreSQL vertical slice. This batch deliberately revises that deferral only for the concrete shapes emitted by that implementation: session acceptance, turn acceptance, events, interruption acceptance, action-result acceptance, and session end. The revision is evidenced by byte-identical dual-repository schemas/fixtures, authoritative Draft 2020-12 fixture validation, captured server-response validation, typed C++ parsing, Lua mapping checks, and the disposable-PostgreSQL cross-repository harness. It does not authorize broader product semantics.
 
-Run locally:
-
-```bash
-python3 scripts/protocol/generate_manifest.py --check
-python3 scripts/protocol/validate.py --require-jsonschema
-python3 -m unittest discover -s lorkhan/tests -v
-# sibling LorkhanServer:
-scripts/verify-protocol-parity.sh
-scripts/test/cross-repo-integration.sh
-```
+Python protocol-generation and audit tooling is maintained locally. The native and Lua tests remain in the repository; see the build guide for commands.
 
 `MANIFEST.json` and `SHA256SUMS` deterministically cover all schema and fixture bytes and record `cross_repository_byte_parity` as `locally-proven`. The active-worktree parity result is local dirty-tree evidence, not clean-commit durable proof.
 

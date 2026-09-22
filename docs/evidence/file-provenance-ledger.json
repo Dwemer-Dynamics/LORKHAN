@@ -170,6 +170,7 @@
         "lorkhan/fixtures/v1/valid/gamedata-automatic-diary.json",
         "lorkhan/fixtures/v1/valid/gamedata-bored-responder.json",
         "lorkhan/fixtures/v1/valid/gamedata-captured-dialogue.json",
+        "lorkhan/fixtures/v1/valid/gamedata-disposition.json",
         "lorkhan/fixtures/v1/valid/gamedata-item-pickup.json",
         "lorkhan/fixtures/v1/valid/gamedata-morrowind.json",
         "lorkhan/fixtures/v1/valid/gamedata-quest-responder.json",
@@ -184,6 +185,7 @@
         "lorkhan/fixtures/v1/valid/response-utf8-and-action.json",
         "lorkhan/fixtures/v1/valid/session-accepted.json",
         "lorkhan/fixtures/v1/valid/session-ended.json",
+        "lorkhan/fixtures/v1/valid/session-future-runtime.json",
         "lorkhan/fixtures/v1/valid/session-init.json",
         "lorkhan/fixtures/v1/valid/session-loaded-save-unknown.json",
         "lorkhan/fixtures/v1/valid/session-loaded-save.json",
@@ -238,8 +240,7 @@
         "lorkhan/tests/test_contract_harness.py",
         "scripts/protocol/generate_manifest.py",
         "scripts/protocol/validate.py",
-        "tests/test_protocol.py",
-        "lorkhan/fixtures/v1/valid/gamedata-disposition.json"
+        "tests/test_protocol.py"
       ],
       "source_repository": null,
       "source_commit": null,
@@ -359,6 +360,7 @@
       "id": "lorkhan-original-packaging-audits",
       "classification": "original",
       "target_paths": [
+        "config/packaging/openmw-assets.json",
         "config/packaging/policy.json",
         "config/packaging/suppressions.json",
         "scripts/audit/package.ps1",
@@ -548,6 +550,37 @@
       "license": "GPL-3.0-only",
       "copyright_notice": "OpenMW contributors",
       "transformation": "Compact MENU binding recorder using the existing OMWInputBindings store and input events; duplicate labels and descriptions omitted.",
+      "reviewer": "LORKHAN maintainers"
+    },
+    {
+      "id": "lorkhan-beta-profile-setup",
+      "classification": "original",
+      "target_paths": [
+        "scripts/package/setup-profile.ps1",
+        "docs/RELEASE-0.1.0.md",
+        "scripts/package/materialize-source.py"
+      ],
+      "source_repository": null,
+      "source_commit": null,
+      "source_path": null,
+      "license": "GPL-3.0-only",
+      "copyright_notice": "LORKHAN contributors",
+      "transformation": "Isolated beta profile setup and exact runtime installation and rebuild instructions; never edits existing game profiles.",
+      "reviewer": "LORKHAN maintainers"
+    },
+    {
+      "id": "reviewed-release-audit-false-positives",
+      "classification": "original",
+      "target_paths": [
+        "config/packaging/runtime-suppressions.json",
+        "config/packaging/source-suppressions.json"
+      ],
+      "source_repository": null,
+      "source_commit": null,
+      "source_path": null,
+      "license": "GPL-3.0-only",
+      "copyright_notice": "LORKHAN contributors",
+      "transformation": "Exact path and byte-hash review of public upstream library literals and source inventories. Local build paths and unknown findings are not exempted.",
       "reviewer": "LORKHAN maintainers"
     }
   ]

@@ -48,45 +48,9 @@ lane is required for the Windows/OpenMW LORKHAN release goal.
 Android is excluded from these targets because background networking, cache permissions, touch UI,
 packaging and proprietary data acquisition require a separate product/acceptance plan.
 
-## Target source layout
+## Current build instructions
 
-```text
-engine/                     # full upstream tree or fetch/patch workspace
-lorkhan/files/              # .omwscripts and Lua modules
-lorkhan/schemas/            # canonical JSON Schemas
-lorkhan/fixtures/           # valid/invalid protocol fixtures
-lorkhan/tests/              # product integration harnesses
-cmake/                      # LORKHAN build glue only
-scripts/bootstrap/          # exact source/dependency acquisition
-scripts/test/               # one-command focused suites
-scripts/package/            # deterministic artifacts/audits
-docs/evidence/              # pins, completion ledger, run manifests
-patch-manifest.json
-```
-
-## Commands the implementation must provide
-
-Names are fixed so the Azure worker and later Codex runs have a stable contract:
-
-```powershell
-pwsh ./scripts/bootstrap/windows.ps1
-pwsh ./scripts/build/windows.ps1 -Configuration Debug -Control
-pwsh ./scripts/build/windows.ps1 -Configuration Debug
-pwsh ./scripts/test/windows.ps1 -Configuration Debug
-pwsh ./scripts/package/windows.ps1 -Configuration Release
-pwsh ./scripts/audit/package.ps1 ./dist/<artifact>.zip
-```
-
-```bash
-./scripts/bootstrap/unix.sh
-./scripts/build/unix.sh --control
-./scripts/build/unix.sh
-./scripts/test/unix.sh
-./scripts/audit/protocol-parity.sh ../LorkhanServer
-```
-
-Scripts must be non-interactive, stop on failure, print tool/source pins, accept an isolated build
-directory, avoid user game/profile directories by default, and write a machine-readable run manifest.
+See [building.md](../lorkhan/files/docs/LORKHAN/building.md) for the maintained source preparation and compilation commands. Python bootstrap, packaging and audit tooling is now kept locally rather than in this repository.
 
 ## Automated test layers
 
