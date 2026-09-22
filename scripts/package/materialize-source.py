@@ -46,7 +46,7 @@ for change in manifest['changes']:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(artifact, target)
     else:
-        subprocess.run(['git', 'apply', '--whitespace=nowarn', str(artifact)], cwd=output, check=True)
+        subprocess.run(['git', '-c', 'core.autocrlf=false', 'apply', '--whitespace=error-all', str(artifact)], cwd=output, check=True)
     if change['operation'] != 'delete' and hashlib.sha256(target.read_bytes()).hexdigest() != change['result_sha256']:
         raise SystemExit('Patched source mismatch: ' + change['path'])
 print('Verified patched OpenMW source:', output)
