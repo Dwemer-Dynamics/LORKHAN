@@ -557,7 +557,8 @@
       "classification": "original",
       "target_paths": [
         "scripts/package/setup-profile.ps1",
-        "docs/RELEASE-0.1.0.md"
+        "docs/RELEASE-0.1.0.md",
+        "scripts/package/materialize-source.py"
       ],
       "source_repository": null,
       "source_commit": null,
