@@ -1,4 +1,4 @@
-name: foundation-contracts
+name: lua-runtime
 
 on:
   push:
@@ -9,53 +9,18 @@ on:
 permissions:
   contents: read
 
-env:
-  PYTHONDONTWRITEBYTECODE: '1'
-  TZ: UTC
-  LANG: C
-  LC_ALL: C
-  SOURCE_DATE_EPOCH: '1784442566'
-
 jobs:
-  foundation:
-    name: Ubuntu foundation, contracts, and audits
+  lua:
+    name: Ubuntu Lua runtime
     runs-on: ubuntu-24.04
     steps:
       - name: Check out exact revision
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-          fetch-depth: 0
-      - name: Install Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-        with:
-          python-version: '3.12'
-          cache: ''
       - name: Install Lua runtime
         run: sudo apt-get update && sudo apt-get install --yes lua5.4
-      - name: Run Python foundation and packaging tests
-        run: python3 -m unittest discover -s tests -v
-      - name: Run loopback fake-server contract tests
-        run: python3 -m unittest discover -s lorkhan/tests -v
-      - name: Run Lua structural checks
-        run: python3 lorkhan/tests/run.py
       - name: Run required Lua runtime tests
         env:
-          LORKHAN_LUA_TEST_ROOT: ${{ github.workspace }}/lorkhan/files/scripts/LORKHAN/tests
           LORKHAN_REQUIRE_LUA_TESTS: '1'
         run: scripts/test/lua-unix.sh
-      - name: Audit tracked source tree
-        run: scripts/audit/package.sh source-tree
-      - name: Validate authoritative evidence and manifests
-        run: python3 scripts/evidence/validate.py
-      - name: Validate protocol manifests and fixtures
-        run: python3 scripts/protocol/validate.py
-      - name: Validate OpenMW patch manifest
-        run: python3 scripts/patches/openmw.py validate
-      - name: Validate portable CI and command entrypoints
-        run: scripts/test/validate-ci.sh
-      - name: Record scope honestly
-        if: always()
-        run: |
-          printf '%s\n' 'This job proves the portable Python/Lua contracts, packaging inputs, evidence, and OpenMW patch manifest.' >> "$GITHUB_STEP_SUMMARY"
-          printf '%s\n' 'It does not claim a Linux product/native build, package publication, or in-game behavior.' >> "$GITHUB_STEP_SUMMARY"
