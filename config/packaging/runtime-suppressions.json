@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "suppressions": [
+    {
+      "audit": "secrets",
+      "path": "bin/defaults.bin",
+      "sha256": "9a136050d914f5a97a0e1c0cddb0d0dda60cc819afd1a4479461a34d354fc7ad",
+      "reason": "Base64-encoded OpenMW settings; decoded bytes match pinned files/settings-default.cfg exactly.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "secrets",
+      "path": "bin/openmw.cfg",
+      "sha256": "eefb940803c533b17a6899d951d7b3b58e9758fce9d4f8a5d42b72a9f07b772a",
+      "reason": "Pinned OpenMW public fallback names such as Question_10_AnswerThree and Weather_Thunderstorm_Thunder_Sound_ID_0, not credentials.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/Qt6Core.dll",
+      "sha256": "225bd38093416c825f2e3220213f64e1079e9ab20f4738decc0fc6eb992e8a9e",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/Qt6Gui.dll",
+      "sha256": "fc2464f62d7915ddeaebb5490bee6d60e7b42ad5a223d5812f0993c27c35be19",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "secrets",
+      "path": "bin/Qt6Network.dll",
+      "sha256": "1071f4f88c65317401bf93a2ffb55e661adcbb84f05911879ab21a6656521a68",
+      "reason": "Unmodified Qt TLS parser contains NUL-terminated PEM header literals; reviewed bytes are delimiters, not private key material.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/Qt6Network.dll",
+      "sha256": "1071f4f88c65317401bf93a2ffb55e661adcbb84f05911879ab21a6656521a68",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/Qt6Svg.dll",
+      "sha256": "22c48c35d9915bc89b13d2dca91c74b8531989a887faf642c795bf593e00306a",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/Qt6Widgets.dll",
+      "sha256": "c71e65b882a84f47114590784a256f14ba19202ec30b218ce4841b2c7256060b",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "secrets",
+      "path": "licenses/icu.txt",
+      "sha256": "e55522d81edc687a341a4411e0776e54ca654e90147f354a90458aaced4116af",
+      "reason": "Required ICU license text includes its public rober42539/lao-dictionary license URL, not credentials.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "secrets",
+      "path": "sbom/dependencies/boost-math.spdx.json",
+      "sha256": "0061628bed52abbd76a5230d478822141d4a2e4d63e23236ee6e3ad26ae03836",
+      "reason": "Reviewed upstream SPDX source filenames and revision labels contain mixed-case long identifiers; no tokens or private configuration.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "secrets",
+      "path": "sbom/dependencies/boost-random.spdx.json",
+      "sha256": "3658f53fa20f813db5c494fea9d1e7e586b71edaa549d7741254ecdfd3d8f80f",
+      "reason": "Reviewed upstream SPDX source filenames and revision labels contain mixed-case long identifiers; no tokens or private configuration.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "sbom/dependencies/boost-spirit.spdx.json",
+      "sha256": "df5c24b1d95becf3558f69497e8ef761f39e3b0be6c1cd73a6d8ec4410ddf2a8",
+      "reason": "Upstream Boost.Spirit SPDX file inventory includes its documented example path /home/classic; no local user data.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "secrets",
+      "path": "sbom/dependencies/bullet3.spdx.json",
+      "sha256": "1b3cd8744bad60718a401f9fbb1073753e27f4b82107f2889059f2692376bbb4",
+      "reason": "Reviewed upstream SPDX source filenames and revision labels contain mixed-case long identifiers; no tokens or private configuration.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "secrets",
+      "path": "sbom/dependencies/collada-dom.spdx.json",
+      "sha256": "8811b88a5ef4868dc200e809dc9e672738f99bca15d339f3f37f7a1296b9fcfe",
+      "reason": "Reviewed upstream SPDX source filenames and revision labels contain mixed-case long identifiers; no tokens or private configuration.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "secrets",
+      "path": "sbom/dependencies/mygui.spdx.json",
+      "sha256": "4c3ddb923ae4a021b24ef280632313afe5b03d681be0c7f43988039f013a4797",
+      "reason": "Reviewed upstream SPDX source filenames and revision labels contain mixed-case long identifiers; no tokens or private configuration.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "secrets",
+      "path": "sbom/dependencies/sdl2.spdx.json",
+      "sha256": "97df707c58ea563640906bb8cf50949ac8816dbd98c1048c8449ac148816bbdb",
+      "reason": "Reviewed upstream SPDX source filenames and revision labels contain mixed-case long identifiers; no tokens or private configuration.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/generic/qtuiotouchplugin.dll",
+      "sha256": "0eeeed6cb879f64880c804080f5bf72ab9021015b5861591820f7b115388ac66",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/iconengines/qsvgicon.dll",
+      "sha256": "8ab3b526b35a0dec08b4042da70f942b3b5f4d413ad4035c691f972b2008778e",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/imageformats/qgif.dll",
+      "sha256": "6ff0b57822dae5132e1640afe4f8fd6b75e21cf3f1eae53d70373c25a5506581",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/imageformats/qico.dll",
+      "sha256": "bceee911a3ffc1ed7b09a9d79374053fa813a04a22c40b0a4984b845582e3e8f",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/imageformats/qjpeg.dll",
+      "sha256": "03ebe96116bf6e98fe967f046e62ab269ff863a3bf4dc9a817e0704b6199899a",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/imageformats/qsvg.dll",
+      "sha256": "8878473e57bdc0a754a6df4fcdc5c13ed5500adbb0a057f73b21674514adcfc6",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/networkinformation/qnetworklistmanager.dll",
+      "sha256": "826e61c18b5ef4f63ed5fc2dde0eb1479b9c7032345b41d67e34c9e7a640ee53",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/platforms/qwindows.dll",
+      "sha256": "2bdc29b85bd94170f97aadb1cd447eefe7a3ddf7950c535c81a9ef63e17d1ddc",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/styles/qwindowsvistastyle.dll",
+      "sha256": "47a22e7958279e7668ace09849a669f7410bf8c7aed752bd6e60f23c9581cd50",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/tls/qcertonlybackend.dll",
+      "sha256": "e56916ac77619f4fa291d2024a5ca9a782de3b9992f90de8dedbd821b5bcf394",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "secrets",
+      "path": "bin/tls/qopensslbackend.dll",
+      "sha256": "f4ef459b46f0bb45b276d214bb2625e621c5b524d433fa72b2b10a6f4e81994b",
+      "reason": "Unmodified Qt TLS parser contains NUL-terminated PEM header literals; reviewed bytes are delimiters, not private key material.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/tls/qopensslbackend.dll",
+      "sha256": "f4ef459b46f0bb45b276d214bb2625e621c5b524d433fa72b2b10a6f4e81994b",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "secrets",
+      "path": "bin/tls/qschannelbackend.dll",
+      "sha256": "f0dba9588db6f1599b0668b8b41d054e549e2b7bcdea6e5a1f36f49925d50efc",
+      "reason": "Unmodified Qt TLS parser contains NUL-terminated PEM header literals; reviewed bytes are delimiters, not private key material.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "privacy",
+      "path": "bin/tls/qschannelbackend.dll",
+      "sha256": "f0dba9588db6f1599b0668b8b41d054e549e2b7bcdea6e5a1f36f49925d50efc",
+      "reason": "Unmodified upstream Qt 6.6.3 binary contains its public build account path, not a LORKHAN user or runtime path.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    },
+    {
+      "audit": "secrets",
+      "path": "manifests/dependency-sources.json",
+      "sha256": "703c0b383926d856a3448f4ee0a9063f9d86e387396804b80dbebd6454aa36b1",
+      "reason": "Reviewed public dependency source URLs, filenames and license attribution; no credentials or generated user data.",
+      "reviewer": "LORKHAN release owner",
+      "expires": "2027-03-22"
+    }
+  ]
+}

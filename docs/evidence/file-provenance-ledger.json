@@ -567,6 +567,21 @@
       "copyright_notice": "LORKHAN contributors",
       "transformation": "Isolated beta profile setup and exact runtime installation and rebuild instructions; never edits existing game profiles.",
       "reviewer": "LORKHAN maintainers"
+    },
+    {
+      "id": "reviewed-release-audit-false-positives",
+      "classification": "original",
+      "target_paths": [
+        "config/packaging/runtime-suppressions.json",
+        "config/packaging/source-suppressions.json"
+      ],
+      "source_repository": null,
+      "source_commit": null,
+      "source_path": null,
+      "license": "GPL-3.0-only",
+      "copyright_notice": "LORKHAN contributors",
+      "transformation": "Exact path and byte-hash review of public upstream library literals and source inventories. Local build paths and unknown findings are not exempted.",
+      "reviewer": "LORKHAN maintainers"
     }
   ]
 }
