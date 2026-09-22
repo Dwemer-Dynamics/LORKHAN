@@ -116,7 +116,11 @@
     "components/*",
     "components/**/*",
     "apps/*",
-    "apps/**/*"
+    "apps/**/*",
+    "licenses/*",
+    "licenses/**/*",
+    "notices/*",
+    "notices/**/*"
   ],
   "denylist": [
     ".git/*",
