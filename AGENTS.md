@@ -2,7 +2,7 @@
 
 ## Start here
 
-- Client source: https://github.com/RANGROO/LORKHAN; server: https://github.com/RANGROO/LorkhanServer.
+- Client source: https://github.com/Dwemer-Dynamics/LORKHAN; server: https://github.com/Dwemer-Dynamics/LorkhanServer.
 - Read [the packaged agent guide](lorkhan/files/docs/LORKHAN/agent-guide.md) for architecture, diagnostics and custom Lua/native work.
 - Read [building.md](lorkhan/files/docs/LORKHAN/building.md) for current commands and source/package boundaries.
 - Installed instructions live under docs/LORKHAN inside the Lua data tree. Keep those files canonical.
@@ -51,3 +51,9 @@
   or `DEFERRED` and link its evidence. Do not mark game behavior proven from mocks.
 - Release archives must be reproducible and pass the GPL/source, secret, proprietary-data, path,
   and content manifest audits in `PACKAGING-AND-LICENSE.md`.
+
+## Public repository workflow
+
+- The canonical remote is Dwemer-Dynamics; use unstable for development.
+- Submit feature/fix PRs to unstable. Maintainer promotions follow unstable -> dev -> lorkhan.
+- lorkhan is the default release branch. Preserve third-party notices and the GPLv3 license.

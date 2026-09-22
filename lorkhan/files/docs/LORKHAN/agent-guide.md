@@ -7,8 +7,8 @@ The Lua-only package still requires the matching LORKHAN engine and native bridg
 Use the installed build/source manifest and companion server revision when available;
 do not assume the latest main branch matches an older player's package.
 
-The [client repository](https://github.com/RANGROO/LORKHAN) owns the engine bridge and
-Lua gameplay. [LorkhanServer](https://github.com/RANGROO/LorkhanServer) owns providers,
+The [client repository](https://github.com/Dwemer-Dynamics/LORKHAN) owns the engine bridge and
+Lua gameplay. [LorkhanServer](https://github.com/Dwemer-Dynamics/LorkhanServer) owns providers,
 prompts, profiles, memories and durable jobs. No provider API key belongs in Lua.
 
 ## How a turn works
@@ -58,15 +58,15 @@ load order and the player's existing profile; do not overwrite LORKHAN.omwscript
 install an unrelated mod. The installed profile manager can enable separate mod folders.
 
 For custom LORKHAN behavior, begin with the maintained
-[Lua architecture](https://github.com/RANGROO/LORKHAN/blob/main/docs/LUA-MOD-ARCHITECTURE.md)
-and [Lua source examples](https://github.com/RANGROO/LORKHAN/tree/main/lorkhan/files/scripts/LORKHAN).
+[Lua architecture](https://github.com/Dwemer-Dynamics/LORKHAN/blob/lorkhan/docs/LUA-MOD-ARCHITECTURE.md)
+and [Lua source examples](https://github.com/Dwemer-Dynamics/LORKHAN/tree/lorkhan/lorkhan/files/scripts/LORKHAN).
 These are implementation examples, not a stable third-party extension SDK. Keep player
 input/UI in PLAYER scripts, authoritative context in GLOBAL scripts and self-only actor
 mutation in CUSTOM scripts. Use the existing typed action registry and terminal results.
 
 Native additions must follow the
-[engine boundary](https://github.com/RANGROO/LORKHAN/blob/main/docs/ENGINE-INTEGRATION-PLAN.md)
-and [patch tooling](https://github.com/RANGROO/LORKHAN/tree/main/openmw-patches).
+[engine boundary](https://github.com/Dwemer-Dynamics/LORKHAN/blob/lorkhan/docs/ENGINE-INTEGRATION-PLAN.md)
+and [patch tooling](https://github.com/Dwemer-Dynamics/LORKHAN/tree/lorkhan/openmw-patches).
 A new network action may require matching server policy, schemas, fixtures and both-side
 validation; a client-only script cannot grant model authority. For custom providers or
 server behavior, follow the companion server's AGENTS.md. Its feature directories do not

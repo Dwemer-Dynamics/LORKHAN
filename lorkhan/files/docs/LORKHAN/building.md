@@ -1,14 +1,11 @@
 # Building LORKHAN from source
 
-Run commands from a checkout of https://github.com/RANGROO/LORKHAN at the revision matching
+Run commands from a checkout of https://github.com/Dwemer-Dynamics/LORKHAN at the revision matching
 the intended package. Installed Lua files alone cannot rebuild OpenMW. Read root AGENTS.md
 and docs/build/BUILD-CONTRACT.md before native work. Historical plans can contain proposed
 commands; check the actual script parameters before using them.
 
-The client and companion server repositories are currently private. GitHub source/example
-links require authorized access. Without it, ask the maintainer for access or a complete
-matching source archive before following source-build instructions; no public clone route
-is provided here.
+The client and server repositories are public under Dwemer-Dynamics. Use the source revision matching the installed build. Submit development changes to unstable; lorkhan is the default release branch.
 
 ## Prerequisites and pins
 
