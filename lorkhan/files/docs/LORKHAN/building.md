@@ -1,74 +1,90 @@
 # Building LORKHAN from source
 
-Run commands from a checkout of https://github.com/Dwemer-Dynamics/LORKHAN at the revision matching
-the intended package. Installed Lua files alone cannot rebuild OpenMW. Read root AGENTS.md
-and docs/build/BUILD-CONTRACT.md before native work. Historical plans can contain proposed
-commands; check the actual script parameters before using them.
+The client repository contains the native bridge, Lua mod, OpenMW patches and build inputs.
+Release packaging and Python audit tools are maintained locally, not in this repository.
 
-The client and server repositories are public under Dwemer-Dynamics. Use the source revision matching the installed build. Submit development changes to unstable; lorkhan is the default release branch.
+## Requirements
 
-## Prerequisites and pins
+- Git, CMake 3.25+ and a C++20 compiler.
+- Windows engine builds: Visual Studio 2022 C++ workload and the OpenMW dependencies.
+- Lua 5.4 or LuaJIT for the optional Lua tests.
+- OpenMW 0.51.0, commit `f4bec41444214a7903bebd178389ca22ca13f646` (Lua API 129).
+- See `config/dependencies/windows-x64.lock.json` for release dependency pins.
 
-- Git and Python 3.10+; Python jsonschema for authoritative protocol validation.
-- CMake 3.25+, Ninja and a C++20 compiler for the foundation checks.
-- Windows x64 engine builds: Visual Studio 2022 C++ workload plus OpenMW dependencies.
-  Dependency preparation is not performed by the build wrapper. Follow the pinned
-  upstream dependency requirements and docs/OPENMW-TOOLCHAIN.md, recording versions.
-- Lua interpreter for Lua runtime tests; structural checks alone do not execute Lua.
-- OpenMW tag openmw-0.51.0, commit f4bec41444214a7903bebd178389ca22ca13f646, Lua API 129.
-  config/source-pins/openmw.json is authoritative. Do not substitute current upstream.
+Python is not required by LORKHAN's build configuration. Upstream dependency tools may
+have their own prerequisites. Never include game data, credentials or saves in source.
 
-## Focused checks
+## Standalone bridge checks
+
+Run from the LORKHAN checkout:
 
 ```powershell
-python -m unittest discover -s tests -v
-python scripts/protocol/generate_manifest.py --check
-python scripts/protocol/validate.py --require-jsonschema
-python scripts/patches/openmw.py validate
-$env:LORKHAN_REQUIRE_LUA_TESTS = '1'
+cmake -S . -B build/native -G "Visual Studio 17 2022" -A x64
+cmake --build build/native --config Release
+ctest --test-dir build/native -C Release --output-on-failure
 ./scripts/test/lua-windows.ps1
-cmake --preset foundation
-cmake --build --preset foundation
 ```
 
-The foundation target checks the standalone bridge; it does not build the engine.
-Unix equivalents include scripts/test/native.sh and scripts/test/lua-unix.sh.
+This builds the bridge and its tests, not the complete OpenMW game.
 
-## Pinned engine build
+## Prepare the engine source
 
-Choose empty absolute work locations outside game/profile directories. Configure
-LORKHAN_CACHE_DIR and LORKHAN_RUN_MANIFEST, then run scripts/bootstrap/prefetch-windows.ps1
-for the explicit online fetch. Set LORKHAN_SOURCE_DIR and a new LORKHAN_RUN_MANIFEST, then
-run scripts/bootstrap/windows.ps1 for verified offline reconstruction. Preserve a separate
-pristine tree for patch auditing. Apply and verify the patch with:
+Choose a new source directory outside the LORKHAN checkout. The following PowerShell
+commands apply the tracked patches and verify the resulting files without Python:
 
 ```powershell
-python scripts/patches/openmw.py apply --source $env:LORKHAN_SOURCE_DIR
-python scripts/patches/openmw.py verify --source $env:LORKHAN_SOURCE_DIR
+$repo = (Get-Location).Path
+$source = 'D:\build\openmw-lorkhan'
+$pin = 'f4bec41444214a7903bebd178389ca22ca13f646'
+if (Test-Path -LiteralPath $source) { throw 'Choose a new source directory' }
+git clone --no-checkout https://gitlab.com/OpenMW/openmw.git $source
+if ($LASTEXITCODE -ne 0) { throw 'Clone failed' }
+git -C $source -c core.autocrlf=false checkout --detach $pin
+if ($LASTEXITCODE -ne 0) { throw 'Pinned checkout failed' }
+$manifest = Get-Content "$repo/openmw-patches/patch-manifest.json" -Raw | ConvertFrom-Json
+foreach ($change in $manifest.changes) {
+    $artifact = Join-Path "$repo/openmw-patches" $change.artifact
+    if ((Get-FileHash -LiteralPath $artifact -Algorithm SHA256).Hash -ne $change.artifact_sha256) {
+        throw "Patch checksum mismatch: $($change.artifact)"
+    }
+    if ($change.operation -eq 'add') {
+        $destination = Join-Path $source $change.path
+        New-Item -ItemType Directory -Force -Path (Split-Path $destination) | Out-Null
+        Copy-Item -LiteralPath $artifact -Destination $destination
+    } else {
+        git -C $source -c core.autocrlf=false apply --recount --whitespace=error-all $artifact
+        if ($LASTEXITCODE -ne 0) { throw "Patch failed: $($change.path)" }
+    }
+}
+foreach ($change in $manifest.changes) {
+    $destination = Join-Path $source $change.path
+    if ($change.operation -eq 'delete') {
+        if (Test-Path -LiteralPath $destination) { throw "Deleted file remains: $($change.path)" }
+    } elseif ((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ne $change.result_sha256) {
+        throw "Patched source checksum mismatch: $($change.path)"
+    }
+}
 ```
 
-Set LORKHAN_BUILD_DIR, LORKHAN_INSTALL_DIR and LORKHAN_OUTPUT_DIR to separate absolute
-paths, then build with the prepared OpenMW dependency CMake arguments:
+## Compile OpenMW
+
+Prepare the dependencies required by the pinned upstream OpenMW source. Configure with
+its dependency/toolchain paths and `-DLORKHAN_SOURCE_ROOT` pointing to this checkout:
 
 ```powershell
-./scripts/build/windows.ps1 -State patched -Config Release -Compiler msvc
+cmake -S $source -B D:/build/lorkhan-engine -G "Visual Studio 17 2022" -A x64 `
+    "-DLORKHAN_SOURCE_ROOT=$repo" `
+    "-DCMAKE_TOOLCHAIN_FILE=D:/dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+    "-DCMAKE_PREFIX_PATH=D:/dependencies/Qt/6.6.3/msvc2019_64" `
+    -DBUILD_OPENCS=OFF
+cmake --build D:/build/lorkhan-engine --config Release --target openmw openmw-launcher
 ```
 
-Outputs and logs go to those selected roots. The wrapper accepts trailing CMake arguments;
-use the same dependency inputs for a pristine control build. Record exact source, toolchain
-and dependency versions. No discovered CTest tests means no test proof.
+The dependency paths above are examples; replace them with your prepared dependency
+locations. The upstream dependency configuration can require additional CMake options.
+The existing `scripts/build/windows.ps1` and `scripts/build/unix.sh` wrappers are also
+available for recording build outputs. Install the Lua files from `lorkhan/files`
+alongside the matching engine, never into an unrelated game's data directory.
 
-## Packages and source correspondence
-
-The canonical agent guides are lorkhan/files/docs/LORKHAN, with discovery in
-lorkhan/files/README-LORKHAN.md. The local installer copies this whole data tree to Data;
-release runtime/Lua staging retains lorkhan/files. The release policy requires these files
-in runtime, Lua and corresponding-source packages. Do not add a generic AGENTS.md to a
-shared Data root. Package-specific guides need to be opened explicitly by some agents.
-
-Use scripts/package/package.py build --help and docs/PACKAGING-COMPLIANCE.md in source.
-Its --input is an already assembled staging tree, not an automatic engine installer.
-Do not omit licenses, notices, provenance, exact corresponding source or audit gates.
-A repository URL alone is not the source artifact. Documentation changes do not authorize
-release, deployment or an engine rebuild. Fixture package tests do not prove a releasable
-runtime or in-game compatibility.
+Keep GPL licensing, third-party notices, exact source pins and corresponding source
+with distributed builds. A successful compilation does not prove in-game behavior.

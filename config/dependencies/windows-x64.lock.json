@@ -1,0 +1,730 @@
+{
+  "schema_version": 1,
+  "platform": "windows-x64",
+  "compiler": "MSVC 19.44.35224 (Visual Studio 2022)",
+  "windows_sdk": "10.0.26100.0",
+  "vcpkg": {
+    "release": "2026-02-24",
+    "archive": "vcpkg-x64-windows-2022-2026-02-24.7z",
+    "url": "https://github.com/OpenMW/openmw-deps-build/releases/download/2026-02-24/vcpkg-x64-windows-2022-2026-02-24.7z",
+    "sha512": "26175e781a4cfe4ca8a6e1b7d97ba899d15841e97d494b5fdc73d5ba0de8af8d65fa7b1cb9950a6568c3e0c59dd5d030c800a50481453179b1dab8032f6edfd9",
+    "build_recipe_commit": "8306cb2556b92c9bb891b13f4769889838fe3c10",
+    "ports_commit": "6d332a018c433fad20822ff4b536e4ccdc3413bd"
+  },
+  "qt": {
+    "version": "6.6.3",
+    "architecture": "msvc2019_64",
+    "modules": [
+      "qtbase",
+      "qtsvg"
+    ],
+    "linkage": "dynamic"
+  },
+  "sources": [
+    {
+      "file": "GNOME-libxml2-v2.15.1.tar.gz",
+      "url": "https://codeload.github.com/GNOME/libxml2/tar.gz/v2.15.1",
+      "size": 2952276,
+      "sha256": "23b1ebd74cc562cd592cd2618c2bd88dc06fa0dfdbcd56e03cb26d6ff6b7e373"
+    },
+    {
+      "file": "LuaJIT-LuaJIT-707c12bf00dafdfd3899b1a6c36435dbbf6c7022.tar.gz",
+      "url": "https://codeload.github.com/LuaJIT/LuaJIT/tar.gz/707c12bf00dafdfd3899b1a6c36435dbbf6c7022",
+      "size": 1093686,
+      "sha256": "ac2defd1e9b4ab07ac0a52f2403318ffb0d54505b975dff0cfc49a927ab84d90"
+    },
+    {
+      "file": "MyGUI-mygui-MyGUI3.4.3.tar.gz",
+      "url": "https://codeload.github.com/MyGUI/mygui/tar.gz/MyGUI3.4.3",
+      "size": 18797995,
+      "sha256": "33c91b531993047e77cace36d6fea73634b8c17bd0ed193d4cd12ac7c6328abd"
+    },
+    {
+      "file": "MyGUI-mygui-basic-string-0731785.diff",
+      "url": "https://github.com/MyGUI/mygui/commit/0731785d83431bd17a0854f19bea9a7d687de5a7.diff?full_index=1",
+      "size": 664,
+      "sha256": "e63ac955b63594575ad4d5a72531b5119422acd3ae5d6c72e53c08d47f35ba58"
+    },
+    {
+      "file": "boost-1.90.0-LICENSE_1_0.txt",
+      "url": "https://raw.githubusercontent.com/boostorg/boost/refs/tags/boost-1.90.0/LICENSE_1_0.txt",
+      "size": 1338,
+      "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566"
+    },
+    {
+      "file": "boostorg-algorithm-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/algorithm/tar.gz/boost-1.90.0",
+      "size": 1670869,
+      "sha256": "77be41c93a0d0ef2ef4ef0b715a628b15295b3e88d9396aea89bf5886c8a0732"
+    },
+    {
+      "file": "boostorg-align-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/align/tar.gz/boost-1.90.0",
+      "size": 18744,
+      "sha256": "d086783d504ac96635367d673795fdf95c1b49c09b6a20a5abf689e3d5eb5bf5"
+    },
+    {
+      "file": "boostorg-any-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/any/tar.gz/boost-1.90.0",
+      "size": 26759,
+      "sha256": "4c65c6d5dd1ffbccf024b764720ca3ef57398da61ddab3be76004b15e1b99e69"
+    },
+    {
+      "file": "boostorg-array-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/array/tar.gz/boost-1.90.0",
+      "size": 24968,
+      "sha256": "303d378bbb051292e7728b587f387cae231291840d47fb4595eb42f685e79cf4"
+    },
+    {
+      "file": "boostorg-asio-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/asio/tar.gz/boost-1.90.0",
+      "size": 2799881,
+      "sha256": "d23b5f86ebf49119f2470829ba2aebdc68ddf810b29947dd0552123d00aba981"
+    },
+    {
+      "file": "boostorg-assert-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/assert/tar.gz/boost-1.90.0",
+      "size": 20999,
+      "sha256": "1f48f929e69146db222fdf9538ec81c7cbd3ca88b94343644942b477031a3bba"
+    },
+    {
+      "file": "boostorg-atomic-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/atomic/tar.gz/boost-1.90.0",
+      "size": 212404,
+      "sha256": "df98aa2bfe841de7f9ca0c92988bfb1727c6c715560268f91e38c6411a0d4da5"
+    },
+    {
+      "file": "boostorg-beast-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/beast/tar.gz/boost-1.90.0",
+      "size": 1489124,
+      "sha256": "28abe5a52d0a8817fb7b55808da555514d098d37707eaca530e109dc9acb25fc"
+    },
+    {
+      "file": "boostorg-bimap-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/bimap/tar.gz/boost-1.90.0",
+      "size": 1129236,
+      "sha256": "31923db48c6901fc38af9350914d77d47d44f9908dc45c26472dcdb6a78a2c85"
+    },
+    {
+      "file": "boostorg-bind-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/bind/tar.gz/boost-1.90.0",
+      "size": 85940,
+      "sha256": "c9d56c1f9413bc4de29cbcd6cb5b21c3b98e85f9b360364a1e31e90c022d14d4"
+    },
+    {
+      "file": "boostorg-chrono-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/chrono/tar.gz/boost-1.90.0",
+      "size": 205240,
+      "sha256": "6f843586afa778e5df4184e78cac1e37bc065458f40657380508297cbfe880b1"
+    },
+    {
+      "file": "boostorg-cmake-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/cmake/tar.gz/boost-1.90.0",
+      "size": 40910,
+      "sha256": "8086d299738444a5265e313b548359a1ff2ed046571cc9a437e77b1a9bc1c1fe"
+    },
+    {
+      "file": "boostorg-concept_check-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/concept_check/tar.gz/boost-1.90.0",
+      "size": 57964,
+      "sha256": "55629fa2d5ef0607629297bc9ff875186361adda6b318973d6afe1f95265e6ca"
+    },
+    {
+      "file": "boostorg-config-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/config/tar.gz/boost-1.90.0",
+      "size": 386373,
+      "sha256": "1390bd79fbf270e40cfe5ac6b899f4a9c4e47139b6e17b4c1f7f78822adaa9fc"
+    },
+    {
+      "file": "boostorg-container-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/container/tar.gz/boost-1.90.0",
+      "size": 1400606,
+      "sha256": "74eea0c1d1ba0704f3f3ba49ac36e2989293d22cc6dc59fdcdfd2a7d9d63950c"
+    },
+    {
+      "file": "boostorg-container_hash-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/container_hash/tar.gz/boost-1.90.0",
+      "size": 67300,
+      "sha256": "415d6a01b2d8a07ab36dbf9e31a8fec6fa0e51185d1015a087c153de28cfaba5"
+    },
+    {
+      "file": "boostorg-context-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/context/tar.gz/boost-1.90.0",
+      "size": 209287,
+      "sha256": "69272ce5694be4963798054735a81d1eb05055af0d7ec15f65dc373ccfbf4fed"
+    },
+    {
+      "file": "boostorg-conversion-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/conversion/tar.gz/boost-1.90.0",
+      "size": 14060,
+      "sha256": "33e6fa8346fea6db76f5a68c5d4a996e5e9a56fd2cdb3248da873a3abfa194ba"
+    },
+    {
+      "file": "boostorg-core-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/core/tar.gz/boost-1.90.0",
+      "size": 175277,
+      "sha256": "0444b7741bcf20f80ff6a4d191a920f6aba92d26734c81fa481f8fd0a274b487"
+    },
+    {
+      "file": "boostorg-crc-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/crc/tar.gz/boost-1.90.0",
+      "size": 50961,
+      "sha256": "58b084f570f83db0630f7dc5dd150fd58ef02ef3d08b1b1f7a81a7ae96f5f566"
+    },
+    {
+      "file": "boostorg-date_time-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/date_time/tar.gz/boost-1.90.0",
+      "size": 342995,
+      "sha256": "655e7ce3bdef1ca547648c1864a30d190f601794d6a39eff00521af94eaf3c98"
+    },
+    {
+      "file": "boostorg-describe-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/describe/tar.gz/boost-1.90.0",
+      "size": 43033,
+      "sha256": "4ca9c54d50c5bd8ec68811475ef96ec1ac0abbfbf19f55789823aabcbb704812"
+    },
+    {
+      "file": "boostorg-detail-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/detail/tar.gz/boost-1.90.0",
+      "size": 75992,
+      "sha256": "9df5e38d36715d3af460d9aa13ddef39023b4a0ca73e2e7f8251c56629eb4920"
+    },
+    {
+      "file": "boostorg-dynamic_bitset-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/dynamic_bitset/tar.gz/boost-1.90.0",
+      "size": 82754,
+      "sha256": "1c290d3db69f5e3be9ec50bbad5012bb49d8328fb292795a1f7aa13a6bab86fd"
+    },
+    {
+      "file": "boostorg-endian-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/endian/tar.gz/boost-1.90.0",
+      "size": 81951,
+      "sha256": "f3155be0c56d93c32cd46c2ed96b9aaf64e2ce278fd354639ca1cad63e774f6a"
+    },
+    {
+      "file": "boostorg-exception-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/exception/tar.gz/boost-1.90.0",
+      "size": 119743,
+      "sha256": "031ddd5406ef430e72988dc30f65da329c2a933734ec813e791927b4069228a4"
+    },
+    {
+      "file": "boostorg-filesystem-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/filesystem/tar.gz/boost-1.90.0",
+      "size": 293003,
+      "sha256": "529d2e402a8ec11cb0b90782511693ff9959355179a8d9f93bfcbb860c32ce25"
+    },
+    {
+      "file": "boostorg-foreach-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/foreach/tar.gz/boost-1.90.0",
+      "size": 21010,
+      "sha256": "70aa61bf7e469591d9d1c420f1b18a43cfdcaacd7e8fee204a9a62f263eebc68"
+    },
+    {
+      "file": "boostorg-function-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/function/tar.gz/boost-1.90.0",
+      "size": 46565,
+      "sha256": "ffc5a6be3876865fc7e44eedea8139a30c9bd9f0f40948748d8961b3ee66a848"
+    },
+    {
+      "file": "boostorg-function_types-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/function_types/tar.gz/boost-1.90.0",
+      "size": 79884,
+      "sha256": "aeb35048520e1a09bd64e8ee27411968e7f903d69d694184f7f5a069809d0ba5"
+    },
+    {
+      "file": "boostorg-functional-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/functional/tar.gz/boost-1.90.0",
+      "size": 57186,
+      "sha256": "dd4923b288ae435bbdb4d09ee8e04b22cc82fb8d6cc56c0bfab56c23223f2e9e"
+    },
+    {
+      "file": "boostorg-fusion-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/fusion/tar.gz/boost-1.90.0",
+      "size": 718222,
+      "sha256": "1ebe8dfe45668a4c7c2bebb3e8db2e1b0b29a5093d8ee0930c41a80ec7cc8ca3"
+    },
+    {
+      "file": "boostorg-geometry-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/geometry/tar.gz/boost-1.90.0",
+      "size": 7444930,
+      "sha256": "7cc9c9358f547a164e3f26ca82c88b68dcc3395fcaf4907536adf0be1f593ef3"
+    },
+    {
+      "file": "boostorg-graph-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/graph/tar.gz/boost-1.90.0",
+      "size": 5452538,
+      "sha256": "d0f9ec78d1cd633ff11efddebe54be0d8fd151a945984c6a86b90ae34db8325a"
+    },
+    {
+      "file": "boostorg-headers-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/headers/tar.gz/boost-1.90.0",
+      "size": 2026,
+      "sha256": "47df60ea84867a347c12a77b6d808d32ba140f908b44f001f4e9fa02f8647088"
+    },
+    {
+      "file": "boostorg-integer-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/integer/tar.gz/boost-1.90.0",
+      "size": 47930,
+      "sha256": "e9504648a63230253b6f881cf2ba6a397f2f2088fb8d273c65be5f8012b91b8e"
+    },
+    {
+      "file": "boostorg-intrusive-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/intrusive/tar.gz/boost-1.90.0",
+      "size": 343000,
+      "sha256": "1d48572a3437a74f18b058c7ad510545dc608e38a5943fc137116fccffa1d442"
+    },
+    {
+      "file": "boostorg-io-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/io/tar.gz/boost-1.90.0",
+      "size": 17479,
+      "sha256": "2a17ae64a530623b8cf5ee2f7d133413368ee130f7b7810a0850fef441669706"
+    },
+    {
+      "file": "boostorg-iostreams-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/iostreams/tar.gz/boost-1.90.0",
+      "size": 1905516,
+      "sha256": "7dde6363b6c6296d7cc2edcf9b486d4bb31ef8cb1d012ce617d810955ca2e0a8"
+    },
+    {
+      "file": "boostorg-iterator-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/iterator/tar.gz/boost-1.90.0",
+      "size": 1521495,
+      "sha256": "09e0ccdc631001aa2b6a810bfd9db809828c9e64b35c4b478f8ccd8212d7959e"
+    },
+    {
+      "file": "boostorg-lambda-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/lambda/tar.gz/boost-1.90.0",
+      "size": 139104,
+      "sha256": "60ffeea9678263a5bac3e943766abf1fcfa08270b11ac429b24ca606ef2dda5b"
+    },
+    {
+      "file": "boostorg-lexical_cast-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/lexical_cast/tar.gz/boost-1.90.0",
+      "size": 64302,
+      "sha256": "a20bc96cf5cb8af0cedb995436d92f539222e18d2209d63434d884293b7cb43a"
+    },
+    {
+      "file": "boostorg-logic-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/logic/tar.gz/boost-1.90.0",
+      "size": 23152,
+      "sha256": "220a4167c9e2a77d067ab4c3ced571b16ab0419c87395b004dc8c8bcac54cc91"
+    },
+    {
+      "file": "boostorg-math-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/math/tar.gz/boost-1.90.0",
+      "size": 30460591,
+      "sha256": "7d043e9ef0ac4b2242debc55a6fcd63fdcee1f09e8b695d19a73fbc23506356d"
+    },
+    {
+      "file": "boostorg-move-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/move/tar.gz/boost-1.90.0",
+      "size": 133539,
+      "sha256": "dadf667dee6bbfc23200b5b43eaf359c35628f5ace07c0196ef7acda4fabeff5"
+    },
+    {
+      "file": "boostorg-mp11-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/mp11/tar.gz/boost-1.90.0",
+      "size": 130897,
+      "sha256": "ca52bde753586dcba29739cfd55abb473bf80c934c6d49a2b58023ed4e48adf6"
+    },
+    {
+      "file": "boostorg-mpl-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/mpl/tar.gz/boost-1.90.0",
+      "size": 1511184,
+      "sha256": "c9e4fd1a4f03f316ff21a28c108f69038c79b3e151e44ce385ea8146a2539b8b"
+    },
+    {
+      "file": "boostorg-multi_index-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/multi_index/tar.gz/boost-1.90.0",
+      "size": 456861,
+      "sha256": "f41829077e3f8a2021adffe94bd597ec777322931cacf4576bd49368df600ebc"
+    },
+    {
+      "file": "boostorg-multiprecision-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/multiprecision/tar.gz/boost-1.90.0",
+      "size": 4266802,
+      "sha256": "b28a20f95712e596b3eb8aa4ae2264363016a609a63ebc3d84ee8cb49831de67"
+    },
+    {
+      "file": "boostorg-numeric_conversion-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/numeric_conversion/tar.gz/boost-1.90.0",
+      "size": 95308,
+      "sha256": "e10349b2aaeda1731c7467779a28468ad06ffd27a1e9f4ca70d9cb62bd1da72d"
+    },
+    {
+      "file": "boostorg-optional-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/optional/tar.gz/boost-1.90.0",
+      "size": 86719,
+      "sha256": "7d231c3382e1733cd1eeb2e7bbc4f77a92200dd8100d4a0cf91081c2fdb5464c"
+    },
+    {
+      "file": "boostorg-parameter-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/parameter/tar.gz/boost-1.90.0",
+      "size": 216597,
+      "sha256": "4e09f9a89ee8839a7cf9986a4eab91dde6cc548a8f648bf4dee22a3d2b67a681"
+    },
+    {
+      "file": "boostorg-phoenix-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/phoenix/tar.gz/boost-1.90.0",
+      "size": 731020,
+      "sha256": "333bcb2efc360eed6611808ec9856a6f5615a7e705a84d66b75e8a36065a3d1e"
+    },
+    {
+      "file": "boostorg-polygon-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/polygon/tar.gz/boost-1.90.0",
+      "size": 4615316,
+      "sha256": "4d2e1db99a70f072d0e5101748545dddecf3dade49ee6b147ae119fc65ae25f2"
+    },
+    {
+      "file": "boostorg-pool-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/pool/tar.gz/boost-1.90.0",
+      "size": 996247,
+      "sha256": "6aa4c369f1a862c762ea32e81f7f6009ef90b35798cb0f5a3b04678965e849f5"
+    },
+    {
+      "file": "boostorg-predef-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/predef/tar.gz/boost-1.90.0",
+      "size": 109562,
+      "sha256": "d9144eb3c7d965991e8798fc7e96d5ea862951bffcbdba0b8a23892fd5c99f7c"
+    },
+    {
+      "file": "boostorg-preprocessor-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/preprocessor/tar.gz/boost-1.90.0",
+      "size": 866496,
+      "sha256": "4a951411d94423e74a4f1df5b1aa5d51996dbfbf01bec35bc51c53af4707bda3"
+    },
+    {
+      "file": "boostorg-program_options-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/program_options/tar.gz/boost-1.90.0",
+      "size": 135213,
+      "sha256": "aab287ed25d4b5988963bddb0bb279548e97a6589bfa0cac57ad40b90950706c"
+    },
+    {
+      "file": "boostorg-property_map-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/property_map/tar.gz/boost-1.90.0",
+      "size": 44439,
+      "sha256": "76c92bfc446d711f34e3d3992d4418799772acf4b7e2e69cc50d94eee6ee41ef"
+    },
+    {
+      "file": "boostorg-property_tree-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/property_tree/tar.gz/boost-1.90.0",
+      "size": 161301,
+      "sha256": "b5dfa391ef456ddbf963f61f956599b10694dbd82058b75fca544c7db00c35d6"
+    },
+    {
+      "file": "boostorg-proto-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/proto/tar.gz/boost-1.90.0",
+      "size": 324365,
+      "sha256": "46089ef95c079fb92eaf1000289173ecc6fde4e3d088daf89cc4079fb2acfa6a"
+    },
+    {
+      "file": "boostorg-qvm-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/qvm/tar.gz/boost-1.90.0",
+      "size": 189028,
+      "sha256": "808672cf22e92170c7624ba11b3c617616a9defcb883c90a6bff2b6b1783c299"
+    },
+    {
+      "file": "boostorg-random-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/random/tar.gz/boost-1.90.0",
+      "size": 381770,
+      "sha256": "bd10f0aa1d8bbdd66dc2ce029b189bdb3030957682403a80a5c4c61a6d4179f3"
+    },
+    {
+      "file": "boostorg-range-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/range/tar.gz/boost-1.90.0",
+      "size": 207543,
+      "sha256": "5dab88c8ddf6d56935821acfe84c59ece92da8b09ccab1b4f73029ada60cae7b"
+    },
+    {
+      "file": "boostorg-ratio-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/ratio/tar.gz/boost-1.90.0",
+      "size": 35899,
+      "sha256": "f72479b10590b4506c59d635b2f6de140eb5776c582a911231696dd4601e7607"
+    },
+    {
+      "file": "boostorg-rational-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/rational/tar.gz/boost-1.90.0",
+      "size": 44952,
+      "sha256": "a3ddcafe694d4e50d424a2e1f645b59311fd13dbef79215d1eb78e2b688749fa"
+    },
+    {
+      "file": "boostorg-regex-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/regex/tar.gz/boost-1.90.0",
+      "size": 512192,
+      "sha256": "0e57b222ac255f20832b430eb81dd593d096654e144ab7a7bef32a8cd1d5a351"
+    },
+    {
+      "file": "boostorg-scope-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/scope/tar.gz/boost-1.90.0",
+      "size": 69318,
+      "sha256": "ca417064a2b40586c29c172200cf575919882bd1dd2e615d0b24466177af9bac"
+    },
+    {
+      "file": "boostorg-serialization-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/serialization/tar.gz/boost-1.90.0",
+      "size": 381070,
+      "sha256": "b2a508903605c2b5d569e6eb313d8aa64cc72623f6bf350976ca0dd0109215c5"
+    },
+    {
+      "file": "boostorg-smart_ptr-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/smart_ptr/tar.gz/boost-1.90.0",
+      "size": 159922,
+      "sha256": "50b7632a5092299c7c3de94d0ec1f4d1e4706060eb2bc6ff36b728c8309ce83f"
+    },
+    {
+      "file": "boostorg-spirit-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/spirit/tar.gz/boost-1.90.0",
+      "size": 3397592,
+      "sha256": "fd68f967f08dbde5c2778ad323498cb17db388b9c0cb80f51078463154cf6c02"
+    },
+    {
+      "file": "boostorg-static_assert-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/static_assert/tar.gz/boost-1.90.0",
+      "size": 14612,
+      "sha256": "3b7980c5968d585b04f980bbb4e81bbbf0b6d1a0b7c965c2a3426b0acb4a5f49"
+    },
+    {
+      "file": "boostorg-static_string-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/static_string/tar.gz/boost-1.90.0",
+      "size": 76458,
+      "sha256": "7a9a477d9c6e57b3e16cb8ed6506c33e29c6996d459b4b0af6b15c496da3b486"
+    },
+    {
+      "file": "boostorg-system-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/system/tar.gz/boost-1.90.0",
+      "size": 98191,
+      "sha256": "00ea39510c0f6839110242a5b8477091733e8d1ce4504b02d9b8605bc649b536"
+    },
+    {
+      "file": "boostorg-thread-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/thread/tar.gz/boost-1.90.0",
+      "size": 449339,
+      "sha256": "6b9f3ceb472e52ff03b9a478f4d6e2da43a243ebc4fd30d31873c55a383d2f3a"
+    },
+    {
+      "file": "boostorg-throw_exception-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/throw_exception/tar.gz/boost-1.90.0",
+      "size": 20202,
+      "sha256": "30e2834ba64587a363750e35c627ee045f89be05d0cc9eab7251414eba88e110"
+    },
+    {
+      "file": "boostorg-tokenizer-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/tokenizer/tar.gz/boost-1.90.0",
+      "size": 28050,
+      "sha256": "bdd58daa4c9373789ec6fe53da70f7df244fdb9962095928385fb9dc90d59fab"
+    },
+    {
+      "file": "boostorg-tti-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/tti/tar.gz/boost-1.90.0",
+      "size": 70856,
+      "sha256": "964b33d6b8c9ecc3e06f0bc381abe08228f7bf735b1df4837349778ddfbd6786"
+    },
+    {
+      "file": "boostorg-tuple-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/tuple/tar.gz/boost-1.90.0",
+      "size": 31527,
+      "sha256": "e1dbb19f50e5a4bf33b84f25a6f550309d5a1acd92585920ddb93a7d63648513"
+    },
+    {
+      "file": "boostorg-type_index-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/type_index/tar.gz/boost-1.90.0",
+      "size": 45301,
+      "sha256": "269c69e3a02b7343903cec64d7198beb31347436bd68243127f09b0dd07b5a0f"
+    },
+    {
+      "file": "boostorg-type_traits-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/type_traits/tar.gz/boost-1.90.0",
+      "size": 399913,
+      "sha256": "d8f1f937a56dacbd5bd3067312896f3b2b84ddf7cbeb93f21e1ffd844e512587"
+    },
+    {
+      "file": "boostorg-typeof-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/typeof/tar.gz/boost-1.90.0",
+      "size": 22713,
+      "sha256": "d53065898722aa0772193b357343783ad02b3ebcf998726d89a5ee87c36d962e"
+    },
+    {
+      "file": "boostorg-unordered-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/unordered/tar.gz/boost-1.90.0",
+      "size": 4018415,
+      "sha256": "7dd15a1196e36de483fc287a5487210b596979761c4708b4c3067a717c765a05"
+    },
+    {
+      "file": "boostorg-utility-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/utility/tar.gz/boost-1.90.0",
+      "size": 161221,
+      "sha256": "5c28e8e85813a870adc8e902aa95c8a56b447654aa8ae523aeb81a8c95a52f10"
+    },
+    {
+      "file": "boostorg-variant-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/variant/tar.gz/boost-1.90.0",
+      "size": 91285,
+      "sha256": "f9bbaf44e1b5b021a4d08538fd7a92339f2cbac3c7a416203c2f15bea8e9eaca"
+    },
+    {
+      "file": "boostorg-variant2-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/variant2/tar.gz/boost-1.90.0",
+      "size": 55818,
+      "sha256": "2954d75f80a75facc261856658d2288915ab32d61193b08818f21576e60d9d23"
+    },
+    {
+      "file": "boostorg-winapi-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/winapi/tar.gz/boost-1.90.0",
+      "size": 133964,
+      "sha256": "ace1beaf31189549d8aa5b7976b23ad8b4b70134e118321032a6c3c1404b0403"
+    },
+    {
+      "file": "boostorg-xpressive-boost-1.90.0.tar.gz",
+      "url": "https://codeload.github.com/boostorg/xpressive/tar.gz/boost-1.90.0",
+      "size": 225197,
+      "sha256": "4bf60d1aaf55c906b2f887236be4fa8a37a71eb6d75230c60b3830fa1148eb3a"
+    },
+    {
+      "file": "bulletphysics-bullet3-3.25.tar.gz",
+      "url": "https://codeload.github.com/bulletphysics/bullet3/tar.gz/3.25",
+      "size": 139789551,
+      "sha256": "c45afb6399e3f68036ddb641c6bf6f552bf332d5ab6be62f7e6c54eda05ceb77"
+    },
+    {
+      "file": "bzip2-1.0.8.tar.gz",
+      "url": "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz",
+      "size": 810029,
+      "sha256": "ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269"
+    },
+    {
+      "file": "ffmpeg-ffmpeg-n8.0.1.tar.gz",
+      "url": "https://codeload.github.com/ffmpeg/ffmpeg/tar.gz/n8.0.1",
+      "size": 16408559,
+      "sha256": "679aa13a19415d5ddab91e580084e3ab20c963c8240001e5cbb955a97bdd81b1"
+    },
+    {
+      "file": "fmtlib-fmt-12.1.0.tar.gz",
+      "url": "https://codeload.github.com/fmtlib/fmt/tar.gz/12.1.0",
+      "size": 711419,
+      "sha256": "ea7de4299689e12b6dddd392f9896f08fb0777ac7168897a244a6d6085043fea"
+    },
+    {
+      "file": "freetype-2.13.3.tar.gz",
+      "url": "https://codeload.github.com/freetype/freetype/tar.gz/VER-2-13-3",
+      "size": 2482495,
+      "sha256": "bc5c898e4756d373e0d991bab053036c5eb2aa7c0d5c67e8662ddc6da40c4103"
+    },
+    {
+      "file": "google-brotli-v1.2.0.tar.gz",
+      "url": "https://codeload.github.com/google/brotli/tar.gz/v1.2.0",
+      "size": 646315,
+      "sha256": "816c96e8e8f193b40151dad7e8ff37b1221d019dbcb9c35cd3fadbfe6477dfec"
+    },
+    {
+      "file": "icu4c-78.2-sources.tgz",
+      "url": "https://github.com/unicode-org/icu/releases/download/release-78.2/icu4c-78.2-sources.tgz",
+      "size": 27970651,
+      "sha256": "3e99687b5c435d4b209630e2d2ebb79906c984685e78635078b672e03c89df35"
+    },
+    {
+      "file": "kcat-openal-soft-1.25.0.tar.gz",
+      "url": "https://codeload.github.com/kcat/openal-soft/tar.gz/1.25.0",
+      "size": 1379216,
+      "sha256": "c07424e16cc53632a58f7ccaf7f4cd1cf2efde7fe4d2cdca1edbf618ea9470d1"
+    },
+    {
+      "file": "libiconv-1.18.tar.gz",
+      "url": "https://ftpmirror.gnu.org/gnu/libiconv/libiconv-1.18.tar.gz",
+      "size": 5822590,
+      "sha256": "3b08f5f4f9b4eb82f151a7040bfd6fe6c6fb922efe4b1659c66ea933276965e8"
+    },
+    {
+      "file": "libjpeg-turbo-libjpeg-turbo-3.1.3.tar.gz",
+      "url": "https://codeload.github.com/libjpeg-turbo/libjpeg-turbo/tar.gz/3.1.3",
+      "size": 2516606,
+      "sha256": "3a13a5ba767dc8264bc40b185e41368a80d5d5f945944d1dbaa4b2fb0099f4e5"
+    },
+    {
+      "file": "libsdl-org-SDL-release-2.32.10.tar.gz",
+      "url": "https://codeload.github.com/libsdl-org/SDL/tar.gz/release-2.32.10",
+      "size": 7883298,
+      "sha256": "03f9d7c191a837525c9cda6406af2f2e48be02b5e7eb03d949cc9f1e9ca41c8b"
+    },
+    {
+      "file": "lz4-lz4-v1.10.0.tar.gz",
+      "url": "https://codeload.github.com/lz4/lz4/tar.gz/v1.10.0",
+      "size": 387114,
+      "sha256": "537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b"
+    },
+    {
+      "file": "madler-zlib-v1.3.1.tar.gz",
+      "url": "https://codeload.github.com/madler/zlib/tar.gz/v1.3.1",
+      "size": 1572744,
+      "sha256": "17e88863f3600672ab49182f217281b6fc4d3c762bde361935e436a95214d05c"
+    },
+    {
+      "file": "openmw-deps-build-8306cb2.tar.gz",
+      "url": "https://codeload.github.com/OpenMW/openmw-deps-build/tar.gz/8306cb2556b92c9bb891b13f4769889838fe3c10",
+      "size": 13445,
+      "sha256": "7865a35596a018fb77e553d6d82f743129f24146b4ddf723c55029738c3a41fe"
+    },
+    {
+      "file": "openmw-osg-8aa8d91747ff414ab0de19aae1e0dbd739acea2c.tar.gz",
+      "url": "https://codeload.github.com/openmw/osg/tar.gz/8aa8d91747ff414ab0de19aae1e0dbd739acea2c",
+      "size": 5793189,
+      "sha256": "e91a1510bd73cbe1af580b70945a36424bdcc9aa9002174cafa76e4f6f27fd4e"
+    },
+    {
+      "file": "pnggroup-libpng-v1.6.54.tar.gz",
+      "url": "https://codeload.github.com/pnggroup/libpng/tar.gz/v1.6.54",
+      "size": 1585700,
+      "sha256": "ba7efce137409079989df4667706c339bebfbb10e9f413474718012a13c8cd4c"
+    },
+    {
+      "file": "qtbase-everywhere-src-6.6.3.tar.xz",
+      "url": "https://download.qt.io/archive/qt/6.6/6.6.3/submodules/qtbase-everywhere-src-6.6.3.tar.xz",
+      "size": 48784716,
+      "sha256": "0493fd0b380c4edf8872f011a7f26d245aa4cdd75b349904ef340a22dedf7462"
+    },
+    {
+      "file": "qtsvg-everywhere-src-6.6.3.tar.xz",
+      "url": "https://download.qt.io/archive/qt/6.6/6.6.3/submodules/qtsvg-everywhere-src-6.6.3.tar.xz",
+      "size": 1643424,
+      "sha256": "4acb1e576eca55e955cf2b0d15c914a200df290e737accd7c1901fa1e33a25c7"
+    },
+    {
+      "file": "rdiankov-collada-dom-d37ae7532e350b87c88712e9f6ab4b1f440d20cd.tar.gz",
+      "url": "https://codeload.github.com/rdiankov/collada-dom/tar.gz/d37ae7532e350b87c88712e9f6ab4b1f440d20cd",
+      "size": 4511437,
+      "sha256": "e63d5ddbdfca0ce9d904022b368f6daded67eb2d2c6d43a6a68f2b4cab291a5b"
+    },
+    {
+      "file": "uriparser-uriparser-uriparser-0.9.9.tar.gz",
+      "url": "https://codeload.github.com/uriparser/uriparser/tar.gz/uriparser-0.9.9",
+      "size": 267276,
+      "sha256": "128554f11013af67f727a6bde8bfbff037df9bd20ca201d5ffe0cea786c43ff4"
+    },
+    {
+      "file": "vcpkg-6d332a0.tar.gz",
+      "url": "https://codeload.github.com/microsoft/vcpkg/tar.gz/6d332a018c433fad20822ff4b536e4ccdc3413bd",
+      "size": 4984801,
+      "sha256": "71b4cb4c25e2f0aae067b0a80edb35fc8012e3ecc6568fa8a072fb2913b20475"
+    },
+    {
+      "file": "yaml-cpp-c2680200486572baf8221ba052ef50b58ecd816e.zip",
+      "url": "https://github.com/jbeder/yaml-cpp/archive/c2680200486572baf8221ba052ef50b58ecd816e.zip",
+      "size": 1339583,
+      "sha256": "9cbd53685951e13eaa3257dd33b9f2cdcdda144488ce93c7f438c72533faf303",
+      "verified_sha512": "9eb328e37ff547e7f681d64e3a8f268a8a5645cb1c258106d1d9f959eec498dfc7c466690c56f210ad7d5fb95b806a30c87ccbb019cccf5c3c6135cfc3c13fe1"
+    },
+    {
+      "file": "sqlite3-sqlite-amalgamation-3410100.zip",
+      "url": "https://www.sqlite.org/2023/sqlite-amalgamation-3410100.zip",
+      "size": 2622725,
+      "sha256": "df0d54bf246521360c8148f64e7e5ad07a4665b4f902339e844f4c493d535ff5",
+      "verified_sha512": "7de291709e88fffc693cf24ac675950cfc35c1bf7631cfea95167105720a05cf37fb943c57c5c985db2eeaa57b31894b3c0df98a7bd2939b5746fc5a24b5ae87"
+    },
+    {
+      "file": "recastnavigation-03259f3287ff8330f0d66fcd98d022edddffaa97.zip",
+      "url": "https://github.com/OpenMW/recastnavigation/archive/03259f3287ff8330f0d66fcd98d022edddffaa97.zip",
+      "size": 1446030,
+      "sha256": "b337d8ceebd66641e1a9b9ca2c3dbaebc5aa68a3a30f09435e5c420c177b2c62",
+      "verified_sha512": "63db2ac90904764d7f1466d3c95994ec51d777cddd870b70f8ef674c09ed166b3d16ffc4ac1d18d0eab865fda4bf51b6ea17049025b66a338d3cadd0f48dc712"
+    }
+  ]
+}
