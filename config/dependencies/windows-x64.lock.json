@@ -704,6 +704,27 @@
       "url": "https://codeload.github.com/microsoft/vcpkg/tar.gz/6d332a018c433fad20822ff4b536e4ccdc3413bd",
       "size": 4984801,
       "sha256": "71b4cb4c25e2f0aae067b0a80edb35fc8012e3ecc6568fa8a072fb2913b20475"
+    },
+    {
+      "file": "yaml-cpp-c2680200486572baf8221ba052ef50b58ecd816e.zip",
+      "url": "https://github.com/jbeder/yaml-cpp/archive/c2680200486572baf8221ba052ef50b58ecd816e.zip",
+      "size": 1339583,
+      "sha256": "9cbd53685951e13eaa3257dd33b9f2cdcdda144488ce93c7f438c72533faf303",
+      "verified_sha512": "9eb328e37ff547e7f681d64e3a8f268a8a5645cb1c258106d1d9f959eec498dfc7c466690c56f210ad7d5fb95b806a30c87ccbb019cccf5c3c6135cfc3c13fe1"
+    },
+    {
+      "file": "sqlite3-sqlite-amalgamation-3410100.zip",
+      "url": "https://www.sqlite.org/2023/sqlite-amalgamation-3410100.zip",
+      "size": 2622725,
+      "sha256": "df0d54bf246521360c8148f64e7e5ad07a4665b4f902339e844f4c493d535ff5",
+      "verified_sha512": "7de291709e88fffc693cf24ac675950cfc35c1bf7631cfea95167105720a05cf37fb943c57c5c985db2eeaa57b31894b3c0df98a7bd2939b5746fc5a24b5ae87"
+    },
+    {
+      "file": "recastnavigation-03259f3287ff8330f0d66fcd98d022edddffaa97.zip",
+      "url": "https://github.com/OpenMW/recastnavigation/archive/03259f3287ff8330f0d66fcd98d022edddffaa97.zip",
+      "size": 1446030,
+      "sha256": "b337d8ceebd66641e1a9b9ca2c3dbaebc5aa68a3a30f09435e5c420c177b2c62",
+      "verified_sha512": "63db2ac90904764d7f1466d3c95994ec51d777cddd870b70f8ef674c09ed166b3d16ffc4ac1d18d0eab865fda4bf51b6ea17049025b66a338d3cadd0f48dc712"
     }
   ]
 }
