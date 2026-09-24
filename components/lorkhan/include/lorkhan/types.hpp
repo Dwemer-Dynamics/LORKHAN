@@ -17,7 +17,7 @@
 
 namespace lorkhan {
 
-inline constexpr std::string_view kClientVersion = "0.1.0";
+inline constexpr std::string_view kClientVersion = "0.5.0";
 inline constexpr std::string_view kOpenMwVersion = "0.51.0";
 inline constexpr std::string_view kOpenMwCommit = "f4bec41444214a7903bebd178389ca22ca13f646";
 inline constexpr std::uint32_t kLuaApiRevision = 129;
