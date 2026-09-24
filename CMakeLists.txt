@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(LORKHANClientFoundation VERSION 0.1.0 LANGUAGES CXX)
+project(LORKHANClientFoundation VERSION 0.5.0 LANGUAGES CXX)
 
 enable_testing()
 add_subdirectory(components/lorkhan)
