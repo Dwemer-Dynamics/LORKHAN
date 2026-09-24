@@ -17,7 +17,7 @@ Combines a native OpenMW bridge and Lua mod with [LorkhanServer](https://github.
 - The matching LORKHAN OpenMW build and Lua files.
 - [LorkhanServer](https://github.com/Dwemer-Dynamics/LorkhanServer) for AI and speech services.
 
-This is a **0.1.0 prototype**. Publishing source does not constitute a packaged binary release.
+This is a **0.5.0 prototype**. Publishing source does not constitute a packaged binary release.
 OpenMW is pinned to 0.51.0 commit `f4bec41444214a7903bebd178389ca22ca13f646` (Lua API 129).
 
 ## Development
