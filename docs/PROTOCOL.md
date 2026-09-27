@@ -437,3 +437,17 @@ for subsequent envelopes and persists the accepted identity in the save. Old sav
 previous world hint; the server-owned character binding resolves it. No in-game playthrough menu
 is shown: existing saves reconnect automatically and new games initialize a new world. Ambiguous
 legacy ownership fails without mutating the save or silently assigning historical NPC profiles.
+
+
+## Hypnosis mode
+
+Typed player turns may select `execution_mode: hypnosis` with one current NPC target.
+The server queues one Profile Tasks job to rewrite personality, goals, speech style and occupation.
+It requires an existing unlocked NPC profile and an enabled Profile Tasks connector. All four
+fields must be generated before a revision is saved. Other fields and game state remain unchanged.
+The job keeps its connector revision, NPC identity, playthrough and session/generation; later
+profile edits or a replaced session prevent a stale save. Request retries do not enqueue duplicates.
+The turn completes after enqueueing, without dialogue, player speech or rechat. Job status and
+application outcome remain available in server job history; acceptance does not mean a profile
+has already changed. The client resets the selector to Standard after submitting the typed turn.
+Microphone input stays ordinary dialogue while Hypnosis is selected.

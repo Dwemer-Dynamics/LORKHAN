@@ -147,7 +147,9 @@ function M.turn(args)
         recent_action_results=util.arrayCopy(args.recent_action_results or {}), ui_source=args.ui_source}
     if args.execution_mode~=nil then
         if args.execution_mode~='standard' and args.execution_mode~='narrator' and args.execution_mode~='injection_log' and args.execution_mode~='injection_chat'
-            and args.execution_mode~='director' and args.execution_mode~='cheat' then return nil,'invalid_execution_mode' end
+            and args.execution_mode~='hypnosis' and args.execution_mode~='director' and args.execution_mode~='cheat' then return nil,'invalid_execution_mode' end
+        if args.execution_mode=='hypnosis' and (inputKind~='text' or args.ui_source~='lorkhan_text'
+            or args.speaker.kind~='player' or args.target.kind~='npc' or args.action_request) then return nil,'invalid_hypnosis_target' end
         payload.execution_mode=args.execution_mode
         if (args.execution_mode=='injection_log' or args.execution_mode=='injection_chat')
             and (inputKind~='text' or args.ui_source~='lorkhan_text' or args.speaker.kind~='player') then

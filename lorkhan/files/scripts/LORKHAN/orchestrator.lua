@@ -875,6 +875,12 @@ function M.submitText(state,args)
         and (args.ui_source~='lorkhan_text' or args.input_kind=='stt' or isContinuation) then return nil,'injection_requires_typed_text' end
     local modeTarget=args.target or state.conversation.target
     if args.selectedTargetPresent then modeTarget=args.selectedTarget end
+    if args.execution_mode=='hypnosis' then
+        if args.ui_source~='lorkhan_text' or args.input_kind=='stt' or isContinuation
+            or args.speaker.kind~='player' or args.action_request then return nil,'hypnosis_requires_typed_text' end
+        if not modeTarget or modeTarget.kind~='npc' or not state.registry:resolve(modeTarget) then return nil,'hypnosis_requires_npc' end
+        args.mood=nil
+    end
     local combatKey=identity.key(modeTarget)
     if state.settings and state.settings.behavior and state.settings.behavior.allowCombatDialogue==false
         and combatKey and state.combatActors[combatKey]
@@ -1013,7 +1019,7 @@ function M.submitText(state,args)
     if (args.ui_source=='lorkhan_rpg_event' or args.ui_source=='lorkhan_quest_event') then state.autonomy.rpgCooldownSeconds=60 end
     state.autonomy.activeTurnTarget=util.copy(state.conversation.target)
     state.autonomy.activeTurnSource=args.ui_source
-    if not isContinuation and args.execution_mode~='director' then
+    if not isContinuation and args.execution_mode~='director' and args.execution_mode~='hypnosis' then
         args.dialogueMode=mode
         args.mood=nil
         state.rechatSeed=util.copy(args)
@@ -1022,7 +1028,7 @@ function M.submitText(state,args)
             targetHint=util.copy(state.conversation.target),cancelled=false,requestInFlight=false}
     elseif isRechat and state.rechat then
         state.rechat.requestInFlight=true
-    elseif isActionFollowup or isDirectorChild or args.execution_mode=='director' then
+    elseif isActionFollowup or isDirectorChild or args.execution_mode=='director' or args.execution_mode=='hypnosis' then
         state.rechat=nil state.rechatEligibility=nil
     elseif isAutonomy then
         state.rechat=nil state.rechatSeed=nil state.rechatEligibility=nil
@@ -1032,7 +1038,7 @@ function M.submitText(state,args)
     if not isContinuation and args.speaker.kind=='player' and not args.player_speech_played
         and (args.ui_source=='lorkhan_text' or args.ui_source=='lorkhan_voice' or args.ui_source=='lorkhan_open_mic'
             or args.ui_source=='lorkhan_browser_speech')
-        and args.execution_mode~='director' and args.execution_mode~='cheat'
+        and args.execution_mode~='hypnosis' and args.execution_mode~='director' and args.execution_mode~='cheat'
         and args.execution_mode~='injection_log' and args.execution_mode~='injection_chat' then
         state.playerSpeechRequest=requestId
         state.emit('LORKHAN_PLAYER_SPEECH',{request_id=requestId,session_id=state.sessionId,

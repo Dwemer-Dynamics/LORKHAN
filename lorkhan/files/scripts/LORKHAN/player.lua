@@ -148,7 +148,7 @@ local function voicePayload(uiSource)
     local snapshot=conversationContext(state.ui.target);snapshot.dialogueMode=state.ui.mode
     return {speaker=adapter.identity(self),target=state.ui.target,context=snapshot,language='en-US',capabilities=CAPABILITIES,
         recent_action_results={},ui_source=uiSource,dialogueMode=state.ui.mode,mood=uiState.moodSelection(state.ui),
-        execution_mode=(uiSource=='lorkhan_open_mic' and (state.ui.executionMode=='injection_log' or state.ui.executionMode=='injection_chat'))
+        execution_mode=(state.ui.executionMode=='hypnosis' or (uiSource=='lorkhan_open_mic' and (state.ui.executionMode=='injection_log' or state.ui.executionMode=='injection_chat')))
             and 'standard' or state.ui.executionMode,selectedTargetPresent=true,selectedTarget=state.ui.target,
         vad_sensitivity=tonumber(behaviorSettings and behaviorSettings:get('openMicSensitivity')) or 1000,
         end_delay_ms=tonumber(behaviorSettings and behaviorSettings:get('openMicEndDelayMs')) or 1000,
@@ -635,7 +635,7 @@ local function queueTypedTurn(args,speechAlreadyPlayed)
     if args.execution_mode=='director' then pendingDirectorInput={text=args.text} end
     args.player_speech_played=speechAlreadyPlayed==true
     send('LORKHAN_SUBMIT_TEXT',args)
-    pendingHistory=(args.execution_mode~='injection_log' and args.execution_mode~='injection_chat') and {speaker=args.speaker,text=args.text} or nil
+    pendingHistory=(args.execution_mode~='hypnosis' and args.execution_mode~='injection_log' and args.execution_mode~='injection_chat') and {speaker=args.speaker,text=args.text} or nil
     awaitingTextQueue=true
     state.ui.status='submitting'
     print('[LORKHAN] text message submitted for '..displayName(state.ui.target))
@@ -701,6 +701,7 @@ local function submitText()
         mood=uiState.moodSelection(state.ui),
         context=context,capabilities=CAPABILITIES,
         recent_action_results={},ui_source='lorkhan_text'}
+    if selected.execution=='hypnosis' then args.mood=nil end
     if selected.autoChat then
         if not nativeOk or not native or not native.requestPlayerAutochat then
             state.ui.status='Auto Chat unavailable' render() return false
@@ -2402,8 +2403,9 @@ return {
                 if event.execution_mode=='director' and pendingDirectorInput then pendingDirectorInput.request_id=event.request_id end
                 if pendingHistory then player.queued(state,pendingHistory.speaker,pendingHistory.text,event) end
                 pendingHistory=nil
+                if event.execution_mode=='hypnosis' then uiState.selectChatMode(state.ui,'standard') end
                 state.ui.input=''
-                state.ui.status='queued'
+                state.ui.status=event.execution_mode=='hypnosis' and 'Hypnosis submitted' or 'queued'
                 state.ui.visible=false
                 turnActive=true
                 leaveUiMode()

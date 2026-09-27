@@ -1207,6 +1207,14 @@ test('typed player action request remains inside the strict turn envelope',funct
   args.execution_mode=mode
   dto,reason=protocol.turn(args);truthy(dto,reason);eq(dto.payload.execution_mode,mode)
  end
+ local hypnosisArgs=require('scripts.LORKHAN.util').copy(args)
+ hypnosisArgs.execution_mode='hypnosis';hypnosisArgs.ui_source='lorkhan_text'
+ hypnosisArgs.action_request=nil;hypnosisArgs.mood=nil
+ dto,reason=protocol.turn(hypnosisArgs);truthy(dto,reason);eq(dto.payload.execution_mode,'hypnosis')
+ hypnosisArgs.target=playerId
+ dto,reason=protocol.turn(hypnosisArgs);eq(dto,nil);eq(reason,'invalid_hypnosis_target')
+ hypnosisArgs.target=npc;hypnosisArgs.ui_source='lorkhan_open_mic'
+ dto,reason=protocol.turn(hypnosisArgs);eq(dto,nil);eq(reason,'invalid_hypnosis_target')
  args.execution_mode='console'
  dto,reason=protocol.turn(args);eq(dto,nil);eq(reason,'invalid_execution_mode')
  args.execution_mode='standard';args.director_instruction_id=UUID.message

@@ -9,7 +9,8 @@ M.MODES={{key='standard',label='Standard',hearing='Standard'},
     {key='cheat',label='Cheat',prefix='#',execution='cheat'},
     {key='autochat',label='Auto Chat',prefix='**',autoChat=true},
     {key='injection_log',label='Inject Event',prefix='((...))',execution='injection_log'},
-    {key='injection_chat',label='Inject & Chat',prefix='(...)',execution='injection_chat'}}
+    {key='injection_chat',label='Inject & Chat',prefix='(...)',execution='injection_chat'},
+    {key='hypnosis',label='Hypnosis',execution='hypnosis'}}
 M.SHORTCUTS={{prefix='%%',mode='Close'},{prefix='||',mode='Close'},{prefix='!!',mode='Shout'},
     {prefix='**',label='Auto Chat',autoChat=true},{prefix='%',mode='Whisper'},{prefix='|',mode='Whisper'},
     {prefix='@',label='Narrator',execution='narrator'},{prefix='>',label='Director',execution='director'},
