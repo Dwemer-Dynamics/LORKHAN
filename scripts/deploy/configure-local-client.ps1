@@ -4,7 +4,7 @@ param(
     [string]$Output = (Join-Path $PSScriptRoot '..\..\.local\lorkhan-client.conf'),
     [string]$MediaCacheRoot = 'C:\Modlists\LORKHAN\Data\LORKHAN\cache',
     [ValidateRange(1024, 65535)]
-    [int]$ProxyPort = 7514
+    [int]$ProxyPort = 8090
 )
 
 $ErrorActionPreference = 'Stop'

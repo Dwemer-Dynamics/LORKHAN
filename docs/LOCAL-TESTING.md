@@ -52,10 +52,11 @@ stock OpenMW executable.
 2. Add the absolute `C:\Modlists\LORKHAN\Data` directory as an OpenMW data directory. Keep it
    separate from Morrowind's original Data Files directory.
 3. Enable `LORKHAN.omwscripts` in the OpenMW launcher content list.
-4. Set `LORKHAN_CLIENT_CONFIG` to the absolute `C:\Modlists\LORKHAN\Config\lorkhan-client.conf` path before launching the
-   patched OpenMW executable.
-5. Start DwemerDistro Launcher and confirm `/LorkhanServer/api/v1/health` at `http://127.0.0.1:7514` works from Windows. The launcher refreshes the route to WSL port 8090 when the WSL address changes. If WSL localhost
-   forwarding is disabled, run `scripts/deploy/enable-wsl-loopback.ps1` from an elevated PowerShell
+4. Launch the patched OpenMW executable normally. It finds `../Config/lorkhan-client.conf`
+   relative to the executable and queries the launcher discovery service automatically.
+   Set `LORKHAN_CLIENT_CONFIG` only when intentionally overriding the installation profile.
+5. Start DwemerDistro Launcher and confirm `/LorkhanServer/api/v1/health` at `http://127.0.0.1:8090` works from Windows. The direct route requires WSL localhost forwarding. If forwarding is disabled, run
+   `scripts/deploy/enable-wsl-loopback.ps1 -ListenPort 8090 -TargetPort 8090` from an elevated PowerShell
    window. The native client intentionally rejects non-loopback server URLs.
 6. In game, center the crosshair on an NPC and press F6. LORKHAN selects that NPC automatically and
    opens the compact chatbox. Click the text box, type a line, and press Enter; Escape closes the panel.

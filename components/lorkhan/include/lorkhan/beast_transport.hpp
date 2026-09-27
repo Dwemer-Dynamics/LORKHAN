@@ -6,8 +6,13 @@
 #include <chrono>
 #include <filesystem>
 #include <memory>
+#include <optional>
 
 namespace lorkhan {
+
+// Bounded, unauthenticated endpoint lookup; pairing material is never sent to discovery.
+std::optional<BaseUrl> discoverLocalServer(std::stop_token cancellation,
+    std::uint16_t port = 7135);
 
 // Compile-optional literal-loopback HTTP/1.1 transport. It accepts only a prevalidated
 // BaseUrl and exposes no generic method, URL, header, or response-following surface.
@@ -31,6 +36,7 @@ public:
     Result<InboundResult> execute(const OutboundRequest& request, std::stop_token cancellation) override;
     void interrupt(const RequestId& request) noexcept override;
     void setConnectionTimeout(int seconds);
+    void enableDiscovery();
 
 private:
     struct Impl;

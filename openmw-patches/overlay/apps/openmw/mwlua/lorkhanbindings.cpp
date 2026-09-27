@@ -43,6 +43,8 @@
 #include "objectvariant.hpp"
 
 #include <sol/sol.hpp>
+#include <SDL.h>
+#include <lorkhan/client_config_path.hpp>
 
 #include <algorithm>
 #include <array>
@@ -134,9 +136,12 @@ namespace MWLua
         ClientConfig loadConfig()
         {
             const char* configPath = std::getenv("LORKHAN_CLIENT_CONFIG");
-            if (configPath == nullptr || *configPath == '\0')
-                throw std::runtime_error("LORKHAN_CLIENT_CONFIG is not set");
-            std::ifstream stream(std::filesystem::u8path(configPath));
+            const auto executableBase = std::unique_ptr<char, decltype(&SDL_free)>(SDL_GetBasePath(), SDL_free);
+            const auto executableDirectory = executableBase
+                ? std::filesystem::u8path(executableBase.get()).lexically_normal() : std::filesystem::path{};
+            const auto configFile = lorkhan::clientConfigPath(configPath ? configPath : "",
+                executableDirectory.filename().empty() ? executableDirectory.parent_path() : executableDirectory);
+            std::ifstream stream(configFile);
             if (!stream)
                 throw std::runtime_error("LORKHAN client config could not be opened");
             std::map<std::string, std::string> values;
@@ -571,6 +576,8 @@ namespace MWLua
                     auto transport = std::make_unique<lorkhan::BeastTransport>(m_config->baseUrl,
                         m_config->installation, lorkhan::PairingToken(m_config->key), m_config->cacheRoot);
                     m_transport=transport.get();m_transport->setConnectionTimeout(30);
+                    const char* overridePath = std::getenv("LORKHAN_CLIENT_CONFIG");
+                    if (!overridePath || !*overridePath) m_transport->enableDiscovery();
                     m_service = std::make_unique<lorkhan::BridgeService>(std::move(transport),
                         std::make_shared<lorkhan::SystemClock>(), processGeneration());
                     m_status = "waiting_identity";

@@ -1104,6 +1104,7 @@ struct BeastTransport::Impl {
     std::filesystem::path cacheRoot;
     Deadlines deadlines;
     std::atomic<int> timeoutSeconds{0};
+    std::atomic<bool> discoveryPending{false};
     asio::ip::address address;
     std::mutex operationMutex;
     std::shared_ptr<TransportOperation> activeOperation;
@@ -1131,6 +1132,47 @@ void BeastTransport::setConnectionTimeout(int seconds)
 
 BeastTransport::~BeastTransport() = default;
 
+void BeastTransport::enableDiscovery()
+{
+    m_impl->discoveryPending.store(true);
+}
+
+std::optional<BaseUrl> discoverLocalServer(std::stop_token cancellation, std::uint16_t port)
+{
+    if (cancellation.stop_requested()) return std::nullopt;
+    asio::io_context context;
+    beast::tcp_stream stream(context);
+    std::stop_callback stop(cancellation, [&] {
+        asio::post(context, [&] { boost::system::error_code ignored; stream.socket().close(ignored); });
+    });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    boost::system::error_code error;
+    stream.expires_at(deadline);
+    stream.async_connect(tcp::endpoint(asio::ip::make_address("127.0.0.1"), port),
+        [&](boost::system::error_code result) { error = result; });
+    context.run(); context.restart();
+    if (error || cancellation.stop_requested()) return std::nullopt;
+    http::request<http::empty_body> request{http::verb::get, "/discover?game=lorkhan", 11};
+    request.set(http::field::host, "127.0.0.1:" + std::to_string(port));
+    request.set(http::field::connection, "close");
+    stream.expires_at(deadline);
+    http::async_write(stream, request, [&](boost::system::error_code result, std::size_t) { error = result; });
+    context.run(); context.restart();
+    if (error || cancellation.stop_requested()) return std::nullopt;
+    beast::flat_buffer buffer;
+    http::response_parser<http::string_body> parser;
+    parser.body_limit(128); parser.header_limit(4096);
+    stream.expires_at(deadline);
+    http::async_read(stream, buffer, parser, [&](boost::system::error_code result, std::size_t) { error = result; });
+    context.run();
+    if (error || cancellation.stop_requested() || parser.get().result() != http::status::ok)
+        return std::nullopt;
+    const auto& endpoint = parser.get().body();
+    auto result = parseLoopbackBaseUrl("http://" + endpoint + "/LorkhanServer/api/v1");
+    if (!result || result.value().authority() != endpoint) return std::nullopt;
+    return std::move(result).value();
+}
+
 Result<InboundResult> BeastTransport::execute(const OutboundRequest& request, std::stop_token cancellation)
 {
     if (cancellation.stop_requested())
@@ -1154,6 +1196,15 @@ Result<InboundResult> BeastTransport::execute(const OutboundRequest& request, st
         }
     } operationCleanup{*m_impl, operation};
 
+    // execute runs on the transport worker, so discovery never stalls the engine thread.
+    if (m_impl->discoveryPending.exchange(false)) {
+        if (auto discovered = discoverLocalServer(cancellation)) {
+            m_impl->baseUrl = std::move(*discovered);
+            m_impl->address = asio::ip::make_address(m_impl->baseUrl.host);
+        }
+    }
+    if (cancellation.stop_requested())
+        return Result<InboundResult>::failure(makeError(ErrorCode::cancelled, "transport operation cancelled"));
     auto serialized = serializeRequest(m_impl->baseUrl, request);
     if (!serialized)
         return Result<InboundResult>::failure(serialized.error());

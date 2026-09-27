@@ -1,3 +1,5 @@
+#include "lorkhan/client_config_path.hpp"
+#include <fstream>
 #include <lorkhan/record_provenance.hpp>
 #include <lorkhan/playback.hpp>
 #include <lorkhan/session_identity.hpp>
@@ -1221,6 +1223,24 @@ void testPlaybackSettings()
     CHECK(!lorkhan::validConnectionTimeout(14) && !lorkhan::validConnectionTimeout(301));
 }
 
+void testClientConfigPath()
+{
+    const auto root = std::filesystem::temp_directory_path() / "lorkhan-config-path-test";
+    std::filesystem::create_directories(root / "OpenMW");
+    std::filesystem::create_directories(root / "Config");
+    std::ofstream(root / "Config" / "lorkhan-client.conf") << "test";
+    CHECK(lorkhan::clientConfigPath("", root / "OpenMW") == root / "Config" / "lorkhan-client.conf");
+    CHECK(lorkhan::clientConfigPath("explicit-missing.conf", root / "OpenMW") == "explicit-missing.conf");
+    std::filesystem::remove(root / "Config" / "lorkhan-client.conf");
+    std::ofstream(root / "OpenMW" / "lorkhan-client.conf") << "test";
+    CHECK(lorkhan::clientConfigPath("", root / "OpenMW") == root / "OpenMW" / "lorkhan-client.conf");
+    std::filesystem::remove(root / "OpenMW" / "lorkhan-client.conf");
+    bool rejected = false;
+    try { (void)lorkhan::clientConfigPath("", root / "OpenMW"); }
+    catch (const std::runtime_error&) { rejected = true; }
+    CHECK(rejected);
+}
+
 void testConcurrency()
 {
     auto state = std::make_shared<TransportState>();
@@ -1247,6 +1267,7 @@ void testConcurrency()
 
 int main()
 {
+    testClientConfigPath();
     testSavedCharacterIdentity(); testPlaybackSettings(); testRecordProvenance(); testUtf8(); testUrls(); testHeaders(); testJson(); testProtocolResponses(); testAcceptedProtocolResponses();
     testProtocolEventResponses(); testQueue(); testLifecycleAndCancellation();
     testEvents(); testActions(); testPairingToken(); testMedia(); testBridgeDialogueDeliveryValidation();
