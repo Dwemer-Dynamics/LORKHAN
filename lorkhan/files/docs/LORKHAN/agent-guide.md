@@ -36,15 +36,18 @@ Source locations, relative to a client checkout:
 ## Diagnose before changing code
 
 1. Record the failing action, time, client/server revisions and selected OpenMW profile.
-2. Inspect the launcher environment: LORKHAN_CLIENT_CONFIG selects the private client
-   file. The repository example is config/client.example.conf; generated installs use
-   Config/lorkhan-client.conf. Redact pairing_key. Do not replace this file with defaults.
+2. LORKHAN_CLIENT_CONFIG explicitly selects a private client file when set. Otherwise
+   the engine finds ../Config/lorkhan-client.conf relative to its executable, then
+   lorkhan-client.conf beside the executable. It never searches the working directory.
+   Automatic launches query localhost:7135/discover?game=lorkhan on the transport worker
+   with a one-second deadline and fall back to the saved base_url. Only literal loopback
+   endpoints are accepted; discovery never receives pairing credentials. Explicit config
+   overrides retain their saved endpoint. Redact pairing_key; do not replace it with defaults.
 3. Correlate openmw.log from the selected OpenMW user/profile location with server logs
    in /var/log/lorkhanserver and Apache's lorkhanserver-error.log. Find the active path
    from the launch/profile configuration rather than assuming another game's log folder.
 4. For connection failures, compare the configured base_url and pairing state. The usual
-   Windows launcher route is port 7514; direct WSL Apache uses 8090. Neither is a public
-   service endpoint. Keep loopback/authentication boundaries intact.
+   Windows and WSL server routes use port 8090. Keep this endpoint local. Keep loopback/authentication boundaries intact.
 5. For missing speech or actions, follow request, turn, session and generation IDs through
    server events and terminal client results before assigning cause.
 

@@ -320,6 +320,33 @@ std::string utcNow()
     return stream.str();
 }
 
+void testDiscovery()
+{
+    OneShotServer valid([](const CapturedRequest& request, tcp::socket& socket) {
+        CHECK(request.target == "/discover?game=lorkhan");
+        CHECK(request.authorization.empty() && request.body.empty());
+        sendJson(socket, 200, "127.0.0.1:7514", "text/plain");
+    });
+    auto found = lorkhan::discoverLocalServer({}, valid.port());
+    CHECK(found && found->port == 7514 && found->basePath == "/LorkhanServer/api/v1");
+    for (const auto& body : {"192.168.1.1:7514", "localhost:7514", "127.0.0.1:7514/evil", "bad"}) {
+        OneShotServer invalid([&](const CapturedRequest&, tcp::socket& socket) { sendJson(socket, 200, body); });
+        CHECK(!lorkhan::discoverLocalServer({}, invalid.port()));
+    }
+    OneShotServer redirected([](const CapturedRequest&, tcp::socket& socket) { sendJson(socket, 302, "127.0.0.1:7514"); });
+    CHECK(!lorkhan::discoverLocalServer({}, redirected.port()));
+    OneShotServer oversized([](const CapturedRequest&, tcp::socket& socket) { sendJson(socket, 200, std::string(200, 'x')); });
+    CHECK(!lorkhan::discoverLocalServer({}, oversized.port()));
+    OneShotServer slow([](const CapturedRequest&, tcp::socket& socket) {
+        std::this_thread::sleep_for(1200ms); sendJson(socket, 200, "127.0.0.1:7514");
+    });
+    const auto start = std::chrono::steady_clock::now();
+    CHECK(!lorkhan::discoverLocalServer({}, slow.port()));
+    CHECK(std::chrono::steady_clock::now() - start < 1500ms);
+    std::stop_source stopped; stopped.request_stop();
+    CHECK(!lorkhan::discoverLocalServer(stopped.get_token()));
+}
+
 void testHealthAndWirePolicy()
 {
     OneShotServer server([](const CapturedRequest& request, tcp::socket& socket) {
@@ -891,6 +918,13 @@ void testDeadlineAndCancellation()
 
 int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string_view(argv[1]) == "--discover-only") {
+        auto endpoint = lorkhan::discoverLocalServer({});
+        if (!endpoint) return EXIT_FAILURE;
+        std::cout << endpoint->authority() << endpoint->basePath << "\n";
+        return EXIT_SUCCESS;
+    }
+
     if (argc >= 3 && std::string_view(argv[1]) == "--live-url") {
         auto parsed = lorkhan::parseLoopbackBaseUrl(argv[2]);
         if (!parsed) {
@@ -1103,6 +1137,7 @@ int main(int argc, char** argv)
         return EXIT_SUCCESS;
     }
 
+    testDiscovery();
     testDiaryBookWire();
     testHealthAndWirePolicy();
     testSessionTurnAndCorrelation();

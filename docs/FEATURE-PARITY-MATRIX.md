@@ -13,7 +13,7 @@ means the user outcome remains but implementation is OpenMW-native; `Defer` has 
 | Capability | Decision | LORKHAN implementation / proof |
 | --- | --- | --- |
 | Lifecycle/init/health | Keep | OpenMW session/generation + native health round trip; fake E2E and in-game log/UI. |
-| Local server discovery | Adapt | Fixed loopback profile config and pairing token; no legacy file probing. |
+| Local server discovery | Adapt | Installation-relative pairing config and bounded launcher discovery; explicit profile overrides remain authoritative. |
 | Version/capability negotiation | Keep | Engine/API/client/content capabilities in init; mismatch fixtures. |
 | Typed events and correlation | Keep | Strict v1 JSON, UUIDs, event cursor, idempotency; dual validators. |
 | Cancellation/halt/recovery | Keep | Generation, request cancel, speech/AI/UI clear, server restart; race tests. |
