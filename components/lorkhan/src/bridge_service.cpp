@@ -421,7 +421,9 @@ void BridgeService::publishCancelled(const OutboundRequest& request)
 
 void BridgeService::workerLoop()
 {
-    while (auto request = m_outbound.waitPop()) {
+    while (auto request = m_outbound.waitPop([](const OutboundRequest& queued) {
+        return queued.kind == RequestKind::media;
+    })) {
         if (m_halted.load(std::memory_order_acquire))
             break;
         const auto cancellation = m_cancellations.token(request->id);
@@ -444,6 +446,9 @@ void BridgeService::workerLoop()
             std::lock_guard lock(m_stateMutex);
             m_activeRequests.emplace(request->id, *request);
         }
+        // The engine already paces polls; never long-poll on the sole HTTP worker.
+        // Otherwise ready speech waits behind an idle server response.
+        if (auto* poll = std::get_if<EventPollRequest>(&request->payload)) poll->waitMs = 0;
         auto response = m_transport->execute(*request, *cancellation);
         const bool cancelled = cancellation->stop_requested();
         bool cancellationAlreadyPublished = false;
