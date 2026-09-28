@@ -51,6 +51,7 @@ public:
 struct TransportState {
     std::atomic<unsigned> executions{0};
     std::atomic<unsigned> interrupts{0};
+    std::atomic<unsigned> pollWaitMs{9999};
     std::atomic<bool> block{false};
 };
 
@@ -60,6 +61,8 @@ public:
     lorkhan::Result<lorkhan::InboundResult> execute(
         const lorkhan::OutboundRequest& request, std::stop_token cancellation) override
     {
+        if (const auto* poll = std::get_if<lorkhan::EventPollRequest>(&request.payload))
+            m_state->pollWaitMs = poll->waitMs;
         ++m_state->executions;
         while (m_state->block.load() && !cancellation.stop_requested())
             std::this_thread::yield();
@@ -906,8 +909,14 @@ void testQueue()
     CHECK(queue.tryPush(99, true)); CHECK(queue.tryPush(100, true)); CHECK(!queue.tryPush(101, true));
     auto drained = queue.drain(5);
     CHECK(drained.size() == 5 && drained[0] == 100 && drained[1] == 99);
+    CHECK(queue.tryPush(1)); CHECK(queue.tryPush(2)); CHECK(queue.tryPush(3));
+    const auto speech = [](int value) { return value >= 2; };
+    CHECK(queue.waitPop(speech) == 2);
+    CHECK(queue.waitPop(speech) == 3);
+    CHECK(queue.waitPop(speech) == 1);
     queue.close();
     CHECK(!queue.tryPush(1));
+    CHECK(!queue.waitPop(speech));
 }
 
 void testLifecycleAndCancellation()
@@ -1069,6 +1078,19 @@ void testBridgeDialogueDeliveryValidation()
 
 void testBridge()
 {
+    {
+        auto pollState = std::make_shared<TransportState>();
+        lorkhan::BridgeService pollBridge(std::make_unique<FakeTransport>(pollState), std::make_shared<FakeClock>());
+        const auto generation = pollBridge.generation();
+        CHECK(pollBridge.enqueue({lorkhan::RequestId(uuidFor(700)), lorkhan::SessionId(kSession), generation,
+            lorkhan::RequestKind::event_poll,
+            lorkhan::EventPollRequest{lorkhan::SessionId(kSession), generation, 0, 1000}}));
+        const auto deadline = std::chrono::steady_clock::now() + 2s;
+        while (pollState->executions.load() == 0 && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::yield();
+        CHECK(pollState->executions == 1);
+        CHECK(pollState->pollWaitMs == 0);
+    }
     auto state = std::make_shared<TransportState>();
     auto clock = std::make_shared<FakeClock>();
     lorkhan::BridgeService bridge(std::make_unique<FakeTransport>(state), clock);

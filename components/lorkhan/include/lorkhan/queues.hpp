@@ -52,12 +52,21 @@ public:
 
     [[nodiscard]] std::optional<T> waitPop()
     {
+        return waitPop([](const T&) { return false; });
+    }
+
+    // Prefer the oldest matching item while retaining FIFO order within each class.
+    template <class Predicate>
+    [[nodiscard]] std::optional<T> waitPop(Predicate preferred)
+    {
         std::unique_lock lock(m_mutex);
         m_ready.wait(lock, [this] { return m_closed || !m_items.empty(); });
         if (m_items.empty())
             return std::nullopt;
-        T item = std::move(m_items.front());
-        m_items.pop_front();
+        auto selected = std::find_if(m_items.begin(), m_items.end(), preferred);
+        if (selected == m_items.end()) selected = m_items.begin();
+        T item = std::move(*selected);
+        m_items.erase(selected);
         return item;
     }
 
