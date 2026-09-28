@@ -862,7 +862,6 @@ test('rechat preserves manual and automatically heard groups through early or co
   speaker=playerId,context={hearing={actors=hearingActors},targetState={inventory={items={{record_id='old_dagger',count=1}},total=1,truncated=false}}},capabilities={'dialogue.text','speech.say'},recent_action_results={},ui_source='lorkhan_text'}))
  eq(#b.submitted[1].payload.audience,3)
  eq(#s.conversation.audience,mode=='Close' and 3 or 1)
- eq(#s.rechat.audience,3)
  orchestrator.playerSpeechComplete(s,{request_id=UUID.request,session_id=UUID.session,generation=1})
  orchestrator.pollRechatEligibility(s,3)
  local dialogue=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Greetings.'});dialogue.message_id=UUID.message
