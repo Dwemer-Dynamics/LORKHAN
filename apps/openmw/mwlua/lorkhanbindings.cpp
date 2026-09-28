@@ -16,6 +16,7 @@
 #include <components/settings/values.hpp>
 
 #include "../mwbase/environment.hpp"
+#include "../mwbase/dialoguemanager.hpp"
 #include "../mwbase/mechanicsmanager.hpp"
 #include "../mwbase/luamanager.hpp"
 #include "../mwbase/soundmanager.hpp"
@@ -3065,6 +3066,18 @@ namespace MWLua
             api["pollResults"] = [lua](std::size_t maximum) { return client().poll(lua, maximum); };
             api["prepareMedia"] = [lua](sol::table dto) { return client().prepareMedia(lua, std::move(dto)); };
             api["mediaStatus"] = [lua](const std::string& id) { return client().mediaStatus(lua, id); };
+            // Read only bounded topic labels from the currently visible vanilla dialogue menu.
+            api["visibleDialogueTopics"] = [lua]() {
+                sol::table topics(lua, sol::create);
+                const auto& environment = MWBase::Environment::get();
+                if (!environment.getWindowManager()->containsMode(MWGui::GM_Dialogue)) return topics;
+                std::size_t index = 1;
+                for (const auto& topic : environment.getDialogueManager()->getAvailableTopics()) {
+                    if (!topic.empty() && topic.size() <= 512) topics[index++] = topic;
+                    if (index > 16) break;
+                }
+                return topics;
+            };
             api["requestMenuDialogueTts"] = [lua](sol::table actor,const std::string& text) {
                 return client().requestMenuDialogueTts(lua,std::move(actor),text); };
             api["cancelMenuDialogueTts"] = [](sol::optional<std::string> requestId) {
