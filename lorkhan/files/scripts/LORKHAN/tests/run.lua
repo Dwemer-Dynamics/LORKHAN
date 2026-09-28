@@ -815,7 +815,8 @@ test('failed lookahead cannot strand later audio and actions block early rechat'
  s.responseQueue.items[2]={kind='action'};eq(responseQueue.canStartRechat(s.responseQueue,UUID.turn),false)
 end)
 
-test('Close rechat preserves its group through one correlated early or completed continuation',function()
+test('rechat preserves manual and automatically heard groups through early or completed continuation',function()
+ for _,mode in ipairs({'Close','Standard'}) do
  for _,early in ipairs({true,false}) do
  for _,freshItems in ipairs({{{record_id='new_dagger',count=2}}, {}}) do
  local contextRequest
@@ -831,8 +832,9 @@ test('Close rechat preserves its group through one correlated early or completed
   end
   return true
  end)
- s.settings={behavior={rechat=true,rechatMaxDepth=2},presentation={ttsVolumeBoost=3}}
- s.dialogueMode='Close'
+ s.manageActor=function()return true end
+ s.settings={autoActivate={addCreatures=true},behavior={rechat=true,rechatMaxDepth=2},presentation={ttsVolumeBoost=3}}
+ s.dialogueMode=mode
  local provenanceCalls=0
  b.actorRecordProvenance=function(actor)
   truthy(actor);provenanceCalls=provenanceCalls+1
@@ -841,12 +843,25 @@ test('Close rechat preserves its group through one correlated early or completed
  orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
  orchestrator.activate(s,enemy,{});orchestrator.activate(s,busy,{})
  truthy(conversation.setTarget(s.conversation,npc))
- truthy(conversation.addAudience(s.conversation,enemy));truthy(conversation.addAudience(s.conversation,busy))
+ local hearingActors={}
+ for _,actor in ipairs({npc,enemy,busy}) do
+  hearingActors[identity.key(actor)]={distance=100,visible=true,available=true}
+ end
+ if mode=='Close' then
+  truthy(conversation.addAudience(s.conversation,enemy));truthy(conversation.addAudience(s.conversation,busy))
+ else
+  for _,actor in ipairs({enemy,busy}) do
+   truthy(orchestrator.manageCandidate(s,{identity=actor,distance=100,maxDistance=1200,
+    dead=false,hostile=false,available=true},'auto'))
+  end
+ end
  truthy(orchestrator.submitText(s,{message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,
   installation_id='00000000-0000-4000-8000-000000000060',profile_id='00000000-0000-4000-8000-000000000061',
   playthrough_id='00000000-0000-4000-8000-000000000062',created_at='2026-07-19T20:00:00Z',platform='windows',
   content_fingerprint='sha256:'..string.rep('a',64),text='Hello.',input_key='player:1',language='en-US',
-  speaker=playerId,context={targetState={inventory={items={{record_id='old_dagger',count=1}},total=1,truncated=false}}},capabilities={'dialogue.text','speech.say'},recent_action_results={},ui_source='lorkhan_text'}))
+  speaker=playerId,context={hearing={actors=hearingActors},targetState={inventory={items={{record_id='old_dagger',count=1}},total=1,truncated=false}}},capabilities={'dialogue.text','speech.say'},recent_action_results={},ui_source='lorkhan_text'}))
+ eq(#b.submitted[1].payload.audience,3)
+ eq(#s.conversation.audience,mode=='Close' and 3 or 1)
  orchestrator.playerSpeechComplete(s,{request_id=UUID.request,session_id=UUID.session,generation=1})
  orchestrator.pollRechatEligibility(s,3)
  local dialogue=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='Greetings.'});dialogue.message_id=UUID.message
@@ -885,7 +900,7 @@ test('Close rechat preserves its group through one correlated early or completed
  truthy(identity.same(b.submitted[2].payload.context.rechat.speaker,npc))
  truthy(identity.same(b.submitted[2].payload.context.rechat.listener_hint,playerId))
  truthy(identity.same(b.submitted[2].payload.context.rechat.rechat_target_hint,npc))
- eq(b.submitted[2].payload.context.dialogueMode,'Close');eq(#b.submitted[2].payload.audience,3)
+ eq(b.submitted[2].payload.context.dialogueMode,mode);eq(#b.submitted[2].payload.audience,3)
  truthy(identity.same(b.submitted[2].payload.audience[1],npc))
  truthy(identity.same(b.submitted[2].payload.audience[2],enemy))
  truthy(identity.same(b.submitted[2].payload.audience[3],busy))
@@ -917,6 +932,7 @@ test('Close rechat preserves its group through one correlated early or completed
    nextLine.sequence=7;nextLine.message_id=uuid(504);b.results={nextLine};orchestrator.poll(s)
    eq(#s.responseQueue.items,0);eq(#b.submitted,2)
   end
+ end
  end
  end
  end

@@ -1025,8 +1025,10 @@ function M.submitText(state,args)
         state.rechatSeed=util.copy(args)
         state.rechat={chainId=state.bridge.newMessageId and state.bridge.newMessageId() or args.request_id,
             originTurnId=args.turn_id,originLine=args.text,depth=0,lastSpeaker=nil,lastAddressee=nil,
-            targetHint=util.copy(state.conversation.target),cancelled=false,requestInFlight=false}
+            targetHint=util.copy(state.conversation.target),audience=util.arrayCopy(audience,constants.MAX_AUDIENCE),
+            cancelled=false,requestInFlight=false}
     elseif isRechat and state.rechat then
+        state.rechat.audience=util.arrayCopy(audience,constants.MAX_AUDIENCE)
         state.rechat.requestInFlight=true
     elseif isActionFollowup or isDirectorChild or args.execution_mode=='director' or args.execution_mode=='hypnosis' then
         state.rechat=nil state.rechatEligibility=nil
@@ -1328,7 +1330,9 @@ local function startPlaybackRechatProbe(state)
     if not protocol.isUuid(probeId) then chain.cancelled=true return false end
     local participants,expected,seen={},{},{}
     local candidates={chain.lastSpeaker}
-    for _,entry in ipairs(state.conversation.audience or {}) do candidates[#candidates+1]=entry.identity end
+    -- CHIM selects from the conversation's listeners, including automatically heard dialogue.
+    -- The UI selection alone omits nearby listeners sent with the accepted turn.
+    for _,actor in ipairs(chain.audience or {}) do candidates[#candidates+1]=actor end
     candidates[#candidates+1]=chain.lastAddressee
     candidates[#candidates+1]=chain.targetHint
     for _,actor in ipairs(candidates) do
