@@ -423,6 +423,8 @@ void BridgeService::workerLoop()
 {
     while (auto request = m_outbound.waitPop([](const OutboundRequest& queued) {
         return queued.kind == RequestKind::media;
+    }, [](const OutboundRequest& queued) {
+        return queued.kind == RequestKind::menu_dialogue_tts;
     })) {
         if (m_halted.load(std::memory_order_acquire))
             break;

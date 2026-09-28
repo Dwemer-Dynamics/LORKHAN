@@ -78,6 +78,9 @@ test('player speech hook releases the lane on missing provider failure completio
  local handler=assert(source:match('LORKHAN_PLAYER_SPEECH=function%(event%)(.-)\n        end,\n        LORKHAN_AI_STATUS'))
  local harness=[[
  local playerSpeech,narratorSpeech
+ local core={getRealTime=function()return 1 end}
+ local speechPrefetch=require('scripts.LORKHAN.speech_prefetch')
+ local prefetchedSpeech=speechPrefetch.new()
  local released,subtitles=0,0
  local nativeOk=true
  local status={state='requesting'}
@@ -110,6 +113,9 @@ test('menu choices speak before NPC audio and cancel on replacement or close',fu
  local handler=assert(source:match('LorkhanDialogueChoice=function%(event%)(.-)\n        end,\n        DialogueResponse'))
  local harness=[[
  local playerSpeech,menuDialogueSpeech,narratorSpeech,bookSpeech
+ local core={getRealTime=function()return 1 end}
+ local speechPrefetch=require('scripts.LORKHAN.speech_prefetch')
+ local prefetchedSpeech=speechPrefetch.new()
  local enabled,opened,playing=true,true,false
  local requests,cancelled,spoken,npcLines={},{},0,0
  local nativeOk=true
@@ -132,7 +138,7 @@ test('menu choices speak before NPC audio and cancel on replacement or close',fu
  enabled=false;choice({text='Hello'});assert(#requests==0)
  enabled=true;choice({text='Hello'});startMenuDialogueSpeech(response)
  assert(requests[1].actor.kind=='player' and requests[1].text=='Hello')
- updateMenuDialogueSpeech();assert(npcLines==0)
+ updateMenuDialogueSpeech();assert(npcLines==0 and #requests==1,'NPC synthesis must wait for player playback')
  updatePlayerSpeech();updateMenuDialogueSpeech();assert(spoken==1 and npcLines==0)
  playing=false;updatePlayerSpeech();updateMenuDialogueSpeech();assert(npcLines==1)
  -- The existing server route rejects player speech when disabled; NPC playback must unblock.
@@ -148,6 +154,30 @@ test('menu choices speak before NPC audio and cancel on replacement or close',fu
  local chunk,reason=(loadstring or load)(harness..functions..'\n'..update..
   '\nlocal function choice(event)'..handler..'\nend\n'..exercise)
  assert(chunk,reason);chunk()
+end)
+
+test('menu prefetch is bounded and cancels unused or stale requests',function()
+ local prefetch=require('scripts.LORKHAN.speech_prefetch')
+ local state=prefetch.new()
+ local requests,cancelled={},{}
+ local native={visibleDialogueTopics=function()return {'Services','Rumors','Someone','Other'}end,
+  requestMenuDialogueTts=function(_,text)
+   local id=tostring(#requests+1);requests[#requests+1]={state='requesting',text=text};return id
+  end,menuDialogueTtsStatus=function(id)return requests[tonumber(id)]end,
+  cancelMenuDialogueTts=function(id)cancelled[id]=true end}
+ prefetch.update(state,native,{},'session:1:npc',0,false)
+ prefetch.update(state,native,{},'session:1:npc',2,true);assert(#requests==0)
+ prefetch.update(state,native,{},'session:1:npc',3,false);assert(#requests==1)
+ prefetch.update(state,native,{},'session:1:npc',4,false);assert(#requests==1)
+ requests[1].state='ready'
+ prefetch.update(state,native,{},'session:1:npc',5,false);assert(#requests==2)
+ assert(prefetch.take(state,native,'RUMORS',6)=='2');assert(cancelled['1'] and not cancelled['2'])
+ prefetch.update(state,native,{},'session:1:npc',7,false);requests[3].state='ready'
+ prefetch.update(state,native,{},'session:1:npc',8,false);assert(#requests==3)
+ prefetch.update(state,native,{},nil,9,false);assert(cancelled['3'] and next(state.entries)==nil)
+ prefetch.update(state,native,{},'session:2:npc',10,false)
+ prefetch.update(state,native,{},'session:2:npc',12,false)
+ assert(prefetch.take(state,native,'Services',133)==nil and cancelled['4'])
 end)
 
 test('push-to-talk resumes after targeting only while held and starts once',function()

@@ -9,6 +9,8 @@ local selector=require('scripts.LORKHAN.ui.selector')
 local actorTools=require('scripts.LORKHAN.ui.actor_tools')
 local settingsMenu=require('scripts.LORKHAN.ui.settings')
 local support=require('scripts.LORKHAN.util')
+local speechPrefetch=require('scripts.LORKHAN.speech_prefetch')
+local prefetchedSpeech=speechPrefetch.new()
 local core=adapter.event()
 local inputOk,input=pcall(require,'openmw.input')
 local uiOk,openmwUi=pcall(require,'openmw.ui')
@@ -94,7 +96,7 @@ local currentNarratorSettings={}
 local SETTINGS_REFRESH_INTERVAL=0.5
 local AIM_SCAN_INTERVAL=0.25
 local AUTO_SCAN_INTERVAL=1.0
-local DEBUG_POLL_INTERVAL=0.25
+local DEBUG_POLL_INTERVAL=2
 local GLOBAL_DEBUG_COMMANDS={
     ['npc.status']=true,['npc.visit']=true,['npc.teleport']=true,['npc.return']=true,
     ['player.inventory.add']=true,['player.inventory.remove']=true,
@@ -229,14 +231,20 @@ local function stopPlayerSpeech(continueAfter)
     if continueAfter and current.onComplete then current.onComplete() end
 end
 
-local function startPlayerSpeech(actor,text,onComplete)
+local function startPlayerSpeech(actor,text,onComplete,prefetched)
     stopPlayerSpeech()
     stopNarrator('player_speech_started')
     if not nativeOk or not native or not native.requestMenuDialogueTts then return false end
-    local request,reason=native.requestMenuDialogueTts(actor,text)
+    if not prefetched then speechPrefetch.reset(prefetchedSpeech,native,prefetchedSpeech.signature) end
+    local request,reason=prefetched,nil
+    if not request then request,reason=native.requestMenuDialogueTts(actor,text) end
+    local selectedAt=core.getRealTime()
+    if request then
+        print('[LORKHAN] speech_trace request='..request..' stage=selected cached='..tostring(prefetched~=nil))
+    end
     -- Carry the already-validated typed text so playback shows the player's own subtitle.
     if request then playerSpeech={request_id=request,state='requesting',subtitle=type(text)=='string' and text or '',
-        onComplete=onComplete};return true
+        onComplete=onComplete,selectedAt=selectedAt};return true
     elseif reason~='provider_unavailable' then print('[LORKHAN] player TTS rejected: '..tostring(reason)) end
     return false
 end
@@ -258,13 +266,22 @@ local function updatePlayerSpeech()
         stopPlayerSpeech(true)
         return
     end
+    if current.state~=status.state then
+        local stage=status.state=='preparing' and 'synthesis_ready' or (status.state=='ready' and 'media_ready' or status.state)
+        print('[LORKHAN] speech_trace request='..current.request_id..' stage='..stage..
+            ' elapsed_ms='..math.floor((core.getRealTime()-current.selectedAt)*1000))
+    end
     current.state=status.state
     if status.state=='ready' and status.media_id then
         local volume=tonumber(soundSettings and soundSettings:get('ttsVolumeBoost')) or 3
         -- Vanilla dialogue already displays the selected topic; playback must not append it again.
         local subtitle=current.menuDialogue and '' or (current.subtitle or '')
         local ok,reason=adapter.playSpeech(status.media_id,subtitle,volume)
-        if ok then current.state='playing';print('[LORKHAN] player TTS playback started: '..tostring(current.request_id))
+        if ok then
+            current.state='playing'
+            print('[LORKHAN] player TTS playback started: '..tostring(current.request_id))
+            print('[LORKHAN] speech_trace request='..current.request_id..' stage=playback_started elapsed_ms='..
+                math.floor((core.getRealTime()-current.selectedAt)*1000))
         else print('[LORKHAN] player TTS playback failed: '..tostring(reason or 'playback_failed'));stopPlayerSpeech(true) end
     end
 end
@@ -377,7 +394,9 @@ local function startMenuDialogueSpeech(response)
     if #queued>0 then
         menuDialogueSpeech={actor=response.actor,sentences=queued,index=1,
             dialogueSeenOpen=dialogueMenuOpen()==true}
-        submitMenuDialogueSentence(menuDialogueSpeech,queued[1])
+        if not (playerSpeech and playerSpeech.menuDialogue and playerSpeech.state~='playing') then
+            submitMenuDialogueSentence(menuDialogueSpeech,queued[1])
+        end
     end
 end
 
@@ -576,6 +595,10 @@ local function updateMenuDialogueSpeech()
     elseif menuOpen==false and menuDialogueSpeech.dialogueSeenOpen then stopMenuDialogueSpeech() return end
     if soundSettings and soundSettings:get('menuDialogueTts')==false then stopMenuDialogueSpeech() return end
     if not nativeOk or not native or not native.menuDialogueTtsStatus then stopMenuDialogueSpeech() return end
+    -- Finish the player's download and start playback before any NPC synthesis can occupy HTTP.
+    if playerSpeech and playerSpeech.menuDialogue and playerSpeech.state~='playing' then return end
+    local first=menuDialogueSpeech.sentences[menuDialogueSpeech.index]
+    if first and first.state=='pending' then submitMenuDialogueSentence(menuDialogueSpeech,first) end
     for _,sentence in ipairs(menuDialogueSpeech.sentences) do
         if sentence.state=='requesting' or sentence.state=='preparing' then
             local status=native.menuDialogueTtsStatus(sentence.request_id)
@@ -587,8 +610,7 @@ local function updateMenuDialogueSpeech()
     for index=1,#menuDialogueSpeech.sentences-1 do
         local sentence=menuDialogueSpeech.sentences[index]
         local following=menuDialogueSpeech.sentences[index+1]
-        if following.state=='pending' and (sentence.state=='preparing' or sentence.state=='ready'
-            or sentence.state=='failed' or sentence.dispatched) then
+        if following.state=='pending' and (sentence.state=='failed' or sentence.dispatched) then
             submitMenuDialogueSentence(menuDialogueSpeech,following)
             break
         end
@@ -2015,7 +2037,7 @@ return {
                 if observed and nativeOk and native.submitDisposition then native.submitDisposition(observed) end
             end
             if not controlsAllowed() then settingsControls.syncOpenMic() end
-            if nativeOk and native.pumpMenuDialogueTts and (bookSpeech or playerSpeech or menuDialogueSpeech) then native.pumpMenuDialogueTts() end
+            if nativeOk and native.pumpMenuDialogueTts and (bookSpeech or playerSpeech or menuDialogueSpeech or next(prefetchedSpeech.entries)) then native.pumpMenuDialogueTts() end
             updateBookSpeech()
             pumpDebugCommands()
             if pendingAutochat and nativeOk and native.pumpPlayerAutochat then pcall(native.pumpPlayerAutochat) end
@@ -2023,6 +2045,16 @@ return {
             if playerSpeech and playerSpeech.menuDialogue and dispositionOpen==false then stopPlayerSpeech() end
             updatePlayerSpeech()
             updateMenuDialogueSpeech()
+            if nativeOk and native and native.sessionInfo then
+                local session=native.sessionInfo()
+                local actor=state.dispositionDialogueActor
+                local signature=dispositionOpen and session and actor and
+                    (session.session_id..':'..tostring(session.generation)..':'..tostring(actor.record_id)..':'..
+                        tostring(actor.content_file)..':'..tostring(actor.refnum and actor.refnum.index)) or nil
+                if soundSettings and soundSettings:get('menuDialogueTts')==false then signature=nil end
+                local busy=playerSpeech or bookSpeech or turnActive or menuDialogueSpeech or awaitingTextQueue
+                speechPrefetch.update(prefetchedSpeech,native,adapter.identity(self),signature,core.getRealTime(),busy)
+            end
             if settingsControls.profileUpdates then
                 local ok,done,message=pcall(require('scripts.LORKHAN.ui.profile_requests').pump,
                     settingsControls.profileUpdates,native,core.getRealTime())
@@ -2214,10 +2246,12 @@ return {
         -- The server's player connector owns the enabled switch; never fall back to an NPC voice.
         LorkhanDialogueChoice=function(event)
             stopMenuDialogueSpeech()
+            if not nativeOk or not native or not native.menuDialogueTtsStatus then return end
             if soundSettings and soundSettings:get('menuDialogueTts')==false then return end
             if not event or type(event.text)~='string' or not event.text:find('%S') then return end
             local speaker=adapter.identity(self)
-            if speaker and startPlayerSpeech(speaker,event.text) then playerSpeech.menuDialogue=true end
+            local prefetched=speechPrefetch.take(prefetchedSpeech,native,event.text,core.getRealTime())
+            if speaker and startPlayerSpeech(speaker,event.text,nil,prefetched) then playerSpeech.menuDialogue=true end
         end,
         DialogueResponse=function(event)
             local response=adapter.dialogueResponse(event)

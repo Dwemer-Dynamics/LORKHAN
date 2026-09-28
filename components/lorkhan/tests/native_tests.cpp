@@ -911,8 +911,8 @@ void testQueue()
     CHECK(drained.size() == 5 && drained[0] == 100 && drained[1] == 99);
     CHECK(queue.tryPush(1)); CHECK(queue.tryPush(2)); CHECK(queue.tryPush(3));
     const auto speech = [](int value) { return value >= 2; };
+    CHECK(queue.waitPop([](int value) { return value == 3; }, speech) == 3);
     CHECK(queue.waitPop(speech) == 2);
-    CHECK(queue.waitPop(speech) == 3);
     CHECK(queue.waitPop(speech) == 1);
     queue.close();
     CHECK(!queue.tryPush(1));
