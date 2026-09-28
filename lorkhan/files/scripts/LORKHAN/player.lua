@@ -10,7 +10,6 @@ local actorTools=require('scripts.LORKHAN.ui.actor_tools')
 local settingsMenu=require('scripts.LORKHAN.ui.settings')
 local support=require('scripts.LORKHAN.util')
 local speechPrefetch=require('scripts.LORKHAN.speech_prefetch')
-local speechFeedback=require('scripts.LORKHAN.ui.speech_feedback')
 local prefetchedSpeech=speechPrefetch.new()
 local core=adapter.event()
 local inputOk,input=pcall(require,'openmw.input')
@@ -226,7 +225,6 @@ local function stopPlayerSpeech(continueAfter)
         pcall(native.cancelMenuDialogueTts,current.request_id)
     end
     playerSpeech=nil
-    speechFeedback.show(nil)
     -- Failed/unavailable synthesis still gets one caption; successful speech supplies its own.
     if continueAfter and current.state~='playing' and not current.menuDialogue then adapter.showSubtitle(current.subtitle or '') end
     if current.onRelease then current.onRelease() end
@@ -243,7 +241,6 @@ local function startPlayerSpeech(actor,text,onComplete,prefetched)
     local selectedAt=core.getRealTime()
     if request then
         print('[LORKHAN] speech_trace request='..request..' stage=selected cached='..tostring(prefetched~=nil))
-        speechFeedback.show('Preparing voice...')
     end
     -- Carry the already-validated typed text so playback shows the player's own subtitle.
     if request then playerSpeech={request_id=request,state='requesting',subtitle=type(text)=='string' and text or '',
@@ -281,7 +278,7 @@ local function updatePlayerSpeech()
         local subtitle=current.menuDialogue and '' or (current.subtitle or '')
         local ok,reason=adapter.playSpeech(status.media_id,subtitle,volume)
         if ok then
-            current.state='playing';speechFeedback.show(nil)
+            current.state='playing'
             print('[LORKHAN] player TTS playback started: '..tostring(current.request_id))
             print('[LORKHAN] speech_trace request='..current.request_id..' stage=playback_started elapsed_ms='..
                 math.floor((core.getRealTime()-current.selectedAt)*1000))
@@ -2057,16 +2054,6 @@ return {
                 if soundSettings and soundSettings:get('menuDialogueTts')==false then signature=nil end
                 local busy=playerSpeech or bookSpeech or turnActive or menuDialogueSpeech or awaitingTextQueue
                 speechPrefetch.update(prefetchedSpeech,native,adapter.identity(self),signature,core.getRealTime(),busy)
-                local feedback
-                if session then
-                    if playerSpeech and playerSpeech.state~='playing' then feedback='Preparing voice...'
-                    elseif not playerSpeech and turnActive and not speechActive() then feedback='Waiting for NPC response...'
-                    elseif not playerSpeech and menuDialogueSpeech then
-                        local sentence=menuDialogueSpeech.sentences[menuDialogueSpeech.index]
-                        if sentence and not sentence.dispatched then feedback='Preparing NPC voice...' end
-                    end
-                end
-                speechFeedback.show(feedback)
             end
             if settingsControls.profileUpdates then
                 local ok,done,message=pcall(require('scripts.LORKHAN.ui.profile_requests').pump,

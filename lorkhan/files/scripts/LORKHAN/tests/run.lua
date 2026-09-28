@@ -79,7 +79,6 @@ test('player speech hook releases the lane on missing provider failure completio
  local harness=[[
  local playerSpeech,narratorSpeech
  local core={getRealTime=function()return 1 end}
- local speechFeedback={show=function()end}
  local speechPrefetch=require('scripts.LORKHAN.speech_prefetch')
  local prefetchedSpeech=speechPrefetch.new()
  local released,subtitles=0,0
@@ -115,7 +114,6 @@ test('menu choices speak before NPC audio and cancel on replacement or close',fu
  local harness=[[
  local playerSpeech,menuDialogueSpeech,narratorSpeech,bookSpeech
  local core={getRealTime=function()return 1 end}
- local speechFeedback={show=function()end}
  local speechPrefetch=require('scripts.LORKHAN.speech_prefetch')
  local prefetchedSpeech=speechPrefetch.new()
  local enabled,opened,playing=true,true,false
