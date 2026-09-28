@@ -59,11 +59,18 @@ public:
     template <class Predicate>
     [[nodiscard]] std::optional<T> waitPop(Predicate preferred)
     {
+        return waitPop(preferred, [](const T&) { return false; });
+    }
+
+    template <class Predicate, class SecondaryPredicate>
+    [[nodiscard]] std::optional<T> waitPop(Predicate preferred, SecondaryPredicate secondary)
+    {
         std::unique_lock lock(m_mutex);
         m_ready.wait(lock, [this] { return m_closed || !m_items.empty(); });
         if (m_items.empty())
             return std::nullopt;
         auto selected = std::find_if(m_items.begin(), m_items.end(), preferred);
+        if (selected == m_items.end()) selected = std::find_if(m_items.begin(), m_items.end(), secondary);
         if (selected == m_items.end()) selected = m_items.begin();
         T item = std::move(*selected);
         m_items.erase(selected);

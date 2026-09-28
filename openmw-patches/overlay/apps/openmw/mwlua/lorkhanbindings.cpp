@@ -2786,7 +2786,7 @@ namespace MWLua
                     lorkhan::EventPollRequest{ *m_session, m_service->generation(), m_cursor, 1000 } };
                 auto result = m_service->enqueue(std::move(outbound));
                 if (result) m_pollRequest = request;
-                m_nextPoll = now + 250ms;
+                m_nextPoll = now + 750ms;
             }
 
             static std::vector<std::string> capabilities()

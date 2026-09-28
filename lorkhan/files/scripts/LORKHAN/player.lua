@@ -94,7 +94,7 @@ local currentNarratorSettings={}
 local SETTINGS_REFRESH_INTERVAL=0.5
 local AIM_SCAN_INTERVAL=0.25
 local AUTO_SCAN_INTERVAL=1.0
-local DEBUG_POLL_INTERVAL=0.25
+local DEBUG_POLL_INTERVAL=2
 local GLOBAL_DEBUG_COMMANDS={
     ['npc.status']=true,['npc.visit']=true,['npc.teleport']=true,['npc.return']=true,
     ['player.inventory.add']=true,['player.inventory.remove']=true,
