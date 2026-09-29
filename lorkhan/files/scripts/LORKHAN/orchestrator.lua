@@ -1437,16 +1437,19 @@ end
 local function applyTransportFailure(state,event)
     local turn=state.conversation.turn
     if not turn or turn.terminal or event.request_id~=turn.requestId then return false end
-    turn.terminal=true turn.status='failed' turn.reason=event.reason or 'transport_failure'
+    local skipped=state.rechat and state.rechat.requestInFlight and
+        ({rechat_complete=true,rechat_cooldown=true,conversation_cooldown=true,rechat_no_responder=true})[event.reason]
+    turn.terminal=true turn.status=skipped and 'cancelled' or 'failed' turn.reason=event.reason or 'transport_failure'
     if state.directorPlan then state.directorPlan.cancelled=true end
     if state.rechat then state.rechat.cancelled=true state.rechat.requestInFlight=false end
-    local failed={type='turn.failed',request_id=turn.requestId,turn_id=turn.turnId,
+    local failed={type=skipped and 'turn.cancelled' or 'turn.failed',request_id=turn.requestId,turn_id=turn.turnId,
         session_id=state.sessionId,generation=state.generation,
-        payload={status='failed',code=turn.reason}}
+        payload={status=turn.status,code=turn.reason}}
     emitInbound(state,'LORKHAN_EVENT',failed)
     restoreTurnTarget(state,turn.turnId)
     finishAutonomyTurn(state,false)
-    print('[LORKHAN] response turn terminal: transport.failure '..tostring(turn.turnId))
+    print('[LORKHAN] response turn terminal: '..(skipped and 'rechat.skipped' or 'transport.failure')..' '..
+        tostring(turn.turnId)..' reason='..tostring(turn.reason))
     return true
 end
 

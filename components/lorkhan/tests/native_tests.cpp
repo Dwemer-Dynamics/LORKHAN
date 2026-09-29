@@ -272,7 +272,7 @@ void testProtocolResponses()
         const auto response = lorkhan::parseProtocolErrorResponse(
             std::string(R"({"schema":"lorkhan.error.v1","code":")") + code
                 + R"(","message":"Request rejected","correlation_id":"01900000-0000-7000-8000-000000000001","retriable":false})", jsonHeaders);
-        CHECK(response && response.value().code == expected);
+        CHECK(response && response.value().code == expected && response.value().wireCode == code);
     }
     CHECK(!lorkhan::parseProtocolErrorResponse(
         R"({"schema":"lorkhan.error.v1","code":"internal_error","message":"","correlation_id":"01900000-0000-7000-8000-000000000001","retriable":false})",
