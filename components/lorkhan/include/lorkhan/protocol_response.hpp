@@ -22,6 +22,7 @@ struct ProtocolError {
     std::string correlationId;
     bool retriable{};
     std::optional<std::uint64_t> retryAfterMs;
+    std::string wireCode;
 };
 
 struct ClientBehaviorSettings {

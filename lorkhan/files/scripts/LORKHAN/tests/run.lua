@@ -703,13 +703,18 @@ test('player event delivery failure cannot strand an active turn',function()
  eq(orchestrator.poll(s),2);truthy(s.conversation.turn.terminal);eq(s.conversation.turn.status,'complete')
 end)
 test('correlated transport failure releases the active turn',function()
+ for _,reason in ipairs({'network_error','invalid_rechat_context','rechat_complete','rechat_no_responder','rechat_cooldown','conversation_cooldown'}) do
+ local skipped=reason~='network_error' and reason~='invalid_rechat_context'
  local b=fake.bridge();local emitted={};local s=orchestrator.new(b,function(name,payload)emitted[#emitted+1]={name,payload}end)
  s.sessionId=UUID.session;s.events=protocol.CursoredEvents(UUID.session,0)
  truthy(conversation.setTarget(s.conversation,npc));truthy(conversation.begin(s.conversation,UUID.request,UUID.turn,'first'))
- b.results={{type='transport.failure',request_id=UUID.request,turn_id=UUID.turn,reason='server returned a typed protocol error'}}
- eq(orchestrator.poll(s),1);truthy(s.conversation.turn.terminal);eq(s.conversation.turn.status,'failed')
- eq(emitted[1][1],'LORKHAN_EVENT');eq(emitted[1][2].type,'turn.failed')
+ s.rechat={requestInFlight=true}
+ b.results={{type='transport.failure',request_id=UUID.request,turn_id=UUID.turn,reason=reason}}
+ eq(orchestrator.poll(s),1);truthy(s.conversation.turn.terminal);eq(s.conversation.turn.status,skipped and 'cancelled' or 'failed')
+ eq(emitted[1][1],'LORKHAN_EVENT');eq(emitted[1][2].type,skipped and 'turn.cancelled' or 'turn.failed')
+ eq(s.conversation.turn.reason,reason);eq(s.rechat.requestInFlight,false)
  truthy(conversation.begin(s.conversation,uuid(901),uuid(902),'second'))
+ end
 end)
 test('action capability authority expiry exact parameters and limits',function()
  local state=actions.new({'action.ai.follow'}) local registry=identity.Registry();registry:activate(npc,{});registry:activate(playerId,{})

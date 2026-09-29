@@ -1292,7 +1292,7 @@ Result<ProtocolError> parseProtocolErrorResponse(
     if (!mappedCode)
         return invalidSchemaValue<ProtocolError>("unknown protocol error code");
 
-    ProtocolError parsed{*mappedCode, std::move(correlation).value(), retriable.value(), std::nullopt};
+    ProtocolError parsed{*mappedCode, std::move(correlation).value(), retriable.value(), std::nullopt, code.value()};
     if (json::find(object.value(), "retry_after_ms")) {
         auto retry = requireUnsigned(object.value(), "retry_after_ms",
             static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()));

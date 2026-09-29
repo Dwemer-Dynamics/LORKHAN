@@ -760,7 +760,7 @@ Result<InboundResult> protocolFailure(const OutboundRequest& request, unsigned s
         return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
             "typed protocol error correlation mismatch"));
     return Result<InboundResult>::failure(makeError(parsed.value().code,
-        "server returned a typed protocol error", parsed.value().retriable, parsed.value().retryAfterMs,
+        parsed.value().wireCode, parsed.value().retriable, parsed.value().retryAfterMs,
         parsed.value().correlationId));
 }
 
