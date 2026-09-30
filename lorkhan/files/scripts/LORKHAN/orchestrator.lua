@@ -87,9 +87,11 @@ end
 local function reportQueuedAction(state,item,status,reason)
     if not item.intent or not state.bridge or not state.bridge.newMessageId or not state.bridge.utcNow
         or not state.bridge.submitActionResult then return false end
+    if state.bridge.isExpired and state.bridge.isExpired(item.intent.expires_at) then status='timed_out';reason='action_expired' end
     local result={schema='lorkhan.action-result.v1',message_id=state.bridge.newMessageId(),request_id=item.requestId,
         action_id=item.intent.action_id,turn_id=item.turnId,session_id=item.sessionId,generation=item.generation,
         status=status,reason_code=reason,observed={},completed_at=state.bridge.utcNow()}
+    if state.queueActionResult then return state.queueActionResult({result=result,action_name=item.intent.name}) end
     return state.bridge.submitActionResult(result)~=nil
 end
 
@@ -103,6 +105,13 @@ local function cancelResponseLane(state,reason,stopSpeech)
     stopDirectorScene(state)
     state.playerSpeechRequest=nil
     state.emit('LORKHAN_PLAYER_SPEECH_STOP',{reason=reason})
+    local active=state.responseQueue.active
+    local cancelled=responseQueue.cancelActions(state.responseQueue,reason,
+        active and active.intent and state.pendingConfirmations[active.intent.action_id]~=nil)
+    for _,item in ipairs(cancelled) do
+        reportQueuedAction(state,item,'cancelled',reason)
+        state.pendingConfirmations[item.intent.action_id]=nil
+    end
     for _,item in ipairs(state.responseQueue.items) do
         local command=item.intent
         if command and nativeActions.advanced[command.name] and state.bridge.cancelAdvanced then
@@ -377,7 +386,8 @@ function M.actorCombatStatus(state,event)
     local settings=state.settings and state.settings.autoActivate or {}
     if settings.addHostile==true then return false,'hostile_allowed' end
     agentRegistry.remove(state.agents,event.actor)
-    detachAgent(state,event.actor,'auto_hostile_to_player')
+    -- Keep the CUSTOM executor attached so its newly started combat is not halted.
+    -- The actor is excluded from conversational agents until eligible again.
     emitAgents(state)
     return true,'hostile_removed'
 end
@@ -1455,6 +1465,12 @@ end
 
 function M.poll(state)
     if state.disabled or state.hardHalted then return 0 end
+    -- A confirmation left open must not stall the response lane past its authority deadline.
+    if state.bridge.isExpired then
+        for actionId,command in pairs(state.pendingConfirmations) do
+            if state.bridge.isExpired(command.expires_at) then M.confirmAction(state,actionId,false) end
+        end
+    end
     local results=state.bridge.pollResults(constants.MAX_INBOUND_RESULTS) or {}
     local accepted=0
     for index=1,math.min(#results,constants.MAX_INBOUND_RESULTS) do
@@ -1591,6 +1607,13 @@ function M.confirmAction(state,actionId,approved)
     local command=state.pendingConfirmations[actionId]
     if not command then return nil,'confirmation_not_found' end
     state.pendingConfirmations[actionId]=nil
+    if state.bridge.isExpired and state.bridge.isExpired(command.expires_at) then
+        local item=responseQueue.head(state.responseQueue)
+        if item and item.intent and item.intent.action_id==actionId then
+            return reportQueuedAction(state,item,'timed_out','action_expired')
+        end
+        return nil,'action_expired'
+    end
     local eventName=approved and 'LORKHAN_ACTOR_ACTION' or 'LORKHAN_ACTOR_REJECT'
     local sent,reason=state.sendActor(command.actor,eventName,command)
     if not sent then

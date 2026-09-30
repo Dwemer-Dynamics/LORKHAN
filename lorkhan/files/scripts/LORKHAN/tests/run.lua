@@ -613,10 +613,10 @@ test('transfer queue waits for persisted receipts and freezes the committed outc
  local outcome={status='pending'};local receipt={status='not_submitted'}
  local submitted={};local finished={};local cancelled={}
  local bridge={executeTransfer=function()return outcome end,cancelTransfer=function(id)cancelled[#cancelled+1]=id end,
-  transferReceiptStatus=function()return receipt end,utcNow=function()return '2026-07-19T20:00:00Z' end,
+  newMessageId=function()return UUID.message end,transferReceiptStatus=function()return receipt end,utcNow=function()return '2026-07-19T20:00:00Z' end,
   submitActionResult=function(result)submitted[#submitted+1]=result;receipt={status='pending'};return UUID.request end}
  local queue=transfers.new(bridge,function(event)finished[#finished+1]=event end)
- local command={name='item.give',action_id=UUID.action or UUID.message,message_id=UUID.message,request_id=UUID.request,
+ local command={name='item.give',action_id=UUID.action or UUID.message,request_id=UUID.request,
   turn_id=UUID.turn,session_id=UUID.session,generation=7,actor=npc,confirmation_required=false}
  command.confirmation_required=nil;eq(transfers.enqueue(queue,command),nil)
  command.confirmation_required=false;truthy(transfers.enqueue(queue,command))
@@ -632,13 +632,30 @@ test('transfer queue waits for persisted receipts and freezes the committed outc
  transfers.pump(queue,UUID.session,8,7);eq(#finished,1);eq(next(queue.pending),nil)
 end)
 
+test('actor receipts retry immutable results and advance only after acknowledgement',function()
+ local transfers=require('scripts.LORKHAN.transfer_actions')
+ local receipt='not_submitted';local submitted={};local finished=0
+ local bridge={actionReceiptStatus=function()return {status=receipt} end,
+  submitActionResult=function(result)submitted[#submitted+1]=result;receipt='pending';return UUID.request end}
+ local queue=transfers.new(bridge,function()finished=finished+1 end)
+ local result={action_id=uuid(172),message_id=UUID.message,session_id=UUID.session,generation=1,status='succeeded'}
+ truthy(transfers.receiveResult(queue,{result=result,action_name='ai.follow'}))
+ transfers.pump(queue,UUID.session,1,0);eq(#submitted,1);eq(finished,0)
+ result.status='failed';truthy(transfers.receiveResult(queue,{result=result,action_name='ai.follow'}))
+ receipt='failed';transfers.pump(queue,UUID.session,1,3)
+ eq(#submitted,2);eq(submitted[1],submitted[2]);eq(submitted[2].status,'succeeded')
+ receipt='accepted';transfers.pump(queue,UUID.session,1,4);eq(finished,1)
+ truthy(transfers.receiveResult(queue,{result=result,action_name='ai.follow'}))
+ transfers.pump(queue,UUID.session,2,5);eq(next(queue.pending),nil);eq(finished,1)
+end)
+
 test('advanced native queue validates exact shapes and uses retained cancellation receipts',function()
  local transfers=require('scripts.LORKHAN.transfer_actions')
  local variants={['item.create']={record_id='exquisite_robe_01',count=100},['gold.create']={amount=100000},
   ['actor.spawn']={record_id='mudcrab',count=4},['actor.teleport_to_player']={},
   ['player.teleport']={destination_id='cell:balmora'},['actor.restore']={},['actor.resurrect']={},['actor.kill']={}}
  local command={name='item.create',actor=playerId,target=playerId,confirmation_required=true,tier=2,
-  parameters=variants['item.create'],action_id=uuid(173),message_id=UUID.message,request_id=UUID.request,
+  parameters=variants['item.create'],action_id=uuid(173),request_id=UUID.request,
   turn_id=UUID.turn,session_id=UUID.session,generation=1}
  for name,params in pairs(variants) do
   command.name=name;command.parameters=params
@@ -654,7 +671,7 @@ test('advanced native queue validates exact shapes and uses retained cancellatio
  command.actor=npc;eq(transfers.validateAdvanced(command),nil);command.actor=playerId
  local executed=0;local cancelled=0;local submitted=0;local finished=0;local receipt='not_submitted'
  local bridge={executeAdvanced=function()executed=executed+1;return {status='cancelled',reason_code='user_rejected',observed={}} end,
-  cancelAdvanced=function()cancelled=cancelled+1 end,advancedReceiptStatus=function()return {status=receipt} end,
+  newMessageId=function()return UUID.message end,cancelAdvanced=function()cancelled=cancelled+1 end,advancedReceiptStatus=function()return {status=receipt} end,
   utcNow=function()return '2026-07-19T20:00:00Z' end,submitActionResult=function()submitted=submitted+1;return true end}
  local queue=transfers.new(bridge,function()finished=finished+1 end)
  truthy(transfers.enqueue(queue,command));transfers.cancel(queue,playerId);eq(cancelled,1)
@@ -1055,6 +1072,21 @@ test('policy confirmation override and one result follow-up cross the ordered la
  local recent=b.submitted[2].payload.recent_action_results;eq(#recent,1);eq(recent[1].action_id,actionId)
  eq(#s.actionFollowups.pending,0);truthy(s.actionFollowups.seen[actionId])
 end)
+test('expired confirmation queues one timeout receipt without dispatching the actor',function()
+ local b=fake.bridge();local sent=0;local receipts={}
+ b.isExpired=function()return true end
+ local s=orchestrator.new(b,nil,function()sent=sent+1;return true end)
+ orchestrator.configureSession(s,UUID.session)
+ local command={action_id=uuid(189),name='combat.start',actor=npc,session_id=UUID.session,generation=1,expires_at='expired'}
+ local item={kind='action',status='dispatched',intent=command,requestId=UUID.request,turnId=UUID.turn,
+  sessionId=UUID.session,generation=1}
+ s.responseQueue.items={item};s.responseQueue.active=item;s.pendingConfirmations[command.action_id]=command
+ s.queueActionResult=function(event)receipts[#receipts+1]=event.result;return true end
+ orchestrator.poll(s);eq(sent,0);eq(#receipts,1);eq(receipts[1].status,'timed_out')
+ eq(receipts[1].reason_code,'action_expired');eq(s.pendingConfirmations[command.action_id],nil)
+ orchestrator.poll(s);eq(#receipts,1)
+end)
+
 test('advanced actions require explicit player mode and a native confirmation summary',function()
  for _,case in ipairs({{mode='cheat',source='lorkhan_text',allowed=true},
   {mode='cheat',source='lorkhan_text',noTarget=true,allowed=true},
@@ -1242,6 +1274,10 @@ test('ending conversation releases only owned packages and reports cleanup failu
  eq(result.status,'failed');eq(result.reason,'cleanup_failed');eq(state.ownedAi.type,'Follow')
  state=actor.new(npc,2,{'action.conversation.end'});intent.parameters={script='tgm'}
  result=actor.execute(state,intent,{},authority);eq(result.status,'rejected')
+ state=actor.new(npc,2,{'action.conversation.end'});intent.parameters={};authority.expired=function()return true end
+ result=actor.execute(state,intent,{},authority);eq(result.status,'timed_out');eq(result.reason,'action_expired')
+ state=actor.new(npc,2,{'action.conversation.end'})
+ result=actor.reject(state,intent,'user_declined',authority);eq(result.status,'timed_out')
 end)
 test('typed player action request remains inside the strict turn envelope',function()
  local args={message_id=UUID.message,request_id=UUID.request,turn_id=UUID.turn,
@@ -1779,8 +1815,8 @@ test('auto-managed actors attacking the player are removed unless explicitly all
  local candidate={identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true}
  truthy(orchestrator.manageCandidate(s,candidate,'auto'))
  local removed,reason=orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=true,target=playerId})
- truthy(removed);eq(reason,'hostile_removed');eq(#agentRegistry.snapshot(s.agents),0);eq(detached,1)
- eq(combatEvents[#combatEvents].active,false);eq(combatEvents[#combatEvents].count,0)
+ truthy(removed);eq(reason,'hostile_removed');eq(#agentRegistry.snapshot(s.agents),0);eq(detached,0)
+ eq(combatEvents[#combatEvents].active,true);eq(combatEvents[#combatEvents].count,1)
  s.settings.autoActivate.addHostile=true
  truthy(orchestrator.manageCandidate(s,candidate,'auto'))
  removed,reason=orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=true,target=playerId})
@@ -2770,11 +2806,16 @@ end)
 test('actor Wait Here rejects stale requests and restores on halt detach and load',function()
  local moduleName='scripts.LORKHAN.adapters.openmw';local original=package.loaded[moduleName]
  local started,stopped,restored=0,0,0
- local mock={event=function()return {sendGlobalEvent=function()end}end,bridge=function()return nil end,
+ local results={};local mutations=0;local ownedStopped
+ local mock={event=function()return {sendGlobalEvent=function(name,payload)
+   if name=='LORKHAN_ACTION_RESULT' then results[#results+1]=payload.result end end}end,
+  bridge=function()return {newMessageId=function()return UUID.message end,
+   utcNow=function()return '2026-09-28T20:00:00Z'end,isExpired=function()return false end}end,
+  resolve=function()return {}end,follow=function()mutations=mutations+1;return true,'follow_started'end,
   beginWaitHere=function()started=started+1;return {package={},elapsed=0},'wait_started'end,
   endWaitHere=function()stopped=stopped+1 end,saveWaitHere=function(value)return value and {index=1}end,
   restoreWaitHere=function(value)eq(value.index,1);restored=restored+1 end,combatStatus=function()return nil end,
-  stopSpeech=function()end,stopAi=function()return true end}
+  stopSpeech=function()end,stopAi=function(owned)ownedStopped=owned;return true end}
  package.loaded[moduleName]=mock
  local ok,err=pcall(function()
   local script=assert(loadfile(root..'/scripts/LORKHAN/actor.lua'))()
@@ -2786,6 +2827,21 @@ test('actor Wait Here rejects stale requests and restores on halt detach and loa
   request({actor=npc,generation=3});local saved=script.engineHandlers.onSave()
   script.eventHandlers.LORKHAN_ACTOR_DETACH();eq(stopped,2)
   script.engineHandlers.onLoad(saved);script.engineHandlers.onActive();eq(restored,1)
+  local attach={actor=npc,generation=3,capabilities={'action.ai.follow','action.ai.stop'}}
+  script.eventHandlers.LORKHAN_ACTOR_ATTACH(attach)
+  -- Match the actual native payload: the action command has no message_id.
+  local command={schema='lorkhan.action-intent.v1',action_id=uuid(190),request_id=UUID.request,
+   turn_id=UUID.turn,session_id=UUID.session,generation=3,name='ai.follow',tier=1,actor=npc,
+   target=playerId,parameters={distance=192},expires_at='2026-09-28T20:01:00Z'}
+  script.eventHandlers.LORKHAN_ACTOR_ACTION(command)
+  eq(mutations,1);eq(#results,1);eq(results[1].message_id,UUID.message);eq(results[1].status,'succeeded')
+  script.eventHandlers.LORKHAN_ACTOR_ATTACH(attach);script.eventHandlers.LORKHAN_ACTOR_ACTION(command)
+  eq(mutations,1);eq(#results,1)
+  local followSave=script.engineHandlers.onSave();eq(followSave.ownedAi.type,'Follow')
+  script.engineHandlers.onLoad(followSave);script.eventHandlers.LORKHAN_ACTOR_ATTACH(attach)
+  command.action_id=uuid(191);command.name='ai.stop';command.parameters={}
+  script.eventHandlers.LORKHAN_ACTOR_ACTION(command)
+  eq(ownedStopped.type,'Follow');eq(#results,2);eq(results[2].status,'succeeded')
  end)
  package.loaded[moduleName]=original;assert(ok,err)
 end)
