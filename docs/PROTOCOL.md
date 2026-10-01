@@ -254,7 +254,8 @@ clear compatibility status; they never silently fall back to legacy tuple or fil
   capped at 512 bytes in the native editor; long existing profile prose is not truncated into an edit.
 - `/controls/select` accepts `kind=setting` with `setting={scope,key,value,change_token}` and null
   selection IDs/keys. The server owns the field allowlist and rejects stale snapshot tokens.
-- `/gamedata` accepts `type=rpg_event`, carrying `kind`, player identity, game time, and observed text.
+- `/gamedata` accepts `type=rpg_event`, carrying `kind`, player identity, game time, observed text and
+  an optional capture-time `calendar`; `type=quest_event` accepts the same optional `calendar`.
   Level changes, nearby combat ending, and completed sleep/wait periods are observed without engine
   mutation. `lockpick` is reserved but is not emitted from generic Unlock events, which also include
   spells and do not establish who used a lockpick. RPG acceptance alone may include `comment_requested`.
@@ -384,10 +385,31 @@ observations. Hide Ambient Combat still matches only CHIM's "has killed" form. D
 observations are not memory sources.
 
 New observations also carry the capture-time calendar using the existing loaded-save
-shape (zero-based month). Loading an earlier save retires observations at or beyond
-its cutoff while preserving earlier dated observations. Legacy undated spell/pickup
-records are retained as evidence but cannot cross session boundaries into context;
-the DaysPassed clock is never guessed to be an absolute calendar timestamp.
+shape (zero-based month). Native captures (spell, pickup, barter, resurrection, death
+and successful lockpick) copy the engine calendar together with their game time.
+Level-up, combat-end, sleep/wait and quest observations are detected by player Lua;
+it reads the engine calendar through `observationCalendar()` at the same instant as
+game time. The field is omitted when the engine has no valid date; it is never derived
+from delivery time or the server clock. Loading a save retires observations at or
+after its cutoff, CHIM's rule, and keeps earlier dated observations together with
+their memories, narratives and evolved profiles. When the loaded-save date is unknown,
+no observation from an older session is kept.
+
+Undated RPG and quest rows from older clients are kept only with evidence. That
+evidence is a dated observation from the same continuous session (typed game data, or
+a turn with world calendar and game time) whose game time is equal or later and whose
+calendar precedes the cutoff. DaysPassed game time only orders captures inside one
+session; it is never turned into a date or compared across sessions. Other undated
+rows leave active context, and their immutable sources remain. Known ambiguity: a
+legacy row recorded after its session's last pre-save capture is retired even if it
+preceded the save. A script that moves GameHour or the calendar backward inside a
+session can misorder it.
+
+Level-ups are noticed within 0.5 seconds and journal updates within 5 seconds of real
+time, and are dated when noticed. An update made in that window just before saving is
+dated after the save and is retired when that save is loaded. Legacy undated
+spell/pickup records are retained as evidence but cannot cross session boundaries into
+context.
 
 
 ## Physical NPC diary books (2026-09-13)

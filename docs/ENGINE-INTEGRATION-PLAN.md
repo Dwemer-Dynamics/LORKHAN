@@ -128,6 +128,12 @@ unchanged response shape. No generic URL or document mutation is exposed.
 considered only after the server explicitly authorizes an accepted event. The internal callback is
 session/generation fenced and uses the ordinary nearby-target dialogue path without player TTS.
 
+`observationCalendar()` is read-only and takes no arguments. It returns `{year,month,day,hour}` from
+the engine time manager, which backs the Year/Month/Day/GameHour globals, or nil when that date is
+invalid. Player Lua uses it so Lua-detected RPG and quest observations are dated at the same instant
+as their game time. GLOBAL Lua still owns the mwscript calendar globals for turn context and the
+loaded-save handshake.
+
 `requestBookReadAloud(bookId,title,text)` submits one bounded book sentence to the server's Narrator
 route. The player must enable Read Books Aloud, which defaults off. Existing verified media and
 local speech playback are reused; no provider, actor impersonation, path, or arbitrary URL is accepted.

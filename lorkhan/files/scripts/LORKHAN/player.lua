@@ -517,8 +517,15 @@ local function flushActorProfiles(dt)
     end
 end
 
+-- Native reads the engine calendar at this instant; delayed captures pass their own calendar instead.
+local function observationCalendar()
+    if not nativeOk or type(native.observationCalendar)~='function' then return nil end
+    local ok,calendar=pcall(native.observationCalendar)
+    return ok and type(calendar)=='table' and calendar or nil
+end
+
 -- Persist the observation and freeze the eligible responder before the server makes its profile policy decision.
-local function submitRpgEvent(kind,text,capturedTime)
+local function submitRpgEvent(kind,text,capturedTime,capturedCalendar)
     if not aiEnabled then return end
     if not nativeOk or not native.submitRpgEvent or not native.sessionInfo then return end
     local session=native.sessionInfo()
@@ -526,7 +533,9 @@ local function submitRpgEvent(kind,text,capturedTime)
     local responder=state.ui.target
     local distance=responder and adapter.actorDistance(responder)
     if turnActive or nearbyCombat or speechActive() or state.ui.visible or not distance or distance>2048 then responder=nil end
-    local payload=protocol.rpgEvent({kind=kind,player=adapter.identity(self),game_time=capturedTime or adapter.gameTime(),text=text,responder=responder})
+    local gameTime,calendar=capturedTime,capturedCalendar
+    if gameTime==nil then gameTime=adapter.gameTime();calendar=observationCalendar() end
+    local payload=protocol.rpgEvent({kind=kind,player=adapter.identity(self),game_time=gameTime,calendar=calendar,text=text,responder=responder})
     if not payload then return end
     local request,reason=native.submitRpgEvent(payload)
     if request and responder then
@@ -540,7 +549,7 @@ local function submitQuestEvent(entries,session)
     local responder=state.ui.target
     local distance=responder and adapter.actorDistance(responder)
     if turnActive or nearbyCombat or speechActive() or state.ui.visible or not distance or distance>2048 then return end
-    local payload=protocol.questEvent({entries=entries,responder=responder,game_time=adapter.gameTime()})
+    local payload=protocol.questEvent({entries=entries,responder=responder,game_time=adapter.gameTime(),calendar=observationCalendar()})
     if not payload then return end
     local request=native.submitQuestEvent(payload)
     if request then player.rememberRpgComment(state,request,responder,session,core.getRealTime()) end
@@ -2243,7 +2252,7 @@ return {
             local session=native.sessionInfo()
             if not session or event.sessionId~=session.session_id or event.generation~=session.generation then return end
             if type(event.gameTime)~='number' or event.gameTime~=event.gameTime or event.gameTime<0 then return end
-            submitRpgEvent('lockpick','The player successfully picked a lock.',event.gameTime)
+            submitRpgEvent('lockpick','The player successfully picked a lock.',event.gameTime,event.calendar)
         end,
         LorkhanItemPickup=function(event)
             if not nativeOk or not native.submitItemPickup or not native.sessionInfo then return end

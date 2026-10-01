@@ -401,7 +401,9 @@ function M.rpgEvent(args)
     if not identity.validate(args.player) or args.player.kind~='player' then return nil,'invalid_rpg_player' end
     if type(args.game_time)~='number' or args.game_time~=args.game_time or args.game_time<0 or args.game_time>9007199254740991 then return nil,'invalid_game_time' end
     if type(args.text)~='string' or #args.text<1 or #args.text>1024 then return nil,'invalid_rpg_text' end
-    local payload={kind=args.kind,player=util.copy(args.player),game_time=args.game_time,text=args.text}
+    if not validObservationCalendar(args.calendar) then return nil,'invalid_rpg_calendar' end
+    local payload={kind=args.kind,player=util.copy(args.player),game_time=args.game_time,text=args.text,
+        calendar=args.calendar and util.copy(args.calendar) or nil}
     if args.responder~=nil then
         if not identity.validate(args.responder) or (args.responder.kind~='npc' and args.responder.kind~='creature') then
             return nil,'invalid_rpg_responder'
@@ -433,9 +435,11 @@ function M.questEvent(args)
     if type(args)~='table' or not identity.validate(args.responder) or args.responder.kind~='npc'
         or type(args.game_time)~='number' or args.game_time~=args.game_time or args.game_time<0
         or args.game_time>9007199254740991 then return nil,'invalid_quest_event' end
+    if not validObservationCalendar(args.calendar) then return nil,'invalid_quest_calendar' end
     local text,reason=M.questText(args.entries)
     if not text then return nil,reason end
-    return {responder=util.copy(args.responder),game_time=args.game_time,text=text}
+    return {responder=util.copy(args.responder),game_time=args.game_time,text=text,
+        calendar=args.calendar and util.copy(args.calendar) or nil}
 end
 
 -- Validate one bounded automatic diary candidate before it reaches the native bridge.

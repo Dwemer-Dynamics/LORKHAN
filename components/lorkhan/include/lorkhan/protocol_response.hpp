@@ -525,6 +525,8 @@ struct MenuDialogueTtsCancelAcceptedResponse {
 [[nodiscard]] Result<void> validateActorResurrectedPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateActorDiedPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateSpellCastPayload(std::string_view body, json::ParseLimits limits = {});
+// Lua-detected RPG and quest observations: only the optional capture-time calendar is checked natively.
+[[nodiscard]] Result<void> validateObservationCalendarPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateDispositionPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateInventoryPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(

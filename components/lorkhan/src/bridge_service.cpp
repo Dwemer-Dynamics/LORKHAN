@@ -307,6 +307,10 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
             || !isCanonicalUtcTimestamp(gamedata->observedAt))
             return Result<void>::failure(makeError(ErrorCode::invalid_argument,
                 "game-data correlation is invalid"));
+        if (gamedata->type == GameDataType::rpg_event || gamedata->type == GameDataType::quest_event) {
+            auto calendar = validateObservationCalendarPayload(gamedata->serializedPayload);
+            if (!calendar) return calendar;
+        }
         if (gamedata->type == GameDataType::disposition)
             return validateDispositionPayload(gamedata->serializedPayload);
         if (gamedata->type == GameDataType::item_pickup)
