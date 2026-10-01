@@ -483,6 +483,9 @@ test('target settings preserve local presentation actions and target preferences
  eq(settings.behavior.combatBarkPeriodSeconds,5)
  settings.behavior.combatBarkInterval=0;player.applyTargetSettings(settings,target);eq(settings.behavior.combatBarkPeriodSeconds,30)
  settings.behavior.combatBarkInterval=90;player.applyTargetSettings(settings,target);eq(settings.behavior.combatBarkPeriodSeconds,90)
+ settings.behavior.combatBarkInterval=300;player.applyTargetSettings(settings,target);eq(settings.behavior.combatBarkPeriodSeconds,300)
+ settings.behavior.combatBarkInterval=600;player.applyTargetSettings(settings,target);eq(settings.behavior.combatBarkPeriodSeconds,600)
+ settings.behavior.combatBarkInterval=601;player.applyTargetSettings(settings,target);eq(settings.behavior.combatBarkPeriodSeconds,600)
  settings=localSettings();settings.behavior.actionsEnabled=false
  settings.autoActivate.addHostile=false;settings.autoActivate.addCreatures=false
  player.applyTargetSettings(settings,target)
@@ -2245,6 +2248,8 @@ package.preload['openmw.lorkhan']=function() return {
  eq(setting(registered.groups[4],'allowCombatDialogue').default,true)
  eq(setting(registered.groups[4],'combatBarks').default,true)
  eq(setting(registered.groups[4],'combatBarkInterval').default,30)
+ eq(setting(registered.groups[4],'combatBarkInterval').argument.min,5)
+ eq(setting(registered.groups[4],'combatBarkInterval').argument.max,600)
  eq(setting(registered.groups[7],'connectionTimeoutSeconds').default,30)
  eq(setting(registered.groups[5],'audio_mode').default,'Normal3D')
  eq(setting(registered.groups[5],'pause_on_game_pause').default,false)
@@ -2294,6 +2299,14 @@ package.preload['openmw.lorkhan']=function() return {
  package.loaded['scripts.LORKHAN.settings']=nil
  require('scripts.LORKHAN.settings')
  eq(data.SettingsLORKHANBehavior.combatBarkInterval,90)
+ data.SettingsLORKHANBehavior.combatBarkInterval=300
+ package.loaded['scripts.LORKHAN.settings']=nil
+ require('scripts.LORKHAN.settings')
+ eq(data.SettingsLORKHANBehavior.combatBarkInterval,300)
+ data.SettingsLORKHANBehavior.combatBarkInterval=601
+ package.loaded['scripts.LORKHAN.settings']=nil
+ require('scripts.LORKHAN.settings')
+ eq(data.SettingsLORKHANBehavior.combatBarkInterval,30)
  eq(data.OMWInputBindings.LORKHAN_Talk_Binding,nil)
  package.preload['openmw.input']=nil package.preload['openmw.storage']=nil package.preload['openmw.interfaces']=nil
  package.preload['openmw.lorkhan']=nil
@@ -2386,11 +2399,11 @@ end)
 test('combat request timer uses the CHIM client range independently of the server cooldown',function()
  local b=fake.bridge() local emitted={}
  local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end,nil,function()return true end)
- s.settings={autoActivate={enabled=true},behavior={combatBarks=true,combatBarkPeriodSeconds=600}}
+ s.settings={autoActivate={enabled=true},behavior={combatBarks=true,combatBarkPeriodSeconds=300}}
  orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
  orchestrator.scanAgents(s,{{identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true}})
  orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,activity='combat',conversation_state='busy'})
- for _=1,23 do eq(orchestrator.runAutonomy(s,5),false) end
+ for _=1,59 do eq(orchestrator.runAutonomy(s,5),false) end -- 300s configured: no bark at the old 120s cap
  eq(orchestrator.runAutonomy(s,4),false);truthy(orchestrator.runAutonomy(s,1))
  eq(emitted[#emitted].payload.kind,'combat_bark')
  s.autonomy.pending=nil;s.settings.behavior.allowCombatDialogue=false

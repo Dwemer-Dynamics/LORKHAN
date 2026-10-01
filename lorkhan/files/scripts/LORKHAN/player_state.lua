@@ -72,7 +72,7 @@ function M.applyTargetSettings(settings,targetSettings)
     behavior.combatBarks=behavior.combatBarks~=false
     -- CHIM schedules requests with the local timer; the server enforces its separate shared cooldown.
     local interval=tonumber(behavior.combatBarkInterval) or 30
-    behavior.combatBarkPeriodSeconds=interval>=5 and math.min(120,interval) or 30
+    behavior.combatBarkPeriodSeconds=interval>=5 and math.min(600,interval) or 30
     behavior.rechat=remote.rechat==true
     behavior.rechatMaxDepth=remote.rechat_max_depth or 2
     behavior.rechatProbabilityPercent=remote.rechat_probability_percent or 50
