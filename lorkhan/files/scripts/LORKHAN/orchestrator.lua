@@ -32,7 +32,7 @@ function M.new(bridge,emit,sendActor,manageActor)
         activeSpeechMediaId=nil,rechat=nil,rechatSeed=nil,pendingVoice=nil,pendingStt={},ignoredOpenMicStt={},ignoredOpenMicSttOrder={},
         openMic=false,openMicMuted=false,openMicRequested=false,
         combatThreats={},combatActors={},combatVerified={},actorStates={},rechatEligibility=nil,
-        autonomy=newAutonomyState(),
+        autonomy=newAutonomyState(),playerActivity={sneaking=false,attacking=false,attackHoldSeconds=0},
         randomPercent=function() return math.random(1,100) end,
         dialogueMode='Standard',disabled=false,hardHalted=false,agentsSignature=nil}
     state.recentVanillaDialogue={}
@@ -406,6 +406,26 @@ local function autonomyActorEligible(state,actor,combat)
     return status.conversationState=='active' and status.hostile~=true
 end
 
+-- OpenMW exposes attack input rather than attack animation state, so hold briefly after a release or one-frame cast.
+local PLAYER_ATTACK_HOLD_SECONDS=2
+
+-- Record the player's own sneak/attack controls. A missing flag is unknown and never suppresses.
+function M.observePlayerActivity(state,event)
+    if type(event)~='table' then return false end
+    local previous=state.playerActivity or {}
+    local attackSeen=event.attacking==true or previous.attacking==true
+    state.playerActivity={sneaking=event.sneaking==true,attacking=event.attacking==true,
+        attackHoldSeconds=attackSeen and PLAYER_ATTACK_HOLD_SECONDS or previous.attackHoldSeconds or 0}
+    return true
+end
+
+-- Like CHIM, boredom waits while the player sneaks, attacks or fights; other autonomy is unaffected.
+local function playerBusyForBoredom(state)
+    local activity=state.playerActivity or {}
+    return activity.sneaking==true or activity.attacking==true or (activity.attackHoldSeconds or 0)>0
+        or next(state.combatActors)~=nil
+end
+
 local function setAutonomyTarget(state,actor)
     local ok=conversation.setTarget(state.conversation,actor)
     if not ok then return false end
@@ -591,6 +611,9 @@ function M.runAutonomy(state,elapsed)
     autonomy.rpgCooldownSeconds=math.max(0,autonomy.rpgCooldownSeconds-seconds)
     autonomy.playerSpeechSuppressionSeconds=math.max(0,(autonomy.playerSpeechSuppressionSeconds or 0)-seconds)
     autonomy.combatBarkCooldownSeconds=math.max(0,(autonomy.combatBarkCooldownSeconds or 0)-seconds)
+    if state.playerActivity then
+        state.playerActivity.attackHoldSeconds=math.max(0,(state.playerActivity.attackHoldSeconds or 0)-seconds)
+    end
     -- CHIM barks once when combat begins; per-actor status refreshes keep the same episode.
     local inCombat=next(state.combatActors)~=nil
     if inCombat and not autonomy.combatActive then autonomy.combatStartPending=true
@@ -649,7 +672,8 @@ function M.runAutonomy(state,elapsed)
         if actor then return requestAutonomy(state,'greeting',actor) end
     end
     local boredomDelay=math.max(30,math.min(86400,tonumber(behavior.boredomDelaySeconds) or 180))
-    if behavior.boredom==true and not autonomy.boredPending and autonomy.idleSeconds>=boredomDelay then
+    if behavior.boredom==true and not autonomy.boredPending and autonomy.idleSeconds>=boredomDelay
+        and not playerBusyForBoredom(state) then
         local actor=nextBoredActor(state)
         if actor then
             autonomy.idleSeconds=0
@@ -680,7 +704,7 @@ local function acceptBoredDecision(state,event)
         or event.comment_requested~=true or state.disabled or state.hardHalted
         or state.settings.behavior.boredom~=true or not responseQueue.idle(state.responseQueue)
         or (state.conversation.turn and not state.conversation.turn.terminal)
-        or state.pendingVoice~=nil or state.openMic==true
+        or state.pendingVoice~=nil or state.openMic==true or playerBusyForBoredom(state)
         or not autonomyActorEligible(state,pending.actor,false) then return false end
     local narrator=state.settings.narrator or {}
     local chance=math.max(1,math.min(100,tonumber(narrator.bored_chance_percent) or 25))

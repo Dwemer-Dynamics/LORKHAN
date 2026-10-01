@@ -574,6 +574,7 @@ return {
             if type(event)=='table' then orchestrator.queueNarratorEvent(state,event.kind,event.context_actor,event.cooldown_ready,event.observed_text) end
         end,
         LORKHAN_BORED_POLICY_SUBMITTED=function(event) orchestrator.bindBoredRequest(state,event) end,
+        LORKHAN_PLAYER_ACTIVITY=function(event) orchestrator.observePlayerActivity(state,event) end,
         LORKHAN_VANILLA_DIALOGUE=function(event) orchestrator.recordVanillaDialogue(state,event) end,
         LORKHAN_MENU_DIALOGUE_SPEAK=function(event)
             if type(event)~='table' or type(event.actor)~='table' or type(event.media_id)~='string' then return end
