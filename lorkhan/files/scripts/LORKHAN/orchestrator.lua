@@ -1463,7 +1463,7 @@ local function applyTransportFailure(state,event)
     return true
 end
 
-function M.poll(state)
+function M.poll(state,elapsed)
     if state.disabled or state.hardHalted then return 0 end
     -- A confirmation left open must not stall the response lane past its authority deadline.
     if state.bridge.isExpired then
@@ -1543,6 +1543,8 @@ function M.poll(state)
                     laneOk,laneReason=responseQueue.enqueueDialogueEvent(state.responseQueue,event,currentRuntimeGeneration(state))
                 elseif event.type=='speech.ready' then
                     laneOk,laneReason=responseQueue.attachMedia(state.responseQueue,event)
+                elseif event.type=='speech.failed' then
+                    laneOk,laneReason=responseQueue.failMedia(state.responseQueue,event)
                 elseif event.type=='action.intent' then
                     laneOk,laneReason=responseQueue.attachAction(state.responseQueue,event)
                 elseif event.type=='director.instructions' then
@@ -1553,7 +1555,7 @@ function M.poll(state)
                 if not laneOk then applied=false applyReason=laneReason
                 else
                     if event.type=='response.complete' or event.type=='dialogue.complete'
-                        or event.type=='speech.ready' or event.type=='action.intent' then emitQueue(state) end
+                        or event.type=='speech.ready' or event.type=='speech.failed' or event.type=='action.intent' then emitQueue(state) end
                     accepted=accepted+1
                     if (event.type=='turn.failed' or event.type=='turn.cancelled') and state.directorPlan then
                         state.directorPlan.cancelled=true
@@ -1584,6 +1586,14 @@ function M.poll(state)
                 emitInbound(state,'LORKHAN_RESYNC',{reason=reason,cursor=state.events:cursor()})
             end
         end
+    end
+    -- Only one turn is open at a time, so any queued line from another turn belongs to a finished one.
+    local turn=state.conversation.turn
+    if responseQueue.awaitTerminalMedia(state.responseQueue,math.max(0,math.min(5,tonumber(elapsed) or 0)),
+        function(turnId) return not turn or turnId~=turn.turnId or turn.terminal end,
+        constants.SPEECH_MEDIA_WAIT_SECONDS)>0 then
+        print('[LORKHAN] speech unavailable for terminal turn; presenting subtitles')
+        emitQueue(state)
     end
     pumpResponseQueue(state)
     local directorRequest=director.next(state.directorPlan,state.bridge,state.sessionId,state.generation,

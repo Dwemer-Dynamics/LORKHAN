@@ -5,7 +5,7 @@ local util = require('scripts.LORKHAN.util')
 
 local M = {}
 local knownInternalEvents = {['turn.accepted']=true, ['dialogue.delta']=true, ['dialogue.complete']=true,
-    ['speech.ready']=true, ['action.intent']=true, ['director.instructions']=true, ['relationship.adjust']=true, ['response.complete']=true, ['turn.complete']=true,
+    ['speech.ready']=true, ['speech.failed']=true, ['action.intent']=true, ['director.instructions']=true, ['relationship.adjust']=true, ['response.complete']=true, ['turn.complete']=true,
     ['turn.failed']=true, ['turn.cancelled']=true, ['stt.transcript']=true,
     ['stt.failed']=true}
 
@@ -425,6 +425,15 @@ function M.validatePolledEvent(event)
         if code~='invalid_audio' and code~='provider_invalid_output' and code~='provider_timeout' and code~='provider_unavailable' then return nil,'invalid_stt_failure_code' end
         if type(event.payload.retriable)~='boolean' then return nil,'invalid_stt_retriable' end
         if event.payload.retry_after_ms~=nil and (type(event.payload.retry_after_ms)~='number' or event.payload.retry_after_ms%1~=0 or event.payload.retry_after_ms<0) then return nil,'invalid_stt_retry_after' end
+    end
+    if event.type=='speech.failed' then
+        -- A terminal no-audio notice names only its line and code; it never carries media.
+        for key in pairs(event.payload) do
+            if key~='dialogue_message_id' and key~='code' then return nil,'invalid_speech_failure_field' end
+        end
+        if not M.isUuid(event.payload.dialogue_message_id) then return nil,'invalid_speech_dialogue_message_id' end
+        local code=event.payload.code
+        if code~='provider_unconfigured' and code~='provider_timeout' and code~='provider_unavailable' then return nil,'invalid_speech_failure_code' end
     end
     if event.type=='speech.ready' then
         if not M.isUuid(event.payload.media_id) then return nil,'invalid_speech_media_id' end

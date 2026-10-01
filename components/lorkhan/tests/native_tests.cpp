@@ -711,6 +711,18 @@ void testProtocolEventResponses()
         + R"({"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-18T20:00:01Z","type":"dialogue.delta","payload":{"text":"Welcome to "}})"
         + suffix, jsonHeaders);
     CHECK(delta && std::get_if<lorkhan::DialogueDeltaEventPayload>(&delta.value().events[0].payload));
+    auto speechFailed = lorkhan::parseEventsResponse(prefix
+        + R"({"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-18T20:00:01Z","type":"speech.failed","payload":{"dialogue_message_id":"01900000-0000-7000-8000-000000000009","code":"provider_unavailable"}})"
+        + suffix, jsonHeaders);
+    const auto* noAudio = speechFailed ? std::get_if<lorkhan::SpeechFailedEventPayload>(&speechFailed.value().events[0].payload) : nullptr;
+    CHECK(noAudio && speechFailed.value().events[0].type == lorkhan::ProtocolEventType::speech_failed
+        && noAudio->dialogueMessage.value() == "01900000-0000-7000-8000-000000000009" && noAudio->code == "provider_unavailable");
+    CHECK(!lorkhan::parseEventsResponse(prefix
+        + R"({"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-18T20:00:01Z","type":"speech.failed","payload":{"dialogue_message_id":"01900000-0000-7000-8000-000000000009","code":"provider_unavailable","media_id":"01900000-0000-7000-8000-00000000000c"}})"
+        + suffix, jsonHeaders));
+    CHECK(!lorkhan::parseEventsResponse(prefix
+        + R"({"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-18T20:00:01Z","type":"speech.failed","payload":{"dialogue_message_id":"01900000-0000-7000-8000-000000000009","code":"invalid_audio"}})"
+        + suffix, jsonHeaders));
     CHECK(!lorkhan::parseEventsResponse(prefix
         + R"({"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":8,"sequence":1,"created_at":"2026-07-18T20:00:01Z","type":"turn.accepted","payload":{"status":"accepted"}})"
         + suffix, jsonHeaders));

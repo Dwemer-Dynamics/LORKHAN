@@ -1244,6 +1244,17 @@ Result<ProtocolEvent> parseEvent(const json::Value& value, const SessionId& resp
         event.type = ProtocolEventType::speech_ready;
         event.payload = SpeechReadyEventPayload{MediaId(std::move(media).value()), MessageId(std::move(dialogueMessage).value()), std::move(hash).value(),
             bytes.value(), mappedCodec, duration.value(), std::move(expiresAt).value()};
+    } else if (type.value() == "speech.failed") {
+        if (!hasExactly(*payload, {"dialogue_message_id", "code"}))
+            return invalidSchemaValue<ProtocolEvent>("speech failure payload fields mismatch");
+        auto dialogueMessage = requireUuid(*payload, "dialogue_message_id");
+        auto code = requireString(*payload, "code");
+        if (!dialogueMessage) return invalidSchemaValue<ProtocolEvent>(dialogueMessage.error().message);
+        if (!code || (code.value() != "provider_unconfigured" && code.value() != "provider_timeout"
+                && code.value() != "provider_unavailable"))
+            return invalidSchemaValue<ProtocolEvent>("speech failure code mismatch");
+        event.type = ProtocolEventType::speech_failed;
+        event.payload = SpeechFailedEventPayload{MessageId(std::move(dialogueMessage).value()), std::move(code).value()};
     } else {
         return invalidSchemaValue<ProtocolEvent>("unknown event type");
     }

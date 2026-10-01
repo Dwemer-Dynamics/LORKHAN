@@ -177,6 +177,11 @@ struct SttFailedEventPayload {
     bool retriable{};
     std::optional<std::uint64_t> retryAfterMs;
 };
+// Terminal no-audio outcome for one pending line; it never carries media.
+struct SpeechFailedEventPayload {
+    MessageId dialogueMessage;
+    std::string code;
+};
 struct SpeechReadyEventPayload {
     MediaId media;
     MessageId dialogueMessage;
@@ -274,7 +279,7 @@ struct DirectorInstructionsEventPayload {
 using ProtocolEventPayload = std::variant<TurnAcceptedEventPayload, DialogueDeltaEventPayload, DialogueCompleteEventPayload,
     ActionIntentEventPayload, RelationshipAdjustEventPayload, DirectorInstructionsEventPayload, ResponseCompleteEventPayload, TurnCompleteEventPayload, TurnCancelledEventPayload,
     TurnFailedEventPayload, SttTranscriptEventPayload, SttFailedEventPayload,
-    SpeechReadyEventPayload>;
+    SpeechReadyEventPayload, SpeechFailedEventPayload>;
 
 enum class ProtocolEventType {
     turn_accepted,
@@ -290,6 +295,7 @@ enum class ProtocolEventType {
     stt_transcript,
     stt_failed,
     speech_ready,
+    speech_failed,
 };
 
 struct ProtocolEvent {

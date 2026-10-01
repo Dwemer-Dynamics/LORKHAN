@@ -146,6 +146,9 @@ function M.attachMedia(state,event)
     local item=state.byLine[descriptor.dialogue_message_id]
     if not item or item.kind~='dialogue' or item.requestId~=event.request_id or item.turnId~=event.turn_id
         or item.sessionId~=event.session_id then return stale(state,'media_without_response_line') end
+    if item.speechFailed then return stale(state,'media_after_speech_failure') end
+    -- A subtitle already on screen completes by line ID; late speech must not rekey it.
+    if item==state.active and not item.media then return nil,'media_after_subtitle_dispatch' end
     if item.media then
         if item.media.media_id==descriptor.media_id then
             state.counters.deduplicated=state.counters.deduplicated+1 return nil,'duplicate_media'
@@ -157,6 +160,21 @@ function M.attachMedia(state,event)
     end
     remember(state,'seenMedia','seenMediaOrder',descriptor.media_id)
     item.media=util.copy(descriptor) item.status='new' state.byMedia[descriptor.media_id]=item
+    return true
+end
+
+-- The server's terminal speech.failed ends a waiting line's speech; it presents as a subtitle now.
+function M.failMedia(state,event)
+    if event.generation~=state.generation then return stale(state,'stale_speech_failure_generation') end
+    local item=state.byLine[event.payload.dialogue_message_id]
+    if not item or item.kind~='dialogue' or item.requestId~=event.request_id or item.turnId~=event.turn_id
+        or item.sessionId~=event.session_id then return stale(state,'speech_failure_without_response_line') end
+    if item.speechFailed then
+        state.counters.deduplicated=state.counters.deduplicated+1 return nil,'duplicate_speech_failure'
+    end
+    -- Attached or playing audio, and lines already shown as subtitles, keep their own outcome.
+    if item.status~='waiting_media' then return stale(state,'speech_already_resolved') end
+    item.status='subtitle_ready' item.reason='speech_unavailable' item.speechFailed=true
     return true
 end
 
@@ -180,6 +198,21 @@ function M.attachAction(state,event)
 end
 
 function M.head(state) return state.items[1] end
+
+-- Speech for a terminal turn that never arrives within the provider deadline is unavailable, so
+-- those lines fall back to the subtitle-only path in their existing order.
+function M.awaitTerminalMedia(state,seconds,isTerminal,limit)
+    local released=0
+    for _,item in ipairs(state.items) do
+        if item.kind=='dialogue' and item.status=='waiting_media' and isTerminal(item.turnId) then
+            item.mediaWaitSeconds=(item.mediaWaitSeconds or 0)+seconds
+            if item.mediaWaitSeconds>=limit then
+                item.status='subtitle_ready' item.reason='speech_unavailable' released=released+1
+            end
+        end
+    end
+    return released
+end
 
 function M.beginMediaPreparation(state,mediaId,prepareRequestId)
     local item=state.byMedia[mediaId]

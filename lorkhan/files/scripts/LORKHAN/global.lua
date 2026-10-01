@@ -441,7 +441,7 @@ return {
                 state.conversation.generation=session.generation
                 orchestrator.configureSession(state,session.session_id)
             end
-            if state.events then orchestrator.poll(state) end
+            if state.events then orchestrator.poll(state,BRIDGE_POLL_INTERVAL) end
             disposition.pump(dispositions,state.sessionId,state.generation,
                 core and core.getRealTime and core.getRealTime() or 0,dispositionDialogueOpen)
             dispositionElapsed=dispositionElapsed+elapsed
