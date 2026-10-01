@@ -96,6 +96,7 @@ version/API plus the ordered content list and file identity metadata, never prop
 | `POST /controls/select` | `lorkhan.controls.select.v1` | idempotent installation model preference, session profile selection, or revision-safe NPC/narrator generation |
 | `POST /stt` | `lorkhan.stt.request.v1` metadata headers plus a binary WAV body | `lorkhan.stt.accepted.v1`; durable work later emits `stt.transcript` or `stt.failed`. |
 | `POST /menu-dialogue-tts` | `lorkhan.menu-dialogue-tts.v1` | `lorkhan.menu-dialogue-tts.ready.v1` with one actor-owned, short-lived media descriptor |
+| `POST /menu-dialogue-tts/cancel` | `lorkhan.menu-dialogue-tts.cancel.v1` naming one in-flight menu or book speech message | `lorkhan.menu-dialogue-tts.cancel.accepted.v1`; `cancelled` targets end with `operation_cancelled` and no media, `completed` targets keep theirs |
 | `GET /events` | session/cursor/wait | `lorkhan.events.v1` |
 | `POST /action-results` | `lorkhan.action-result.v1` | persisted acknowledgement |
 | `POST /interruptions` | `lorkhan.interrupt.v1` | cancellation acknowledgement |
@@ -231,7 +232,7 @@ HTTP status communicates transport/auth class; JSON communicates a stable code:
 - `invalid_schema`, `payload_too_large`, `unauthorized`, `forbidden`, `rate_limited`;
 - `unknown_session`, `stale_generation`, `duplicate_conflict`, `cursor_expired`;
 - `provider_unavailable`, `provider_timeout`, `media_unavailable`;
-- `action_disabled`, `internal_error`.
+- `action_disabled`, `operation_cancelled`, `internal_error`.
 
 Client-facing messages are generic. Detailed provider/database errors enter structured redacted
 server logs with correlation IDs. Retriability and `retry_after_ms` are explicit.

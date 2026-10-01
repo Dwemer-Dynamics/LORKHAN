@@ -1,0 +1,16 @@
+{
+  "$id": "https://lorkhan.invalid/schemas/v1/menu-dialogue-tts-cancel-accepted.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "generation": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"},
+    "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "schema": {"const": "lorkhan.menu-dialogue-tts.cancel.accepted.v1", "type": "string"},
+    "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+    "status": {"enum": ["cancelled", "completed"], "type": "string"},
+    "target_message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+  },
+  "required": ["schema", "message_id", "request_id", "session_id", "generation", "target_message_id", "status"],
+  "type": "object"
+}

@@ -266,6 +266,7 @@ void testProtocolResponses()
              std::pair{"action_target_invalid", lorkhan::ErrorCode::invalid_action},
              std::pair{"action_tier_mismatch", lorkhan::ErrorCode::invalid_action},
              std::pair{"invalid_audio", lorkhan::ErrorCode::media_rejected},
+             std::pair{"operation_cancelled", lorkhan::ErrorCode::cancelled},
              std::pair{"rechat_cooldown", lorkhan::ErrorCode::cancelled},
              std::pair{"conversation_cooldown", lorkhan::ErrorCode::cancelled},
              std::pair{"invalid_rechat_context", lorkhan::ErrorCode::invalid_schema}}) {
@@ -636,6 +637,19 @@ void testAcceptedProtocolResponses()
     CHECK(!lorkhan::parseMenuDialogueTtsReadyResponse(
         R"({"schema":"lorkhan.menu-dialogue-tts.ready.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"actor":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"media":{"media_id":"01900000-0000-7000-8000-000000000013","dialogue_message_id":"01900000-0000-7000-8000-000000000006","sha256":"e12e115acf4552b2568b55e93cbd39394c4ef81c82447faed7738adf06e9ba61","bytes":4,"codec":"ogg","duration_ms":100,"expires_at":"2026-07-18T21:00:00Z"},"extra":true})",
         jsonHeaders));
+
+    const std::string menuCancel = R"({"schema":"lorkhan.menu-dialogue-tts.cancel.accepted.v1","message_id":"01900000-0000-7000-8000-000000000011","request_id":"01900000-0000-7000-8000-000000000012","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"target_message_id":"01900000-0000-7000-8000-000000000006","status":"cancelled"})";
+    auto cancelAccepted = lorkhan::parseMenuDialogueTtsCancelAcceptedResponse(menuCancel, jsonHeaders);
+    CHECK(cancelAccepted && cancelAccepted.value().target == lorkhan::MessageId(kMessage)
+        && cancelAccepted.value().session == lorkhan::SessionId(kSession) && cancelAccepted.value().generation == lorkhan::Generation(7)
+        && cancelAccepted.value().status == lorkhan::MenuDialogueTtsCancelStatus::cancelled);
+    auto cancelCompleted = lorkhan::parseMenuDialogueTtsCancelAcceptedResponse(
+        std::string(menuCancel).replace(menuCancel.find("\"cancelled\""), 11, "\"completed\""), jsonHeaders);
+    CHECK(cancelCompleted && cancelCompleted.value().status == lorkhan::MenuDialogueTtsCancelStatus::completed);
+    CHECK(!lorkhan::parseMenuDialogueTtsCancelAcceptedResponse(
+        std::string(menuCancel).replace(menuCancel.find("\"cancelled\""), 11, "\"abandoned\""), jsonHeaders));
+    CHECK(!lorkhan::parseMenuDialogueTtsCancelAcceptedResponse(
+        std::string(menuCancel).insert(menuCancel.size() - 1, ",\"media\":null"), jsonHeaders));
 
     auto playerAutochat = lorkhan::parsePlayerAutochatReadyResponse(
         R"({"schema":"lorkhan.player-autochat.ready.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"text":"Fargoth, have you found your ring yet?"})",
@@ -1183,6 +1197,152 @@ void testBridge()
     CHECK(!bridge.enqueue(request(uuidFor(20), bridge.generation())));
 }
 
+struct SpeechTransportState {
+    std::mutex mutex;
+    std::vector<lorkhan::OutboundRequest> executed;
+    std::atomic<unsigned> started{0};
+    std::atomic<bool> holdSpeech{true};
+};
+
+// Holds speech until cancelled, like a provider still synthesizing, and fails every cancel acknowledgement.
+class SpeechTransport final : public lorkhan::ITransport {
+public:
+    explicit SpeechTransport(std::shared_ptr<SpeechTransportState> state) : m_state(std::move(state)) {}
+    lorkhan::Result<lorkhan::InboundResult> execute(
+        const lorkhan::OutboundRequest& request, std::stop_token cancellation) override
+    {
+        {
+            std::lock_guard lock(m_state->mutex);
+            m_state->executed.push_back(request);
+        }
+        ++m_state->started;
+        const bool speech = request.kind == lorkhan::RequestKind::menu_dialogue_tts
+            || request.kind == lorkhan::RequestKind::book_read_aloud;
+        while (speech && m_state->holdSpeech.load() && !cancellation.stop_requested())
+            std::this_thread::sleep_for(1ms);
+        if (cancellation.stop_requested())
+            return lorkhan::Result<lorkhan::InboundResult>::failure(lorkhan::makeError(lorkhan::ErrorCode::cancelled, "cancelled"));
+        if (request.kind == lorkhan::RequestKind::menu_dialogue_tts_cancel)
+            return lorkhan::Result<lorkhan::InboundResult>::failure(
+                lorkhan::makeError(lorkhan::ErrorCode::provider_unavailable, "cancel acknowledgement lost"));
+        return lorkhan::Result<lorkhan::InboundResult>::success(
+            {request.id, request.session, request.generation, lorkhan::ResponseKind::completed, "{}", std::nullopt});
+    }
+    void interrupt(const lorkhan::RequestId&) noexcept override {}
+private:
+    std::shared_ptr<SpeechTransportState> m_state;
+};
+
+template <class Predicate>
+bool waitUntil(Predicate predicate)
+{
+    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    while (!predicate()) {
+        if (std::chrono::steady_clock::now() >= deadline)
+            return false;
+        std::this_thread::sleep_for(1ms);
+    }
+    return true;
+}
+
+void testBridgeSpeechCancel()
+{
+    auto state = std::make_shared<SpeechTransportState>();
+    auto clock = std::make_shared<FakeClock>();
+    clock->system = std::chrono::system_clock::time_point(std::chrono::seconds(1784404800));
+    lorkhan::BridgeService bridge(std::make_unique<SpeechTransport>(state), clock);
+    const auto generation = bridge.generation();
+    const auto menu = [&](unsigned request, unsigned message) {
+        return lorkhan::OutboundRequest{lorkhan::RequestId(uuidFor(request)), lorkhan::SessionId(kSession), generation,
+            lorkhan::RequestKind::menu_dialogue_tts, lorkhan::MenuDialogueTtsRequest{lorkhan::MessageId(uuidFor(message)),
+                {lorkhan::RequestId(uuidFor(request)), lorkhan::SessionId(kSession), generation},
+                "2026-07-18T20:00:00Z", protocolIdentity(), "Speculative topic text."}};
+    };
+    const auto executed = [&] {
+        std::lock_guard lock(state->mutex);
+        return state->executed;
+    };
+    const auto cancels = [&] {
+        std::vector<lorkhan::MenuDialogueTtsCancelRequest> found;
+        for (const auto& request : executed())
+            if (const auto* cancel = std::get_if<lorkhan::MenuDialogueTtsCancelRequest>(&request.payload))
+                found.push_back(*cancel);
+        return found;
+    };
+    const auto idle = [&] { const auto d = bridge.diagnostics(); return d.outbound == 0 && d.active == 0; };
+
+    lorkhan::OutboundRequest selfCancel{lorkhan::RequestId(uuidFor(30)), lorkhan::SessionId(kSession), generation,
+        lorkhan::RequestKind::menu_dialogue_tts_cancel, lorkhan::MenuDialogueTtsCancelRequest{lorkhan::MessageId(uuidFor(31)),
+            {lorkhan::RequestId(uuidFor(30)), lorkhan::SessionId(kSession), generation}, "2026-07-18T20:00:00Z",
+            lorkhan::MessageId(uuidFor(31))}};
+    CHECK(!bridge.enqueue(std::move(selfCancel)));
+
+    // In flight: the server is told which message to abandon; only the target's cancellation reaches Lua.
+    CHECK(bridge.enqueue(menu(40, 41)));
+    CHECK(waitUntil([&] { return state->started.load() == 1; }));
+    CHECK(bridge.cancel(lorkhan::RequestId(uuidFor(40))));
+    CHECK(waitUntil([&] { return cancels().size() == 1 && idle(); }));
+    const auto all = executed();
+    CHECK(all.size() == 2 && all[1].kind == lorkhan::RequestKind::menu_dialogue_tts_cancel);
+    if (all.size() == 2) {
+        const auto& sent = std::get<lorkhan::MenuDialogueTtsCancelRequest>(all[1].payload);
+        CHECK(sent.target == lorkhan::MessageId(uuidFor(41)) && sent.message != sent.target
+            && lorkhan::isCanonicalUuid(sent.message.value()) && lorkhan::isCanonicalUuid(all[1].id.value())
+            && all[1].id != lorkhan::RequestId(uuidFor(40)) && sent.correlation.request == all[1].id
+            && all[1].session == lorkhan::SessionId(kSession) && sent.correlation.session == all[1].session
+            && all[1].generation == generation && sent.correlation.generation == generation
+            && sent.createdAt == "2026-07-18T20:00:00Z");
+    }
+    std::vector<lorkhan::InboundResult> results;
+    CHECK(waitUntil([&] { for (auto& item : bridge.poll(16)) results.push_back(std::move(item)); return !results.empty(); }));
+    std::this_thread::sleep_for(20ms);
+    for (auto& item : bridge.poll(16)) results.push_back(std::move(item));
+    CHECK(results.size() == 1 && results[0].request == lorkhan::RequestId(uuidFor(40))
+        && results[0].kind == lorkhan::ResponseKind::cancelled);
+
+    // Queued speech was never sent, so it needs no server cancel; the active one still does.
+    CHECK(bridge.enqueue(menu(42, 43)));
+    CHECK(waitUntil([&] { return state->started.load() == 3; }));
+    CHECK(bridge.enqueue(menu(44, 45)));
+    CHECK(bridge.cancel(lorkhan::RequestId(uuidFor(44))));
+    CHECK(bridge.cancel(lorkhan::RequestId(uuidFor(42))));
+    CHECK(waitUntil([&] { return cancels().size() == 2 && idle(); }));
+    CHECK(cancels().size() == 2 && cancels()[1].target == lorkhan::MessageId(uuidFor(43)));
+    for (const auto& request : executed())
+        CHECK(request.id != lorkhan::RequestId(uuidFor(44)));
+    static_cast<void>(bridge.poll(16));
+
+    // Completed speech already has media and nothing left to stop.
+    state->holdSpeech = false;
+    CHECK(bridge.enqueue(menu(46, 47)));
+    CHECK(waitUntil([&] { return state->started.load() == 5 && idle(); }));
+    std::this_thread::sleep_for(10ms);
+    CHECK(!bridge.cancel(lorkhan::RequestId(uuidFor(46))));
+    std::this_thread::sleep_for(20ms);
+    CHECK(cancels().size() == 2);
+    static_cast<void>(bridge.poll(16));
+
+    // Book read-aloud uses the same server cancel route.
+    state->holdSpeech = true;
+    CHECK(bridge.enqueue({lorkhan::RequestId(uuidFor(48)), lorkhan::SessionId(kSession), generation,
+        lorkhan::RequestKind::book_read_aloud, lorkhan::BookReadAloudRequest{lorkhan::MessageId(uuidFor(49)),
+            {lorkhan::RequestId(uuidFor(48)), lorkhan::SessionId(kSession), generation},
+            "2026-07-18T20:00:00Z", "bk_fixture", "Fixture", "One page."}}));
+    CHECK(waitUntil([&] { return state->started.load() == 6; }));
+    CHECK(bridge.cancel(lorkhan::RequestId(uuidFor(48))));
+    CHECK(waitUntil([&] { return cancels().size() == 3 && idle(); }));
+    CHECK(cancels().size() == 3 && cancels()[2].target == lorkhan::MessageId(uuidFor(49)));
+
+    // A superseded generation is fenced by the server session itself, so no stale cancel is sent.
+    CHECK(bridge.enqueue(menu(50, 51)));
+    CHECK(waitUntil([&] { return state->started.load() == 8; }));
+    CHECK(bridge.cancelGeneration(generation));
+    CHECK(waitUntil(idle));
+    std::this_thread::sleep_for(20ms);
+    CHECK(cancels().size() == 3);
+    bridge.halt();
+}
+
 void testVoiceCapturePrimitives()
 {
     const std::string abc = "abc";
@@ -1331,7 +1491,7 @@ int main()
     testSavedCharacterIdentity(); testPlaybackSettings(); testRecordProvenance(); testUtf8(); testUrls(); testHeaders(); testJson(); testProtocolResponses(); testAcceptedProtocolResponses();
     testProtocolEventResponses(); testQueue(); testLifecycleAndCancellation();
     testEvents(); testActions(); testPairingToken(); testMedia(); testBridgeDialogueDeliveryValidation();
-    testBridge(); testConcurrency(); testVoiceCapturePrimitives();
+    testBridge(); testBridgeSpeechCancel(); testConcurrency(); testVoiceCapturePrimitives();
     if (failures != 0) {
         std::cerr << failures << " test(s) failed\n";
         return EXIT_FAILURE;

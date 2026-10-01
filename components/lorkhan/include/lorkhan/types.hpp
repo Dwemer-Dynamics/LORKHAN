@@ -251,6 +251,14 @@ struct MenuDialogueTtsRequest {
     std::string text;
 };
 
+// Names one abandoned menu dialogue or book speech message so the server stops its synthesis.
+struct MenuDialogueTtsCancelRequest {
+    MessageId message;
+    RequestCorrelation correlation;
+    std::string createdAt;
+    MessageId target;
+};
+
 struct PlayerAutochatRequest {
     MessageId message;
     RequestCorrelation correlation;
@@ -307,7 +315,7 @@ using RequestPayload = std::variant<HealthRequest, InitRequest, TurnRequest, Eve
     InterruptionRequest, ActionResultRequest, SessionEndRequest, SttRequest,
     DialogueDeliveryResultRequest, ControlsQueryRequest, ControlsSelectRequest, DebugCommandQueryRequest,
     DebugCommandResultRequest, DiaryBookQueryRequest, DiaryBookResultRequest, MenuDialogueTtsRequest, PlayerAutochatRequest, BookReadAloudRequest, GameDataRequest,
-    MediaPrepareRequest>;
+    MediaPrepareRequest, MenuDialogueTtsCancelRequest>;
 
 enum class RequestKind {
     health,
@@ -327,6 +335,7 @@ enum class RequestKind {
     debug_command_result,
     menu_dialogue_tts,
     book_read_aloud,
+    menu_dialogue_tts_cancel,
     player_autochat,
     gamedata,
     media,
