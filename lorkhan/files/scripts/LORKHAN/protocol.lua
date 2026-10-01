@@ -239,6 +239,23 @@ function M.actorResurrected(args)
         calendar=args.calendar and util.copy(args.calendar) or nil}
 end
 
+-- One counted non-player death names only its victim; no killer or weapon is inferred.
+function M.actorDied(args)
+    if type(args)~='table' or not identity.validate(args.victim) or (args.victim.kind~='npc' and args.victim.kind~='creature')
+        or not validObservationCalendar(args.calendar) then return nil,'invalid_death_victim' end
+    if type(args.game_time)~='number' or args.game_time~=args.game_time or args.game_time<0
+        or args.game_time>9007199254740991 then return nil,'invalid_death_time' end
+    local audience={};local seen={[identity.key(args.victim)]=true}
+    if type(args.audience or {})~='table' or #(args.audience or {})>12 then return nil,'invalid_death_audience' end
+    for _,actor in ipairs(args.audience or {}) do
+        if not identity.validate(actor) or (actor.kind~='npc' and actor.kind~='creature')
+            or seen[identity.key(actor)] then return nil,'invalid_death_audience' end
+        seen[identity.key(actor)]=true;audience[#audience+1]=util.copy(actor)
+    end
+    return {victim=util.copy(args.victim),audience=audience,game_time=args.game_time,
+        calendar=args.calendar and util.copy(args.calendar) or nil}
+end
+
 function M.spellCast(args)
     if type(args)=='table' and not validObservationCalendar(args.calendar) then return nil,'invalid_spell_calendar' end
     if type(args)~='table' or not identity.validate(args.caster)

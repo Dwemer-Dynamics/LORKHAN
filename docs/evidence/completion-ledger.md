@@ -153,3 +153,24 @@ checklist remains deliberately unclaimed.
 - IN-GAME PROVEN: not yet; no game was launched. Still to test: buy, sell, mixed trade, haggle
   failure, cancel, unaffordable offer, stolen-item confiscation, a creature merchant, and that
   container pickups still fire but never during barter.
+
+## Counted actor death context (2026-10-01) — AUTOMATED / WINDOWS BUILD PROVEN
+
+- OpenMW's existing `LuaManager::actorDied` (called once from `Actors::notifyDied` when a death
+  animation finishes or a corpse is disposed first) now also emits one fenced `LorkhanActorDied`
+  (patches 0013/0015; no new upstream file). The player and non-persistent zero-health record
+  corpses, which replay a death animation on first cell load, are excluded; persistent ones never
+  replay, so their death after a resurrection counts. At most 64 deaths per frame.
+- `gamedata.actor_died` names only the victim (NPC or creature), witnesses, game time and calendar.
+  Killer, weapon and spell are not engine facts at that point, so schema, native, Lua and server
+  validators reject them. The server projects exactly one CHIM-style `death` row (`X died.`);
+  loaded-save rollback retires future and undated copies. Deaths are not memory sources.
+- AUTOMATED: native CTest, 134 Lua 5.1 tests, 1728 server checks, PHP lint, disposable PostgreSQL
+  integration, migrations/jobs and the cross-repository no-game slice pass (147-file manifest
+  parity, 44 schemas, 103 fixtures, 293 responses). Without the rollback entry, integration fails.
+- WINDOWS BUILD PROVEN: pinned OpenMW 0.51 Release `openmw` and `openmw-tests` built from a fresh
+  pinned checkout plus all 36 manifest changes; OpenMW's 490 existing app tests pass.
+- IN-GAME PROVEN: not yet; no game was launched. Still to test: NPC and creature kills in melee and
+  by spell, a corpse looted mid-animation, entering a cell with placed corpses (no event), save and
+  reload after a death (no repeat), a summoned creature death, player death (no event), and a
+  persistent zero-health corpse resurrected then killed (one event).

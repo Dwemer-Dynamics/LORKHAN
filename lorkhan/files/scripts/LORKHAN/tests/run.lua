@@ -1466,6 +1466,31 @@ test('resurrection observations preserve actor and calendar without inventing a 
  args.game_time=20;args.actor=fake.identity('narrator','lorkhan:narrator',0)
  eq(protocol.actorResurrected(args),nil)
 end)
+test('death observations name only a non-player victim and stay session-fenced',function()
+ local args={victim=npc,audience={enemy},game_time=20,calendar={year=427,month=0,day=1,hour=12}}
+ local payload,reason=protocol.actorDied(args);truthy(payload,reason)
+ eq(payload.victim.record_id,'fargoth');eq(payload.actor,nil);eq(payload.killer,nil);eq(payload.weapon,nil)
+ eq(payload.calendar.year,427);eq(#payload.audience,1)
+ args.audience={npc};eq(protocol.actorDied(args),nil);args.audience={}
+ args.victim=playerId;eq(protocol.actorDied(args),nil)
+ args.victim=fake.identity('narrator','lorkhan:narrator',0);eq(protocol.actorDied(args),nil);args.victim=npc
+ args.game_time=-1;eq(protocol.actorDied(args),nil);args.game_time=0/0;eq(protocol.actorDied(args),nil);args.game_time=20
+ args.calendar={year=427,month=12,day=1,hour=1};eq(protocol.actorDied(args),nil);args.calendar=nil
+ local playerState=require('scripts.LORKHAN.player_state') local state={}
+ local session={session_id=UUID.session,generation=1};local event={sessionId=UUID.session,generation=1}
+ local accept=false;local attempts=0
+ local function reader()return protocol.actorDied(args)end
+ local function submit(death)attempts=attempts+1;eq(death.victim.record_id,'fargoth');return accept end
+ truthy(playerState.captureDeath(state,event,session,reader,submit,0));eq(#state.deaths.items,1);eq(state.resurrections,nil)
+ accept=true;truthy(playerState.flushDeaths(state,session,submit,0.1));eq(#state.deaths.items,0)
+ event.generation=2;eq(playerState.captureDeath(state,event,session,reader,submit,1),false);event.generation=1
+ accept=false;truthy(playerState.captureDeath(state,event,session,reader,submit,1))
+ local before=attempts;eq(playerState.flushDeaths(state,{session_id=UUID.session,generation=2},submit,2),false)
+ eq(attempts,before);eq(state.deaths,nil)
+ local file=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local source=file:read('*a');file:close()
+ local handler=assert(source:match('LorkhanActorDied=function%(event%)(.-)\n        end,'))
+ truthy(handler:find('captureDeath',1,true));truthy(handler:find('deathObservation',1,true))
+end)
 test('NPC manager uses exact references and verifies deferred movement with save-backed Return',function()
  local manager=require('scripts.LORKHAN.npc_manager')
  local function rotation(pitch,yaw)
@@ -2956,6 +2981,14 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
  for _,witness in ipairs(traded.audience) do truthy(witness.record_id~='fargoth') end
  barter.playerReceived={};eq(openmwAdapter.barterTradeObservation(barter,modules),nil)
  barter.playerGave={{itemRecordId='x',itemName='X',count=1,unitValue=-1}};eq(openmwAdapter.barterTradeObservation(barter,modules),nil)
+ object.cell={isExterior=true,gridX=-2,gridY=-9};object.position=vector(0,300,0)
+ creatureObject.position=vector(0,320,0);modules.nearby.actors={object,creatureObject,playerTarget}
+ local died=openmwAdapter.deathObservation({actor=object,gameTime=125,calendar={year=427,month=2,day=3,hour=4.5}},modules)
+ eq(died.victim.record_id,'fargoth');eq(died.killer,nil);eq(died.calendar.day,3);eq(died.game_time,125)
+ eq(#died.audience,1);eq(died.audience[1].record_id,'dagoth_ur_1')
+ eq(openmwAdapter.deathObservation({actor=playerTarget,gameTime=125},modules),nil)
+ object.position=vector(0,3000,0);eq(openmwAdapter.deathObservation({actor=object,gameTime=125},modules),nil)
+ object.position=vector(0,300,0)
 
 end)
 

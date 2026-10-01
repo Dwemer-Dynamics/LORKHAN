@@ -47,6 +47,7 @@ std::string_view gameDataTypeName(GameDataType type)
         case GameDataType::inventory: return "inventory";
         case GameDataType::spell_cast: return "spell_cast";
         case GameDataType::actor_resurrected: return "actor_resurrected";
+        case GameDataType::actor_died: return "actor_died";
         case GameDataType::item_pickup: return "item_pickup";
         case GameDataType::barter_trade: return "barter_trade";
         case GameDataType::automatic_diary: return "automatic_diary";

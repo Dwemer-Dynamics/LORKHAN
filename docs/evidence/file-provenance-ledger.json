@@ -542,7 +542,7 @@
       "source_path": "apps/openmw",
       "license": "GPL-3.0-only",
       "copyright_notice": "OpenMW contributors and LORKHAN contributors",
-      "transformation": "Minimal exact-pin integration adds the context-gated LORKHAN typed package, engine-expanded dialogue text, verified-media playback, bounded record provenance, typed inventory/service/ordinary animated spell actions, and actual pickup/cast/resurrection/committed-barter observations. Listed patch artifacts contain the corresponding OpenMW source context and LORKHAN changes; they are modified upstream work, not wholly original files. No URLs, tokens, host paths, filesystems, or generic HTTP are exposed to Lua.",
+      "transformation": "Minimal exact-pin integration adds the context-gated LORKHAN typed package, engine-expanded dialogue text, verified-media playback, bounded record provenance, typed inventory/service/ordinary animated spell actions, and actual pickup/cast/resurrection/counted-death/committed-barter observations. Listed patch artifacts contain the corresponding OpenMW source context and LORKHAN changes; they are modified upstream work, not wholly original files. No URLs, tokens, host paths, filesystems, or generic HTTP are exposed to Lua.",
       "reviewer": "LORKHAN maintainers"
     },
     {
