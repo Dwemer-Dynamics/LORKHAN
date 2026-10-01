@@ -713,7 +713,8 @@ function M.startVoice(state,args)
         if syntheticMode then restoreModeTarget(state,selectedTarget) end
         return nil,reason or 'voice_capture_failed'
     end
-    interruptForPlayerInput(state)
+    -- Open mic waits for native voice detection, like CHIM's microphone threshold, so silence keeps speech and rechat.
+    if args.continuous~=true then interruptForPlayerInput(state) end
     state.pendingVoice={speaker=util.copy(args.speaker),target=util.copy(state.conversation.target),
         selectedTarget=selectedTarget and util.copy(selectedTarget) or nil,selectedTargetPresent=true,
         target_key=identity.key(state.conversation.target),session_id=state.sessionId,generation=state.generation,
@@ -792,7 +793,13 @@ end
 
 function M.pollVoice(state)
     if not state.pendingVoice or not state.bridge or not state.bridge.voiceCaptureStatus then return false end
-    local status=state.bridge.voiceCaptureStatus();if not status or status.state=='recording' or status.state=='idle' then return false end
+    local status=state.bridge.voiceCaptureStatus();if not status then return false end
+    local voice=state.pendingVoice
+    if voice.continuous and not voice.interrupted and (status.voice_detected==true or status.state=='ready') then
+        -- Detach the accepted capture so the one deferred interrupt cannot supersede it.
+        voice.interrupted=true;state.pendingVoice=nil;interruptForPlayerInput(state);state.pendingVoice=voice
+    end
+    if status.state=='recording' or status.state=='idle' then return false end
     if status.state=='ready' then
         print('[LORKHAN] captured voice ready: device_id='..tostring(status.device_id)..
             ' device='..tostring(status.device_name)..' wav_bytes='..tostring(status.bytes)..
@@ -874,7 +881,7 @@ function M.submitText(state,args)
     local isContinuation=isRechat or isActionFollowup or isAutonomy or isDirectorChild
     if state.conversation.seenInputs[args.input_key or args.text] then return nil,'duplicate_input' end
     if not isContinuation then
-        -- Voice already interrupted at recording start, like CHIM's Voicerec entrypoint.
+        -- Voice already interrupted at recording start (open mic at voice detection), like CHIM's Voicerec entrypoint.
         if args.input_kind~='stt' then interruptForPlayerInput(state) end
         local targetKey=identity.key(state.conversation.target)
         if targetKey then state.autonomy.interacted[targetKey]=true end

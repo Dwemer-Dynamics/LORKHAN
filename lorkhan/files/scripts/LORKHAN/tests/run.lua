@@ -1917,6 +1917,41 @@ test('open mic mute and stop fence late transcripts without cancelling push to t
  truthy(orchestrator.muteOpenMic(s));eq(s.pendingVoice,manual);eq(b.voiceState,'recording')
  truthy(orchestrator.disableOpenMic(s));eq(s.pendingVoice,manual);eq(b.voiceState,'recording')
 end)
+test('open mic re-armed during committed speech interrupts once only after voice is detected',function()
+ local b=fake.bridge();local interrupts,stops,cancelled=0,0,{}
+ b.cancelTurn=function(id)cancelled[#cancelled+1]=id;return true end
+ local s=orchestrator.new(b,function(name)if name=='LORKHAN_PLAYER_INTERRUPT' then interrupts=interrupts+1 end end,
+  function(_,name)if name=='LORKHAN_ACTOR_STOP_SPEECH' then stops=stops+1 end;return true end,function()return true end)
+ orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+ truthy(orchestrator.selectTarget(s,{identity=npc,distance=100,maxDistance=1200,dead=false,available=true}))
+ s.conversation.turn={requestId=UUID.request,turnId=UUID.turn,generation=1,terminal=false}
+ local args={speaker=playerId,target=npc,context={},language='en-US',capabilities={'dialogue.text'}}
+ truthy(orchestrator.enableOpenMic(s,args));eq(s.pendingVoice,nil)
+ local lines={}
+ for i=1,2 do
+  lines[i]=dialogueLine(i-1,uuid(220+i),npc,playerId,'Sentence '..i..'.',i==2,true)
+  lines[i].media={media_id=uuid(320+i),dialogue_message_id=uuid(220+i),sha256=string.rep('a',64),
+   bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
+ end
+ b.results={responseEvent(1,lines,1)};orchestrator.poll(s)
+ b.media[uuid(321)]={state='ready'};b.media[uuid(322)]={state='ready'};orchestrator.poll(s)
+ s.rechat={chainId=uuid(399),depth=0}
+ b.results={event(2,'turn.complete',1,{status='complete'})};orchestrator.poll(s);truthy(s.conversation.turn.terminal)
+ truthy(orchestrator.pollOpenMic(s));truthy(orchestrator.runOpenMicContext(s,args));truthy(s.pendingVoice)
+ eq(interrupts,0);eq(stops,0);eq(#cancelled,0);truthy(s.rechat);eq(responseQueue.idle(s.responseQueue),false)
+ eq(orchestrator.pollVoice(s),false);eq(interrupts,0);truthy(s.rechat)
+ local status=b.voiceCaptureStatus
+ b.voiceCaptureStatus=function()local result=status();result.voice_detected=true;return result end
+ local capture=s.pendingVoice;orchestrator.pollVoice(s)
+ eq(interrupts,1);truthy(stops>0);eq(s.rechat,nil);truthy(responseQueue.idle(s.responseQueue))
+ eq(s.pendingVoice,capture);eq(capture.superseded,nil)
+ orchestrator.pollVoice(s);eq(interrupts,1)
+ truthy(orchestrator.stopVoice(s));truthy(orchestrator.pollVoice(s));eq(interrupts,1)
+ local transcript=event(3,'stt.transcript',1,{text='Hold on.',language='en-US'})
+ transcript.request_id='00000000-0000-4000-8000-000000000041'
+ b.results={transcript};eq(orchestrator.poll(s),1);eq(interrupts,1)
+ eq(#b.submitted,1);eq(b.submitted[1].payload.input.text,'Hold on.')
+end)
 
 test('auto-managed actors attacking the player are removed unless explicitly allowed',function()
  local b=fake.bridge() local detached=0 local combatEvents={}
