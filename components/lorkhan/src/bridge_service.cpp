@@ -5,8 +5,55 @@
 #include "lorkhan/validation.hpp"
 
 #include <algorithm>
+#include <array>
+#include <ctime>
+#include <iomanip>
+#include <random>
+#include <sstream>
 
 namespace lorkhan {
+namespace {
+
+std::string randomUuid()
+{
+    static std::mutex mutex;
+    static std::mt19937_64 random(std::random_device{}());
+    std::array<unsigned char, 16> bytes{};
+    {
+        std::lock_guard lock(mutex);
+        for (std::size_t offset = 0; offset < bytes.size(); offset += 8) {
+            const std::uint64_t value = random();
+            for (std::size_t index = 0; index < 8; ++index)
+                bytes[offset + index] = static_cast<unsigned char>(value >> (index * 8U));
+        }
+    }
+    bytes[6] = static_cast<unsigned char>((bytes[6] & 0x0fU) | 0x40U);
+    bytes[8] = static_cast<unsigned char>((bytes[8] & 0x3fU) | 0x80U);
+    std::ostringstream out;
+    out << std::hex << std::setfill('0');
+    for (std::size_t index = 0; index < bytes.size(); ++index) {
+        out << std::setw(2) << static_cast<unsigned>(bytes[index]);
+        if (index == 3 || index == 5 || index == 7 || index == 9)
+            out << '-';
+    }
+    return out.str();
+}
+
+std::string utcTimestamp(std::chrono::system_clock::time_point now)
+{
+    const std::time_t raw = std::chrono::system_clock::to_time_t(now);
+    std::tm value{};
+#ifdef _WIN32
+    gmtime_s(&value, &raw);
+#else
+    gmtime_r(&raw, &value);
+#endif
+    std::ostringstream out;
+    out << std::put_time(&value, "%Y-%m-%dT%H:%M:%SZ");
+    return out.str();
+}
+
+} // namespace
 
 BridgeService::BridgeService(std::unique_ptr<ITransport> transport, std::shared_ptr<IClock> clock,
     Generation initialGeneration)
@@ -59,6 +106,7 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         || (request.kind == RequestKind::debug_command_result) != std::holds_alternative<DebugCommandResultRequest>(request.payload)
         || (request.kind == RequestKind::menu_dialogue_tts) != std::holds_alternative<MenuDialogueTtsRequest>(request.payload)
         || (request.kind == RequestKind::book_read_aloud) != std::holds_alternative<BookReadAloudRequest>(request.payload)
+        || (request.kind == RequestKind::menu_dialogue_tts_cancel) != std::holds_alternative<MenuDialogueTtsCancelRequest>(request.payload)
         || (request.kind == RequestKind::player_autochat) != std::holds_alternative<PlayerAutochatRequest>(request.payload)
         || (request.kind == RequestKind::gamedata) != std::holds_alternative<GameDataRequest>(request.payload)
         || (request.kind == RequestKind::media) != std::holds_alternative<MediaPrepareRequest>(request.payload))
@@ -230,6 +278,13 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
             ||!requireValidUtf8(book->title,512)||!requireValidUtf8(book->text,4096))
             return Result<void>::failure(makeError(ErrorCode::invalid_argument,"book read-aloud is outside the closed contract"));
     }
+    if(const auto* speech=std::get_if<MenuDialogueTtsCancelRequest>(&request.payload)){
+        if(!validId(speech->message)||!validId(speech->target)||speech->message==speech->target
+            ||!validId(speech->correlation.request)||!validId(speech->correlation.session)
+            ||speech->correlation.request!=request.id||speech->correlation.session!=request.session
+            ||speech->correlation.generation!=request.generation||!isCanonicalUtcTimestamp(speech->createdAt))
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument,"menu dialogue TTS cancel correlation is invalid"));
+    }
     if(const auto* autochat=std::get_if<PlayerAutochatRequest>(&request.payload)){
         if(!validId(autochat->message)||!validId(autochat->correlation.request)
             ||!validId(autochat->correlation.session)||autochat->correlation.request!=request.id
@@ -352,8 +407,42 @@ Result<void> BridgeService::cancel(const RequestId& request)
     if (cancelled) {
         publishCancelled(*cancelled);
         m_transport->interrupt(request);
+        // A queued request was never sent and a finished one already has media; only in-flight speech needs this.
+        if (cancelled->kind == RequestKind::menu_dialogue_tts || cancelled->kind == RequestKind::book_read_aloud)
+            requestSpeechCancel(*cancelled);
     }
     return Result<void>::success();
+}
+
+void BridgeService::requestSpeechCancel(const OutboundRequest& target)
+{
+    const auto* menu = std::get_if<MenuDialogueTtsRequest>(&target.payload);
+    const auto* book = std::get_if<BookReadAloudRequest>(&target.payload);
+    if (!menu && !book)
+        return;
+    const RequestId id(randomUuid());
+    OutboundRequest request{id, target.session, target.generation, RequestKind::menu_dialogue_tts_cancel,
+        MenuDialogueTtsCancelRequest{MessageId(randomUuid()), {id, target.session, target.generation},
+            utcTimestamp(m_clock->systemNow()), menu ? menu->message : book->message}};
+    // A superseded generation is fenced by the server session itself; the cancel adds nothing there.
+    if (!validateRequest(request))
+        return;
+    {
+        std::lock_guard lock(m_stateMutex);
+        if (!m_knownRequests.insert(id).second)
+            return;
+    }
+    if (!m_cancellations.registerRequest(id, target.generation)) {
+        std::lock_guard lock(m_stateMutex);
+        m_knownRequests.erase(id);
+        return;
+    }
+    // Use control capacity so a full speculative queue cannot keep abandoned synthesis running.
+    if (!m_outbound.tryPush(std::move(request), true)) {
+        m_cancellations.complete(id);
+        std::lock_guard lock(m_stateMutex);
+        m_knownRequests.erase(id);
+    }
 }
 
 Result<Generation> BridgeService::cancelGeneration(Generation generation)
@@ -424,18 +513,20 @@ void BridgeService::publishCancelled(const OutboundRequest& request)
 void BridgeService::workerLoop()
 {
     while (auto request = m_outbound.waitPop([](const OutboundRequest& queued) {
-        return queued.kind == RequestKind::media;
+        return queued.kind == RequestKind::menu_dialogue_tts_cancel || queued.kind == RequestKind::media;
     }, [](const OutboundRequest& queued) {
         return queued.kind == RequestKind::menu_dialogue_tts;
     })) {
         if (m_halted.load(std::memory_order_acquire))
             break;
         const auto cancellation = m_cancellations.token(request->id);
+        // Internal speech cancels have no engine caller; their outcome is the target's server-side abort.
+        const bool internal = request->kind == RequestKind::menu_dialogue_tts_cancel;
         if (!cancellation || cancellation->stop_requested()) {
-            bool publish = false;
+            bool publish = !internal;
             {
                 std::lock_guard lock(m_stateMutex);
-                publish = m_cancelledPublished.insert(request->id).second;
+                publish = publish && m_cancelledPublished.insert(request->id).second;
             }
             if (publish)
                 publishCancelled(*request);
@@ -453,7 +544,11 @@ void BridgeService::workerLoop()
         // The engine already paces polls; never long-poll on the sole HTTP worker.
         // Otherwise ready speech waits behind an idle server response.
         if (auto* poll = std::get_if<EventPollRequest>(&request->payload)) poll->waitMs = 0;
-        auto response = m_transport->execute(*request, *cancellation);
+        // cancel() stops the token before reading m_activeRequests, so it either saw this request and told the
+        // server, or this check observes the stop before any request bytes are sent.
+        auto response = cancellation->stop_requested()
+            ? Result<InboundResult>::failure(makeError(ErrorCode::cancelled, "request cancelled"))
+            : m_transport->execute(*request, *cancellation);
         const bool cancelled = cancellation->stop_requested();
         bool cancellationAlreadyPublished = false;
         {
@@ -461,7 +556,9 @@ void BridgeService::workerLoop()
             m_activeRequests.erase(request->id);
             cancellationAlreadyPublished = m_cancelledPublished.contains(request->id);
         }
-        if (cancelled && !cancellationAlreadyPublished)
+        if (internal) {
+            // Dropped: neither Lua nor the target request waits on this acknowledgement.
+        } else if (cancelled && !cancellationAlreadyPublished)
             publishCancelled(*request);
         else if (!cancelled && response && response.value().request == request->id
             && (response.value().session == request->session

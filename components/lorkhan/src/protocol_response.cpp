@@ -1025,6 +1025,7 @@ std::optional<ErrorCode> protocolCode(std::string_view code)
         Mapping{"invalid_schema", ErrorCode::invalid_schema},
         Mapping{"media_unavailable", ErrorCode::media_rejected},
         Mapping{"not_found", ErrorCode::transport_failure},
+        Mapping{"operation_cancelled", ErrorCode::cancelled},
         Mapping{"payload_too_large", ErrorCode::payload_too_large},
         Mapping{"provider_action_not_allowed", ErrorCode::action_disabled},
         Mapping{"provider_invalid_action", ErrorCode::provider_unavailable},
@@ -2203,6 +2204,31 @@ Result<DebugCommandResponse> parseDebugCommandResponse(
     parsed.command=DebugCommandResponse::Command{MessageId(std::move(id).value()),std::move(name).value(),
         std::move(parsedParameters),std::move(expires).value()};
     return Result<DebugCommandResponse>::success(std::move(parsed));
+}
+
+Result<MenuDialogueTtsCancelAcceptedResponse> parseMenuDialogueTtsCancelAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits)
+{
+    auto object=parseObject(body,headers,"lorkhan.menu-dialogue-tts.cancel.accepted.v1",limits);
+    if(!object)return Result<MenuDialogueTtsCancelAcceptedResponse>::failure(object.error());
+    if(!hasExactly(object.value(),{"schema","message_id","request_id","session_id","generation","target_message_id","status"}))
+        return invalidSchemaValue<MenuDialogueTtsCancelAcceptedResponse>("menu dialogue TTS cancel fields mismatch");
+    auto message=requireUuid(object.value(),"message_id");auto request=requireUuid(object.value(),"request_id");
+    auto session=requireUuid(object.value(),"session_id");auto target=requireUuid(object.value(),"target_message_id");
+    auto generation=requireUnsigned(object.value(),"generation",kMaximumProtocolInteger,1);
+    auto status=requireString(object.value(),"status",1,16);
+    if(!message)return invalidSchemaValue<MenuDialogueTtsCancelAcceptedResponse>(message.error().message);
+    if(!request)return invalidSchemaValue<MenuDialogueTtsCancelAcceptedResponse>(request.error().message);
+    if(!session)return invalidSchemaValue<MenuDialogueTtsCancelAcceptedResponse>(session.error().message);
+    if(!target)return invalidSchemaValue<MenuDialogueTtsCancelAcceptedResponse>(target.error().message);
+    if(!generation)return invalidSchemaValue<MenuDialogueTtsCancelAcceptedResponse>(generation.error().message);
+    if(!status)return invalidSchemaValue<MenuDialogueTtsCancelAcceptedResponse>(status.error().message);
+    if(status.value()!="cancelled"&&status.value()!="completed")
+        return invalidSchemaValue<MenuDialogueTtsCancelAcceptedResponse>("unknown menu dialogue TTS cancel status");
+    return Result<MenuDialogueTtsCancelAcceptedResponse>::success({MessageId(std::move(message).value()),
+        RequestId(std::move(request).value()),SessionId(std::move(session).value()),Generation(generation.value()),
+        MessageId(std::move(target).value()),status.value()=="completed"?MenuDialogueTtsCancelStatus::completed
+            :MenuDialogueTtsCancelStatus::cancelled});
 }
 
 Result<DebugCommandResultAcceptedResponse> parseDebugCommandResultAcceptedResponse(

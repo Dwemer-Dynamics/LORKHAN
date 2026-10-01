@@ -1,5 +1,8 @@
 #include "lorkhan/beast_transport.hpp"
+#include "lorkhan/bridge_service.hpp"
+#include "lorkhan/json.hpp"
 #include "lorkhan/protocol_response.hpp"
+#include "lorkhan/validation.hpp"
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/core.hpp>
@@ -914,6 +917,116 @@ void testDeadlineAndCancellation()
     }
 }
 
+// A slow speech server holds the synthesis connection open. Cancelling must close it and then name the
+// abandoned message on a new authenticated connection, without surfacing the internal cancel to Lua.
+void testSpeculativeSpeechCancel()
+{
+    asio::io_context context;
+    tcp::acceptor acceptor(context, tcp::endpoint(asio::ip::make_address("127.0.0.1"), 0));
+    std::atomic<bool> speechReceived{false};
+    std::atomic<bool> cancelReceived{false};
+    std::chrono::steady_clock::time_point speechClosedAt{};
+    std::string speechTarget;
+    CapturedRequest cancel;
+    std::string cancelSignature;
+    std::string cancelRequestHeader;
+    std::jthread server([&] {
+        boost::system::error_code error;
+        tcp::socket speech(context);
+        acceptor.accept(speech, error);
+        if (error)
+            return;
+        beast::flat_buffer buffer;
+        http::request<http::string_body> request;
+        http::read(speech, buffer, request, error);
+        if (error)
+            return;
+        speechTarget = std::string(request.target());
+        speechReceived = true;
+        char byte{};
+        static_cast<void>(speech.read_some(asio::buffer(&byte, 1), error));
+        speechClosedAt = std::chrono::steady_clock::now();
+        tcp::socket follow(context);
+        acceptor.accept(follow, error);
+        if (error)
+            return;
+        beast::flat_buffer followBuffer;
+        http::request<http::string_body> cancelRequest;
+        http::read(follow, followBuffer, cancelRequest, error);
+        if (error)
+            return;
+        cancel.method = cancelRequest.method();
+        cancel.target = std::string(cancelRequest.target());
+        cancel.idempotency = std::string(cancelRequest["Idempotency-Key"]);
+        cancel.contentType = std::string(cancelRequest[http::field::content_type]);
+        cancel.body = cancelRequest.body();
+        cancelSignature = std::string(cancelRequest["X-LORKHAN-Signature"]);
+        cancelRequestHeader = std::string(cancelRequest["X-LORKHAN-Request-Id"]);
+        cancelReceived = true;
+        auto parsed = lorkhan::json::parse(cancel.body);
+        const auto* object = parsed ? parsed.value().object() : nullptr;
+        const auto field = [&](std::string_view key) {
+            const auto* value = object ? lorkhan::json::find(*object, key) : nullptr;
+            return value && value->string() ? *value->string() : std::string();
+        };
+        sendJson(follow, 200, R"({"schema":"lorkhan.menu-dialogue-tts.cancel.accepted.v1","message_id":")" + field("message_id")
+            + R"(","request_id":")" + field("request_id") + R"(","session_id":")" + field("session_id")
+            + R"(","generation":7,"target_message_id":")" + field("target_message_id") + R"(","status":"cancelled"})");
+    });
+
+    const lorkhan::RequestId speechRequest(kRequest);
+    lorkhan::BridgeService bridge(std::make_unique<lorkhan::BeastTransport>(url(acceptor.local_endpoint().port()),
+        lorkhan::InstallationId(kInstallation), token(), cacheRoot()), std::make_shared<lorkhan::SystemClock>(), lorkhan::Generation(7));
+    CHECK(bridge.enqueue({speechRequest, lorkhan::SessionId(kSession), lorkhan::Generation(7), lorkhan::RequestKind::menu_dialogue_tts,
+        lorkhan::MenuDialogueTtsRequest{lorkhan::MessageId(kMessage), {speechRequest, lorkhan::SessionId(kSession), lorkhan::Generation(7)},
+            "2026-07-19T20:00:00Z", R"({"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"})",
+            "Speculative topic text."}}));
+    const auto waitFor = [](const std::atomic<bool>& flag) {
+        const auto deadline = std::chrono::steady_clock::now() + 3s;
+        while (!flag.load() && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(1ms);
+        return flag.load();
+    };
+    CHECK(waitFor(speechReceived));
+    std::this_thread::sleep_for(50ms);
+    const auto cancelledAt = std::chrono::steady_clock::now();
+    CHECK(bridge.cancel(speechRequest));
+    CHECK(waitFor(cancelReceived));
+    if (!cancelReceived.load()) {
+        boost::system::error_code ignored;
+        acceptor.close(ignored);
+        return;
+    }
+    server.join();
+    CHECK(speechTarget == std::string(kBasePath) + "/menu-dialogue-tts");
+    CHECK(speechClosedAt - cancelledAt < 1s);
+    CHECK(cancel.method == http::verb::post && cancel.target == std::string(kBasePath) + "/menu-dialogue-tts/cancel"
+        && cancel.contentType == "application/json; charset=utf-8" && !cancelSignature.empty());
+    auto body = lorkhan::json::parse(cancel.body);
+    const auto* object = body ? body.value().object() : nullptr;
+    CHECK(object && object->size() == 7);
+    if (object) {
+        const auto text = [&](std::string_view key) {
+            const auto* value = lorkhan::json::find(*object, key);
+            return value && value->string() ? *value->string() : std::string();
+        };
+        const auto* generation = lorkhan::json::find(*object, "generation");
+        CHECK(text("schema") == "lorkhan.menu-dialogue-tts.cancel.v1" && text("target_message_id") == kMessage
+            && text("session_id") == kSession && generation && generation->integer() && *generation->integer() == 7
+            && lorkhan::isCanonicalUuid(text("message_id")) && text("message_id") != kMessage
+            && cancel.idempotency == text("message_id") && cancelRequestHeader == text("request_id")
+            && text("request_id") != kRequest && lorkhan::isCanonicalUtcTimestamp(text("created_at")));
+    }
+    std::vector<lorkhan::InboundResult> results;
+    const auto deadline = std::chrono::steady_clock::now() + 200ms;
+    while (std::chrono::steady_clock::now() < deadline) {
+        for (auto& result : bridge.poll(16))
+            results.push_back(std::move(result));
+        std::this_thread::sleep_for(5ms);
+    }
+    CHECK(results.size() == 1 && results[0].request == speechRequest && results[0].kind == lorkhan::ResponseKind::cancelled);
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -1146,6 +1259,7 @@ int main(int argc, char** argv)
     testAuthenticatedVerifiedMedia();
     testResponseFailures();
     testDeadlineAndCancellation();
+    testSpeculativeSpeechCancel();
     if (failures != 0) {
         std::cerr << failures << " Beast transport test(s) failed\n";
         return EXIT_FAILURE;

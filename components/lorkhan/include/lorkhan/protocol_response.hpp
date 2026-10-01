@@ -505,6 +505,18 @@ struct DebugCommandResultAcceptedResponse {
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 [[nodiscard]] Result<MenuDialogueTtsReadyResponse> parseMenuDialogueTtsReadyResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+// Completed means the target's media was recorded before the cancel; cancelled means none will be.
+enum class MenuDialogueTtsCancelStatus { cancelled, completed };
+struct MenuDialogueTtsCancelAcceptedResponse {
+    MessageId message;
+    RequestId request;
+    SessionId session;
+    Generation generation;
+    MessageId target;
+    MenuDialogueTtsCancelStatus status{MenuDialogueTtsCancelStatus::cancelled};
+};
+[[nodiscard]] Result<MenuDialogueTtsCancelAcceptedResponse> parseMenuDialogueTtsCancelAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 [[nodiscard]] Result<PlayerAutochatReadyResponse> parsePlayerAutochatReadyResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 // Validate the bounded observation before it can enter the native transport queue.

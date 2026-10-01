@@ -675,6 +675,18 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
                 +",\"title\":"+escapeJson(book->title)+",\"text\":"+escapeJson(book->text)+"}";
             break;
         }
+        case RequestKind::menu_dialogue_tts_cancel: {
+            const auto* speech=std::get_if<MenuDialogueTtsCancelRequest>(&request.payload);if(!speech)break;
+            wire.method=http::verb::post;wire.target=route("/menu-dialogue-tts/cancel");wire.expectedStatus=200;
+            wire.idempotencyKey=speech->message.value();
+            wire.body="{\"schema\":\"lorkhan.menu-dialogue-tts.cancel.v1\",\"message_id\":"+escapeJson(speech->message.value())
+                +",\"request_id\":"+escapeJson(speech->correlation.request.value())
+                +",\"session_id\":"+escapeJson(speech->correlation.session.value())
+                +",\"generation\":"+std::to_string(speech->correlation.generation.value())
+                +",\"created_at\":"+escapeJson(speech->createdAt)
+                +",\"target_message_id\":"+escapeJson(speech->target.value())+"}";
+            break;
+        }
         case RequestKind::player_autochat: {
             const auto* autochat=std::get_if<PlayerAutochatRequest>(&request.payload);
             if(!autochat)break;
@@ -964,6 +976,17 @@ Result<InboundResult> validateResponse(const OutboundRequest& request, const Wir
                 ||parsed.value().media.dialogueMessage!=sent.message)
                 return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,"book read-aloud response correlation mismatch"));
             kind=ResponseKind::menu_dialogue_ready;break;
+        }
+        case RequestKind::menu_dialogue_tts_cancel: {
+            const auto& sent=std::get<MenuDialogueTtsCancelRequest>(request.payload);
+            auto parsed=parseMenuDialogueTtsCancelAcceptedResponse(response.body(),headers);
+            if(!parsed)return Result<InboundResult>::failure(parsed.error());
+            if(parsed.value().message!=sent.message||parsed.value().request!=sent.correlation.request
+                ||parsed.value().session!=sent.correlation.session||parsed.value().generation!=sent.correlation.generation
+                ||parsed.value().target!=sent.target)
+                return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
+                    "menu dialogue TTS cancel response correlation mismatch"));
+            kind=ResponseKind::completed;break;
         }
         case RequestKind::player_autochat: {
             const auto& sent=std::get<PlayerAutochatRequest>(request.payload);
