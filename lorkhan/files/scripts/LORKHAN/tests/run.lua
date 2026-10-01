@@ -2475,7 +2475,7 @@ test('boredom and combat barks share idle and period fences',function()
  count=#emitted;orchestrator.poll(s);eq(#emitted,count)
  s.autonomy.pending=nil;s.conversation.turn=nil
  orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,activity='combat',conversation_state='busy'})
- eq(orchestrator.runAutonomy(s,4),false);truthy(orchestrator.runAutonomy(s,1))
+ truthy(orchestrator.runAutonomy(s,4)) -- combat start barks without waiting a full period
  eq(emitted[#emitted].payload.kind,'combat_bark')
  eq(orchestrator.runAutonomy(s,4),false) -- pending context request fences duplicate work
  eq(orchestrator.runAutonomy(s,1),false)
@@ -2488,6 +2488,7 @@ test('combat request timer uses the CHIM client range independently of the serve
  orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
  orchestrator.scanAgents(s,{{identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true}})
  orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,activity='combat',conversation_state='busy'})
+ truthy(orchestrator.runAutonomy(s,5));eq(emitted[#emitted].payload.kind,'combat_bark');s.autonomy.pending=nil
  for _=1,59 do eq(orchestrator.runAutonomy(s,5),false) end -- 300s configured: no bark at the old 120s cap
  eq(orchestrator.runAutonomy(s,4),false);truthy(orchestrator.runAutonomy(s,1))
  eq(emitted[#emitted].payload.kind,'combat_bark')
@@ -2496,6 +2497,66 @@ test('combat request timer uses the CHIM client range independently of the serve
  local result,reason=orchestrator.submitText(s,{request_id=UUID.request,turn_id=UUID.turn,message_id=UUID.message,
   target=npc,speaker=playerId,text='Hello',input_kind='stt',ui_source='lorkhan_voice',execution_mode='standard'})
  eq(result,nil);eq(reason,'combat_dialogue_disabled')
+end)
+
+test('combat start barks once per episode after fences, then periodically',function()
+ local b=fake.bridge() local emitted={}
+ local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end,nil,function()return true end)
+ s.settings={autoActivate={enabled=true},behavior={combatBarks=true,combatBarkPeriodSeconds=30}}
+ orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+ orchestrator.scanAgents(s,{{identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true}})
+ local function barks() local count=0
+  for _,event in ipairs(emitted) do if event.payload and event.payload.kind=='combat_bark' then count=count+1 end end
+  return count end
+ local function fight(activity) orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,activity=activity,conversation_state='busy'}) end
+ s.conversation.turn={terminal=false}
+ fight('combat');eq(orchestrator.runAutonomy(s,1),false);eq(barks(),0) -- active turns fence the start bark
+ s.conversation.turn=nil
+ truthy(orchestrator.runAutonomy(s,0.05));eq(barks(),1);truthy(identity.same(emitted[#emitted].payload.actor,npc))
+ s.autonomy.pending=nil
+ fight('combat');eq(orchestrator.runAutonomy(s,5),false);eq(barks(),1) -- status refresh keeps the episode
+ fight('idle');eq(orchestrator.runAutonomy(s,1),false)
+ fight('combat');eq(orchestrator.runAutonomy(s,1),false);eq(barks(),1) -- a flicker waits for the cooldown
+ for _=1,4 do eq(orchestrator.runAutonomy(s,5),false) end
+ eq(orchestrator.runAutonomy(s,2),false);truthy(orchestrator.runAutonomy(s,1));eq(barks(),2)
+ s.autonomy.pending=nil
+ for _=1,5 do eq(orchestrator.runAutonomy(s,5),false) end
+ eq(orchestrator.runAutonomy(s,4),false);truthy(orchestrator.runAutonomy(s,1));eq(barks(),3) -- periodic thereafter
+ s.autonomy.pending=nil
+ fight('idle');for _=1,7 do eq(orchestrator.runAutonomy(s,5),false) end;eq(s.autonomy.combatSeconds,0)
+ fight('combat');truthy(orchestrator.runAutonomy(s,0.05));eq(barks(),4) -- a later fight starts with a bark
+ s.autonomy.pending=nil;s.settings.behavior.combatBarks=false
+ fight('idle');for _=1,7 do orchestrator.runAutonomy(s,5) end
+ fight('combat');eq(orchestrator.runAutonomy(s,5),false);eq(barks(),4)
+end)
+test('combat bark speakers vary by injected roll and skip ineligible combatants',function()
+ local b=fake.bridge() local emitted={}
+ local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end,nil,function()return true end)
+ s.settings={autoActivate={enabled=true},behavior={combatBarks=true,combatBarkPeriodSeconds=5}}
+ local guard=fake.identity('npc','guard',41) local rat=fake.identity('creature','rat',42) local stranger=fake.identity('npc','stranger',43)
+ local rolls={} local calls=0
+ s.randomPercent=function() calls=calls+1 return table.remove(rolls,1) or 1 end
+ orchestrator.configureSession(s,UUID.session)
+ for _,actor in ipairs({npc,guard,rat,stranger}) do orchestrator.activate(s,actor,{}) end
+ orchestrator.scanAgents(s,{{identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true},
+  {identity=guard,distance=120,maxDistance=1200,dead=false,hostile=false,available=true},
+  {identity=rat,distance=140,maxDistance=1200,dead=false,hostile=false,available=true}})
+ local function fight(actor,activity) orchestrator.actorCombatStatus(s,{actor=actor,hostile_to_player=false,activity=activity,conversation_state='busy'}) end
+ fight(rat,'combat');fight(stranger,'combat');fight(npc,'idle')
+ local count=#emitted
+ for _=1,3 do eq(orchestrator.runAutonomy(s,5),false) end -- creatures and unmanaged NPCs never bark
+ eq(#emitted,count);eq(calls,0);eq(s.autonomy.combatStartPending,true)
+ local first,last=npc,guard
+ if identity.key(guard)<identity.key(npc) then first,last=guard,npc end
+ rolls={1,100};fight(npc,'combat');fight(guard,'combat')
+ truthy(orchestrator.runAutonomy(s,0.05));eq(emitted[#emitted].payload.kind,'combat_bark')
+ truthy(identity.same(emitted[#emitted].payload.actor,first))
+ s.autonomy.pending=nil
+ eq(orchestrator.runAutonomy(s,4),false);truthy(orchestrator.runAutonomy(s,1))
+ truthy(identity.same(emitted[#emitted].payload.actor,last));eq(calls,2)
+ s.autonomy.pending=nil;fight(guard,'idle')
+ eq(orchestrator.runAutonomy(s,4),false);truthy(orchestrator.runAutonomy(s,1))
+ truthy(identity.same(emitted[#emitted].payload.actor,npc));eq(calls,2) -- one candidate needs no roll
 end)
 
 test('narrator events use welcome, round, quest, and bored fences',function()
