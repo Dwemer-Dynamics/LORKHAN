@@ -1,0 +1,70 @@
+{
+  "description": "Committed player barter with copied traded items and net gold",
+  "instance": {
+    "game": "tes3",
+    "generation": 12,
+    "installation_id": "10000000-0000-4000-8000-000000000001",
+    "observed_at": "2026-08-09T18:00:03Z",
+    "payload": {
+      "player": {
+        "cell": {
+          "kind": "interior",
+          "name": "Balmora, Clagius Clanler: Outfitter"
+        },
+        "content_file": "Morrowind.esm",
+        "display_name": "Player",
+        "kind": "player",
+        "record_id": "player",
+        "refnum": {
+          "content_file": 0,
+          "index": 0
+        }
+      },
+      "merchant": {
+        "cell": {
+          "kind": "interior",
+          "name": "Balmora, Clagius Clanler: Outfitter"
+        },
+        "content_file": "Morrowind.esm",
+        "display_name": "Clagius Clanler",
+        "kind": "npc",
+        "record_id": "clagius clanler",
+        "refnum": {
+          "content_file": 0,
+          "index": 16385
+        }
+      },
+      "player_received": [
+        {
+          "item_record_id": "common_shirt_01",
+          "item_name": "Common Shirt",
+          "count": 2,
+          "unit_value": 5
+        }
+      ],
+      "player_gave": [
+        {
+          "item_record_id": "misc_test_item",
+          "item_name": "Test item",
+          "count": 1,
+          "unit_value": 250
+        }
+      ],
+      "gold_to_player": 150,
+      "game_time": 43210.5,
+      "calendar": {
+        "year": 427,
+        "month": 8,
+        "day": 16,
+        "hour": 9.5
+      }
+    },
+    "playthrough_id": "10000000-0000-4000-8000-000000000002",
+    "request_id": "10000000-0000-4000-8000-000000000004",
+    "runtime_generation": 4,
+    "schema": "lorkhan.gamedata.v1",
+    "session_id": "10000000-0000-4000-8000-000000000005",
+    "type": "barter_trade"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json"
+}

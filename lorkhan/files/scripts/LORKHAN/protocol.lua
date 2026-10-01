@@ -305,6 +305,51 @@ function M.itemPickup(args)
         source=source,audience=audience,calendar=args.calendar and util.copy(args.calendar) or nil}
 end
 
+local function barterLines(lines)
+    if type(lines)~='table' or #lines>32 then return nil end
+    local result={}
+    for index,line in ipairs(lines) do
+        if type(line)~='table' then return nil end
+        for _,field in ipairs({'item_record_id','item_name'}) do
+            if type(line[field])~='string' or #line[field]<1 or #line[field]>256 then return nil end
+        end
+        if type(line.count)~='number' or line.count%1~=0 or line.count<1 or line.count>2147483647
+            or type(line.unit_value)~='number' or line.unit_value%1~=0 or line.unit_value<0
+            or line.unit_value>2147483647 then return nil end
+        result[index]={item_record_id=line.item_record_id,item_name=line.item_name,count=line.count,unit_value=line.unit_value}
+    end
+    return result
+end
+
+-- Only a committed native barter supplies these lines; inventory differences are not trade evidence.
+function M.barterTrade(args)
+    if type(args)=='table' and not validObservationCalendar(args.calendar) then return nil,'invalid_barter_calendar' end
+    if type(args)~='table' or not identity.validate(args.player) or args.player.kind~='player'
+        or not identity.validate(args.merchant) or not ({npc=true,creature=true})[args.merchant.kind] then
+        return nil,'invalid_barter_actor'
+    end
+    local received,gave=barterLines(args.player_received),barterLines(args.player_gave)
+    if not received or not gave or #received+#gave==0 then return nil,'invalid_barter_items' end
+    if type(args.gold_to_player)~='number' or args.gold_to_player%1~=0
+        or args.gold_to_player<-2147483647 or args.gold_to_player>2147483647
+        or type(args.game_time)~='number' or args.game_time~=args.game_time or args.game_time<0
+        or args.game_time>9007199254740991 then return nil,'invalid_barter_observation' end
+    local audience
+    if args.audience~=nil then
+        if type(args.audience)~='table' or #args.audience>12 then return nil,'invalid_barter_audience' end
+        audience={};local seen={[identity.key(args.player)]=true,[identity.key(args.merchant)]=true}
+        for _,actor in ipairs(args.audience) do
+            if not identity.validate(actor) or (actor.kind~='npc' and actor.kind~='creature') then return nil,'invalid_barter_audience' end
+            local key=identity.key(actor)
+            if seen[key] then return nil,'duplicate_barter_audience' end
+            seen[key]=true;audience[#audience+1]=util.copy(actor)
+        end
+    end
+    return {player=util.copy(args.player),merchant=util.copy(args.merchant),player_received=received,player_gave=gave,
+        gold_to_player=args.gold_to_player,game_time=args.game_time,audience=audience,
+        calendar=args.calendar and util.copy(args.calendar) or nil}
+end
+
 -- Validate the actor snapshot that materializes a profile after successful automatic activation.
 function M.actorProfile(args)
     if type(args)~='table' or not identity.validate(args.actor)

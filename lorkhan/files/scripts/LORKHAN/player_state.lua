@@ -183,5 +183,11 @@ end
 function M.flushItemPickups(state,session,submit,now)
     return flushObservations(state,'itemPickups',session,submit,now)
 end
+function M.captureBarterTrade(state,event,session,reader,submit,now)
+    return captureObservation(state,'barterTrades',event,session,reader,submit,now)
+end
+function M.flushBarterTrades(state,session,submit,now)
+    return flushObservations(state,'barterTrades',session,submit,now)
+end
 
 return M

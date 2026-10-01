@@ -137,3 +137,19 @@ checklist remains deliberately unclaimed.
 - AUTOMATED: native RPG/Quest/Bored exports and matching live decision delivery wired; requests expire after30seconds, reset on generation change and reject duplicate/stale replies. Diary timer requests removed; sleep/wait remain server-profile-controlled.
 - DEPLOYED: C:/Modlists/LORKHAN engine SHA256 `359E473A3BD9FAE8AED520F5CA1DA6FD6C96257FF0D10BA73755F81A5C665203`; source/deployed player.lua hashes match. Server health/worker verified separately.
 - IN-GAME PROVEN: not yet. No game launch. User must test successful lockpick and RPG/Quest/Bored responses with an eligible nearby NPC and enabled profile chance, then sleep/wait diaries with a Diary connector assigned.
+
+## Committed player barter context (2026-10-01) — AUTOMATED / WINDOWS BUILD PROVEN
+
+- OpenMW `TradeWindow::onOfferButtonClicked` copies traded lines before transfer and emits one
+  fenced `LorkhanBarterTrade` only after item and gold transfer (patch 0036). Offer, cancel,
+  failed haggle and confiscation paths return earlier. Pickups stay a separate path.
+- `gamedata.barter_trade` adds strict schema, fixtures, native, Lua and server validators. The
+  server projects exactly one merchant-targeted `infoaction` row and applies the Infoaction
+  category and the item blacklist.
+- AUTOMATED: native CTest, 125 Lua 5.1 tests, 1682 server checks, PHP lint, disposable PostgreSQL
+  integration and the cross-repository no-game slice (140-file manifest parity) pass.
+- WINDOWS BUILD PROVEN: pinned OpenMW 0.51 Release `openmw` rebuilt from a fresh pinned checkout
+  plus all 36 manifest changes. Existing OpenMW unit tests were not built.
+- IN-GAME PROVEN: not yet; no game was launched. Still to test: buy, sell, mixed trade, haggle
+  failure, cancel, unaffordable offer, stolen-item confiscation, a creature merchant, and that
+  container pickups still fire but never during barter.

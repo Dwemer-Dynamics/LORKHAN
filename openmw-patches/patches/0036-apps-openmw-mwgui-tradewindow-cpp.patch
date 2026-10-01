@@ -1,0 +1,74 @@
+diff --git a/apps/openmw/mwgui/tradewindow.cpp b/apps/openmw/mwgui/tradewindow.cpp
+index 93d5abb29fa9200cd5dc87b6d7f9b4b445558432..82145c720904f1393d14341c5ca55d60890a1e2f 100644
+--- a/apps/openmw/mwgui/tradewindow.cpp
++++ b/apps/openmw/mwgui/tradewindow.cpp
+@@ -1,5 +1,8 @@
+ #include "tradewindow.hpp"
+ 
++#include <algorithm>
++#include <limits>
++
+ #include <MyGUI_Button.h>
+ #include <MyGUI_ControllerManager.h>
+ #include <MyGUI_ControllerRepeatClick.h>
+@@ -13,6 +16,7 @@
+ #include "../mwbase/dialoguemanager.hpp"
+ #include "../mwbase/environment.hpp"
+ #include "../mwbase/inputmanager.hpp"
++#include "../mwbase/luamanager.hpp"
+ #include "../mwbase/mechanicsmanager.hpp"
+ #include "../mwbase/windowmanager.hpp"
+ #include "../mwbase/world.hpp"
+@@ -35,6 +39,32 @@
+ namespace
+ {
+ 
++    // LORKHAN: copy committed barter lines before transfer can invalidate the borrowed item references.
++    std::vector<MWBase::LuaManager::LorkhanBarterLine> copyLorkhanBarterLines(
++        const std::vector<MWGui::ItemStack>& stacks)
++    {
++        std::vector<MWBase::LuaManager::LorkhanBarterLine> lines;
++        for (const MWGui::ItemStack& stack : stacks)
++        {
++            if (stack.mBase.isEmpty() || stack.mCount == 0)
++                continue;
++            MWBase::LuaManager::LorkhanBarterLine line{ stack.mBase.getCellRef().getRefId().serializeText(),
++                std::string(stack.mBase.getClass().getName(stack.mBase)),
++                static_cast<int>(std::min<size_t>(stack.mCount, std::numeric_limits<int>::max())),
++                stack.mBase.getClass().getValue(stack.mBase) };
++            auto existing = std::find_if(lines.begin(), lines.end(), [&](const auto& item) {
++                return item.recordId == line.recordId && item.name == line.name && item.unitValue == line.unitValue;
++            });
++            if (existing != lines.end())
++                existing->count = existing->count > std::numeric_limits<int>::max() - line.count
++                    ? std::numeric_limits<int>::max()
++                    : existing->count + line.count;
++            else if (lines.size() < 32)
++                lines.push_back(std::move(line));
++        }
++        return lines;
++    }
++
+     int getEffectiveValue(MWWorld::Ptr item, int count)
+     {
+         float price = static_cast<float>(item.getClass().getValue(item));
+@@ -462,6 +492,9 @@
+             return;
+         }
+ 
++        const auto lorkhanReceived = copyLorkhanBarterLines(playerBought);
++        const auto lorkhanGave = copyLorkhanBarterLines(merchantBought);
++
+         // make the item transfer
+         mTradeModel->transferItems();
+         playerItemModel->transferItems();
+@@ -474,6 +507,9 @@
+                 mPtr.getClass().getCreatureStats(mPtr).getGoldPool() - mCurrentBalance);
+         }
+ 
++        MWBase::Environment::get().getLuaManager()->onLorkhanBarterTrade(
++            mPtr, lorkhanReceived, lorkhanGave, mCurrentBalance);
++
+         eventTradeDone();
+ 
+         MWBase::Environment::get().getWindowManager()->playSound(ESM::RefId::stringRefId("Item Gold Up"));
