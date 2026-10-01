@@ -53,6 +53,7 @@ local restDiaryState
 local observedPlayerLevel,observedRpgSession
 local ownsUiMode=false
 local controlsSignature
+local playerActivitySignature
 local responseQueueSnapshot={}
 local MODES=uiState.MODES
 local EQUIPMENT_SLOTS={'helmet','cuirass','greaves','left_pauldron','right_pauldron','left_gauntlet',
@@ -2098,6 +2099,13 @@ return {
             render()
         end,
         onUpdate=function(dt)
+            -- Sample every frame so one-frame spell casts are seen; send only on change.
+            local activity=adapter.playerActivity({self=self})
+            local activitySignature=tostring(activity.sneaking)..':'..tostring(activity.attacking)
+            if activitySignature~=playerActivitySignature then
+                playerActivitySignature=activitySignature
+                send('LORKHAN_PLAYER_ACTIVITY',{sneaking=activity.sneaking,attacking=activity.attacking})
+            end
             settingsControls.syncOpenMic()
             if narratorSpeech and not adapter.isSpeechActive() then reportNarrator('played','playback_completed') end
             updatePlayerAutochat()

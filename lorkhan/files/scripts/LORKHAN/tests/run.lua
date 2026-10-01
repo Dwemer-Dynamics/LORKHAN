@@ -2481,6 +2481,98 @@ test('boredom and combat barks share idle and period fences',function()
  eq(orchestrator.runAutonomy(s,1),false)
  truthy(orchestrator.runAutonomy(s,4)) -- a lost player event is retried only after the watchdog expires
 end)
+local function boredomFixture(behavior)
+ local b=fake.bridge() local emitted={}
+ local s=orchestrator.new(b,function(name,payload)emitted[#emitted+1]={name=name,payload=payload}end,nil,function()return true end)
+ s.settings={autoActivate={enabled=true},behavior=behavior}
+ orchestrator.configureSession(s,UUID.session);orchestrator.activate(s,npc,{})
+ eq(orchestrator.scanAgents(s,{{identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true}}),1)
+ orchestrator.actorCombatStatus(s,{actor=npc,hostile_to_player=false,activity='idle',conversation_state='active'})
+ local function boredRequests()
+  local count=0
+  for _,event in ipairs(emitted) do if event.name=='LORKHAN_BORED_POLICY_REQUEST' then count=count+1 end end
+  return count
+ end
+ return s,b,emitted,boredRequests
+end
+test('boredom waits while the player sneaks or attacks without delaying greetings',function()
+ local s,_,emitted,boredRequests=boredomFixture({autoGreeting=true,boredom=true,boredomDelaySeconds=30})
+ truthy(orchestrator.observePlayerActivity(s,{sneaking=true,attacking=false}))
+ truthy(orchestrator.runAutonomy(s,5));eq(emitted[#emitted].payload.kind,'greeting')
+ s.autonomy.pending=nil
+ for _=1,10 do eq(orchestrator.runAutonomy(s,5),false) end
+ eq(boredRequests(),0)
+ orchestrator.observePlayerActivity(s,{sneaking=false,attacking=false})
+ truthy(orchestrator.runAutonomy(s,0.25));eq(boredRequests(),1)
+ local s3,_,_,requests3=boredomFixture({boredom=true,boredomDelaySeconds=30})
+ orchestrator.observePlayerActivity(s3,{sneaking=false,attacking=true})
+ for _=1,6 do eq(orchestrator.runAutonomy(s3,5),false) end
+ orchestrator.observePlayerActivity(s3,{sneaking=false,attacking=false})
+ eq(orchestrator.runAutonomy(s3,1),false) -- swing release is held briefly
+ truthy(orchestrator.runAutonomy(s3,1));eq(requests3(),1)
+ -- A one-frame spell cast reported and cleared between scheduler ticks still holds boredom.
+ local s4,_,_,requests4=boredomFixture({boredom=true,boredomDelaySeconds=30})
+ for _=1,5 do eq(orchestrator.runAutonomy(s4,5),false) end
+ eq(orchestrator.runAutonomy(s4,4.9),false)
+ orchestrator.observePlayerActivity(s4,{attacking=true});orchestrator.observePlayerActivity(s4,{attacking=false})
+ eq(orchestrator.runAutonomy(s4,0.25),false);eq(requests4(),0)
+ eq(orchestrator.runAutonomy(s4,2),true);eq(requests4(),1)
+end)
+test('boredom waits for nearby combat while combat barks still run',function()
+ local s,_,emitted,boredRequests=boredomFixture({boredom=true,boredomDelaySeconds=30,combatBarks=true})
+ local fighter=fake.identity('npc','guard',2);orchestrator.activate(s,fighter,{})
+ eq(orchestrator.scanAgents(s,{{identity=npc,distance=100,maxDistance=1200,dead=false,hostile=false,available=true},
+  {identity=fighter,distance=200,maxDistance=1200,dead=false,hostile=false,available=true}}),1)
+ orchestrator.actorCombatStatus(s,{actor=fighter,hostile_to_player=false,activity='combat',conversation_state='busy'})
+ truthy(orchestrator.runAutonomy(s,5));eq(emitted[#emitted].payload.kind,'combat_bark')
+ s.autonomy.pending=nil;s.settings.behavior.combatBarks=false
+ for _=1,8 do eq(orchestrator.runAutonomy(s,5),false) end
+ eq(boredRequests(),0)
+ orchestrator.actorCombatStatus(s,{actor=fighter,hostile_to_player=false,activity='idle',conversation_state='active'})
+ truthy(orchestrator.runAutonomy(s,0.25));eq(boredRequests(),1)
+end)
+test('pending boredom decisions drop after the player starts sneaking, attacking or fighting',function()
+ local s,b,emitted=boredomFixture({boredom=true,boredomDelaySeconds=30})
+ local fighter=fake.identity('npc','guard',2);orchestrator.activate(s,fighter,{})
+ local function request()
+  for _=1,6 do if orchestrator.runAutonomy(s,5) then break end end
+  eq(emitted[#emitted].name,'LORKHAN_BORED_POLICY_REQUEST')
+  truthy(orchestrator.bindBoredRequest(s,{opportunity=s.autonomy.boredPending.opportunity,actor=npc,
+   session_id=s.sessionId,generation=s.generation,request_id=UUID.request}))
+ end
+ b.pollResults=function()return {{type='bored.decision',request_id=UUID.request,session_id=s.sessionId,
+  generation=s.generation,comment_requested=true}} end
+ local function rejected()
+  local count=#emitted;orchestrator.poll(s);eq(#emitted,count);eq(s.autonomy.boredPending,nil)
+ end
+ request();orchestrator.observePlayerActivity(s,{sneaking=true,attacking=false});rejected()
+ orchestrator.observePlayerActivity(s,{sneaking=false,attacking=false})
+ request();orchestrator.observePlayerActivity(s,{sneaking=false,attacking=true})
+ orchestrator.observePlayerActivity(s,{sneaking=false,attacking=false});rejected()
+ orchestrator.runAutonomy(s,2)
+ request();orchestrator.actorCombatStatus(s,{actor=fighter,hostile_to_player=true,activity='combat',conversation_state='busy'})
+ rejected()
+ orchestrator.actorCombatStatus(s,{actor=fighter,hostile_to_player=false,activity='inactive',conversation_state='inactive'})
+ -- Unknown flags never suppress, and the generation fence still applies to an idle player.
+ orchestrator.observePlayerActivity(s,{})
+ request();s.generation=s.generation+1;rejected();s.generation=s.generation-1
+ request();orchestrator.poll(s);eq(emitted[#emitted].payload.kind,'boredom')
+end)
+test('player activity reads only documented self controls and leaves unreadable flags unknown',function()
+ local player={controls={sneak=true,use=0},ATTACK_TYPE={NoAttack=0,Any=1}}
+ local observed=openmwAdapter.playerActivity({self=player})
+ eq(observed.sneaking,true);eq(observed.attacking,false)
+ player.controls.sneak=false;player.controls.use=1
+ observed=openmwAdapter.playerActivity({self=player})
+ eq(observed.sneaking,false);eq(observed.attacking,true)
+ player.ATTACK_TYPE=nil
+ eq(openmwAdapter.playerActivity({self=player}).attacking,nil)
+ player.controls=setmetatable({},{__index=function()error('unavailable')end})
+ observed=openmwAdapter.playerActivity({self=player})
+ eq(observed.sneaking,nil);eq(observed.attacking,nil)
+ observed=openmwAdapter.playerActivity({})
+ eq(observed.sneaking,nil);eq(observed.attacking,nil)
+end)
 test('combat request timer uses the CHIM client range independently of the server cooldown',function()
  local b=fake.bridge() local emitted={}
  local s=orchestrator.new(b,function(name,payload)table.insert(emitted,{name=name,payload=payload})end,nil,function()return true end)

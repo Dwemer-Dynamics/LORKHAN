@@ -877,6 +877,22 @@ function M.actionItems(target, modules, observedActors)
     return rows
 end
 
+-- Read only the player's own sneak and attack-input controls. Unreadable flags stay nil (unknown).
+function M.playerActivity(modules)
+    modules=modules or loaded()
+    local player=modules.self
+    local controls=player and safe(function() return player.controls end)
+    if not controls then return {} end
+    local sneak=safe(function() return controls.sneak end)
+    local use=safe(function() return controls.use end)
+    local noAttack=safe(function() return player.ATTACK_TYPE.NoAttack end)
+    local attacking=nil
+    if use~=nil and noAttack~=nil then attacking=use~=noAttack end
+    local sneaking=nil
+    if type(sneak)=='boolean' then sneaking=sneak end
+    return {sneaking=sneaking,attacking=attacking}
+end
+
 -- Freeze bounded local hearing evidence. Keep this private to Lua rather than the wire context.
 function M.hearingContext(modules)
     modules=modules or loaded()
