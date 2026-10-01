@@ -1,5 +1,5 @@
 diff --git a/apps/openmw/mwlua/luamanagerimp.cpp b/apps/openmw/mwlua/luamanagerimp.cpp
-index c9c39344222ec38f3a20b9e5d109783e51300196..07803889b4ac83bf76c780f7a1af045dfd787cd1 100644
+index c9c39344222ec38f3a20b9e5d109783e51300196..dacd346c00c8b457cc6fe9d66f1f9cf434923630 100644
 --- a/apps/openmw/mwlua/luamanagerimp.cpp
 +++ b/apps/openmw/mwlua/luamanagerimp.cpp
 @@ -1,4 +1,5 @@
@@ -60,7 +60,7 @@ index c9c39344222ec38f3a20b9e5d109783e51300196..07803889b4ac83bf76c780f7a1af045d
          mEngineEvents.clear();
          mInputEvents.clear();
          mMenuInputEvents.clear();
-@@ -484,6 +505,232 @@
+@@ -484,6 +505,244 @@
          if (actor.isEmpty())
              return;
          mLuaEvents.addLocalEvent({ getId(actor), "Died", {} });
@@ -203,7 +203,19 @@ index c9c39344222ec38f3a20b9e5d109783e51300196..07803889b4ac83bf76c780f7a1af045d
 +            if (!scope) return;
 +            ++mLorkhanLockpickCount;
 +            sol::table data = view.newTable();
-+            data["gameTime"] = MWBase::Environment::get().getWorld()->getTimeManager()->getGameTime();
++            const auto timeManager = MWBase::Environment::get().getWorld()->getTimeManager();
++            data["gameTime"] = timeManager->getGameTime();
++            const auto stamp = timeManager->getEpochTimeStamp();
++            const lorkhan::LoadedSaveCalendar captured{stamp.mYear, stamp.mMonth, stamp.mDay, stamp.mGameHour};
++            if (captured.valid())
++            {
++                sol::table calendar = view.newTable();
++                calendar["year"] = captured.year;
++                calendar["month"] = captured.month;
++                calendar["day"] = captured.day;
++                calendar["hour"] = captured.hour;
++                data["calendar"] = calendar;
++            }
 +            data["sessionId"] = scope->sessionId;
 +            data["generation"] = scope->generation;
 +            sendLocalEvent(mPlayer, "LorkhanLockpick", data);
@@ -293,7 +305,7 @@ index c9c39344222ec38f3a20b9e5d109783e51300196..07803889b4ac83bf76c780f7a1af045d
      }
  
      void LuaManager::onDialogueResponse(
-@@ -504,6 +751,13 @@
+@@ -504,6 +763,13 @@
                  data["type"] = "voice";
              data["infoId"] = info.mId.serializeText();
              data["recordId"] = record.mId.serializeText();

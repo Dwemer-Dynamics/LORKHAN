@@ -1685,6 +1685,17 @@ Result<void> validateSpellCastPayload(std::string_view body, json::ParseLimits l
     return Result<void>::success();
 }
 
+// A save rollback compares this calendar with the loaded save, so an invalid date must not be queued.
+Result<void> validateObservationCalendarPayload(std::string_view body, json::ParseLimits limits)
+{
+    auto parsed=json::parse(body,limits);if(!parsed)return Result<void>::failure(parsed.error());
+    const auto* object=parsed.value().object();
+    if(!object)return invalidSchema("observation must be an object");
+    if(const auto* calendar=json::find(*object,"calendar");calendar&&!validObservationCalendar(*calendar))
+        return invalidSchema("observation calendar is invalid");
+    return Result<void>::success();
+}
+
 // Capture only physical resurrection observations with bounded, distinct nearby witnesses.
 Result<void> validateActorResurrectedPayload(std::string_view body, json::ParseLimits limits)
 {

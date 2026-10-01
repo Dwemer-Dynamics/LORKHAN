@@ -102,6 +102,11 @@
       "sha256": "d63cb1a2afe0e6936e866c179f7593b4618429bcd5812f5597c64791c1514421"
     },
     {
+      "bytes": 1181,
+      "path": "lorkhan/fixtures/v1/invalid/gamedata-quest-calendar-leap-day.json",
+      "sha256": "6cc263d5dc4d811d47ed162e2d68a0a9c3ecf6b21c99ba9d1e376064161277e6"
+    },
+    {
       "bytes": 1345,
       "path": "lorkhan/fixtures/v1/invalid/gamedata-rpg-player-responder.json",
       "sha256": "a5785b063430027b634aa17dedbf4c463afd2401d17f7bd3d2f7d2ed7171cd63"
@@ -407,9 +412,19 @@
       "sha256": "3a117b195a4b8be68fe46311a095c806f624cfbf60122b46448f684e46f97d9e"
     },
     {
+      "bytes": 1188,
+      "path": "lorkhan/fixtures/v1/valid/gamedata-quest-calendar.json",
+      "sha256": "261134ec633909fe5d54646eb35a177e7a40f6b23577958121d65044a588a062"
+    },
+    {
       "bytes": 1040,
       "path": "lorkhan/fixtures/v1/valid/gamedata-quest-responder.json",
       "sha256": "6464dcfdfae6a8737b37468ed10fe53d99ef267283a284b4db28d0ed0eaca854"
+    },
+    {
+      "bytes": 1177,
+      "path": "lorkhan/fixtures/v1/valid/gamedata-rpg-calendar.json",
+      "sha256": "f3070489e4cbe4f038bc59684269634444140dd06a617313aa342cb06c139126"
     },
     {
       "bytes": 1381,
@@ -632,9 +647,9 @@
       "sha256": "66fb9b333958f5db965e5530e5f26e806947a490cde1e0dc435c2abe25628993"
     },
     {
-      "bytes": 35616,
+      "bytes": 35890,
       "path": "lorkhan/schemas/v1/gamedata.schema.json",
-      "sha256": "2997804987d6124291a9e467bac11b38b94e1d430df561b65684f8eb8fae3d3f"
+      "sha256": "6fb3e31c7aa5f8b2923a02cd24b0bcc10b7644319952fe7ff1302e7bc1694ab5"
     },
     {
       "bytes": 295,

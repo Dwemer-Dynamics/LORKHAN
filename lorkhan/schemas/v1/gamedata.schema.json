@@ -428,6 +428,9 @@
           "minLength": 1,
           "maxLength": 1024
         },
+        "calendar": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/observation_calendar"
+        },
         "responder": {
           "allOf": [
             {
@@ -533,6 +536,9 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 8192
+        },
+        "calendar": {
+          "$ref": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json#/$defs/observation_calendar"
         }
       }
     },

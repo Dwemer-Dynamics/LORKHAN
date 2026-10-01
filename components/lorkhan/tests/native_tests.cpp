@@ -23,6 +23,7 @@
 #include <string>
 #include <thread>
 #include <type_traits>
+#include <tuple>
 #include <vector>
 
 using namespace std::chrono_literals;
@@ -471,6 +472,16 @@ void testAcceptedProtocolResponses()
     CHECK(!lorkhan::validateItemPickupPayload(pickupPrefix + R"(,"calendar":{"year":427,"month":1,"day":30,"hour":12}})"));
     CHECK(!lorkhan::validateSpellCastPayload(castPrefix + R"(,"calendar":{"year":427,"month":1,"day":3}})"));
     CHECK(!lorkhan::validateItemPickupPayload(pickupPrefix + R"(,"calendar":{"year":427,"month":1,"day":3}})"));
+    // RPG/quest observations predate calendars, so an omitted date stays valid; a present one must be real.
+    const std::string rpgPrefix = "{\"kind\":\"levelup\",\"player\":" + pickupPlayer + R"(,"game_time":100,"text":"The player reached level 2.")";
+    CHECK(lorkhan::validateObservationCalendarPayload(rpgPrefix + "}"));
+    CHECK(lorkhan::validateObservationCalendarPayload(rpgPrefix + R"(,"calendar":{"year":427,"month":7,"day":15,"hour":11.999}})"));
+    CHECK(!lorkhan::validateObservationCalendarPayload(rpgPrefix + R"(,"calendar":{"year":427,"month":1,"day":29,"hour":12}})"));
+    CHECK(!lorkhan::validateObservationCalendarPayload(rpgPrefix + R"(,"calendar":{"year":427,"month":7,"day":15,"hour":24}})"));
+    CHECK(!lorkhan::validateObservationCalendarPayload(rpgPrefix + R"(,"calendar":{"year":427,"month":7,"day":15}})"));
+    CHECK(!lorkhan::validateObservationCalendarPayload(rpgPrefix + R"(,"calendar":{"year":427,"month":7,"day":15,"hour":12,"days_passed":3}})"));
+    CHECK(!lorkhan::validateObservationCalendarPayload(rpgPrefix + R"(,"calendar":"427-08-15"})"));
+    CHECK(!lorkhan::validateObservationCalendarPayload("[]"));
 
     CHECK(lorkhan::validateSpellCastPayload(castPrefix + ",\"audience\":[" + protocolIdentity() + "]}"));
     CHECK(!lorkhan::validateSpellCastPayload(castPrefix + ",\"audience\":[" + protocolIdentity() + "," + protocolIdentity() + "]}"));
@@ -1136,6 +1147,18 @@ void testBridgeDialogueDeliveryValidation()
     invalidInventory.serializedPayload = "{\"owner\":" + protocolIdentity() + ",\"items\":[]}";
     invalidInventory.runtimeGeneration = lorkhan::Generation(generation.value() + 1);
     CHECK(!bridge.enqueue(inventory));
+    const std::string questBody = "{\"responder\":" + protocolIdentity() + R"(,"game_time":100,"text":"Quest a: b.")";
+    for (const auto& [index, type, calendar, accepted] : std::vector<std::tuple<unsigned, lorkhan::GameDataType, std::string, bool>>{
+             {90u, lorkhan::GameDataType::quest_event, "", true},
+             {91u, lorkhan::GameDataType::quest_event, R"(,"calendar":{"year":427,"month":7,"day":15,"hour":12.5})", true},
+             {92u, lorkhan::GameDataType::quest_event, R"(,"calendar":{"year":427,"month":7,"day":32,"hour":12.5})", false},
+             {93u, lorkhan::GameDataType::rpg_event, R"(,"calendar":{"year":0,"month":7,"day":15,"hour":12.5})", false}}) {
+        lorkhan::OutboundRequest observation{lorkhan::RequestId(uuidFor(index)), lorkhan::SessionId(kSession), generation,
+            lorkhan::RequestKind::gamedata,
+            lorkhan::GameDataRequest{lorkhan::InstallationId(kInstallation), lorkhan::PlaythroughId(kPlaythrough),
+                lorkhan::RequestId(uuidFor(index)), generation, "2026-07-19T20:00:02Z", type, questBody + calendar + "}"}};
+        CHECK(static_cast<bool>(bridge.enqueue(std::move(observation))) == accepted);
+    }
 
     lorkhan::EnvelopeIds sttIds{lorkhan::InstallationId(kInstallation), lorkhan::ProfileId(kProfile),
         lorkhan::PlaythroughId(kPlaythrough), lorkhan::SessionId(kSession), lorkhan::RequestId(uuidFor(87)),

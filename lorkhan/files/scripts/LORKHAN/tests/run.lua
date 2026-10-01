@@ -26,8 +26,12 @@ test('successful lockpick capture rejects stale sessions and preserves observed 
  local session={session_id='current',generation=2}
  local native={sessionInfo=function()return session end}
  local calls=0
- local function submitRpgEvent(kind,text,time)
+ local expectedCalendar=nil
+ local captured={year=427,month=7,day=15,hour=11.5}
+ local function submitRpgEvent(kind,text,time,calendar)
   assert(kind=='lockpick' and text=='The player successfully picked a lock.' and time==123)
+  -- The native capture's own calendar travels with its game time; delivery never re-reads the clock.
+  assert(calendar==expectedCalendar)
   calls=calls+1
  end
  ]]
@@ -37,7 +41,8 @@ test('successful lockpick capture rejects stale sessions and preserves observed 
  handler({sessionId='current',generation=2,gameTime=-1});assert(calls==0)
  handler({sessionId='current',generation=2});assert(calls==0)
  handler({sessionId='current',generation=2,gameTime=123});assert(calls==1)
- session=nil;handler({sessionId='current',generation=2,gameTime=123});assert(calls==1)
+ expectedCalendar=captured;handler({sessionId='current',generation=2,gameTime=123,calendar=captured});assert(calls==2)
+ session=nil;handler({sessionId='current',generation=2,gameTime=123});assert(calls==2)
  ]]
  local chunk,reason=(loadstring or load)(harness..'\nlocal function handler(event)'..handler..'\nend\n'..exercise)
  assert(chunk,reason);chunk()
@@ -523,6 +528,61 @@ test('quest commentary carries observed journal text without inventing stages',f
  local q=assert(protocol.questEvent(args));eq(q.text,'Quest mq_test, stage 20: Actual journal line.\nQuest unknown: No known stage.')
  truthy(identity.same(q.responder,npc));args.responder=playerId;eq(protocol.questEvent(args),nil)
  args.responder=npc;args.entries={{quest_id='too_long',text=string.rep('x',8193)}};eq(protocol.questEvent(args),nil)
+end)
+test('RPG and quest observations copy a valid capture-time calendar and reject impossible dates',function()
+ local calendar={year=427,month=7,day=15,hour=11.999}
+ local rpgArgs={kind='levelup',player=playerId,game_time=120,text='The player reached level 2.',calendar=calendar}
+ local questArgs={responder=npc,game_time=120,entries={{quest_id='mq_test',stage=20,text='Actual journal line.'}},calendar=calendar}
+ for _,sample in ipairs({{rpgArgs,protocol.rpgEvent},{questArgs,protocol.questEvent}}) do
+  local args,build=sample[1],sample[2]
+  local dto=assert(build(args));eq(dto.calendar.hour,11.999);eq(dto.calendar.month,7);truthy(dto.calendar~=calendar)
+  args.calendar=nil;eq(assert(build(args)).calendar,nil)
+  for _,invalid in ipairs({{year=427,month=1,day=29,hour=12},{year=427,month=7,day=15,hour=24},
+   {year=427,month=7,day=15},{year=427,month=7,day=15,hour=12,days_passed=3},'427-08-15'}) do
+   args.calendar=invalid;eq(build(args),nil)
+  end
+  args.calendar=calendar
+ end
+end)
+test('Lua-detected RPG and quest observations read game time and engine calendar together',function()
+ local file=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local source=file:read('*a');file:close()
+ local functions=assert(source:match('(local function observationCalendar%(%).-\nend\n\n%-%- Freeze the NPC and actual journal update.-\nend\n)'))
+ local harness=[[
+ local aiEnabled,nativeOk,turnActive,nearbyCombat=true,true,false,false
+ local clock={time=500,calendar={year=427,month=7,day=15,hour=11.5}}
+ local submitted,remembered={},0
+ local native={sessionInfo=function()return {session_id='s',generation=1} end,
+  observationCalendar=function()return clock.calendar end,
+  submitRpgEvent=function(payload)submitted[#submitted+1]=payload;return 'request' end,
+  submitQuestEvent=function(payload)submitted[#submitted+1]=payload;return 'request' end}
+ local npc={kind='npc',record_id='fargoth',content_file='Morrowind.esm',refnum={content_file=0,index=1},cell={kind='interior',name='Balmora'},display_name='Fargoth'}
+ local state={ui={target=npc,visible=false}}
+ local adapter={actorDistance=function()return 100 end,gameTime=function()return clock.time end,
+  identity=function()return {kind='player',record_id='player',content_file='Morrowind.esm',refnum={content_file=0,index=2},cell={kind='interior',name='Balmora'},display_name='Player'} end}
+ local self={}
+ local core={getRealTime=function()return 1 end}
+ local function speechActive()return false end
+ local player={rememberRpgComment=function()remembered=remembered+1 end}
+ local protocol=require('scripts.LORKHAN.protocol')
+ ]]
+ local exercise=[[
+ submitRpgEvent('levelup','The player reached level 2.')
+ assert(submitted[1].game_time==500 and submitted[1].calendar.hour==11.5 and submitted[1].calendar~=clock.calendar)
+ submitRpgEvent('lockpick','The player successfully picked a lock.',123,{year=427,month=7,day=14,hour=9})
+ assert(submitted[2].game_time==123 and submitted[2].calendar.day==14)
+ submitRpgEvent('lockpick','The player successfully picked a lock.',124,nil)
+ assert(submitted[3].game_time==124 and submitted[3].calendar==nil)
+ submitQuestEvent({{quest_id='mq_test',stage=20,text='Actual journal line.'}},{session_id='s',generation=1})
+ assert(submitted[4].game_time==500 and submitted[4].calendar.hour==11.5)
+ clock.calendar=nil;submitRpgEvent('wait','The player finished waiting.')
+ assert(submitted[5].calendar==nil and submitted[5].game_time==500)
+ native.observationCalendar=function()error('engine unavailable')end;submitRpgEvent('sleep','The player finished sleeping.')
+ assert(submitted[6].calendar==nil)
+ native.observationCalendar=nil;submitQuestEvent({{quest_id='mq_test',stage=30,text='Later line.'}},{session_id='s',generation=1})
+ assert(submitted[7].calendar==nil and #submitted==7)
+ ]]
+ local chunk,reason=(loadstring or load)(harness..functions..exercise)
+ assert(chunk,reason);chunk()
 end)
 test('journal deltas preserve entry content and fence initial snapshots and session changes',function()
  local s={} local session={session_id=UUID.session,generation=1}

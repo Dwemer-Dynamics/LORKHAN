@@ -23,8 +23,10 @@
 #include "../mwmechanics/aisequence.hpp"
 #include "../mwmechanics/creaturestats.hpp"
 #include "../mwmechanics/spells.hpp"
+#include <components/esm/defs.hpp>
 #include <components/esm3/loadspel.hpp>
 #include "../mwworld/class.hpp"
+#include "../mwworld/datetimemanager.hpp"
 #include "../mwworld/esmstore.hpp"
 #include "../mwworld/worldmodel.hpp"
 #include "../mwworld/actiontake.hpp"
@@ -3094,6 +3096,19 @@ namespace MWLua
             api["utcNow"] = [] { return utcNow(); };
             api["newMessageId"] = [] { return uuid(); };
             api["sessionInfo"] = [lua] { return client().sessionInfo(lua); };
+            // Read-only engine calendar (the source of the Year/Month/Day/GameHour globals) for a
+            // Lua-detected observation at this instant; it never falls back to wall-clock time.
+            api["observationCalendar"] = [lua]() -> sol::object {
+                MWBase::World* world = MWBase::Environment::get().getWorld();
+                if (!world || !world->getTimeManager()) return sol::make_object(lua, sol::nil);
+                const ESM::EpochTimeStamp stamp = world->getTimeManager()->getEpochTimeStamp();
+                const lorkhan::LoadedSaveCalendar captured{stamp.mYear, stamp.mMonth, stamp.mDay, stamp.mGameHour};
+                if (!captured.valid()) return sol::make_object(lua, sol::nil);
+                sol::table calendar(lua, sol::create);
+                calendar["year"] = captured.year; calendar["month"] = captured.month;
+                calendar["day"] = captured.day; calendar["hour"] = captured.hour;
+                return sol::make_object(lua, calendar);
+            };
             api["nextTurnMetadata"] = [lua] { return client().nextTurnMetadata(lua); };
             api["submitTurn"] = [lua](sol::table dto) { return client().submitTurn(lua, std::move(dto)); };
             api["submitCapturedDialogue"] = [lua](sol::table payload) {
