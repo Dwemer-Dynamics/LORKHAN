@@ -106,7 +106,8 @@ stock OpenMW executable.
   leave the selected mode unchanged; the optional player mood reaches the NPC prompt but not the displayed text;
 - playback-gated rechat continues only within its configured depth and never starts from an idle timer;
 - enabled automatic greetings trigger once per newly activated NPC, boredom waits for its idle delay,
-  and combat barks respect their period without interrupting active dialogue;
+  and combat barks fire once when combat begins, then respect their period, from varied eligible
+  NPCs without interrupting active dialogue;
 - the generated short WAV plays through the actor voice path and subtitles remain visible;
 - `inspect.report` returns a terminal result;
 - `ai.follow`, same-cell `ai.travel`/`ai.escort`, `ai.stop`, and bounded `ai.wander` affect only the

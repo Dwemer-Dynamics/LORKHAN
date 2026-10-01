@@ -16,7 +16,7 @@ local util=require('scripts.LORKHAN.util')
 local M={}
 
 local function newAutonomyState()
-    return {idleSeconds=0,combatSeconds=0,pending=nil,pendingSeconds=0,greetingQueue={},
+    return {idleSeconds=0,combatSeconds=0,combatActive=false,combatStartPending=false,combatBarkCooldownSeconds=0,pending=nil,pendingSeconds=0,greetingQueue={},
         greeted={},interacted={},rotation=0,narratorRounds=0,rpgCooldownSeconds=0,
         narratorRandomPending=false,narratorQueue={},welcomeAttempted=false,restoreTarget=nil,restoreTargetPresent=false,
         activeTurnTarget=nil,activeTurnSource=nil}
@@ -419,7 +419,12 @@ local function requestAutonomy(state,kind,actor)
     state.autonomy.pending={kind=kind,actor=util.copy(actor)}
     state.autonomy.pendingSeconds=0
     state.autonomy.idleSeconds=0
-    if kind=='combat_bark' then state.autonomy.combatSeconds=0 end
+    if kind=='combat_bark' then
+        local period=math.max(5,math.min(600,tonumber(state.settings and state.settings.behavior
+            and state.settings.behavior.combatBarkPeriodSeconds) or 30))
+        state.autonomy.combatSeconds=0 state.autonomy.combatStartPending=false
+        state.autonomy.combatBarkCooldownSeconds=period
+    end
     state.emit('LORKHAN_AUTONOMY_CONTEXT_REQUEST',{kind=kind,actor=util.copy(actor),generation=state.generation})
     return true
 end
@@ -543,13 +548,16 @@ local function nextBoredActor(state)
     return candidates[state.autonomy.rotation]
 end
 
+-- Like CHIM, vary the speaker among eligible combatants; sorting keeps injected rolls deterministic.
 local function nextCombatActor(state)
     local candidates={}
     for _,actor in pairs(state.combatActors) do
         if actor.kind=='npc' and autonomyActorEligible(state,actor,true) then candidates[#candidates+1]=actor end
     end
+    if #candidates<2 then return candidates[1] end
     table.sort(candidates,function(left,right)return identity.key(left)<identity.key(right) end)
-    return candidates[1]
+    local roll=math.max(1,math.min(100,math.floor(tonumber(state.randomPercent()) or 1)))
+    return candidates[math.floor((roll-1)*#candidates/100)+1]
 end
 
 -- Refresh at most one managed active actor every two seconds without scheduling any model work.
@@ -582,6 +590,12 @@ function M.runAutonomy(state,elapsed)
     local autonomy=state.autonomy
     autonomy.rpgCooldownSeconds=math.max(0,autonomy.rpgCooldownSeconds-seconds)
     autonomy.playerSpeechSuppressionSeconds=math.max(0,(autonomy.playerSpeechSuppressionSeconds or 0)-seconds)
+    autonomy.combatBarkCooldownSeconds=math.max(0,(autonomy.combatBarkCooldownSeconds or 0)-seconds)
+    -- CHIM barks once when combat begins; per-actor status refreshes keep the same episode.
+    local inCombat=next(state.combatActors)~=nil
+    if inCombat and not autonomy.combatActive then autonomy.combatStartPending=true
+    elseif not inCombat then autonomy.combatStartPending=false end
+    autonomy.combatActive=inCombat
     if autonomy.boredPending then
         autonomy.boredPending.seconds=autonomy.boredPending.seconds+seconds
         if autonomy.boredPending.seconds>=30 then autonomy.boredPending=nil end
@@ -623,7 +637,10 @@ function M.runAutonomy(state,elapsed)
     else autonomy.combatSeconds=0 end
 
     local combatPeriod=math.max(5,math.min(600,tonumber(behavior.combatBarkPeriodSeconds) or 30))
-    if behavior.allowCombatDialogue~=false and behavior.combatBarks==true and autonomy.combatSeconds>=combatPeriod then
+    -- A brief combat flicker waits for the bark cooldown instead of opening a new immediate bark.
+    local combatDue=autonomy.combatSeconds>=combatPeriod
+        or autonomy.combatStartPending and autonomy.combatBarkCooldownSeconds<=0
+    if behavior.allowCombatDialogue~=false and behavior.combatBarks==true and combatDue then
         local actor=nextCombatActor(state)
         if actor then return requestAutonomy(state,'combat_bark',actor) end
     end
