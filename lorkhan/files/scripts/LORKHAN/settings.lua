@@ -21,7 +21,7 @@ local behaviorSection = storage.playerSection(BEHAVIOR_GROUP_KEY)
 -- Defaults do not replace saved values; retire the old zero/use-profile timer value.
 local combatBarkInterval = tonumber(behaviorSection:get('combatBarkInterval'))
 if not combatBarkInterval or combatBarkInterval ~= combatBarkInterval
-    or combatBarkInterval < 5 or combatBarkInterval > 120 or combatBarkInterval % 1 ~= 0 then
+    or combatBarkInterval < 5 or combatBarkInterval > 600 or combatBarkInterval % 1 ~= 0 then
     behaviorSection:set('combatBarkInterval', 30)
 end
 local hearingSection = storage.playerSection(HEARING_GROUP_KEY)
@@ -142,7 +142,7 @@ I.Settings.registerGroup({
     settings={
         {key='allowCombatDialogue',renderer='checkbox',default=true,name='AllowCombatDialogue_name',description='AllowCombatDialogue_description'},
         {key='combatBarks',renderer='checkbox',default=true,name='CombatBarks_name',description='CombatBarks_description'},
-        {key='combatBarkInterval',renderer='number',default=30,name='CombatBarkPeriod_name',description='CombatBarkPeriod_description',argument={integer=true,min=5,max=120}},
+        {key='combatBarkInterval',renderer='number',default=30,name='CombatBarkPeriod_name',description='CombatBarkPeriod_description',argument={integer=true,min=5,max=600}},
         {key='cancelDialogueOnCombat',renderer='checkbox',default=true,name='CancelDialogueOnCombat_name',description='CancelDialogueOnCombat_description'},
         {key='openMicEnabled',renderer='checkbox',default=false,name='OpenMicEnabled_name',description='OpenMicEnabled_description'},
         {key='openMicSensitivity',renderer='number',default=1000,name='OpenMicSensitivity_name',description='OpenMicSensitivity_description',argument={integer=true,min=100,max=5000}},
