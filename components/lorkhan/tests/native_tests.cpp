@@ -443,6 +443,25 @@ void testAcceptedProtocolResponses()
     auto invalidResurrection=resurrection;invalidResurrection.insert(1,"\"command\":\"resurrect\",");
     CHECK(!lorkhan::validateActorResurrectedPayload(invalidResurrection));
     CHECK(!lorkhan::validateActorResurrectedPayload("{\"actor\":{},\"audience\":[],\"game_time\":1}"));
+    auto witness = protocolIdentity(); witness.replace(witness.find("\"index\":112"), 11, "\"index\":113");
+    const auto death = std::string("{\"victim\":") + protocolIdentity() + ",\"audience\":[" + witness + "],\"game_time\":1";
+    CHECK(lorkhan::validateActorDiedPayload(death + "}"));
+    CHECK(lorkhan::validateActorDiedPayload(death + R"(,"calendar":{"year":427,"month":8,"day":16,"hour":12.5}})"));
+    CHECK(!lorkhan::validateActorDiedPayload(death + R"(,"killer":)" + witness + "}"));
+    CHECK(!lorkhan::validateActorDiedPayload(death + R"(,"weapon":"iron dagger"})"));
+    CHECK(!lorkhan::validateActorDiedPayload(resurrection));
+    CHECK(!lorkhan::validateActorResurrectedPayload(death + "}"));
+    CHECK(!lorkhan::validateActorDiedPayload("{\"victim\":" + pickupPlayer + ",\"audience\":[],\"game_time\":1}"));
+    CHECK(!lorkhan::validateActorDiedPayload("{\"victim\":" + protocolIdentity() + ",\"audience\":[" + protocolIdentity() + "],\"game_time\":1}"));
+    CHECK(!lorkhan::validateActorDiedPayload("{\"victim\":" + protocolIdentity() + ",\"audience\":[],\"game_time\":-1}"));
+    CHECK(!lorkhan::validateActorDiedPayload(death + R"(,"calendar":{"year":427,"month":12,"day":16,"hour":12}})"));
+    auto deathAccepted = lorkhan::parseGameDataAcceptedResponse(
+        R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"actor_died","duplicate":false})",
+        jsonHeaders);
+    CHECK(deathAccepted && deathAccepted.value().type == "actor_died");
+    static_assert(lorkhan::countsActorDeath(false, false) && lorkhan::countsActorDeath(false, true));
+    static_assert(!lorkhan::countsActorDeath(true, false), "placed corpses replay a death on cell load");
+    static_assert(lorkhan::countsActorDeath(true, true), "persistent corpses die again only after resurrection");
 
     CHECK(lorkhan::validateSpellCastPayload(castPrefix + R"(,"calendar":{"year":427,"month":8,"day":16,"hour":12.5}})"));
     CHECK(lorkhan::validateItemPickupPayload(pickupPrefix + R"(,"calendar":{"year":427,"month":8,"day":16,"hour":12.5}})"));

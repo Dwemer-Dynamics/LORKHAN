@@ -174,6 +174,12 @@ end
 function M.flushResurrections(state,session,submit,now)
     return flushObservations(state,'resurrections',session,submit,now)
 end
+function M.captureDeath(state,event,session,reader,submit,now)
+    return captureObservation(state,'deaths',event,session,reader,submit,now)
+end
+function M.flushDeaths(state,session,submit,now)
+    return flushObservations(state,'deaths',session,submit,now)
+end
 function M.flushSpellCasts(state,session,submit,now)
     return flushObservations(state,'spellCaptures',session,submit,now)
 end

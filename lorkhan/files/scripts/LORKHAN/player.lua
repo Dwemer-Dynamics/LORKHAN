@@ -2124,6 +2124,9 @@ return {
             if nativeOk and native.submitActorResurrected and native.sessionInfo then
                 player.flushResurrections(state,native.sessionInfo(),native.submitActorResurrected,core.getRealTime())
             end
+            if nativeOk and native.submitActorDied and native.sessionInfo then
+                player.flushDeaths(state,native.sessionInfo(),native.submitActorDied,core.getRealTime())
+            end
             flushActorProfiles(dt)
             flushAutomaticDiaries(dt)
             local elapsed=tonumber(dt) or 0
@@ -2253,6 +2256,10 @@ return {
         LorkhanActorResurrected=function(event)
             if not nativeOk or not native.submitActorResurrected or not native.sessionInfo then return end
             player.captureResurrection(state,event,native.sessionInfo(),adapter.resurrectionObservation,native.submitActorResurrected,core.getRealTime())
+        end,
+        LorkhanActorDied=function(event)
+            if not nativeOk or not native.submitActorDied or not native.sessionInfo then return end
+            player.captureDeath(state,event,native.sessionInfo(),adapter.deathObservation,native.submitActorDied,core.getRealTime())
         end,
         LorkhanSpellCast=function(event)
             if not nativeOk or not native.submitSpellCast or not native.sessionInfo then return end

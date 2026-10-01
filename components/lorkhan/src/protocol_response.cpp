@@ -1707,6 +1707,28 @@ Result<void> validateActorResurrectedPayload(std::string_view body, json::ParseL
     return Result<void>::success();
 }
 
+// A completed non-player death names only its victim; killer and weapon are not engine-proven facts.
+Result<void> validateActorDiedPayload(std::string_view body, json::ParseLimits limits)
+{
+    auto parsed=json::parse(body,limits);if(!parsed)return Result<void>::failure(parsed.error());
+    const auto* object=parsed.value().object();
+    if(!object||!hasExactly(*object,{"victim","audience","game_time"},{"calendar"}))return invalidSchema("death fields mismatch");
+    auto victim=parseIdentity(*json::find(*object,"victim"));
+    if(!victim||(victim.value().kind!="npc"&&victim.value().kind!="creature"))return invalidSchema("invalid death victim");
+    if(!requireNumber(*object,"game_time",0,9007199254740991.0))return invalidSchema("invalid death time");
+    if(const auto* calendar=json::find(*object,"calendar");calendar&&!validObservationCalendar(*calendar))return invalidSchema("invalid death calendar");
+    const auto* audience=json::find(*object,"audience")->array();
+    if(!audience||audience->size()>12)return invalidSchema("invalid death audience");
+    std::set<std::pair<std::uint64_t,std::uint64_t>> references{{victim.value().refnumContentFile,victim.value().refnumIndex}};
+    for(const auto& value:*audience){
+        auto witness=parseIdentity(value);
+        if(!witness||(witness.value().kind!="npc"&&witness.value().kind!="creature")
+            ||!references.emplace(witness.value().refnumContentFile,witness.value().refnumIndex).second)
+            return invalidSchema("invalid death witness");
+    }
+    return Result<void>::success();
+}
+
 // Only observed game values and correlated acknowledgements cross this typed boundary.
 Result<void> validateDispositionPayload(std::string_view body, json::ParseLimits limits)
 {
@@ -1784,7 +1806,7 @@ Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(
     if (!request) return invalidSchemaValue<GameDataAcceptedResponse>(request.error().message);
     if (!session) return invalidSchemaValue<GameDataAcceptedResponse>(session.error().message);
     if (!generation) return invalidSchemaValue<GameDataAcceptedResponse>(generation.error().message);
-    if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile" && type.value() != "inventory" && type.value() != "spell_cast" && type.value() != "actor_resurrected" && type.value() != "item_pickup" && type.value() != "barter_trade"
+    if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile" && type.value() != "inventory" && type.value() != "spell_cast" && type.value() != "actor_resurrected" && type.value() != "actor_died" && type.value() != "item_pickup" && type.value() != "barter_trade"
         &&type.value()!="automatic_diary"&&type.value()!="rpg_event"&&type.value()!="bored_event"&&type.value()!="quest_event"&&type.value()!="disposition"))
         return invalidSchemaValue<GameDataAcceptedResponse>("game-data type mismatch");
     if (!duplicate) return invalidSchemaValue<GameDataAcceptedResponse>(duplicate.error().message);

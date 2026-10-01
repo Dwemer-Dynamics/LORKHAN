@@ -362,6 +362,27 @@ Barter is never an `itemfound` pickup. The server projects exactly one CHIM-styl
 ... Y paid X N gold."). Prompt context applies the Infoaction category and the item
 blacklist to every traded line; Item Pickup Detection Value does not apply.
 
+### Counted actor death observations
+
+`gamedata` type `actor_died` records one non-player NPC or creature death when OpenMW
+counts it: when the death animation finishes, or when the player disposes of the corpse
+first. The saved death-animation flag prevents a repeat after loading. The player's own
+death, non-persistent corpses whose base record has zero health (placed corpses replay a
+death animation when their cell first loads) and rejected or failed `actor.kill` attempts emit
+nothing; a successful kill action is a real death. OpenMW creates persistent zero-health corpses
+with the animation already finished, so their death counts only after a real resurrection. A
+resurrected non-persistent one is not reported when killed: no saved engine state tells it apart. The payload names only the `victim`. The pinned
+engine has no reliable killer, weapon or spell at that point, so none is sent and
+validators reject such fields. The victim must be within 2048 units in the
+player's cell space. Witnesses, calendar and session/generation fencing follow resurrection
+observations, with at most 64 deaths per frame and 32 queued Lua retries.
+
+The server projects exactly one `death` row, "X died.", which is CHIM's killer-less death
+form. Prompt context shows it as a world event to the victim and witnesses, respects the
+Death event category and follows the same session and loaded-save rules as other
+observations. Hide Ambient Combat still matches only CHIM's "has killed" form. Death
+observations are not memory sources.
+
 New observations also carry the capture-time calendar using the existing loaded-save
 shape (zero-based month). Loading an earlier save retires observations at or beyond
 its cutoff while preserving earlier dated observations. Legacy undated spell/pickup

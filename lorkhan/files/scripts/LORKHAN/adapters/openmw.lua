@@ -189,6 +189,22 @@ function M.resurrectionObservation(event,modules)
     return payload
 end
 
+-- Native reported one counted non-player death; killer and weapon are not engine facts here.
+function M.deathObservation(event,modules)
+    modules=modules or loaded()
+    if type(event)~='table' or not modules.self or not event.actor then return nil,'death_unavailable' end
+    local ok,payload=pcall(function()
+        local victim=M.identity(event.actor,modules)
+        if not victim or not sameSpace(event.actor.cell,modules.self.cell) then return nil end
+        local distance=(event.actor.position-modules.self.position):length()
+        if distance~=distance or distance>2048 then return nil end
+        return require('scripts.LORKHAN.protocol').actorDied({victim=victim,game_time=event.gameTime,
+            calendar=event.calendar,audience=observationWitnesses(event.actor,modules,{victim})})
+    end)
+    if not ok or not payload then return nil,'death_unavailable' end
+    return payload
+end
+
 function M.spellCastObservation(event,modules)
     modules=modules or loaded()
     if type(event)~='table' or not modules.self or not event.caster then return nil,'spell_event_unavailable' end

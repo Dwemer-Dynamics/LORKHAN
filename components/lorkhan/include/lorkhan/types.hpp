@@ -277,7 +277,15 @@ struct BookReadAloudRequest {
     std::string text;
 };
 
-enum class GameDataType { item_pickup, barter_trade, spell_cast, actor_resurrected, inventory, captured_dialogue, actor_profile, automatic_diary, rpg_event, bored_event, quest_event, disposition };
+enum class GameDataType { item_pickup, barter_trade, spell_cast, actor_resurrected, actor_died, inventory, captured_dialogue, actor_profile, automatic_diary, rpg_event, bored_event, quest_event, disposition };
+
+// OpenMW 0.51 creates a dead persistent actor with its death animation already finished, so only a
+// non-persistent record without health replays a death on cell load. A persistent one can only
+// finish a death animation again after CreatureStats::resurrect.
+constexpr bool countsActorDeath(bool noRecordHealth, bool persistentRecord) noexcept
+{
+    return !noRecordHealth || persistentRecord;
+}
 
 struct GameDataRequest {
     InstallationId installation;

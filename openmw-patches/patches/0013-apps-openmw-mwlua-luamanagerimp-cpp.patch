@@ -1,5 +1,5 @@
 diff --git a/apps/openmw/mwlua/luamanagerimp.cpp b/apps/openmw/mwlua/luamanagerimp.cpp
-index c9c39344222ec38f3a20b9e5d109783e51300196..751634946ca72240cf96af9fbac0ff9234588d15 100644
+index c9c39344222ec38f3a20b9e5d109783e51300196..07803889b4ac83bf76c780f7a1af045dfd787cd1 100644
 --- a/apps/openmw/mwlua/luamanagerimp.cpp
 +++ b/apps/openmw/mwlua/luamanagerimp.cpp
 @@ -1,4 +1,5 @@
@@ -8,7 +8,7 @@ index c9c39344222ec38f3a20b9e5d109783e51300196..751634946ca72240cf96af9fbac0ff92
  
  #include <filesystem>
  
-@@ -12,9 +13,12 @@
+@@ -12,9 +13,14 @@
  #include <components/debug/debuglog.hpp>
  
  #include <components/esm/luascripts.hpp>
@@ -16,12 +16,14 @@ index c9c39344222ec38f3a20b9e5d109783e51300196..751634946ca72240cf96af9fbac0ff92
 +#include <lorkhan/types.hpp>
  #include <components/esm3/esmreader.hpp>
  #include <components/esm3/esmwriter.hpp>
++#include <components/esm3/loadcrea.hpp>
++#include <components/esm3/loadnpc.hpp>
  
 +#include <components/interpreter/defines.hpp>
  #include <components/settings/values.hpp>
  
  #include <components/l10n/manager.hpp>
-@@ -28,7 +32,10 @@
+@@ -28,7 +34,10 @@
  #include "../mwrender/bonegroup.hpp"
  #include "../mwrender/postprocessor.hpp"
  
@@ -32,34 +34,39 @@ index c9c39344222ec38f3a20b9e5d109783e51300196..751634946ca72240cf96af9fbac0ff92
  #include "../mwworld/esmstore.hpp"
  #include "../mwworld/player.hpp"
  #include "../mwworld/ptr.hpp"
-@@ -247,6 +254,11 @@
+@@ -247,6 +256,12 @@
              asLocal(ptr)->statsNextFrame();
  
          mLuaEvents.finalizeEventBatch();
 +        mLorkhanLockpickCount = 0;
 +        mLorkhanSpellCastCount = 0;
 +        mLorkhanResurrectionCount = 0;
++        mLorkhanDeathCount = 0;
 +        mLorkhanItemPickupCount = 0;
 +        mLorkhanBarterCount = 0;
  
          MWWorld::DateTimeManager& timeManager = *MWBase::Environment::get().getWorld()->getTimeManager();
          if (!timeManager.isPaused())
-@@ -389,6 +401,11 @@
+@@ -389,6 +404,12 @@
          MWBase::Environment::get().getWorld()->getPostProcessor()->disableDynamicShaders();
          mActiveLocalScripts.clear();
          mLuaEvents.clear();
 +        mLorkhanLockpickCount = 0;
 +        mLorkhanSpellCastCount = 0;
 +        mLorkhanResurrectionCount = 0;
++        mLorkhanDeathCount = 0;
 +        mLorkhanItemPickupCount = 0;
 +        mLorkhanBarterCount = 0;
          mEngineEvents.clear();
          mInputEvents.clear();
          mMenuInputEvents.clear();
-@@ -486,6 +503,192 @@
+@@ -484,6 +505,232 @@
+         if (actor.isEmpty())
+             return;
          mLuaEvents.addLocalEvent({ getId(actor), "Died", {} });
-     }
- 
++        onLorkhanActorDied(actor);
++    }
++
 +    // Observe only completed player transfers, copying item/source text before Lua handles the event.
 +    void LuaManager::onLorkhanItemPickup(const MWWorld::Ptr& player, const MWWorld::Ptr& item,
 +        int count, const MWWorld::Ptr& source)
@@ -203,6 +210,45 @@ index c9c39344222ec38f3a20b9e5d109783e51300196..751634946ca72240cf96af9fbac0ff92
 +        });
 +    }
 +
++    // Observe a completed non-player death once, when OpenMW counts it. Non-persistent corpses whose
++    // base record has no health replay their death animation on first cell load; that is not a gameplay death.
++    void LuaManager::onLorkhanActorDied(const MWWorld::Ptr& actor)
++    {
++        if (mPlayer.isEmpty() || actor == mPlayer || mLorkhanDeathCount >= 64) return;
++        bool noRecordHealth = false;
++        if (actor.getType() == ESM::NPC::sRecordId)
++        {
++            const ESM::NPC* npc = actor.get<ESM::NPC>()->mBase;
++            noRecordHealth = npc->mNpdtType != ESM::NPC::NPC_WITH_AUTOCALCULATED_STATS && npc->mNpdt.mHealth == 0;
++        }
++        else if (actor.getType() == ESM::Creature::sRecordId)
++            noRecordHealth = actor.get<ESM::Creature>()->mBase->mData.mHealth < 1;
++        else return;
++        if (!lorkhan::countsActorDeath(noRecordHealth, actor.getClass().isPersistent(actor))) return;
++        mLua.protectedCall([&](LuaUtil::LuaView& view) {
++            const auto scope = lorkhanObservationScope();
++            if (!scope) return;
++            ++mLorkhanDeathCount;
++            sol::table data = view.newTable();
++            data["actor"] = LObject(actor);
++            const auto timeManager = MWBase::Environment::get().getWorld()->getTimeManager();
++            data["gameTime"] = timeManager->getGameTime();
++            const auto stamp = timeManager->getEpochTimeStamp();
++            const lorkhan::LoadedSaveCalendar captured{stamp.mYear, stamp.mMonth, stamp.mDay, stamp.mGameHour};
++            if (captured.valid())
++            {
++                sol::table calendar = view.newTable();
++                calendar["year"] = captured.year;
++                calendar["month"] = captured.month;
++                calendar["day"] = captured.day;
++                calendar["hour"] = captured.hour;
++                data["calendar"] = calendar;
++            }
++            data["sessionId"] = scope->sessionId; data["generation"] = scope->generation;
++            sendLocalEvent(mPlayer, "LorkhanActorDied", data);
++        });
++    }
++
 +    // Observe actual resurrection, not an attempted resurrection action.
 +    void LuaManager::onLorkhanActorResurrected(const MWWorld::Ptr& actor)
 +    {
@@ -244,12 +290,10 @@ index c9c39344222ec38f3a20b9e5d109783e51300196..751634946ca72240cf96af9fbac0ff92
 +            data["text"] = Interpreter::fixDefinesDialog(text, context);
 +            sendLocalEvent(mPlayer, "LorkhanDialogueChoice", data);
 +        });
-+    }
-+
+     }
+ 
      void LuaManager::onDialogueResponse(
-         const MWWorld::Ptr& actor, const ESM::DialInfo& info, const ESM::Dialogue& record)
-     {
-@@ -504,6 +707,13 @@
+@@ -504,6 +751,13 @@
                  data["type"] = "voice";
              data["infoId"] = info.mId.serializeText();
              data["recordId"] = record.mId.serializeText();
