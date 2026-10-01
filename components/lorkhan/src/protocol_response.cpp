@@ -1602,6 +1602,52 @@ Result<void> validateItemPickupPayload(std::string_view body, json::ParseLimits 
     return Result<void>::success();
 }
 
+// Validate one committed barter: copied item lines plus net gold, never a model-supplied transfer.
+Result<void> validateBarterTradePayload(std::string_view body, json::ParseLimits limits)
+{
+    auto parsed = json::parse(body, limits);
+    if (!parsed) return Result<void>::failure(parsed.error());
+    const auto* object = parsed.value().object();
+    if (!object || !hasExactly(*object, {"player", "merchant", "player_received", "player_gave", "gold_to_player", "game_time"}, {"audience", "calendar"}))
+        return invalidSchema("barter trade fields mismatch");
+    if (const auto* calendar = json::find(*object, "calendar"); calendar && !validObservationCalendar(*calendar))
+        return invalidSchema("observation calendar is invalid");
+    auto player = parseIdentity(*json::find(*object, "player"));
+    auto merchant = parseIdentity(*json::find(*object, "merchant"));
+    if (!player || player.value().kind != "player") return invalidSchema("barter trade requires player identity");
+    if (!merchant || (merchant.value().kind != "npc" && merchant.value().kind != "creature"))
+        return invalidSchema("barter merchant must be an NPC or creature");
+    std::size_t lines = 0;
+    for (const char* field : {"player_received", "player_gave"}) {
+        const auto* list = json::find(*object, field)->array();
+        if (!list || list->size() > 32) return invalidSchema("barter item list exceeds bounds");
+        for (const auto& entry : *list) {
+            const auto* line = entry.object();
+            if (!line || !hasExactly(*line, {"item_record_id", "item_name", "count", "unit_value"})
+                || !requireString(*line, "item_record_id", 1, 256) || !requireString(*line, "item_name", 1, 256)
+                || !requireUnsigned(*line, "count", 2147483647, 1) || !requireUnsigned(*line, "unit_value", 2147483647))
+                return invalidSchema("barter item line is invalid");
+        }
+        lines += list->size();
+    }
+    if (lines == 0) return invalidSchema("barter trade requires a traded item");
+    const auto* gold = json::find(*object, "gold_to_player")->integer();
+    if (!gold || *gold < -2147483647 || *gold > 2147483647 || !requireNumber(*object, "game_time", 0, 9007199254740991.0))
+        return invalidSchema("barter trade values exceed bounds");
+    if (const auto* value = json::find(*object, "audience")) {
+        const auto* audience = value->array();
+        if (!audience || audience->size() > 12) return invalidSchema("barter audience exceeds bounds");
+        std::set<std::pair<std::uint64_t, std::uint64_t>> references;
+        for (const auto& entry : *audience) {
+            auto actor = parseIdentity(entry);
+            if (!actor || (actor.value().kind != "player" && actor.value().kind != "npc" && actor.value().kind != "creature")
+                || !references.emplace(actor.value().refnumContentFile, actor.value().refnumIndex).second)
+                return invalidSchema("barter audience identity is invalid or duplicated");
+        }
+    }
+    return Result<void>::success();
+}
+
 // Keep successful-cast observations closed and bounded before enqueueing transport work.
 Result<void> validateSpellCastPayload(std::string_view body, json::ParseLimits limits)
 {
@@ -1737,7 +1783,7 @@ Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(
     if (!request) return invalidSchemaValue<GameDataAcceptedResponse>(request.error().message);
     if (!session) return invalidSchemaValue<GameDataAcceptedResponse>(session.error().message);
     if (!generation) return invalidSchemaValue<GameDataAcceptedResponse>(generation.error().message);
-    if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile" && type.value() != "inventory" && type.value() != "spell_cast" && type.value() != "actor_resurrected" && type.value() != "item_pickup"
+    if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile" && type.value() != "inventory" && type.value() != "spell_cast" && type.value() != "actor_resurrected" && type.value() != "item_pickup" && type.value() != "barter_trade"
         &&type.value()!="automatic_diary"&&type.value()!="rpg_event"&&type.value()!="bored_event"&&type.value()!="quest_event"&&type.value()!="disposition"))
         return invalidSchemaValue<GameDataAcceptedResponse>("game-data type mismatch");
     if (!duplicate) return invalidSchemaValue<GameDataAcceptedResponse>(duplicate.error().message);

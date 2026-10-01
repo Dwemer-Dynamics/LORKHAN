@@ -1,8 +1,16 @@
 diff --git a/apps/openmw/mwbase/luamanager.hpp b/apps/openmw/mwbase/luamanager.hpp
-index bddfc3079a40c372d3725e206591fc5fa95a0ba7..a207873e006aa79fb586a9b74977406e6fd093ce 100644
+index bddfc3079a40c372d3725e206591fc5fa95a0ba7..5d936db388b57ca544fee42e8dd4745fdf38c775 100644
 --- a/apps/openmw/mwbase/luamanager.hpp
 +++ b/apps/openmw/mwbase/luamanager.hpp
-@@ -91,9 +91,16 @@
+@@ -5,6 +5,7 @@
+ #include <map>
+ #include <string>
+ #include <variant>
++#include <vector>
+ 
+ #include <SDL_events.h>
+ 
+@@ -91,9 +92,26 @@
              = 0;
          virtual void exteriorCreated(MWWorld::CellStore& cell) = 0;
          virtual void actorDied(const MWWorld::Ptr& actor) = 0;
@@ -14,6 +22,16 @@ index bddfc3079a40c372d3725e206591fc5fa95a0ba7..a207873e006aa79fb586a9b74977406e
              = 0;
 +        virtual void onLorkhanItemPickup(const MWWorld::Ptr& player, const MWWorld::Ptr& item,
 +            int count, const MWWorld::Ptr& source) = 0;
++        // Immutable text/value copy of one traded stack; never an engine reference.
++        struct LorkhanBarterLine
++        {
++            std::string recordId;
++            std::string name;
++            int count = 0;
++            int unitValue = 0;
++        };
++        virtual void onLorkhanBarterTrade(const MWWorld::Ptr& merchant, const std::vector<LorkhanBarterLine>& received,
++            const std::vector<LorkhanBarterLine>& gave, int goldToPlayer) = 0;
 +        virtual void onLorkhanSpellCast(const MWWorld::Ptr& caster, const MWWorld::Ptr& target,
 +            const std::string& spellId, const std::string& spellName) = 0;
          virtual void questUpdated(const ESM::RefId& questId, int stage) = 0;

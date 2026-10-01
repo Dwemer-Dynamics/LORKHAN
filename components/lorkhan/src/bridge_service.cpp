@@ -256,6 +256,8 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
             return validateDispositionPayload(gamedata->serializedPayload);
         if (gamedata->type == GameDataType::item_pickup)
             return validateItemPickupPayload(gamedata->serializedPayload);
+        if (gamedata->type == GameDataType::barter_trade)
+            return validateBarterTradePayload(gamedata->serializedPayload);
         if (gamedata->type == GameDataType::actor_resurrected)
             return validateActorResurrectedPayload(gamedata->serializedPayload);
         if (gamedata->type == GameDataType::spell_cast)

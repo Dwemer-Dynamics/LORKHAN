@@ -2107,6 +2107,9 @@ return {
             if nativeOk and native.submitItemPickup and native.sessionInfo then
                 player.flushItemPickups(state,native.sessionInfo(),native.submitItemPickup,core.getRealTime())
             end
+            if nativeOk and native.submitBarterTrade and native.sessionInfo then
+                player.flushBarterTrades(state,native.sessionInfo(),native.submitBarterTrade,core.getRealTime())
+            end
             if nativeOk and native.submitSpellCast and native.sessionInfo then
                 player.flushSpellCasts(state,native.sessionInfo(),native.submitSpellCast,core.getRealTime())
             end
@@ -2234,6 +2237,10 @@ return {
         LorkhanItemPickup=function(event)
             if not nativeOk or not native.submitItemPickup or not native.sessionInfo then return end
             player.captureItemPickup(state,event,native.sessionInfo(),adapter.itemPickupObservation,native.submitItemPickup,core.getRealTime())
+        end,
+        LorkhanBarterTrade=function(event)
+            if not nativeOk or not native.submitBarterTrade or not native.sessionInfo then return end
+            player.captureBarterTrade(state,event,native.sessionInfo(),adapter.barterTradeObservation,native.submitBarterTrade,core.getRealTime())
         end,
         LorkhanActorResurrected=function(event)
             if not nativeOk or not native.submitActorResurrected or not native.sessionInfo then return end

@@ -409,6 +409,32 @@ void testAcceptedProtocolResponses()
     CHECK(!lorkhan::validateItemPickupPayload(pickupPrefix + R"(,"code":"additem"})"));
     CHECK(lorkhan::validateItemPickupPayload(pickupPrefix + ",\"audience\":[" + protocolIdentity() + "]}"));
     CHECK(!lorkhan::validateItemPickupPayload(pickupPrefix + ",\"audience\":[" + protocolIdentity() + "," + protocolIdentity() + "]}"));
+    const std::string barterLine = R"({"item_record_id":"common_shirt_01","item_name":"Common Shirt","count":2,"unit_value":5})";
+    const std::string barterPrefix = "{\"player\":" + pickupPlayer + ",\"merchant\":" + protocolIdentity();
+    const auto barter = [&](const std::string& received, const std::string& gave, const std::string& rest) {
+        return barterPrefix + ",\"player_received\":[" + received + "],\"player_gave\":[" + gave + "]" + rest + "}";
+    };
+    CHECK(lorkhan::validateBarterTradePayload(barter(barterLine, "", R"(,"gold_to_player":-150,"game_time":100)")));
+    CHECK(lorkhan::validateBarterTradePayload(barter("", barterLine, R"(,"gold_to_player":150,"game_time":100,"calendar":{"year":427,"month":8,"day":16,"hour":12.5})")));
+    CHECK(!lorkhan::validateBarterTradePayload(barter("", "", R"(,"gold_to_player":150,"game_time":100)")));
+    CHECK(!lorkhan::validateBarterTradePayload(barter(barterLine, "", R"(,"gold_to_player":1.5,"game_time":100)")));
+    CHECK(!lorkhan::validateBarterTradePayload(barter(barterLine, "", R"(,"gold_to_player":-2147483648,"game_time":100)")));
+    CHECK(!lorkhan::validateBarterTradePayload(barter(barterLine, "", R"(,"gold_to_player":0,"game_time":100,"code":"additem")")));
+    auto zeroBarterLine = barterLine; zeroBarterLine.replace(zeroBarterLine.find("\"count\":2"), 9, "\"count\":0");
+    CHECK(!lorkhan::validateBarterTradePayload(barter(zeroBarterLine, "", R"(,"gold_to_player":0,"game_time":100)")));
+    auto pricedBarterLine = barterLine; pricedBarterLine.insert(pricedBarterLine.size() - 1, R"(,"price":3)");
+    CHECK(!lorkhan::validateBarterTradePayload(barter(pricedBarterLine, "", R"(,"gold_to_player":0,"game_time":100)")));
+    std::string manyBarterLines = barterLine;
+    for (int index = 1; index < 33; ++index) manyBarterLines += "," + barterLine;
+    CHECK(!lorkhan::validateBarterTradePayload(barter(manyBarterLines, "", R"(,"gold_to_player":0,"game_time":100)")));
+    auto playerMerchant = barter(barterLine, "", R"(,"gold_to_player":0,"game_time":100)");
+    playerMerchant.replace(playerMerchant.find("\"merchant\":") + 11, protocolIdentity().size(), pickupPlayer);
+    CHECK(!lorkhan::validateBarterTradePayload(playerMerchant));
+    CHECK(!lorkhan::validateBarterTradePayload(barter(barterLine, "", R"(,"gold_to_player":0,"game_time":100,"audience":[)" + protocolIdentity() + "," + protocolIdentity() + "]")));
+    auto barterAccepted = lorkhan::parseGameDataAcceptedResponse(
+        R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"barter_trade","duplicate":false})",
+        jsonHeaders);
+    CHECK(barterAccepted && barterAccepted.value().type == "barter_trade");
     const std::string castPrefix = "{\"caster\":" + protocolIdentity() + R"(,"spell_id":"firebite","spell_name":"Firebite","game_time":100)";
     CHECK(lorkhan::validateSpellCastPayload(castPrefix + "}"));
     const auto resurrection=std::string("{\"actor\":")+protocolIdentity()+",\"audience\":[],\"game_time\":1}";

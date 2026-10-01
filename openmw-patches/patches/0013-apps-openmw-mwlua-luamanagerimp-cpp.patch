@@ -1,5 +1,5 @@
 diff --git a/apps/openmw/mwlua/luamanagerimp.cpp b/apps/openmw/mwlua/luamanagerimp.cpp
-index c9c39344222ec38f3a20b9e5d109783e51300196..5cac456ae0e0daa8134ffdbc11a5a991810f1b7f 100644
+index c9c39344222ec38f3a20b9e5d109783e51300196..751634946ca72240cf96af9fbac0ff9234588d15 100644
 --- a/apps/openmw/mwlua/luamanagerimp.cpp
 +++ b/apps/openmw/mwlua/luamanagerimp.cpp
 @@ -1,4 +1,5 @@
@@ -32,7 +32,7 @@ index c9c39344222ec38f3a20b9e5d109783e51300196..5cac456ae0e0daa8134ffdbc11a5a991
  #include "../mwworld/esmstore.hpp"
  #include "../mwworld/player.hpp"
  #include "../mwworld/ptr.hpp"
-@@ -247,6 +254,10 @@
+@@ -247,6 +254,11 @@
              asLocal(ptr)->statsNextFrame();
  
          mLuaEvents.finalizeEventBatch();
@@ -40,10 +40,11 @@ index c9c39344222ec38f3a20b9e5d109783e51300196..5cac456ae0e0daa8134ffdbc11a5a991
 +        mLorkhanSpellCastCount = 0;
 +        mLorkhanResurrectionCount = 0;
 +        mLorkhanItemPickupCount = 0;
++        mLorkhanBarterCount = 0;
  
          MWWorld::DateTimeManager& timeManager = *MWBase::Environment::get().getWorld()->getTimeManager();
          if (!timeManager.isPaused())
-@@ -389,6 +400,10 @@
+@@ -389,6 +401,11 @@
          MWBase::Environment::get().getWorld()->getPostProcessor()->disableDynamicShaders();
          mActiveLocalScripts.clear();
          mLuaEvents.clear();
@@ -51,15 +52,14 @@ index c9c39344222ec38f3a20b9e5d109783e51300196..5cac456ae0e0daa8134ffdbc11a5a991
 +        mLorkhanSpellCastCount = 0;
 +        mLorkhanResurrectionCount = 0;
 +        mLorkhanItemPickupCount = 0;
++        mLorkhanBarterCount = 0;
          mEngineEvents.clear();
          mInputEvents.clear();
          mMenuInputEvents.clear();
-@@ -484,6 +499,144 @@
-         if (actor.isEmpty())
-             return;
+@@ -486,6 +503,192 @@
          mLuaEvents.addLocalEvent({ getId(actor), "Died", {} });
-+    }
-+
+     }
+ 
 +    // Observe only completed player transfers, copying item/source text before Lua handles the event.
 +    void LuaManager::onLorkhanItemPickup(const MWWorld::Ptr& player, const MWWorld::Ptr& item,
 +        int count, const MWWorld::Ptr& source)
@@ -103,6 +103,54 @@ index c9c39344222ec38f3a20b9e5d109783e51300196..5cac456ae0e0daa8134ffdbc11a5a991
 +            }
 +            data["sessionId"] = scope->sessionId; data["generation"] = scope->generation;
 +            sendLocalEvent(mPlayer, "LorkhanItemPickup", data);
++        });
++    }
++
++    // Observe one committed player barter; TradeWindow copied every line before the item transfer.
++    void LuaManager::onLorkhanBarterTrade(const MWWorld::Ptr& merchant, const std::vector<LorkhanBarterLine>& received,
++        const std::vector<LorkhanBarterLine>& gave, int goldToPlayer)
++    {
++        if (mPlayer.isEmpty() || merchant.isEmpty() || merchant == mPlayer || !merchant.getClass().isActor()
++            || mLorkhanBarterCount >= 8 || received.size() > 32 || gave.size() > 32
++            || (received.empty() && gave.empty()) || goldToPlayer < -2147483647) return;
++        for (const auto* lines : { &received, &gave })
++            for (const LorkhanBarterLine& line : *lines)
++                if (line.recordId.empty() || line.recordId.size() > 256 || line.name.empty() || line.name.size() > 256
++                    || line.count <= 0 || line.unitValue < 0) return;
++        mLua.protectedCall([&](LuaUtil::LuaView& view) {
++            const auto scope = lorkhanObservationScope();
++            if (!scope) return;
++            ++mLorkhanBarterCount;
++            const auto copyLines = [&](const std::vector<LorkhanBarterLine>& lines) {
++                sol::table result = view.newTable();
++                for (std::size_t index = 0; index < lines.size(); ++index)
++                {
++                    sol::table line = view.newTable();
++                    line["itemRecordId"] = lines[index].recordId; line["itemName"] = lines[index].name;
++                    line["count"] = lines[index].count; line["unitValue"] = lines[index].unitValue;
++                    result[index + 1] = line;
++                }
++                return result;
++            };
++            sol::table data = view.newTable();
++            data["player"] = LObject(mPlayer); data["merchant"] = LObject(merchant);
++            data["playerReceived"] = copyLines(received); data["playerGave"] = copyLines(gave);
++            data["goldToPlayer"] = goldToPlayer;
++            const auto timeManager = MWBase::Environment::get().getWorld()->getTimeManager();
++            data["gameTime"] = timeManager->getGameTime();
++            const auto stamp = timeManager->getEpochTimeStamp();
++            const lorkhan::LoadedSaveCalendar captured{stamp.mYear, stamp.mMonth, stamp.mDay, stamp.mGameHour};
++            if (captured.valid())
++            {
++                sol::table calendar = view.newTable();
++                calendar["year"] = captured.year;
++                calendar["month"] = captured.month;
++                calendar["day"] = captured.day;
++                calendar["hour"] = captured.hour;
++                data["calendar"] = calendar;
++            }
++            data["sessionId"] = scope->sessionId; data["generation"] = scope->generation;
++            sendLocalEvent(mPlayer, "LorkhanBarterTrade", data);
 +        });
 +    }
 +
@@ -196,10 +244,12 @@ index c9c39344222ec38f3a20b9e5d109783e51300196..5cac456ae0e0daa8134ffdbc11a5a991
 +            data["text"] = Interpreter::fixDefinesDialog(text, context);
 +            sendLocalEvent(mPlayer, "LorkhanDialogueChoice", data);
 +        });
-     }
- 
++    }
++
      void LuaManager::onDialogueResponse(
-@@ -504,6 +657,13 @@
+         const MWWorld::Ptr& actor, const ESM::DialInfo& info, const ESM::Dialogue& record)
+     {
+@@ -504,6 +707,13 @@
                  data["type"] = "voice";
              data["infoId"] = info.mId.serializeText();
              data["recordId"] = record.mId.serializeText();

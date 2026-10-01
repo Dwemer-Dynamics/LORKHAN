@@ -2755,7 +2755,7 @@ namespace MWLua
             }
 
             static std::vector<std::string> capabilities()
-            { return { "relationship.disposition", "diary.books.v1", "context.item_pickup.v1", "context.spell_cast.v1", "context.actor_resurrected.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.item.create", "action.gold.create", "action.actor.spawn", "action.actor.teleport_to_player", "action.player.teleport", "action.actor.restore", "action.actor.resurrect", "action.actor.kill", "action.conversation.end", "action.ai.follow", "action.ai.stop",
+            { return { "relationship.disposition", "diary.books.v1", "context.item_pickup.v1", "context.barter_trade.v1", "context.spell_cast.v1", "context.actor_resurrected.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.item.create", "action.gold.create", "action.actor.spawn", "action.actor.teleport_to_player", "action.player.teleport", "action.actor.restore", "action.actor.resurrect", "action.actor.kill", "action.conversation.end", "action.ai.follow", "action.ai.stop",
                 "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.weapon.sheathe", "action.item.give", "action.item.take", "action.item.pickup", "action.gold.give", "action.gold.take", "action.service.barter", "action.service.training", "action.service.spells", "action.service.travel", "action.service.spellmaking", "action.service.enchanting", "action.service.repair", "action.spell.cast", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
                 "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" }; }
@@ -2995,7 +2995,7 @@ namespace MWLua
             api["version"] = std::string(lorkhan::kClientVersion);
             api["capabilities"] = [lua] {
                 sol::table result(lua, sol::create); std::size_t index = 1;
-            for (const auto& capability : std::vector<std::string>{ "relationship.disposition", "diary.books.v1", "context.item_pickup.v1", "context.spell_cast.v1", "context.actor_resurrected.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session",
+            for (const auto& capability : std::vector<std::string>{ "relationship.disposition", "diary.books.v1", "context.item_pickup.v1", "context.barter_trade.v1", "context.spell_cast.v1", "context.actor_resurrected.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session",
                 "action.item.create", "action.gold.create", "action.actor.spawn", "action.actor.teleport_to_player", "action.player.teleport", "action.actor.restore", "action.actor.resurrect", "action.actor.kill",
                 "action.ai.follow", "action.ai.stop", "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
                 "action.combat.start", "action.combat.stop", "action.weapon.sheathe", "action.item.give", "action.item.take", "action.item.pickup", "action.gold.give", "action.gold.take", "action.service.barter", "action.service.training", "action.service.spells", "action.service.travel", "action.service.spellmaking", "action.service.enchanting", "action.service.repair", "action.spell.cast", "action.animation.play", "action.item.equip", "action.item.unequip",
@@ -3026,6 +3026,9 @@ namespace MWLua
             };
             api["submitItemPickup"] = [lua](sol::table payload) {
                 return client().submitGameData(lua, lorkhan::GameDataType::item_pickup, std::move(payload));
+            };
+            api["submitBarterTrade"] = [lua](sol::table payload) {
+                return client().submitGameData(lua, lorkhan::GameDataType::barter_trade, std::move(payload));
             };
             api["submitActorResurrected"] = [lua](sol::table payload) {
                 return client().submitGameData(lua, lorkhan::GameDataType::actor_resurrected, std::move(payload));

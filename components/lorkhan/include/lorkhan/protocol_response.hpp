@@ -509,6 +509,7 @@ struct DebugCommandResultAcceptedResponse {
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 // Validate the bounded observation before it can enter the native transport queue.
 [[nodiscard]] Result<void> validateItemPickupPayload(std::string_view body, json::ParseLimits limits = {});
+[[nodiscard]] Result<void> validateBarterTradePayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateActorResurrectedPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateSpellCastPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateDispositionPayload(std::string_view body, json::ParseLimits limits = {});

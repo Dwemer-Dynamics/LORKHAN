@@ -333,8 +333,8 @@ target. A target is not proof of a hit. Failed or scripted casts are not capture
 Pickup observations contain the player, item ID/name, transferred count, unit gold
 value, game time, and source kind (`world`, `container`, or `actor`). Optional source
 ID/name is descriptive text only, never an actor routing identity. Successful normal
-world pickups, container/actor transfers, and harvesting are supported; barter,
-crafting, console/script additions, and cancelled transfers are not pickup observations.
+world pickups, container/actor transfers, and harvesting are supported; barter (see
+below), crafting, console/script additions, and cancelled transfers are not pickup observations.
 Gold is normalized once to its acquired inventory quantity and canonical unit value.
 
 The server retains original observations and projects `spellcast`, `npcspellcast`,
@@ -342,6 +342,24 @@ and `itemfound` event history. Scoped conversation context respects the existing
 Infoaction category, location/item/magic blacklists, Detect Magic Events (default on),
 and Item Pickup Detection Value (default 500 total gold, count times unit value).
 Global, Core, and NPC overrides affect prompt inclusion; they do not erase event logs.
+
+### Committed barter observations
+
+`gamedata` type `barter_trade` records one completed player barter after OpenMW commits
+the item transfer and gold change. Offers, cancels, unaffordable offers, failed haggles,
+stolen-item confiscation and AI item/gold actions emit nothing. The engine copies each
+traded stack's record ID, name, count and base unit value before transfer; Lua never
+receives item references. Lines merge by record ID, name and value, at most 32 per side,
+and at least one line is required. `player_received` lists what the player bought,
+`player_gave` what the player sold, and signed `gold_to_player` is the committed net gold
+(negative when the player paid). Unit values are base values, not prices. The merchant is
+an NPC or creature identity; witnesses, calendar and session/generation fencing follow
+pickup observations, with at most eight trades per frame and 32 queued Lua retries.
+
+Barter is never an `itemfound` pickup. The server projects exactly one CHIM-style
+`infoaction` row from the player to the merchant ("X traded with Y. X sold: ... X bought:
+... Y paid X N gold."). Prompt context applies the Infoaction category and the item
+blacklist to every traded line; Item Pickup Detection Value does not apply.
 
 New observations also carry the capture-time calendar using the existing loaded-save
 shape (zero-based month). Loading an earlier save retires observations at or beyond

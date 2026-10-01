@@ -1588,6 +1588,37 @@ test('item pickups preserve exact native counts and source text with session-own
  local before=attempts;eq(playerState.flushItemPickups(state,{session_id=UUID.session,generation=2},submit,2),false)
  eq(attempts,before);eq(state.itemPickups,nil)
 end)
+test('committed barter trades stay merchant-scoped, bounded, and separate from pickups',function()
+ local playerState=require('scripts.LORKHAN.player_state') local state={}
+ local session={session_id=UUID.session,generation=1};local event={sessionId=UUID.session,generation=1}
+ local line={item_record_id='common_shirt_01',item_name='Common Shirt',count=2,unit_value=5}
+ local args={player=playerId,merchant=npc,player_received={line},player_gave={},gold_to_player=-10,game_time=123}
+ local trade=protocol.barterTrade(args);eq(trade.merchant.record_id,npc.record_id);eq(#trade.player_received,1)
+ eq(#trade.player_gave,0);eq(trade.gold_to_player,-10);eq(trade.audience,nil)
+ args.player_received={};eq(protocol.barterTrade(args),nil)
+ args.player_gave={line};eq(protocol.barterTrade(args).player_gave[1].count,2)
+ args.gold_to_player=1.5;eq(protocol.barterTrade(args),nil);args.gold_to_player=0/0;eq(protocol.barterTrade(args),nil)
+ args.gold_to_player=-2147483648;eq(protocol.barterTrade(args),nil);args.gold_to_player=150
+ args.merchant=playerId;eq(protocol.barterTrade(args),nil);args.merchant=npc
+ args.player_gave={{item_record_id='x',item_name='X',count=0,unit_value=1}};eq(protocol.barterTrade(args),nil)
+ args.player_gave={};for index=1,33 do args.player_gave[index]=line end;eq(protocol.barterTrade(args),nil)
+ args.player_gave={line};args.audience={npc};eq(protocol.barterTrade(args),nil);args.audience=nil
+ local function reader()return protocol.barterTrade(args)end
+ local accept=false;local attempts=0
+ local function submit(payload)attempts=attempts+1;eq(payload.gold_to_player,150);eq(payload.item_name,nil);return accept end
+ truthy(playerState.captureBarterTrade(state,event,session,reader,submit,0));eq(#state.barterTrades.items,1)
+ eq(state.itemPickups,nil)
+ accept=true;truthy(playerState.flushBarterTrades(state,session,submit,0.1));eq(#state.barterTrades.items,0)
+ event.generation=2;eq(playerState.captureBarterTrade(state,event,session,reader,submit,1),false)
+ event.generation=1;accept=false
+ for _=1,32 do truthy(playerState.captureBarterTrade(state,event,session,reader,submit,1)) end
+ eq(playerState.captureBarterTrade(state,event,session,reader,submit,1),false)
+ local before=attempts;eq(playerState.flushBarterTrades(state,{session_id=UUID.session,generation=2},submit,2),false)
+ eq(attempts,before);eq(state.barterTrades,nil)
+ local file=assert(io.open(root..'/scripts/LORKHAN/player.lua'));local source=file:read('*a');file:close()
+ local handler=assert(source:match('LorkhanBarterTrade=function%(event%)(.-)\n        end,'))
+ truthy(handler:find('captureBarterTrade',1,true));eq(handler:find('ItemPickup',1,true),nil)
+end)
 test('inventory observations are changed-only bounded and fenced from failed reads and sessions',function()
  local state={} local playerState=require('scripts.LORKHAN.player_state')
  local session={session_id=UUID.session,generation=1}
@@ -2709,6 +2740,15 @@ test('OpenMW adapter maps API-129 actor identity and camera target',function()
  eq(#openmwAdapter.itemPickupObservation(pickup,modules).audience,0)
  pickup.source=nil;pickup.sourceKind='world';eq(openmwAdapter.itemPickupObservation(pickup,modules).source,nil)
  pickup.count=-1;eq(openmwAdapter.itemPickupObservation(pickup,modules),nil)
+ local barter={player=playerTarget,merchant=object,goldToPlayer=-20,gameTime=124,
+  playerReceived={{itemRecordId='common_shirt_01',itemName='Common Shirt',count=2,unitValue=5}},playerGave={},
+  calendar={year=427,month=11,day=31,hour=8.5}}
+ local traded=openmwAdapter.barterTradeObservation(barter,modules)
+ eq(traded.merchant.record_id,'fargoth');eq(traded.player.kind,'player');eq(traded.player_received[1].unit_value,5)
+ eq(#traded.player_gave,0);eq(traded.gold_to_player,-20);eq(traded.calendar.hour,8.5)
+ for _,witness in ipairs(traded.audience) do truthy(witness.record_id~='fargoth') end
+ barter.playerReceived={};eq(openmwAdapter.barterTradeObservation(barter,modules),nil)
+ barter.playerGave={{itemRecordId='x',itemName='X',count=1,unitValue=-1}};eq(openmwAdapter.barterTradeObservation(barter,modules),nil)
 
 end)
 

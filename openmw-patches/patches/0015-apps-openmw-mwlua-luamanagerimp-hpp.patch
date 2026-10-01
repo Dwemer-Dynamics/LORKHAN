@@ -1,8 +1,8 @@
 diff --git a/apps/openmw/mwlua/luamanagerimp.hpp b/apps/openmw/mwlua/luamanagerimp.hpp
-index c1fe00d1f3821fafafa7f8c67ef7de421bbc4ec3..bfa29d095f65c402d97898b63f6d59fd6353afd8 100644
+index c1fe00d1f3821fafafa7f8c67ef7de421bbc4ec3..3e56144480267f68fc4d6b59b9dacc29d785950f 100644
 --- a/apps/openmw/mwlua/luamanagerimp.hpp
 +++ b/apps/openmw/mwlua/luamanagerimp.hpp
-@@ -110,6 +110,13 @@
+@@ -110,6 +110,15 @@
          void questUpdated(const ESM::RefId& questId, int stage) override;
          void uiModeChanged(const MWWorld::Ptr& arg) override;
          void actorDied(const MWWorld::Ptr& actor) override;
@@ -10,13 +10,15 @@ index c1fe00d1f3821fafafa7f8c67ef7de421bbc4ec3..bfa29d095f65c402d97898b63f6d59fd
 +        void onLorkhanActorResurrected(const MWWorld::Ptr& actor) override;
 +        void onLorkhanItemPickup(const MWWorld::Ptr& player, const MWWorld::Ptr& item,
 +            int count, const MWWorld::Ptr& source) override;
++        void onLorkhanBarterTrade(const MWWorld::Ptr& merchant, const std::vector<LorkhanBarterLine>& received,
++            const std::vector<LorkhanBarterLine>& gave, int goldToPlayer) override;
 +        void onLorkhanSpellCast(const MWWorld::Ptr& caster, const MWWorld::Ptr& target,
 +            const std::string& spellId, const std::string& spellName) override;
 +        void onLorkhanDialogueChoice(const MWWorld::Ptr& actor, const std::string& text) override;
          void onDialogueResponse(
              const MWWorld::Ptr& actor, const ESM::DialInfo& info, const ESM::Dialogue& record) override;
  
-@@ -230,6 +237,10 @@
+@@ -230,6 +239,11 @@
              sol::main_object mArg;
          };
          std::vector<CallbackWithData> mQueuedCallbacks;
@@ -24,6 +26,7 @@ index c1fe00d1f3821fafafa7f8c67ef7de421bbc4ec3..bfa29d095f65c402d97898b63f6d59fd
 +        std::size_t mLorkhanSpellCastCount = 0;
 +        std::size_t mLorkhanResurrectionCount = 0;
 +        std::size_t mLorkhanItemPickupCount = 0;
++        std::size_t mLorkhanBarterCount = 0;
  
          // Queued actions that should be done in main thread. Processed by applyQueuedChanges().
          class DelayedAction

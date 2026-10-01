@@ -226,6 +226,30 @@ function M.itemPickupObservation(event,modules)
     return payload
 end
 
+-- Native copied the traded lines before transfer; no stale item reference or inventory diff reaches Lua.
+function M.barterTradeObservation(event,modules)
+    modules=modules or loaded()
+    if type(event)~='table' or not event.player or not event.merchant then return nil,'barter_event_unavailable' end
+    local ok,payload=pcall(function()
+        local player=M.identity(event.player,modules)
+        local merchant=M.identity(event.merchant,modules)
+        if not player or player.kind~='player' or not merchant then return nil end
+        local function lines(source)
+            local result={}
+            for index,line in ipairs(type(source)=='table' and source or {}) do
+                result[index]={item_record_id=line.itemRecordId,item_name=line.itemName,count=line.count,unit_value=line.unitValue}
+            end
+            return result
+        end
+        return require('scripts.LORKHAN.protocol').barterTrade({player=player,merchant=merchant,
+            player_received=lines(event.playerReceived),player_gave=lines(event.playerGave),
+            gold_to_player=event.goldToPlayer,game_time=event.gameTime,calendar=event.calendar,
+            audience=observationWitnesses(event.player,modules,{player,merchant})})
+    end)
+    if not ok or not payload then return nil,'barter_observation_unavailable' end
+    return payload
+end
+
 function M.resolve(identity, modules)
     modules=modules or loaded()
     if not identity or not modules.core or not modules.nearby then return nil,'resolver_unavailable' end
