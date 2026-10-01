@@ -170,6 +170,9 @@ end
 
 function M.lifecycle(state,kind)
     if state.bridge and state.bridge.cancelVoiceCapture then state.bridge.cancelVoiceCapture() end
+    -- Generation fencing cannot restore a temporary Narrator/Director target, so drop it with the old world.
+    local temporaryTarget=state.modeRestore~=nil or state.directorPlan~=nil
+        or state.conversation.target~=nil and state.conversation.target.kind=='narrator'
     cancelResponseLane(state,kind,true)
     detachAll(state,kind)
     state.generation=conversation.invalidate(state.conversation,kind)
@@ -187,6 +190,8 @@ function M.lifecycle(state,kind)
     state.ignoredOpenMicStt={} state.ignoredOpenMicSttOrder={}
     state.combatThreats={} state.combatActors={} state.combatVerified={} state.actorStates={}
     state.rechatEligibility=nil state.autonomy=newAutonomyState()
+    state.modeRestore=nil
+    if temporaryTarget then conversation.clearTarget(state.conversation) end
     state.recentVanillaDialogue={}
     state.hardHalted=false state.conversation.hardHalted=false
     state.registry:clear()

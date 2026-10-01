@@ -1431,10 +1431,29 @@ test('Director scene notices start once and stop on completion and cancellation'
  for _,ending in ipairs({'halt','load','disabled','transport'}) do
   s,b,notices=scene()
   if ending=='halt' then orchestrator.halt(s)
-  elseif ending=='load' then orchestrator.lifecycle(s,'load')
+  elseif ending=='load' then orchestrator.lifecycle(s,'load');eq(s.conversation.target,nil)
   elseif ending=='disabled' then orchestrator.setAiEnabled(s,false)
   else b.results={{type='transport.failure',request_id=UUID.request,reason='network_error'}};orchestrator.poll(s) end
   eq(#notices,2);eq(notices[2],false);eq(s.directorPlan,nil)
+ end
+end)
+test('load and new game drop temporary Narrator and Director targets',function()
+ for _,kind in ipairs({'load','new_game'}) do
+  for _,mode in ipairs({'narrator','director'}) do
+   local b=fake.bridge();local s=orchestrator.new(b);orchestrator.configureSession(s,UUID.session)
+   orchestrator.activate(s,npc,{});truthy(conversation.setTarget(s.conversation,npc))
+   local args=b.nextTurnMetadata();args.text='set the scene';args.input_parsed=true
+   args.language='en-US';args.speaker=playerId;args.context={};args.capabilities={'dialogue.text'}
+   args.recent_action_results={};args.ui_source='lorkhan_text';args.execution_mode=mode
+   args.selectedTarget=npc;args.selectedTargetPresent=true
+   truthy(orchestrator.submitText(s,args));eq(s.conversation.target.kind,'narrator')
+   truthy(identity.same(s.modeRestore.target,npc))
+   orchestrator.lifecycle(s,kind)
+   eq(s.conversation.target,nil);eq(#s.conversation.audience,0);eq(s.modeRestore,nil)
+  end
+  local b=fake.bridge();local s=orchestrator.new(b);orchestrator.configureSession(s,UUID.session)
+  orchestrator.activate(s,npc,{});truthy(conversation.setTarget(s.conversation,npc))
+  orchestrator.lifecycle(s,kind);truthy(identity.same(s.conversation.target,npc)) -- Ordinary targets are unchanged.
  end
 end)
 
