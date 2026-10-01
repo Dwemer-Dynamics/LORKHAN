@@ -83,6 +83,7 @@ transfers=transferActions.new(bridge,function(event)
     emit('LORKHAN_ACTION_STATUS',{name=event.action_name,status=event.result.status,
         reason=event.result.reason_code,submitted=true,queue_completed=queued==true,queue_reason=reason})
 end)
+state.queueActionResult=function(event) return transferActions.receiveResult(transfers,event) end
 local diaries=diaryBooks.new(bridge,function(actor) return state.registry:resolve(actor) end)
 local dispositions=disposition.new(bridge,function(actor) return state.registry:resolve(actor) end,
     currentPlayer,types,adapter.identity,function()
@@ -597,11 +598,7 @@ return {
         LORKHAN_ACTION_RESULT=function(event)
             local result=event and event.result
             if not result then return end
-            local submitted,reason=bridge.submitActionResult and bridge.submitActionResult(result)
-            local queued,queueReason=orchestrator.actionResult(state,event)
-            emit('LORKHAN_ACTION_STATUS',{name=event.action_name,status=result.status,reason=result.reason_code,
-                submitted=submitted~=nil and submitted~=false,submit_reason=reason,
-                queue_completed=queued==true,queue_reason=queueReason})
+            transferActions.receiveResult(transfers,event)
         end,
         LORKHAN_SPEECH_STATUS=function(event)
             orchestrator.speechStatus(state,event)

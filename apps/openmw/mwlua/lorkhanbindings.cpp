@@ -551,7 +551,12 @@ namespace MWLua
                 std::vector<TransferActor> actors;
                 std::vector<TransferItem> items;
             };
-            struct TransferRecord {
+            struct ActionReceiptRecord {
+                std::optional<lorkhan::ActionResultRequest> receipt;
+                std::optional<lorkhan::RequestId> receiptRequest;
+                std::string receiptStatus="not_submitted", receiptReason;
+            };
+            struct TransferRecord : ActionReceiptRecord {
                 std::shared_ptr<const lorkhan::ActionIntent> intent;
                 std::shared_ptr<TransferSnapshot> snapshot;
                 lorkhan::ActionCommitGate gate;
@@ -562,9 +567,6 @@ namespace MWLua
                 std::vector<std::string> createdIds;
                 std::string destinationCell;
                 double x{},y{},z{};
-                std::optional<lorkhan::ActionResultRequest> receipt;
-                std::optional<lorkhan::RequestId> receiptRequest;
-                std::string receiptStatus="not_submitted", receiptReason;
             };
 
         public:
@@ -936,7 +938,7 @@ namespace MWLua
             {
                 const std::string session=m_session?m_session->value():"";
                 if(m_transferSession==session&&m_transferGeneration==generation())return;
-                m_transfers.clear();m_transferSnapshots.clear();m_transferOrder.clear();
+                m_transfers.clear();m_actionReceipts.clear();m_transferSnapshots.clear();m_transferOrder.clear();
                 m_transferSession=session;m_transferGeneration=generation();
             }
 
@@ -1150,7 +1152,13 @@ namespace MWLua
                 }
                 if(event.type!=lorkhan::ProtocolEventType::action_intent)return;
                 const auto& intent=std::get<lorkhan::ActionIntentEventPayload>(event.payload).intent;
-                if(!transferKind(intent.kind)||m_transfers.contains(intent.action.value())||m_transfers.size()>=256)return;
+                if(!transferKind(intent.kind)||m_transfers.contains(intent.action.value()))return;
+                if(m_transfers.size()>=256){
+                    auto completed=std::find_if(m_transfers.begin(),m_transfers.end(),
+                        [](const auto& entry){return entry.second.receiptStatus=="accepted"&&!entry.second.spellHook;});
+                    if(completed==m_transfers.end())return;
+                    m_transfers.erase(completed);
+                }
                 TransferRecord record;record.intent=std::make_shared<lorkhan::ActionIntent>(intent);
                 if(snapshot!=m_transferSnapshots.end())record.snapshot=snapshot->second;
                 else record.status="failed",record.reason="observation_unavailable";
@@ -1162,9 +1170,13 @@ namespace MWLua
                 const auto found=m_transfers.find(id);if(found==m_transfers.end())return;
                 auto& record=found->second;
                 if(record.spellHook&&record.status=="pending"){
-                    record.status="cancelled";record.reason="cancelled";record.gate.finish();return;
+                    record.status=parseUtc(record.intent->expiresAt)<=std::chrono::system_clock::now()?"timed_out":"cancelled";
+                    record.reason=record.status=="timed_out"?"action_expired":"cancelled";record.gate.finish();return;
                 }
-                if((record.status=="pending"||record.status=="awaiting_confirmation")&&record.gate.cancel())record.status="cancelled",record.reason="cancelled";
+                if((record.status=="pending"||record.status=="awaiting_confirmation")&&record.gate.cancel()){
+                    record.status=parseUtc(record.intent->expiresAt)<=std::chrono::system_clock::now()?"timed_out":"cancelled";
+                    record.reason=record.status=="timed_out"?"action_expired":"cancelled";
+                }
             }
 
             sol::table executeTransfer(sol::state_view lua,LuaManager* manager,const std::string& id)
@@ -1181,7 +1193,7 @@ namespace MWLua
                     }
                 }
                 if(record.spellHook&&record.status=="pending"&&parseUtc(record.intent->expiresAt)<=std::chrono::system_clock::now()){
-                    record.status="failed";record.reason="action_expired";record.gate.finish();
+                    record.status="timed_out";record.reason="action_expired";record.gate.finish();
                 }
                 if(record.status=="awaiting_confirmation"&&record.gate.queue()){
                     record.status="pending";
@@ -1227,24 +1239,38 @@ namespace MWLua
                 return result;
             }
 
+            // Actor and native mutations use the same acknowledged receipt lifecycle.
+            sol::table actionReceiptStatus(sol::state_view lua,const std::string& id) const
+            {
+                if(m_transfers.contains(id))return transferReceiptStatus(lua,id);
+                sol::table result(lua,sol::create);const auto found=m_actionReceipts.find(id);
+                result["status"]=found==m_actionReceipts.end()?"not_submitted":found->second.receiptStatus;
+                if(found!=m_actionReceipts.end()&&!found->second.receiptReason.empty())
+                    result["reason_code"]=found->second.receiptReason;
+                return result;
+            }
+
             bool settleTransferReceipt(const lorkhan::InboundResult& result)
             {
-                for(auto& [id,record]:m_transfers){
-                    if(!record.receiptRequest||*record.receiptRequest!=result.request)continue;
-                    record.receiptStatus="failed";record.receiptReason="receipt_transport_failed";
-                    if(result.kind==lorkhan::ResponseKind::completed&&record.receipt){
-                        auto parsed=lorkhan::parseActionResultAcceptedResponse(result.payload,jsonHeaders());
-                        if(parsed&&parsed.value().action.value()==id&&parsed.value().status==record.receipt->status
-                            &&parsed.value().correlation.message==record.receipt->message
-                            &&parsed.value().correlation.request==record.receipt->correlation.request
-                            &&parsed.value().correlation.session==record.receipt->correlation.session
-                            &&parsed.value().correlation.generation==record.receipt->correlation.generation
-                            &&parsed.value().correlation.turn==record.receipt->turn)
-                            record.receiptStatus="accepted",record.receiptReason.clear();
+                auto settle=[&](auto& records) {
+                    for(auto& [id,record]:records){
+                        if(!record.receiptRequest||*record.receiptRequest!=result.request)continue;
+                        record.receiptStatus="failed";record.receiptReason="receipt_transport_failed";
+                        if(result.kind==lorkhan::ResponseKind::completed&&record.receipt){
+                            auto parsed=lorkhan::parseActionResultAcceptedResponse(result.payload,jsonHeaders());
+                            if(parsed&&parsed.value().action.value()==id&&parsed.value().status==record.receipt->status
+                                &&parsed.value().correlation.message==record.receipt->message
+                                &&parsed.value().correlation.request==record.receipt->correlation.request
+                                &&parsed.value().correlation.session==record.receipt->correlation.session
+                                &&parsed.value().correlation.generation==record.receipt->correlation.generation
+                                &&parsed.value().correlation.turn==record.receipt->turn)
+                                record.receiptStatus="accepted",record.receiptReason.clear();
+                        }
+                        return true;
                     }
-                    return true;
-                }
-                return false;
+                    return false;
+                };
+                return settle(m_transfers)||settle(m_actionReceipts);
             }
 
             // The hook stays attached until release, including cancelled animations, to prevent target fallback.
@@ -1449,7 +1475,7 @@ namespace MWLua
             {
                 record.status="failed";record.reason="transfer_precondition_failed";
                 if(!record.snapshot||record.snapshot->cancelled){record.reason="cancelled";record.status="cancelled";return;}
-                if(parseUtc(record.intent->expiresAt)<=std::chrono::system_clock::now()){record.reason="action_expired";return;}
+                if(parseUtc(record.intent->expiresAt)<=std::chrono::system_clock::now()){record.status="timed_out";record.reason="action_expired";return;}
                 try{
                     using K=lorkhan::ActionIntentKind;const auto& intent=*record.intent;
                     const TransferActor* actor=nullptr;const TransferActor* target=nullptr;const TransferActor* player=nullptr;
@@ -2190,23 +2216,34 @@ namespace MWLua
                             lorkhan::TurnId(dto.get<std::string>("turn_id")), status,
                             dto.get<std::string>("reason_code"), dto.get<sol::table>("observed").begin()==dto.get<sol::table>("observed").end()?"{}":toJson(dto.get<sol::object>("observed")),
                             dto.get<std::string>("completed_at") } };
-                    auto retained=m_transfers.find(dto.get<std::string>("action_id"));
+                    if(dto.get<std::string>("session_id")!=m_session->value()
+                        ||dto.get<std::uint64_t>("generation")!=generation())return failure(lua,"stale_action_result");
+                    const auto actionId=dto.get<std::string>("action_id");
+                    auto retained=m_transfers.find(actionId);
+                    ActionReceiptRecord* receiptRecord=nullptr;
                     if(retained!=m_transfers.end()){
                         auto& transfer=retained->second;
-                        if((statusName=="rejected"||statusName=="cancelled")&&transfer.gate.cancel())
+                        if((statusName=="rejected"||statusName=="cancelled"||statusName=="timed_out"||statusName=="failed")&&transfer.gate.cancel())
                             transfer.status=statusName,transfer.reason=dto.get<std::string>("reason_code");
                         if(statusName!=transfer.status)return failure(lua,"transfer_terminal_mismatch");
-                        if(transfer.receiptRequest&&(transfer.receiptStatus=="pending"||transfer.receiptStatus=="accepted"))
-                            return success(lua,transfer.receiptRequest->value());
-                        if(!transfer.receipt)transfer.receipt=std::get<lorkhan::ActionResultRequest>(request.payload);
-                        request.payload=*transfer.receipt;
+                        receiptRecord=&transfer;
+                    }else{
+                        if(!m_actionReceipts.contains(actionId)&&m_actionReceipts.size()>=256){
+                            auto completed=std::find_if(m_actionReceipts.begin(),m_actionReceipts.end(),
+                                [](const auto& entry){return entry.second.receiptStatus=="accepted";});
+                            if(completed==m_actionReceipts.end())return failure(lua,"action_receipt_queue_full");
+                            m_actionReceipts.erase(completed);
+                        }
+                        receiptRecord=&m_actionReceipts[actionId];
                     }
+                    if(receiptRecord->receiptRequest&&(receiptRecord->receiptStatus=="pending"||receiptRecord->receiptStatus=="accepted"))
+                        return success(lua,receiptRecord->receiptRequest->value());
+                    if(!receiptRecord->receipt)receiptRecord->receipt=std::get<lorkhan::ActionResultRequest>(request.payload);
+                    request.payload=*receiptRecord->receipt;
                     auto accepted = m_service->enqueue(std::move(request));
                     if (!accepted) return failure(lua, accepted.error().message);
-                    if(retained!=m_transfers.end()){
-                        retained->second.receiptRequest=transportRequest;retained->second.receiptStatus="pending";
-                        retained->second.receiptReason.clear();
-                    }
+                    receiptRecord->receiptRequest=transportRequest;receiptRecord->receiptStatus="pending";
+                    receiptRecord->receiptReason.clear();
                     return success(lua, transportRequest.value());
                 }
                 catch (const std::exception& error) { return failure(lua, error.what()); }
@@ -2928,6 +2965,7 @@ namespace MWLua
             std::map<std::string,std::shared_ptr<TransferSnapshot>> m_transferSnapshots;
             std::deque<std::string> m_transferOrder;
             std::map<std::string,TransferRecord> m_transfers;
+            std::map<std::string,ActionReceiptRecord> m_actionReceipts;
             std::uint64_t m_cursor{};
             std::chrono::steady_clock::time_point m_nextPoll{};
             std::map<std::string, MediaState> m_media;
@@ -2958,7 +2996,7 @@ namespace MWLua
                 "action.item.create", "action.gold.create", "action.actor.spawn", "action.actor.teleport_to_player", "action.player.teleport", "action.actor.restore", "action.actor.resurrect", "action.actor.kill",
                 "action.ai.follow", "action.ai.stop", "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
                 "action.combat.start", "action.combat.stop", "action.weapon.sheathe", "action.item.give", "action.item.take", "action.item.pickup", "action.gold.give", "action.gold.take", "action.service.barter", "action.service.training", "action.service.spells", "action.service.travel", "action.service.spellmaking", "action.service.enchanting", "action.service.repair", "action.spell.cast", "action.animation.play", "action.item.equip", "action.item.unequip",
-                "action.item.use", "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" })
+                "action.item.use", "action.inspect.report", "action.inventory.inspect", "action.conversation.end", "action.confirmation", "action.result-followup" })
                     result[index++] = capability;
                 return result;
             };
@@ -3103,6 +3141,7 @@ namespace MWLua
                 return actorConversationState(lua, actor);
             };
             api["releaseMedia"] = [](const std::string& id) { return client().releaseMedia(id); };
+            api["actionReceiptStatus"] = [lua](const std::string& id) { return client().actionReceiptStatus(lua,id); };
             api["submitActionResult"] = [lua](sol::table dto) { return client().submitActionResult(lua, std::move(dto)); };
             api["submitDialogueDeliveryResult"] = [lua](sol::table dto) {
                 return client().submitDialogueDeliveryResult(lua, std::move(dto));
