@@ -17,4 +17,6 @@ return {
     MAX_CONTINUATIONS_PER_ACTION = 1,
     MAX_INBOUND_RESULTS = 128,
     MAX_OUTBOUND_REQUESTS = 32,
+    -- Documented provider hard deadline; a terminal turn's missing speech is unavailable after it.
+    SPEECH_MEDIA_WAIT_SECONDS = 120,
 }

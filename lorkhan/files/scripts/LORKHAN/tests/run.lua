@@ -1025,6 +1025,67 @@ test('multi-speaker media plays in dialogue order without overlap',function()
  orchestrator.poll(s);eq(#sent,2);eq(sent[2].payload.media_id,two.media_id)
  eq(#s.conversation.transcript,2);eq(s.conversation.transcript[1].text,'First.');eq(s.conversation.transcript[2].text,'Second.')
 end)
+test('terminal turns without speech fall back to ordered subtitles after the provider deadline',function()
+ local b=fake.bridge() local sent={}
+ local s=orchestrator.new(b,nil,function(_,name,payload)table.insert(sent,{name=name,payload=payload})return true end)
+ orchestrator.configureSession(s,UUID.session);s.conversation.turn={requestId=UUID.request,turnId=UUID.turn,generation=1,status='accepted',terminal=false}
+ local first=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='First.'});first.message_id=uuid(150)
+ local second=event(3,'dialogue.complete',1,{speaker=enemy,addressee=playerId,text='Second.'});second.message_id=uuid(151)
+ b.results={responseEvent(1,{dialogueLine(0,first.message_id,npc,playerId,'First.',false,true),
+  dialogueLine(1,second.message_id,enemy,playerId,'Second.',true,true)},1),first,second}
+ eq(orchestrator.poll(s,5),3)
+ for _=1,30 do orchestrator.poll(s,5) end
+ eq(#sent,0) -- An open turn may still publish speech.
+ b.results={event(4,'turn.complete',1,{status='complete'})};orchestrator.poll(s,5)
+ for _=1,22 do orchestrator.poll(s,5) end
+ eq(#sent,0) -- Durable synthesis keeps the full provider deadline after the turn ends.
+ orchestrator.poll(s,5)
+ eq(#sent,1);eq(sent[1].name,'LORKHAN_ACTOR_SUBTITLE');eq(sent[1].payload.media_id,first.message_id)
+ eq(sent[1].payload.subtitle_only,true);eq(sent[1].payload.subtitle,'First.')
+ local late=event(5,'speech.ready',1,{media_id=uuid(152),dialogue_message_id=first.message_id,sha256=string.rep('c',64),
+  bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'})
+ b.results={late};orchestrator.poll(s,5);eq(#sent,1);eq(s.responseQueue.active.media,nil)
+ truthy(orchestrator.speechStatus(s,{media_id=first.message_id,active=false,status='played'}))
+ eq(#sent,2);eq(sent[2].name,'LORKHAN_ACTOR_SUBTITLE');eq(sent[2].payload.media_id,second.message_id)
+ truthy(orchestrator.speechStatus(s,{media_id=second.message_id,active=false,status='played'}))
+ truthy(require('scripts.LORKHAN.response_queue').idle(s.responseQueue))
+end)
+test('server speech failure presents its waiting line as a subtitle without overriding audio',function()
+ local b=fake.bridge() local sent={}
+ local s=orchestrator.new(b,nil,function(_,name,payload)table.insert(sent,{name=name,payload=payload})return true end)
+ orchestrator.configureSession(s,UUID.session);s.conversation.turn={requestId=UUID.request,turnId=UUID.turn,generation=1,status='accepted',terminal=false}
+ local first=event(2,'dialogue.complete',1,{speaker=npc,addressee=playerId,text='First.'});first.message_id=uuid(160)
+ local second=event(3,'dialogue.complete',1,{speaker=enemy,addressee=playerId,text='Second.'});second.message_id=uuid(161)
+ local one={media_id=uuid(162),dialogue_message_id=first.message_id,sha256=string.rep('a',64),bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'}
+ local ready=event(4,'speech.ready',1,one);ready.message_id=uuid(163)
+ b.results={responseEvent(1,{dialogueLine(0,first.message_id,npc,playerId,'First.',false,true),
+  dialogueLine(1,second.message_id,enemy,playerId,'Second.',true,true)},1),first,second,ready}
+ eq(orchestrator.poll(s,0),4)
+ b.media[one.media_id]={state='ready'}
+ orchestrator.poll(s,0);eq(#sent,1);eq(sent[1].payload.media_id,one.media_id)
+ local function failed(sequence,id,lineId,generation)
+  local e=event(sequence,'speech.failed',generation or 1,{dialogue_message_id=lineId,code='provider_unavailable'})
+  e.message_id=uuid(id) return e
+ end
+ local queue=s.responseQueue
+ b.results={failed(5,164,first.message_id)};eq(orchestrator.poll(s,0),0) -- Playing audio keeps its outcome.
+ eq(queue.active.media.media_id,one.media_id);eq(queue.active.speechFailed,nil)
+ b.results={failed(6,165,second.message_id,2)};eq(orchestrator.poll(s,0),0) -- Stale generation.
+ eq(queue.byLine[second.message_id].status,'waiting_media')
+ b.results={failed(7,166,second.message_id)};eq(orchestrator.poll(s,0),1)
+ eq(queue.byLine[second.message_id].status,'subtitle_ready');eq(queue.byLine[second.message_id].reason,'speech_unavailable')
+ local late=event(8,'speech.ready',1,{media_id=uuid(167),dialogue_message_id=second.message_id,sha256=string.rep('b',64),
+  bytes=4,codec='ogg',duration_ms=100,expires_at='2026-07-19T21:00:00Z'});late.message_id=uuid(168)
+ b.results={late,failed(9,169,second.message_id)};eq(orchestrator.poll(s,0),0) -- Late speech and duplicate failure.
+ eq(queue.byLine[second.message_id].media,nil);eq(queue.byLine[second.message_id].status,'subtitle_ready')
+ eq(#sent,1)
+ truthy(orchestrator.speechStatus(s,{media_id=one.media_id,active=false,status='played'}))
+ orchestrator.poll(s,0) -- The open turn needs no provider deadline once the server ends speech.
+ eq(#sent,2);eq(sent[2].name,'LORKHAN_ACTOR_SUBTITLE');eq(sent[2].payload.media_id,second.message_id)
+ eq(sent[2].payload.subtitle_only,true);eq(sent[2].payload.subtitle,'Second.')
+ truthy(orchestrator.speechStatus(s,{media_id=second.message_id,active=false,status='played'}))
+ truthy(require('scripts.LORKHAN.response_queue').idle(queue))
+end)
 test('canonical FIFO gates rolecommands behind terminal dialogue delivery',function()
  local b=fake.bridge() local sent={}
  local s=orchestrator.new(b,nil,function(_,name,payload)table.insert(sent,{name=name,payload=payload})return true end)

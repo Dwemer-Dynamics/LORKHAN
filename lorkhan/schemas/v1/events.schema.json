@@ -547,6 +547,69 @@
               "payload": {
                 "additionalProperties": false,
                 "properties": {
+                  "code": {
+                    "enum": [
+                      "provider_unconfigured",
+                      "provider_timeout",
+                      "provider_unavailable"
+                    ],
+                    "type": "string"
+                  },
+                  "dialogue_message_id": {
+                    "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+                  }
+                },
+                "required": [
+                  "dialogue_message_id",
+                  "code"
+                ],
+                "type": "object"
+              },
+              "request_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "sequence": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/sequence"
+              },
+              "session_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "turn_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "type": {
+                "const": "speech.failed",
+                "type": "string"
+              }
+            },
+            "required": [
+              "message_id",
+              "request_id",
+              "turn_id",
+              "session_id",
+              "generation",
+              "sequence",
+              "created_at",
+              "type",
+              "payload"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "created_at": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"
+              },
+              "generation": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/generation"
+              },
+              "message_id": {
+                "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
                   "language": {
                     "maxLength": 35,
                     "minLength": 2,

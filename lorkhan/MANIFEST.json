@@ -157,6 +157,11 @@
       "sha256": "cd87df85575d4024cb667edcaaaf03c9f057f8fb68f1d8611aa44db9917a7aff"
     },
     {
+      "bytes": 955,
+      "path": "lorkhan/fixtures/v1/invalid/speech-failed-media.json",
+      "sha256": "1e3c73882d810892f63b83772bdb055d3f64032a7dfed0cf22b4fac358c53de4"
+    },
+    {
       "bytes": 680,
       "path": "lorkhan/fixtures/v1/invalid/stt-request-path-not-base64.json",
       "sha256": "3dc1e68f560af31fc9d5bd17e81f692b0f36f83342fed83abca951233b2ffd9f"
@@ -337,9 +342,9 @@
       "sha256": "fd2128489cbbf47eff86b0bcab1c5cbee233cfc92fb1628a375fb6c8102704d0"
     },
     {
-      "bytes": 7937,
+      "bytes": 8472,
       "path": "lorkhan/fixtures/v1/valid/events.json",
-      "sha256": "3799d5a716086a8c7edb8565d6b95fa218770af590fa654455bf714b892d952e"
+      "sha256": "a4741859f5dec5f505f290e62edbc1de9dc21bfa2fa4564915a406d3465c5272"
     },
     {
       "bytes": 419,
@@ -582,9 +587,9 @@
       "sha256": "04ea0d56266d632fa97b90fea55725a8dfaedba81134823bae2d260152d21fc8"
     },
     {
-      "bytes": 37223,
+      "bytes": 39461,
       "path": "lorkhan/schemas/v1/events.schema.json",
-      "sha256": "53df8baa1c2e7c3a850154a87602946e02ae276a0e44f3363e3b44acd8441e30"
+      "sha256": "2313e5b493e979c6ead279a64fdf0cad34feecb64a5d30263050b370a41ffa5b"
     },
     {
       "bytes": 968,

@@ -2993,6 +2993,9 @@ namespace MWLua
                         payload["sha256"] = item.sha256; payload["bytes"] = item.bytes;
                         payload["codec"] = item.codec == lorkhan::MediaCodec::wav ? "wav" : item.codec == lorkhan::MediaCodec::ogg ? "ogg" : "mp3";
                         payload["duration_ms"] = item.durationMs; payload["expires_at"] = item.expiresAt; break; }
+                    case lorkhan::ProtocolEventType::speech_failed: {
+                        result["type"] = "speech.failed"; const auto& item = std::get<lorkhan::SpeechFailedEventPayload>(event.payload);
+                        payload["dialogue_message_id"] = item.dialogueMessage.value(); payload["code"] = item.code; break; }
                 }
                 result["payload"] = payload;
                 return result;
