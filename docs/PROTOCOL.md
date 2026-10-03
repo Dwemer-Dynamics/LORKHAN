@@ -265,6 +265,25 @@ receive plugin actions; built-in `lorkhan.action-intent.v1` names, catalogs and 
   before commit. Each intent still needs exactly one `lorkhan.action-result.v1` terminal result
   under the existing late-result rules. HTTP acceptance is not addon success.
 
+### Plugin transport (client stage 4A; server mirrors in stage 3)
+
+| Route under `/api/v1` | Body | Success | Response |
+| --- | --- | --- | --- |
+| `POST /plugins/registrations` | `lorkhan.plugin.registration.v1`, at most 64 KiB | 201 | `lorkhan.plugin.registration.accepted.v1` |
+| `POST /plugins/events` | `lorkhan.plugin.event.v1`, at most 16 KiB | 202 | `lorkhan.plugin.event.accepted.v1` (`duplicate` boolean) |
+
+- Both use the paired request MAC and `Idempotency-Key` = `message_id`; the response must echo the
+  same `message_id`, `request_id`, `session_id` and `generation`. Failures use the typed error model.
+- The client sends canonical JSON (sorted keys) only for its current session generation, and only
+  when the session negotiated `plugin.contract.v1`.
+- `events.v1` type `plugin.action.intent` carries one `lorkhan.plugin.action-intent.v1` payload whose
+  `turn_id`, `session_id` and `generation` equal the event envelope. A client drops plugin intents in
+  sessions that did not negotiate the capability.
+- Plugin versions are exactly `MAJOR.MINOR.PATCH`. Event field text rejects every Unicode `Cc` control,
+  including C1 `U+0080`..`U+009F`; an empty Lua `fields` table is sent as `{}`.
+- Dependency: LorkhanServer does not yet advertise `plugin.contract.v1`, so these routes stay unused
+  until the paired server runtime stack lands. There is no separate feature flag.
+
 ## Error model
 
 HTTP status communicates transport/auth class; JSON communicates a stable code:

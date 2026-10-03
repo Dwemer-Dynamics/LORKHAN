@@ -729,6 +729,28 @@ void testSttAndDialogueDelivery()
         auto result = transport.execute(request, {});
         CHECK(result && result.value().kind == lorkhan::ResponseKind::accepted);
     }
+    // Plugin routes are fixed, MAC-signed and idempotent by message ID; the accepted body must correlate.
+    const std::string pluginEvent = std::string(R"({"event":"meal_shared","fields":{},"generation":7,"message_id":")")
+        + kMessage + R"(","observed_at":"2026-10-02T12:05:00Z","plugin_id":"ashlander.camp_tasks","plugin_version":"1.2.0","request_id":")"
+        + kRequest + R"(","schema":"lorkhan.plugin.event.v1","session_id":")" + kSession + "\"}";
+    const lorkhan::OutboundRequest pluginRequest{lorkhan::RequestId(kRequest), lorkhan::SessionId(kSession),
+        lorkhan::Generation(7), lorkhan::RequestKind::plugin_event,
+        lorkhan::PluginEventRequest{{lorkhan::MessageId(kMessage),
+            {lorkhan::RequestId(kRequest), lorkhan::SessionId(kSession), lorkhan::Generation(7)}, pluginEvent}}};
+    for (const bool correlated : {true, false}) {
+        OneShotServer server([&pluginEvent, correlated](const CapturedRequest& request, tcp::socket& socket) {
+            CHECK(request.method == http::verb::post);
+            CHECK(request.target == std::string(kBasePath) + "/plugins/events");
+            CHECK(request.idempotency == kMessage);
+            CHECK(request.body == pluginEvent);
+            sendJson(socket, 202, std::string(R"({"schema":"lorkhan.plugin.event.accepted.v1","message_id":")")
+                + (correlated ? kMessage : kAction) + R"(","request_id":")" + kRequest + R"(","session_id":")" + kSession
+                + R"(","generation":7,"duplicate":false})");
+        });
+        lorkhan::BeastTransport transport(url(server.port()), lorkhan::InstallationId(kInstallation), token(), cacheRoot());
+        auto result = transport.execute(pluginRequest, {});
+        CHECK(correlated ? result && result.value().kind == lorkhan::ResponseKind::accepted : !result);
+    }
 }
 
 void testAuthenticatedVerifiedMedia()

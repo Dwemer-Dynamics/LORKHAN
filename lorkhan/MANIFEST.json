@@ -2,6 +2,11 @@
   "cross_repository_byte_parity": "locally-proven",
   "files": [
     {
+      "bytes": 1356,
+      "path": "lorkhan/fixtures/v1/hostile/events-plugin-action-intent-command-field.json",
+      "sha256": "40a5ea0f0fddbe14f569516360dde2df577dd14c873296038a2e3ce8775943eb"
+    },
+    {
       "bytes": 382,
       "path": "lorkhan/fixtures/v1/hostile/oversized-media.json",
       "sha256": "21ec05b15b3447f548a9a9259a8554dc1ab6118e850a36b0928862facea5a3d8"
@@ -387,6 +392,11 @@
       "sha256": "fd2128489cbbf47eff86b0bcab1c5cbee233cfc92fb1628a375fb6c8102704d0"
     },
     {
+      "bytes": 1349,
+      "path": "lorkhan/fixtures/v1/valid/events-plugin-action-intent.json",
+      "sha256": "d5c9d72dc388fc7a012a5b703779317f1dfec81120fc470962a2e295f5acbfe1"
+    },
+    {
       "bytes": 8472,
       "path": "lorkhan/fixtures/v1/valid/events.json",
       "sha256": "a4741859f5dec5f505f290e62edbc1de9dc21bfa2fa4564915a406d3465c5272"
@@ -505,6 +515,11 @@
       "bytes": 854,
       "path": "lorkhan/fixtures/v1/valid/plugin-action-intent.json",
       "sha256": "4c6729fa250fb452a07467662c04a33975eb0ba67dda047d1b876400d843ced8"
+    },
+    {
+      "bytes": 412,
+      "path": "lorkhan/fixtures/v1/valid/plugin-event-accepted.json",
+      "sha256": "88bda916d9b6b397fcda1cda6a3af1cc3c6ac63d6edfd80cfca5b33fa9b788e4"
     },
     {
       "bytes": 749,
@@ -687,9 +702,9 @@
       "sha256": "04ea0d56266d632fa97b90fea55725a8dfaedba81134823bae2d260152d21fc8"
     },
     {
-      "bytes": 39461,
+      "bytes": 41129,
       "path": "lorkhan/schemas/v1/events.schema.json",
-      "sha256": "2313e5b493e979c6ead279a64fdf0cad34feecb64a5d30263050b370a41ffa5b"
+      "sha256": "f4ed9220b547534fe0a25f67ff0a5651c612369a6bb467f70b6933c8bbe626b7"
     },
     {
       "bytes": 968,
@@ -757,9 +772,9 @@
       "sha256": "08b4080325e153fd198ad0f66bf986d2dd4a3198da4b89a66f22abd4c79cfe9b"
     },
     {
-      "bytes": 16580,
+      "bytes": 17322,
       "path": "lorkhan/schemas/v1/plugin.schema.json",
-      "sha256": "301b442c45f831f37ee91e354d54091c7d42422d8ab2f065da9497c43523640a"
+      "sha256": "396d4656618b733d65978098256e418607adf5cdb18e242c774b17220b9f7201"
     },
     {
       "bytes": 3688,

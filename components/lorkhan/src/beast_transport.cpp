@@ -728,6 +728,26 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
                 + gamedata->serializedPayload + "}";
             break;
         }
+        case RequestKind::plugin_registration:
+        case RequestKind::plugin_event: {
+            const bool registration = request.kind == RequestKind::plugin_registration;
+            const PluginMessageRequest* plugin = registration
+                ? static_cast<const PluginMessageRequest*>(std::get_if<PluginRegistrationRequest>(&request.payload))
+                : std::get_if<PluginEventRequest>(&request.payload);
+            if (!plugin) break;
+            // Re-check at the wire boundary; only the canonical, session-bound message is sent.
+            auto canonical = registration
+                ? canonicalPluginRegistration(plugin->serializedMessage, plugin->correlation, plugin->message)
+                : canonicalPluginEvent(plugin->serializedMessage, plugin->correlation, plugin->message);
+            if (!canonical) return Result<WireRequest>::failure(canonical.error());
+            wire.method = http::verb::post;
+            wire.target = route(registration ? "/plugins/registrations" : "/plugins/events");
+            wire.expectedStatus = registration ? 201 : 202;
+            wire.idempotencyKey = plugin->message.value();
+            wire.requestBodyLimit = registration ? kMaxPluginRegistrationBytes : kMaxPluginEventBytes;
+            wire.body = std::move(canonical).value();
+            break;
+        }
         case RequestKind::media: {
             const auto* media = std::get_if<MediaPrepareRequest>(&request.payload);
             if (!media)
@@ -1008,6 +1028,26 @@ Result<InboundResult> validateResponse(const OutboundRequest& request, const Wir
                 || parsed.value().generation != request.generation || parsed.value().type != gameDataTypeName(sent.type))
                 return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
                     "game-data response correlation mismatch"));
+            break;
+        }
+        case RequestKind::plugin_registration: {
+            const auto& sent = std::get<PluginRegistrationRequest>(request.payload);
+            auto parsed = parsePluginRegistrationAcceptedResponse(response.body(), headers);
+            if (!parsed) return Result<InboundResult>::failure(parsed.error());
+            if (parsed.value().message != sent.message || parsed.value().request != sent.correlation.request
+                || parsed.value().session != request.session || parsed.value().generation != request.generation)
+                return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
+                    "plugin registration response correlation mismatch"));
+            break;
+        }
+        case RequestKind::plugin_event: {
+            const auto& sent = std::get<PluginEventRequest>(request.payload);
+            auto parsed = parsePluginEventAcceptedResponse(response.body(), headers);
+            if (!parsed) return Result<InboundResult>::failure(parsed.error());
+            if (parsed.value().message != sent.message || parsed.value().request != sent.correlation.request
+                || parsed.value().session != request.session || parsed.value().generation != request.generation)
+                return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
+                    "plugin event response correlation mismatch"));
             break;
         }
         case RequestKind::media:

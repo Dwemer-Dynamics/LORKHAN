@@ -1,0 +1,5 @@
+{
+  "description": "Server accepts one plugin event idempotently by message ID",
+  "instance": {"schema": "lorkhan.plugin.event.accepted.v1", "message_id": "00000000-0000-4000-8000-000000000320", "request_id": "00000000-0000-4000-8000-000000000321", "session_id": "00000000-0000-4000-8000-000000000007", "generation": 7, "duplicate": false},
+  "schema": "https://lorkhan.invalid/schemas/v1/plugin.schema.json"
+}

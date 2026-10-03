@@ -228,3 +228,14 @@ after attachment on creation or a false-to-true transition, with the caret at th
 end. Ordinary redraws preserve existing focus without stealing it from another
 control. Only the main Text Chat and Interact input opts in; other editors retain
 their existing behavior. Closing and reopening the overlay creates a fresh editor.
+
+### Plugin transport
+
+GLOBAL-only `submitPluginRegistration(message)` and `submitPluginEvent(message)` accept one Lua-built
+`lorkhan.plugin.registration.v1` / `lorkhan.plugin.event.v1` table. Native code rejects them unless the
+current session negotiated `plugin.contract.v1`, validates the exact schema, IDs, current session and
+generation and the 64 KiB / 16 KiB caps, and posts canonical JSON to its fixed route. They return the
+request ID or a typed reason (`plugin_contract_unsupported`, `stale_generation`, `invalid_plugin_message`,
+`plugin_message_too_large`, `plugin_queue_full`). `pluginReceipt(requestId)` reports `pending`, `accepted`
+(per-plugin states or event `duplicate`), `failed` or `cancelled` with a reason, once. `sessionInfo()`
+also lists the negotiated `capabilities`. Polled `plugin.action.intent` events are natively exact.

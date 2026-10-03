@@ -1527,13 +1527,122 @@ void testConcurrency()
 
 } // namespace
 
+// Plugin messages are canonical and session-bound; plugin.action.intent is exact before Lua sees it.
+void testPluginContract()
+{
+    const lorkhan::Headers jsonHeaders{{"Content-Type", "application/json; charset=utf-8"}};
+    const std::string session = "00000000-0000-4000-8000-000000000007";
+    const std::string actor = R"({"cell":{"grid_x":-2,"grid_y":-9,"kind":"exterior"},"content_file":"Morrowind.esm","display_name":"Fargoth","kind":"npc","record_id":"fargoth","refnum":{"content_file":0,"index":112}})";
+    const lorkhan::RequestCorrelation registrationIds{lorkhan::RequestId("00000000-0000-4000-8000-000000000302"),
+        lorkhan::SessionId(session), lorkhan::Generation(7)};
+    const lorkhan::MessageId registrationMessage("00000000-0000-4000-8000-000000000301");
+    const std::string registration = R"({"actions":[{"actors":[)" + actor + R"(],"confirmation":"none","executor_kinds":["npc"],"name":"fetch_water","tier":1},{"confirmation":"required","executor_kinds":["npc"],"name":"share_meal","tier":2}],"events":["meal_shared"],"manifest_sha256":"5f1c1a3b0e8f7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a392817060504","plugin_id":"ashlander.camp_tasks","prompt_slots":["scene_notes"],"version":"1.2.0"})";
+    const auto registrationMessageJson = [&](const std::string& plugin, const std::string& operation = "register") {
+        return R"({"created_at":"2026-10-02T12:00:00Z","generation":7,"message_id":"00000000-0000-4000-8000-000000000301","operation":")"
+            + operation + R"(","plugins":[)" + plugin + R"(],"request_id":"00000000-0000-4000-8000-000000000302","schema":"lorkhan.plugin.registration.v1","session_id":")"
+            + session + "\"}";
+    };
+    auto canonical = lorkhan::canonicalPluginRegistration(registrationMessageJson(registration), registrationIds, registrationMessage);
+    CHECK(canonical && canonical.value() == registrationMessageJson(registration));
+    const auto rejectsRegistration = [&](const std::string& message) {
+        return !lorkhan::canonicalPluginRegistration(message, registrationIds, registrationMessage);
+    };
+    const auto replaced = [](std::string value, const std::string& from, const std::string& to) {
+        return value.replace(value.find(from), from.size(), to);
+    };
+    CHECK(rejectsRegistration(registrationMessageJson(replaced(registration, "ashlander.", "lorkhan."))));
+    CHECK(rejectsRegistration(registrationMessageJson(replaced(registration, R"("required","executor_kinds":["npc"],"name":"share_meal")", R"("none","executor_kinds":["npc"],"name":"share_meal")"))));
+    CHECK(rejectsRegistration(registrationMessageJson(replaced(registration, R"("events":)", R"("command":"tgm","events":)"))));
+    for (const std::string version : {"1.2.0.4", "1.2.0.", "1.2", "01.2.0"})
+        CHECK(rejectsRegistration(registrationMessageJson(replaced(registration, R"("1.2.0")", "\"" + version + "\""))));
+    CHECK(rejectsRegistration(registrationMessageJson(registration, "unregister")));
+    CHECK(rejectsRegistration(registrationMessageJson(registration + "," + registration)));
+    CHECK(lorkhan::canonicalPluginRegistration(registrationMessageJson(R"({"plugin_id":"ashlander.camp_tasks","version":"1.2.0"})", "unregister"), registrationIds, registrationMessage));
+    auto stale = lorkhan::canonicalPluginRegistration(registrationMessageJson(registration),
+        {registrationIds.request, registrationIds.session, lorkhan::Generation(8)}, registrationMessage);
+    CHECK(!stale && stale.error().code == lorkhan::ErrorCode::stale_generation);
+    CHECK(!lorkhan::canonicalPluginRegistration(registrationMessageJson(registration), registrationIds, lorkhan::MessageId(kMessage)));
+    auto oversized = lorkhan::canonicalPluginRegistration(registrationMessageJson(registration) + std::string(64U * 1024U, ' '),
+        registrationIds, registrationMessage);
+    CHECK(!oversized && oversized.error().code == lorkhan::ErrorCode::payload_too_large);
+
+    const lorkhan::RequestCorrelation eventIds{lorkhan::RequestId("00000000-0000-4000-8000-000000000321"),
+        lorkhan::SessionId(session), lorkhan::Generation(7)};
+    const lorkhan::MessageId eventMessage("00000000-0000-4000-8000-000000000320");
+    const auto eventJson = [&](const std::string& fields) {
+        return R"({"event":"meal_shared","fields":)" + fields + R"(,"generation":7,"message_id":"00000000-0000-4000-8000-000000000320","observed_at":"2026-10-02T12:05:00Z","plugin_id":"ashlander.camp_tasks","plugin_version":"1.2.0","request_id":"00000000-0000-4000-8000-000000000321","schema":"lorkhan.plugin.event.v1","session_id":")"
+            + session + "\"}";
+    };
+    const std::string fields = R"({"dish":"Scuttle pie","host":)" + actor + R"(,"servings":2.5})";
+    auto event = lorkhan::canonicalPluginEvent(eventJson(fields), eventIds, eventMessage);
+    CHECK(event && event.value() == eventJson(fields));
+    auto empty = lorkhan::canonicalPluginEvent(eventJson("[]"), eventIds, eventMessage);
+    CHECK(empty && empty.value() == eventJson("{}"));
+    const auto rejectsEvent = [&](const std::string& eventFields) {
+        return !lorkhan::canonicalPluginEvent(eventJson(eventFields), eventIds, eventMessage);
+    };
+    const std::string controlText = R"({"dish":"Scuttle\npie"})";
+    const std::string longText = R"({"dish":")" + std::string(513, 'x') + R"("})";
+    const std::string oversizedEvent = R"({"dish":")" + std::string(16U * 1024U, 'x') + R"("})";
+    CHECK(rejectsEvent(controlText));
+    // Unicode Cc includes C1 U+0080..U+009F, escaped or raw; U+00A0 is the first allowed code point after it.
+    CHECK(rejectsEvent("{\"dish\":\"Scuttle\\u0085pie\"}"));
+    CHECK(rejectsEvent("{\"dish\":\"Scuttle\xc2\x9fpie\"}"));
+    CHECK(!rejectsEvent("{\"dish\":\"Scuttle\\u00a0pie\"}"));
+    CHECK(rejectsEvent(longText));
+    CHECK(rejectsEvent(R"({"Dish":"pie"})"));
+    CHECK(rejectsEvent(oversizedEvent));
+
+    CHECK(lorkhan::parsePluginRegistrationAcceptedResponse(R"({"schema":"lorkhan.plugin.registration.accepted.v1","message_id":"00000000-0000-4000-8000-000000000301","request_id":"00000000-0000-4000-8000-000000000302","session_id":"00000000-0000-4000-8000-000000000007","generation":7,"plugins":[{"plugin_id":"ashlander.camp_tasks","version":"1.2.0","state":"active","reason_code":"registered"}]})", jsonHeaders));
+    CHECK(!lorkhan::parsePluginRegistrationAcceptedResponse(R"({"schema":"lorkhan.plugin.registration.accepted.v1","message_id":"00000000-0000-4000-8000-000000000301","request_id":"00000000-0000-4000-8000-000000000302","session_id":"00000000-0000-4000-8000-000000000007","generation":7,"plugins":[{"plugin_id":"ashlander.camp_tasks","version":"1.2.0","state":"loaded","reason_code":"registered"}]})", jsonHeaders));
+    auto eventAccepted = lorkhan::parsePluginEventAcceptedResponse(R"({"schema":"lorkhan.plugin.event.accepted.v1","message_id":"00000000-0000-4000-8000-000000000320","request_id":"00000000-0000-4000-8000-000000000321","session_id":"00000000-0000-4000-8000-000000000007","generation":7,"duplicate":true})", jsonHeaders);
+    CHECK(eventAccepted && eventAccepted.value().duplicate);
+
+    const auto intentEvents = [&](const std::string& intent) {
+        return lorkhan::parseEventsResponse(R"({"schema":"lorkhan.events.v1","session_id":")" + session
+            + R"(","generation":7,"next_after":4,"events":[{"message_id":"00000000-0000-4000-8000-000000000311","request_id":"00000000-0000-4000-8000-000000000010","turn_id":"00000000-0000-4000-8000-000000000008","session_id":")"
+            + session + R"(","generation":7,"sequence":4,"created_at":"2026-10-02T12:00:00Z","type":"plugin.action.intent","payload":)"
+            + intent + "}],\"autonomy\":[]}", jsonHeaders);
+    };
+    const std::string intent = R"({"schema":"lorkhan.plugin.action-intent.v1","action_id":"00000000-0000-4000-8000-000000000310","turn_id":"00000000-0000-4000-8000-000000000008","session_id":")"
+        + session + R"(","generation":7,"plugin_id":"ashlander.camp_tasks","plugin_version":"1.2.0","action":"fetch_water","tier":1,"confirmation_required":false,"cancellable":true,"actor":)"
+        + actor + R"(,"target":null,"parameters":{"trips":2,"vessel":"jug"},"expires_at":"2026-10-02T12:02:00Z"})";
+    auto decoded = intentEvents(intent);
+    const auto* plugin = decoded ? std::get_if<lorkhan::PluginActionIntentEventPayload>(&decoded.value().events[0].payload) : nullptr;
+    CHECK(plugin && decoded.value().events[0].type == lorkhan::ProtocolEventType::plugin_action_intent
+        && plugin->intent.pluginId == "ashlander.camp_tasks" && plugin->intent.name == "fetch_water"
+        && !plugin->intent.target && plugin->intent.parameters.size() == 2
+        && std::get<std::int64_t>(plugin->intent.parameters[0].second) == 2
+        && std::get<std::string>(plugin->intent.parameters[1].second) == "jug");
+    CHECK(!intentEvents(replaced(intent, R"("jug")", R"("https://example.invalid/payload.lua")")));
+    CHECK(!intentEvents(replaced(intent, R"("cancellable":true,)", R"("cancellable":true,"command":"tgm",)")));
+    CHECK(!intentEvents(replaced(intent, R"("generation":7,"plugin_id")", R"("generation":6,"plugin_id")")));
+    CHECK(!intentEvents(replaced(intent, R"("tier":1)", R"("tier":2)")));
+    CHECK(!intentEvents(replaced(intent, R"("1.2.0")", R"("1.2.0.4")")));
+    CHECK(!intentEvents(replaced(intent, R"("schema":"lorkhan.plugin.action-intent.v1")", R"("schema":"lorkhan.action-intent.v1")")));
+    CHECK(!intentEvents(replaced(intent, R"("kind":"npc")", R"("kind":"player")")));
+
+    // The bridge accepts only the canonical message whose IDs match the typed request.
+    lorkhan::BridgeService bridge(std::make_unique<FakeTransport>(std::make_shared<TransportState>()),
+        std::make_shared<FakeClock>(), lorkhan::Generation(7));
+    const auto pluginRequest = [&](std::string message) {
+        return lorkhan::OutboundRequest{eventIds.request, eventIds.session, eventIds.generation, lorkhan::RequestKind::plugin_event,
+            lorkhan::PluginEventRequest{{eventMessage, eventIds, std::move(message)}}};
+    };
+    CHECK(!bridge.enqueue(pluginRequest(eventJson("[]"))));
+    auto wrongKind = pluginRequest(eventJson(fields));
+    wrongKind.kind = lorkhan::RequestKind::plugin_registration;
+    CHECK(!bridge.enqueue(std::move(wrongKind)));
+    CHECK(bridge.enqueue(pluginRequest(eventJson(fields))));
+}
+
 int main()
 {
     testClientConfigPath();
     testSavedCharacterIdentity(); testPlaybackSettings(); testRecordProvenance(); testUtf8(); testUrls(); testHeaders(); testJson(); testProtocolResponses(); testAcceptedProtocolResponses();
     testProtocolEventResponses(); testQueue(); testLifecycleAndCancellation();
     testEvents(); testActions(); testPairingToken(); testMedia(); testBridgeDialogueDeliveryValidation();
-    testBridge(); testBridgeSpeechCancel(); testConcurrency(); testVoiceCapturePrimitives();
+    testBridge(); testBridgeSpeechCancel(); testConcurrency(); testVoiceCapturePrimitives(); testPluginContract();
     if (failures != 0) {
         std::cerr << failures << " test(s) failed\n";
         return EXIT_FAILURE;
