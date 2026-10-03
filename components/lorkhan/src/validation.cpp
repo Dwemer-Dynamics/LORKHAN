@@ -144,9 +144,19 @@ bool isCanonicalUuid(std::string_view input) noexcept
     return true;
 }
 
+bool isDynamicActorUuid(std::string_view input) noexcept
+{
+    // A durable dynamic actor UUID is never the nil UUID; generic IDs keep isCanonicalUuid.
+    return isCanonicalUuid(input) && input != "00000000-0000-0000-0000-000000000000";
+}
+
 bool isProfileId(std::string_view input) noexcept
 {
     if (isCanonicalUuid(input)) return true;
+    // actor.identity.dynamic.v1 key: dyn:<installation>:<playthrough>:<saved actor UUID>.
+    if (input.size() == 114 && input.starts_with("dyn:"))
+        return isCanonicalUuid(input.substr(4, 36)) && input[40] == ':'
+            && isCanonicalUuid(input.substr(41, 36)) && input[77] == ':' && isDynamicActorUuid(input.substr(78, 36));
     if (input.size() > 300 || input.size() < 81 || !input.starts_with("ref:")
         || !isCanonicalUuid(input.substr(4,36)) || input[40] != ':'
         || !isCanonicalUuid(input.substr(41,36)) || input[77] != ':') return false;

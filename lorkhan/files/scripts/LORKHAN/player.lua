@@ -2060,7 +2060,8 @@ return {
                 local actor=state.dispositionDialogueActor
                 local signature=dispositionOpen and session and actor and
                     (session.session_id..':'..tostring(session.generation)..':'..tostring(actor.record_id)..':'..
-                        tostring(actor.content_file)..':'..tostring(actor.refnum and actor.refnum.index)) or nil
+                        tostring(actor.content_file)..':'..tostring(actor.refnum and actor.refnum.index)..
+                        (type(actor.dynamic)=='table' and ':'..tostring(actor.dynamic.uuid) or '')) or nil
                 if soundSettings and soundSettings:get('menuDialogueTts')==false then signature=nil end
                 local busy=playerSpeech or bookSpeech or turnActive or menuDialogueSpeech or awaitingTextQueue
                 speechPrefetch.update(prefetchedSpeech,native,adapter.identity(self),signature,core.getRealTime(),busy)
@@ -2489,6 +2490,10 @@ return {
         end,
         LORKHAN_PLAYER_RESOLVE_TARGET=function(event) chooseTarget(event.maxDistance) end,
         LORKHAN_PLAYER_RESOLVE_AUDIENCE=function(event) chooseAudience(event.maxDistance) end,
+        -- GLOBAL owns dynamic identity; this mirror only lets aimed/nearby candidates name bound actors.
+        LORKHAN_DYNAMIC_IDENTITIES=function(event)
+            if type(event)=='table' then adapter.setDynamicBindings(event.bindings,event.generation) end
+        end,
         LORKHAN_TARGET=function(event)
             state.ui.target=event.target state.ui.audience=event.audience or {event.target}
             if pendingVoiceTarget and pttHeld then

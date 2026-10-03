@@ -35,6 +35,9 @@ inline constexpr std::size_t kMaxPluginRegistrationBytes = 64U * 1024U;
 inline constexpr std::size_t kMaxPluginEventBytes = 16U * 1024U;
 // Advertised only by builds that carry the typed plugin routes and the plugin.action.intent decoder.
 inline constexpr std::string_view kPluginContractCapability = "plugin.contract.v1";
+// Advertised by builds that save, validate and resolve runtime-generated actor identities exactly.
+inline constexpr std::string_view kDynamicActorIdentityCapability = "actor.identity.dynamic.v1";
+inline constexpr std::string_view kDynamicActorContentFile = "lorkhan:dynamic";
 
 template <class Tag>
 class StrongId {

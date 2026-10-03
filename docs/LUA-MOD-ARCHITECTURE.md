@@ -23,6 +23,12 @@ files/
 The manifest starts `global.lua` as GLOBAL, `player.lua` as PLAYER, and marks `actor.lua` CUSTOM.
 It does not auto-attach a large script to every NPC/creature. GLOBAL attaches actor.lua only when an
 active actor joins an LORKHAN audience or must execute an action, and later stops it when safe.
+On sessions that negotiate `actor.identity.dynamic.v1`, GLOBAL also attaches the small CUSTOM
+`dynamic_actor.lua` to runtime-generated NPCs/creatures. It only stores that actor's saved UUID
+binding (never the nil UUID; a saved nil binding is rebound); `dynamic_identity.lua` reconciles it with the playthrough and generation. Actor and addon
+scripts never infer a dynamic identity from a runtime slot: GLOBAL attaches registry-proven,
+generation-tagged binding rows to each command, and actor scripts withdraw them on a generation
+change, load, deactivation or detach.
 
 ## Script ownership
 

@@ -60,6 +60,9 @@ end
 -- Resolve a single exact reference; loading its explicitly known cell cannot select another same-name actor.
 local function resolve(state,actor,allowLoad)
     local modules=state.modules
+    -- Generated actors have no content-file FormId and no cell to load: only GLOBAL's exact registry
+    -- binding for a currently active actor resolves them; the sentinel is never looked up as placed.
+    if actor.dynamic~=nil then return modules.resolveDynamic and modules.resolveDynamic(actor) or nil end
     local formId=modules.core.getFormId(actor.content_file,actor.refnum.index)
     local function exact()
         local object=modules.world.getObjectByFormId(formId)

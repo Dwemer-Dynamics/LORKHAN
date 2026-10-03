@@ -325,6 +325,8 @@
         "lorkhan/files/scripts/LORKHAN/conversation.lua",
         "lorkhan/files/scripts/LORKHAN/diary_books.lua",
         "lorkhan/files/scripts/LORKHAN/director.lua",
+        "lorkhan/files/scripts/LORKHAN/dynamic_actor.lua",
+        "lorkhan/files/scripts/LORKHAN/dynamic_identity.lua",
         "lorkhan/files/scripts/LORKHAN/global.lua",
         "lorkhan/files/scripts/LORKHAN/identity.lua",
         "lorkhan/files/scripts/LORKHAN/npc_manager.lua",

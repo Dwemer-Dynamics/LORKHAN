@@ -899,6 +899,11 @@
                   },
                   "actor": {
                     "additionalProperties": false,
+                    "allOf": [
+                      {
+                        "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"
+                      }
+                    ],
                     "properties": {
                       "cell": {
                         "oneOf": [
@@ -954,6 +959,7 @@
                         "minLength": 1,
                         "type": "string"
                       },
+                      "dynamic": {},
                       "kind": {
                         "type": "string",
                         "const": "npc"

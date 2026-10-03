@@ -399,7 +399,25 @@ namespace MWLua
             { cell["kind"] = "exterior"; cell["grid_x"] = identity.cell.gridX; cell["grid_y"] = identity.cell.gridY; }
             else { cell["kind"] = "interior"; cell["name"] = identity.cell.name; }
             result["cell"] = cell;
+            if (identity.dynamic)
+            {
+                sol::table dynamic(lua, sol::create); dynamic["uuid"] = identity.dynamic->uuid;
+                dynamic["runtime_ref"] = identity.dynamic->runtimeRef; result["dynamic"] = dynamic;
+            }
             return result;
+        }
+
+        // A dynamic identity names only its exact generated RefNum; its {0,0} sentinel is never looked up.
+        MWWorld::Ptr exactIdentityPtr(const lorkhan::ProtocolIdentity& identity)
+        {
+            const auto worldModel = MWBase::Environment::get().getWorldModel();
+            if (identity.dynamic)
+                return worldModel->getPtr(ESM::RefNum{ identity.dynamic->runtimeIndex, -1 });
+            if (identity.refnumIndex <= std::numeric_limits<std::uint32_t>::max()
+                && identity.refnumContentFile <= static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max()))
+                return worldModel->getPtr(ESM::RefNum{ static_cast<std::uint32_t>(identity.refnumIndex),
+                    static_cast<std::int32_t>(identity.refnumContentFile) });
+            return {};
         }
 
         sol::table canonicalMediaTable(sol::state_view lua, const lorkhan::CanonicalMediaDescriptor& media)
@@ -936,7 +954,9 @@ namespace MWLua
             static bool sameTransferActor(const lorkhan::ProtocolIdentity& left,const lorkhan::ProtocolIdentity& right)
             {
                 return left.kind==right.kind && left.recordId==right.recordId && left.contentFile==right.contentFile
-                    && left.refnumIndex==right.refnumIndex && left.refnumContentFile==right.refnumContentFile;
+                    && left.refnumIndex==right.refnumIndex && left.refnumContentFile==right.refnumContentFile
+                    && left.dynamic.has_value()==right.dynamic.has_value()
+                    && (!left.dynamic||(left.dynamic->uuid==right.dynamic->uuid&&left.dynamic->runtimeRef==right.dynamic->runtimeRef));
             }
 
             // Resolve the witnessed actor, never an arbitrary first instance of a record.
@@ -945,10 +965,7 @@ namespace MWLua
                 auto& environment=MWBase::Environment::get();
                 MWWorld::Ptr ptr;
                 if(identity.kind=="player") ptr=environment.getWorld()->getPlayerPtr();
-                else if(identity.refnumIndex<=std::numeric_limits<std::uint32_t>::max()
-                    && identity.refnumContentFile<=static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max()))
-                    ptr=environment.getWorldModel()->getPtr(ESM::RefNum{static_cast<std::uint32_t>(identity.refnumIndex),
-                        static_cast<std::int32_t>(identity.refnumContentFile)});
+                else ptr=exactIdentityPtr(identity);
                 if(ptr.isEmpty()||!ptr.getClass().isActor()||ptr.getCellRef().getRefId().serializeText()!=identity.recordId)
                     return {};
                 if(identity.kind!="player"&&identity.kind!=(ptr.getClass().isNpc()?"npc":"creature"))return {};
@@ -983,7 +1000,7 @@ namespace MWLua
                 const auto observeActor=[&](sol::object candidate){
                     if(!candidate.is<sol::table>()||snapshot->actors.size()>=32)return;
                     sol::table original=candidate.as<sol::table>(),identity(lua,sol::create);
-                    for(const char* field:{"kind","record_id","refnum","content_file","cell","display_name"})
+                    for(const char* field:{"kind","record_id","refnum","content_file","cell","display_name","dynamic"})
                         identity[field]=original.get<sol::object>(field);
                     auto parsed=lorkhan::parseProtocolIdentity(toJson(sol::make_object(lua,identity)));
                     if(!parsed)return;
@@ -1631,11 +1648,7 @@ namespace MWLua
                     if (!identity || (identity.value().kind != "npc" && identity.value().kind != "creature"))
                         return failure(lua, "invalid_actor_profile");
                     const auto& expected = identity.value();
-                    MWWorld::Ptr ptr;
-                    if (expected.refnumIndex <= std::numeric_limits<std::uint32_t>::max()
-                        && expected.refnumContentFile <= static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max()))
-                        ptr = MWBase::Environment::get().getWorldModel()->getPtr(ESM::RefNum{
-                            static_cast<std::uint32_t>(expected.refnumIndex), static_cast<std::int32_t>(expected.refnumContentFile)});
+                    const MWWorld::Ptr ptr = exactIdentityPtr(expected);
                     // Unloaded references stay unknown; never resolve a different copy by record ID.
                     const bool matched = !ptr.isEmpty()
                         && ptr.getCellRef().getRefId().serializeText() == expected.recordId
@@ -1778,10 +1791,13 @@ namespace MWLua
                     try {
                         const auto& recipient=actor.ptr();const auto& ref=recipient.getCellRef().getRefNum();
                         const bool creature=recipient.getType()==ESM::Creature::sRecordId;
+                        // A dynamic recipient is its exact generated RefNum; GLOBAL's registry already proved its UUID.
+                        const bool refMatches=book.target.dynamic
+                            ?ref.mIndex==book.target.dynamic->runtimeIndex&&ref.mContentFile==-1
+                            :ref.mIndex==book.target.refnumIndex&&ref.mContentFile==book.target.refnumContentFile;
                         if((!creature&&recipient.getType()!=ESM::NPC::sRecordId)
                             ||book.target.kind!=(creature?"creature":"npc")
-                            ||recipient.getCellRef().getRefId().serializeText()!=book.target.recordId
-                            ||ref.mIndex!=book.target.refnumIndex||ref.mContentFile!=book.target.refnumContentFile){
+                            ||recipient.getCellRef().getRefId().serializeText()!=book.target.recordId||!refMatches){
                             m_diaryReason="target_mismatch";return;}
                         if(recipient.getCellRef().getCount()<=0){m_diaryReason="target_unavailable";return;}
                         auto store=MWBase::Environment::get().getESMStore();
@@ -2993,7 +3009,7 @@ namespace MWLua
                 "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.weapon.sheathe", "action.item.give", "action.item.take", "action.item.pickup", "action.gold.give", "action.gold.take", "action.service.barter", "action.service.training", "action.service.spells", "action.service.travel", "action.service.spellmaking", "action.service.enchanting", "action.service.repair", "action.spell.cast", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
                 "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup",
-                std::string(lorkhan::kPluginContractCapability) }; }
+                std::string(lorkhan::kPluginContractCapability), std::string(lorkhan::kDynamicActorIdentityCapability) }; }
 
             static sol::table eventTable(sol::state_view lua, const lorkhan::ProtocolEvent& event)
             {
