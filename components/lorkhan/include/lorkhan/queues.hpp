@@ -55,6 +55,18 @@ public:
         return waitPop([](const T&) { return false; });
     }
 
+    // Nonblocking selection leaves other work parked in its original FIFO position.
+    template <class Predicate>
+    [[nodiscard]] std::optional<T> tryPopIf(Predicate predicate)
+    {
+        std::lock_guard lock(m_mutex);
+        const auto selected = std::find_if(m_items.begin(), m_items.end(), predicate);
+        if (selected == m_items.end()) return std::nullopt;
+        T item = std::move(*selected);
+        m_items.erase(selected);
+        return item;
+    }
+
     // Prefer the oldest matching item while retaining FIFO order within each class.
     template <class Predicate>
     [[nodiscard]] std::optional<T> waitPop(Predicate preferred)

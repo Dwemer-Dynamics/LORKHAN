@@ -5,6 +5,7 @@
 #ifdef LORKHAN_WITH_BOOST_BEAST
 #include "lorkhan/json.hpp"
 #include "lorkhan/media.hpp"
+#include "lorkhan/plugin_package.hpp"
 #include "lorkhan/protocol_response.hpp"
 
 #include <boost/asio/connect.hpp>
@@ -24,6 +25,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <limits>
 #include <mutex>
@@ -748,6 +750,8 @@ Result<WireRequest> serializeRequest(const BaseUrl& baseUrl, const OutboundReque
             wire.body = std::move(canonical).value();
             break;
         }
+        case RequestKind::plugin_package_sync:
+            break; // Multi-step: executePackageSync owns every package exchange.
         case RequestKind::media: {
             const auto* media = std::get_if<MediaPrepareRequest>(&request.payload);
             if (!media)
@@ -780,6 +784,83 @@ Headers responseHeaders(const http::response<http::string_body>& response)
         headers.emplace_back(std::string(field.name_string()), std::string(field.value()));
     return headers;
 }
+
+struct PackageReply {
+    unsigned status{};
+    Headers headers;
+    std::string body;
+};
+
+// Fixed /plugin-packages routes only: the sync engine supplies typed values, never a path or URL.
+class PackageWire final : public IPluginPackageWire {
+public:
+    using Exchange = std::function<Result<PackageReply>(http::verb, std::string, std::string, std::string_view, bool)>;
+    using Typed = std::function<Result<void>(const PackageReply&, unsigned)>;
+
+    PackageWire(Exchange exchange, Typed typed) : m_exchange(std::move(exchange)), m_typed(std::move(typed)) {}
+
+    Result<PluginPackageProbe> probe(std::string_view pluginId, std::string_view version, std::string_view sha256) override
+    {
+        return run<PluginPackageProbe>(http::verb::post, "/plugin-packages/probe",
+            pluginPackageProbeBody(pluginId, version, sha256), kJsonContentType, false, 200,
+            [](const PackageReply& reply) { return parsePluginPackageProbeResponse(reply.body, reply.headers); });
+    }
+
+    Result<PluginPackageUpload> startUpload(std::string_view pluginId, std::string_view version, std::uint64_t size,
+        std::string_view sha256) override
+    {
+        return run<PluginPackageUpload>(http::verb::post, "/plugin-packages/uploads",
+            pluginPackageUploadBody(pluginId, version, size, sha256), kJsonContentType, false, 201,
+            [](const PackageReply& reply) { return parsePluginPackageUploadResponse(reply.body, reply.headers, true); });
+    }
+
+    Result<PluginPackageUpload> putChunk(std::string_view uploadId, std::uint64_t index,
+        std::span<const std::byte> bytes) override
+    {
+        if (!isCanonicalUuid(uploadId) || bytes.empty() || bytes.size() > kPluginPackageChunkBytes)
+            return Result<PluginPackageUpload>::failure(makeError(ErrorCode::invalid_argument,
+                "package chunk is outside the closed contract"));
+        return run<PluginPackageUpload>(http::verb::put,
+            "/plugin-packages/uploads/" + std::string(uploadId) + "/chunks/" + std::to_string(index),
+            std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size()), "application/octet-stream", false,
+            200, [](const PackageReply& reply) { return parsePluginPackageUploadResponse(reply.body, reply.headers, false); });
+    }
+
+    Result<PluginPackageOperation> submit(bool update, const RequestId& request, std::string_view uploadId) override
+    {
+        if (!isCanonicalUuid(uploadId) || !isCanonicalUuid(request.value()))
+            return Result<PluginPackageOperation>::failure(makeError(ErrorCode::invalid_argument,
+                "package submission is outside the closed contract"));
+        return run<PluginPackageOperation>(http::verb::post, update ? "/plugin-packages/update" : "/plugin-packages/install",
+            pluginPackageSubmitBody(request, uploadId), kJsonContentType, true, 202,
+            [](const PackageReply& reply) { return parsePluginPackageOperationResponse(reply.body, reply.headers); });
+    }
+
+    Result<PluginPackageOperation> operation(std::string_view operationId) override
+    {
+        if (!isCanonicalUuid(operationId))
+            return Result<PluginPackageOperation>::failure(makeError(ErrorCode::invalid_argument,
+                "package operation ID is malformed"));
+        return run<PluginPackageOperation>(http::verb::get, "/plugin-packages/operations/" + std::string(operationId),
+            {}, {}, false, 200,
+            [](const PackageReply& reply) { return parsePluginPackageOperationResponse(reply.body, reply.headers); });
+    }
+
+private:
+    template <class T, class Parse>
+    Result<T> run(http::verb method, std::string suffix, std::string body, std::string_view contentType,
+        bool idempotent, unsigned expected, Parse parse)
+    {
+        auto reply = m_exchange(method, std::move(suffix), std::move(body), contentType, idempotent);
+        if (!reply) return Result<T>::failure(reply.error());
+        auto status = m_typed(reply.value(), expected);
+        if (!status) return Result<T>::failure(status.error());
+        return parse(reply.value());
+    }
+
+    Exchange m_exchange;
+    Typed m_typed;
+};
 
 Result<InboundResult> protocolFailure(const OutboundRequest& request, unsigned status,
     std::string_view body, const Headers& headers)
@@ -1053,6 +1134,9 @@ Result<InboundResult> validateResponse(const OutboundRequest& request, const Wir
         case RequestKind::media:
             kind = ResponseKind::media_ready;
             break;
+        case RequestKind::plugin_package_sync:
+            return Result<InboundResult>::failure(makeError(ErrorCode::transport_failure,
+                "package sync has no single response"));
     }
     return Result<InboundResult>::success(
         {request.id, std::move(session), request.generation, kind, response.body(), std::nullopt});
@@ -1270,6 +1354,8 @@ Result<InboundResult> BeastTransport::execute(const OutboundRequest& request, st
     }
     if (cancellation.stop_requested())
         return Result<InboundResult>::failure(makeError(ErrorCode::cancelled, "transport operation cancelled"));
+    if (const auto* sync = std::get_if<PluginPackageSyncRequest>(&request.payload))
+        return executePackageSync(request, *sync, cancellation);
     auto serialized = serializeRequest(m_impl->baseUrl, request);
     if (!serialized)
         return Result<InboundResult>::failure(serialized.error());
@@ -1315,20 +1401,9 @@ Result<InboundResult> BeastTransport::execute(const OutboundRequest& request, st
         message.set(name, value);
     message.body() = std::move(wire.body);
     message.prepare_payload();
-    const std::string timestamp = utcTimestamp();
-    const std::string nonce = randomNonce();
-    const std::string digest = hexBytes(sha256(message.body()));
-    const std::string contentType = std::string(message[http::field::content_type]);
-    const std::string canonicalTarget = wire.target;
-    const std::string canonical = "hmac-sha256-v1\n" + std::string(message.method_string()) + "\n"
-        + canonicalTarget + "\n" + contentType + "\n" + digest + "\n"
-        + m_impl->installation.value() + "\n" + timestamp + "\n" + nonce;
-    message.set("X-LORKHAN-Auth", "hmac-sha256-v1");
-    message.set("X-LORKHAN-Installation-Id", m_impl->installation.value());
-    message.set("X-LORKHAN-Timestamp", timestamp);
-    message.set("X-LORKHAN-Nonce", nonce);
-    message.set("X-LORKHAN-Content-SHA256", digest);
-    message.set("X-LORKHAN-Signature", hexBytes(hmacSha256(m_impl->token.macKey(), canonical)));
+    for (const auto& [name, value] : authorizationHeaders(std::string(message.method_string()), wire.target,
+             std::string(message[http::field::content_type]), message.body()))
+        message.set(name, value);
 
     operation->stream.expires_after(boundedStage(totalDeadline, deadlines.write));
     http::async_write(operation->stream, message,
@@ -1525,6 +1600,166 @@ Result<InboundResult> BeastTransport::execute(const OutboundRequest& request, st
     cleanup.committed = true;
     return Result<InboundResult>::success({request.id, request.session, request.generation,
         ResponseKind::media_ready, descriptor.id.value(), std::nullopt});
+}
+
+Result<InboundResult> BeastTransport::executeBackground(const OutboundRequest& request, std::stop_token cancellation,
+    const std::function<void()>& yield)
+{
+    if (const auto* sync = std::get_if<PluginPackageSyncRequest>(&request.payload))
+        return executePackageSync(request, *sync, cancellation, yield);
+    return execute(request, cancellation);
+}
+Headers BeastTransport::authorizationHeaders(std::string_view method, std::string_view target,
+    std::string_view contentType, std::string_view body) const
+{
+    const std::string timestamp = utcTimestamp();
+    const std::string nonce = randomNonce();
+    const std::string digest = hexBytes(sha256(body));
+    const std::string canonical = "hmac-sha256-v1\n" + std::string(method) + "\n" + std::string(target) + "\n"
+        + std::string(contentType) + "\n" + digest + "\n" + m_impl->installation.value() + "\n" + timestamp + "\n"
+        + nonce;
+    return {{"X-LORKHAN-Auth", "hmac-sha256-v1"}, {"X-LORKHAN-Installation-Id", m_impl->installation.value()},
+        {"X-LORKHAN-Timestamp", timestamp}, {"X-LORKHAN-Nonce", nonce}, {"X-LORKHAN-Content-SHA256", digest},
+        {"X-LORKHAN-Signature", hexBytes(hmacSha256(m_impl->token.macKey(), canonical))}};
+}
+
+Result<InboundResult> BeastTransport::executePackageSync(const OutboundRequest& request,
+    const PluginPackageSyncRequest& sync, std::stop_token cancellation, const std::function<void()>& yield)
+{
+    if (sync.correlation.request != request.id || sync.correlation.session != request.session
+        || sync.correlation.generation != request.generation)
+        return Result<InboundResult>::failure(makeError(ErrorCode::invalid_argument,
+            "plugin package correlation is inconsistent"));
+    auto deadlines = m_impl->deadlines;
+    if (const int configured = m_impl->timeoutSeconds.load(std::memory_order_relaxed); configured > 0) {
+        const auto timeout = std::chrono::milliseconds(configured * 1000);
+        deadlines.connect = deadlines.write = deadlines.firstByte = deadlines.read = deadlines.total = timeout;
+    }
+    // Background requests use a hard per-exchange deadline even when foreground timeout is longer.
+    deadlines.connect = deadlines.write = deadlines.firstByte = deadlines.read = deadlines.total = std::chrono::milliseconds(1000);
+    // Each step is one signed connection that interrupt() can close; every step carries the sync request ID.
+    const auto exchange = [&](http::verb method, std::string suffix, std::string body, std::string_view contentType,
+                              bool idempotent) -> Result<PackageReply> {
+        if (cancellation.stop_requested())
+            return Result<PackageReply>::failure(makeError(ErrorCode::cancelled, "transport operation cancelled"));
+        auto operation = std::make_shared<TransportOperation>(request.id);
+        {
+            std::lock_guard lock(m_impl->operationMutex);
+            m_impl->activeOperation = operation;
+        }
+        struct Release {
+            Impl& impl;
+            std::shared_ptr<TransportOperation> operation;
+            ~Release()
+            {
+                std::lock_guard lock(impl.operationMutex);
+                if (impl.activeOperation == operation)
+                    impl.activeOperation.reset();
+            }
+        } release{*m_impl, operation};
+        const std::string target = m_impl->baseUrl.basePath == "/" ? suffix : m_impl->baseUrl.basePath + suffix;
+        const auto totalDeadline = std::chrono::steady_clock::now() + deadlines.total;
+        const auto cancelled = [&operation, &cancellation] {
+            return cancellation.stop_requested() || operation->cancelled;
+        };
+        std::stop_callback cancellationCallback(cancellation, [weak = std::weak_ptr(operation)] {
+            if (auto active = weak.lock())
+                asio::post(active->context, [weak] {
+                    if (auto current = weak.lock())
+                        current->cancel();
+                });
+        });
+        boost::system::error_code error;
+        operation->stream.expires_after(boundedStage(totalDeadline, deadlines.connect));
+        operation->stream.async_connect(tcp::endpoint(m_impl->address, m_impl->baseUrl.port),
+            [&error](const boost::system::error_code& result) { error = result; });
+        operation->context.run();
+        operation->context.restart();
+        if (error || cancelled())
+            return Result<PackageReply>::failure(socketError(error, cancelled()));
+
+        http::request<http::string_body> message{method, target, 11};
+        message.set(http::field::host, m_impl->baseUrl.authority());
+        message.set(http::field::user_agent, "LORKHAN/" + std::string(kClientVersion));
+        message.set(http::field::accept, std::string(kJsonContentType));
+        message.set(http::field::connection, "close");
+        message.set("X-LORKHAN-Request-Id", request.id.value());
+        if (idempotent)
+            message.set("Idempotency-Key", request.id.value());
+        if (method != http::verb::get)
+            message.set(http::field::content_type, std::string(contentType));
+        message.body() = std::move(body);
+        message.prepare_payload();
+        for (const auto& [name, value] : authorizationHeaders(std::string(message.method_string()), target,
+                 std::string(message[http::field::content_type]), message.body()))
+            message.set(name, value);
+        operation->stream.expires_after(boundedStage(totalDeadline, deadlines.write));
+        http::async_write(operation->stream, message,
+            [&error](const boost::system::error_code& result, std::size_t) { error = result; });
+        operation->context.run();
+        operation->context.restart();
+        if (error || cancelled())
+            return Result<PackageReply>::failure(socketError(error, cancelled()));
+
+        constexpr std::size_t responseLimit = 64U * 1024U;
+        beast::flat_buffer buffer;
+        buffer.max_size(kMaximumHeaderBytes + responseLimit);
+        http::response_parser<http::string_body> parser;
+        parser.eager(false);
+        parser.header_limit(kMaximumHeaderBytes);
+        parser.body_limit(responseLimit);
+        const auto firstByteDeadline = std::chrono::steady_clock::now()
+            + boundedStage(totalDeadline, deadlines.firstByte);
+        operation->stream.expires_at(firstByteDeadline);
+        http::async_read_header(operation->stream, buffer, parser,
+            [&error](const boost::system::error_code& result, std::size_t) { error = result; });
+        operation->context.run();
+        operation->context.restart();
+        if (error || cancelled())
+            return Result<PackageReply>::failure(socketError(error, cancelled(),
+                std::chrono::steady_clock::now() >= firstByteDeadline));
+        const auto contentLength = parser.content_length();
+        if (parser.chunked() || !contentLength)
+            return Result<PackageReply>::failure(makeError(ErrorCode::transport_failure,
+                "response requires one bounded Content-Length body"));
+        if (*contentLength > responseLimit)
+            return Result<PackageReply>::failure(makeError(ErrorCode::payload_too_large,
+                "response body exceeds endpoint byte limit"));
+        operation->stream.expires_after(boundedStage(totalDeadline, deadlines.read));
+        http::async_read(operation->stream, buffer, parser,
+            [&error](const boost::system::error_code& result, std::size_t) { error = result; });
+        operation->context.run();
+        operation->context.restart();
+        if (error || cancelled())
+            return Result<PackageReply>::failure(socketError(error, cancelled()));
+        boost::system::error_code shutdownError;
+        operation->stream.socket().shutdown(tcp::socket::shutdown_both, shutdownError);
+        return Result<PackageReply>::success(
+            {parser.get().result_int(), responseHeaders(parser.get()), parser.get().body()});
+    };
+    const auto typed = [&request](const PackageReply& reply, unsigned expected) -> Result<void> {
+        if (reply.status == expected)
+            return Result<void>::success();
+        if (reply.status >= 200 && reply.status < 300)
+            return Result<void>::failure(makeError(ErrorCode::transport_failure,
+                "server returned an unexpected success status"));
+        if (reply.status >= 300 && reply.status < 400)
+            return Result<void>::failure(makeError(ErrorCode::redirect_rejected, "HTTP redirects are rejected"));
+        auto parsed = parsePluginPackageErrorResponse(reply.body, reply.headers);
+        if (!parsed)
+            return Result<void>::failure(parsed.error());
+        if (parsed.value().correlationId != request.id.value())
+            return Result<void>::failure(makeError(ErrorCode::transport_failure,
+                "typed protocol error correlation mismatch"));
+        return Result<void>::failure(makeError(parsed.value().code, parsed.value().wireCode,
+            parsed.value().retriable, parsed.value().retryAfterMs, parsed.value().correlationId));
+    };
+    PackageWire wire(exchange, typed);
+    auto outcome = runPluginPackageSync(sync, request.id, wire, cancellation, {}, yield);
+    if (!outcome)
+        return Result<InboundResult>::failure(outcome.error());
+    return Result<InboundResult>::success({request.id, request.session, request.generation, ResponseKind::completed,
+        serializePluginPackageSyncOutcome(outcome.value()), std::nullopt});
 }
 
 void BeastTransport::interrupt(const RequestId& request) noexcept

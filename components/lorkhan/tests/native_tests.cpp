@@ -8,6 +8,7 @@
 #include "lorkhan/events.hpp"
 #include "lorkhan/json.hpp"
 #include "lorkhan/media.hpp"
+#include "lorkhan/plugin_package.hpp"
 #include "lorkhan/protocol_response.hpp"
 #include "lorkhan/queues.hpp"
 #include "lorkhan/validation.hpp"
@@ -17,9 +18,12 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <limits>
 #include <mutex>
+#include <span>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <type_traits>
@@ -1636,6 +1640,363 @@ void testPluginContract()
     CHECK(bridge.enqueue(pluginRequest(eventJson(fields))));
 }
 
+// Scripted server half for runPluginPackageSync: no socket, every step recorded.
+class FakePackageWire final : public lorkhan::IPluginPackageWire {
+public:
+    using Probe = lorkhan::PluginPackageProbe;
+    using Upload = lorkhan::PluginPackageUpload;
+    using Operation = lorkhan::PluginPackageOperation;
+    using State = lorkhan::PluginPackageOperationState;
+
+    lorkhan::Result<Probe> probe(std::string_view pluginId, std::string_view version, std::string_view sha256) override
+    {
+        probeCalls.push_back(std::string(pluginId) + "|" + std::string(version) + "|" + std::string(sha256));
+        if (transportFailure) return lorkhan::Result<Probe>::failure(*transportFailure);
+        return lorkhan::Result<Probe>::success(probes[std::min(probeCalls.size(), probes.size()) - 1]);
+    }
+    lorkhan::Result<Upload> startUpload(std::string_view, std::string_view, std::uint64_t size, std::string_view sha) override
+    {
+        declaredSize = size;
+        declaredSha = std::string(sha);
+        if (startError) return lorkhan::Result<Upload>::failure(*startError);
+        return lorkhan::Result<Upload>::success({kUpload, 0, 0, chunkBytes, false});
+    }
+    lorkhan::Result<Upload> putChunk(std::string_view uploadId, std::uint64_t index, std::span<const std::byte> bytes) override
+    {
+        ++chunkAttempts;
+        if (cancelOnChunk && index == 1) cancelOnChunk->request_stop();
+        if (rateLimitedChunks > 0) {
+            --rateLimitedChunks;
+            return lorkhan::Result<Upload>::failure(lorkhan::makeError(lorkhan::ErrorCode::rate_limited, "rate_limited",
+                true, 1, std::string(kSyncRequest)));
+        }
+        CHECK(uploadId == kUpload && index == chunkIndexes.size());
+        chunkIndexes.push_back(index);
+        uploaded.append(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        return lorkhan::Result<Upload>::success({kUpload, index + 1, uploaded.size(), 0, uploaded.size() == declaredSize});
+    }
+    lorkhan::Result<Operation> submit(bool update, const lorkhan::RequestId& request, std::string_view uploadId) override
+    {
+        submitted.push_back(std::string(update ? "update|" : "install|") + request.value() + "|" + std::string(uploadId));
+        if (submitError) return lorkhan::Result<Operation>::failure(*submitError);
+        return lorkhan::Result<Operation>::success(operationAt(0, update));
+    }
+    lorkhan::Result<Operation> operation(std::string_view operationId) override
+    {
+        CHECK(operationId == kOperation);
+        ++operationPolls;
+        return lorkhan::Result<Operation>::success(operationAt(operationPolls, submitted.back().starts_with("update")));
+    }
+
+    Operation operationAt(std::size_t index, bool update) const
+    {
+        const State state = states[std::min(index, states.size() - 1)];
+        return {kOperation, "ashlander.camp_tasks", update, "1.2.0", declaredSha, state,
+            state == State::failed ? std::optional<std::string>("package_checksum_mismatch") : std::nullopt};
+    }
+
+    static constexpr const char* kUpload = "00000000-0000-4000-8000-000000000501";
+    static constexpr const char* kOperation = "00000000-0000-4000-8000-000000000502";
+    static constexpr const char* kSyncRequest = "00000000-0000-4000-8000-000000000500";
+    std::vector<Probe> probes;
+    std::vector<State> states{State::queued, State::succeeded};
+    std::optional<lorkhan::Error> transportFailure;
+    std::optional<lorkhan::Error> startError;
+    std::optional<lorkhan::Error> submitError;
+    std::stop_source* cancelOnChunk{};
+    unsigned rateLimitedChunks{};
+    std::uint64_t chunkBytes{lorkhan::kPluginPackageChunkBytes};
+    std::vector<std::string> probeCalls;
+    std::vector<std::string> submitted;
+    std::vector<std::uint64_t> chunkIndexes;
+    std::string uploaded;
+    std::uint64_t declaredSize{};
+    std::string declaredSha;
+    unsigned chunkAttempts{};
+    std::size_t operationPolls{};
+};
+
+void testPluginPackageSync()
+{
+    namespace fs = std::filesystem;
+    using Action = lorkhan::PluginPackageProbeAction;
+    using Status = lorkhan::PluginPackageSyncStatus;
+    const lorkhan::Headers jsonHeaders{{"Content-Type", "application/json; charset=utf-8"}};
+    const std::string id = "ashlander.camp_tasks";
+    const std::string manifestSha(64, 'a');
+    const fs::path base = fs::temp_directory_path() / "lorkhan-package-sync-tests";
+    std::error_code ignored;
+    fs::remove_all(base, ignored);
+    const fs::path rootA = base / "data-a";
+    const fs::path rootB = base / "data-b";
+    const auto writePackage = [&](const fs::path& root, const std::string& version, const std::string& bytes) {
+        const fs::path directory = root / "lorkhan-packages" / id;
+        fs::create_directories(directory);
+        std::ofstream(directory / (id + "-" + version + ".dwpkg"), std::ios::binary) << bytes;
+        return directory / (id + "-" + version + ".dwpkg");
+    };
+    fs::create_directories(rootA);
+    fs::create_directories(rootB);
+    CHECK(lorkhan::pluginPackageRelativePath(id, "1.2.0") == "lorkhan-packages/ashlander.camp_tasks/ashlander.camp_tasks-1.2.0.dwpkg");
+
+    // Override order follows the VFS: the later data root wins; an absent later file falls back.
+    const std::string bytesA(30, 'A');
+    const std::string bytesB(40, 'B');
+    writePackage(rootA, "1.2.0", bytesA);
+    const fs::path fileB = writePackage(rootB, "1.2.0", bytesB);
+    const std::vector<std::string> roots{rootA.string(), rootB.string()};
+    auto resolved = lorkhan::resolvePluginPackage(roots, id, "1.2.0");
+    CHECK(resolved && resolved.value().bytes == 40 && resolved.value().path == fs::canonical(fileB));
+    resolved = lorkhan::resolvePluginPackage({rootB.string(), rootA.string()}, id, "1.2.0");
+    CHECK(resolved && resolved.value().bytes == 30);
+    resolved = lorkhan::resolvePluginPackage({rootA.string(), (base / "absent").string(), rootB.string()}, id, "1.2.0");
+    CHECK(resolved && resolved.value().bytes == 40);
+    const auto reason = [](const auto& result) { return result ? std::string("ok") : result.error().message; };
+    CHECK(reason(lorkhan::resolvePluginPackage(roots, id, "9.9.9")) == "package_not_found");
+    CHECK(reason(lorkhan::resolvePluginPackage({"relative/data"}, id, "1.2.0")) == "package_roots_invalid");
+    CHECK(reason(lorkhan::resolvePluginPackage({}, id, "1.2.0")) == "package_roots_invalid");
+    for (const std::string hostile : {"lorkhan.core", "../evil.addon", "ashlander.camp_tasks/../x", "Ashlander.camp"})
+        CHECK(reason(lorkhan::resolvePluginPackage(roots, hostile, "1.2.0")) == "package_identity_invalid");
+    CHECK(reason(lorkhan::resolvePluginPackage(roots, id, "1.2.0/../../x")) == "package_identity_invalid");
+    writePackage(rootB, "1.0.1", "tiny");
+    CHECK(reason(lorkhan::resolvePluginPackage(roots, id, "1.0.1")) == "package_archive_invalid");
+    const fs::path huge = writePackage(rootB, "1.0.2", "x");
+    fs::resize_file(huge, lorkhan::kMaxPluginPackageBytes + 1);
+    CHECK(reason(lorkhan::resolvePluginPackage(roots, id, "1.0.2")) == "package_too_large");
+    fs::create_directories(rootB / "lorkhan-packages" / id / (id + "-1.0.3.dwpkg"));
+    CHECK(reason(lorkhan::resolvePluginPackage(roots, id, "1.0.3")) == "package_not_regular");
+    // A link anywhere below the root fails closed instead of falling back to a lower root.
+    const fs::path outside = base / "outside";
+    fs::create_directories(outside / id);
+    std::ofstream(outside / id / (id + "-1.0.4.dwpkg"), std::ios::binary) << std::string(64, 'L');
+    std::ofstream(outside / "target.dwpkg", std::ios::binary) << std::string(64, 'L');
+    writePackage(rootA, "1.0.4", std::string(64, 'a'));
+    std::error_code linkError;
+    fs::create_symlink(outside / "target.dwpkg", rootB / "lorkhan-packages" / id / (id + "-1.0.4.dwpkg"), linkError);
+    if (!linkError)
+        CHECK(reason(lorkhan::resolvePluginPackage(roots, id, "1.0.4")) == "package_link_rejected");
+    else
+        std::cout << "file symlink creation unavailable; junction case still runs\n";
+    const fs::path linkedRoot = base / "data-linked";
+    fs::create_directories(linkedRoot);
+#ifdef _WIN32
+    const std::string junction = "mklink /J \"" + (linkedRoot / "lorkhan-packages").string() + "\" \"" + outside.string()
+        + "\" >NUL 2>&1";
+    const bool linked = std::system(junction.c_str()) == 0;
+#else
+    std::error_code directoryLinkError;
+    fs::create_directory_symlink(outside, linkedRoot / "lorkhan-packages", directoryLinkError);
+    const bool linked = !directoryLinkError;
+#endif
+    CHECK(linked);
+    CHECK(reason(lorkhan::resolvePluginPackage({linkedRoot.string()}, id, "1.0.4")) == "package_link_rejected");
+
+    // Strict package response parsers: closed keys and states, no paths, no contradictions.
+    const std::string sha(64, 'b');
+    const std::string package = R"({"plugin_id":"ashlander.camp_tasks","display_name":"Camp","version":"1.1.0","state":"installed","enabled":false,"archive_sha256":")"
+        + sha + R"(","manifest_sha256":")" + manifestSha + R"(","previous_version":null,"revision":2,"installed_at":"2026-10-02 12:00:00+00","updated_at":"2026-10-02 12:00:00+00"})";
+    auto probe = lorkhan::parsePluginPackageProbeResponse(R"({"plugin_id":"ashlander.camp_tasks","action":"update","pending":false,"installed":)" + package + "}", jsonHeaders);
+    CHECK(probe && probe.value().action == Action::update && probe.value().installed && !probe.value().installed->enabled
+        && probe.value().installed->version == "1.1.0");
+    CHECK(lorkhan::parsePluginPackageProbeResponse(R"({"plugin_id":"ashlander.camp_tasks","action":"install","pending":true,"installed":null})", jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageProbeResponse(R"({"plugin_id":"ashlander.camp_tasks","action":"current","pending":false,"installed":null})", jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageProbeResponse(R"({"plugin_id":"ashlander.camp_tasks","action":"downgrade","pending":false,"installed":null})", jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageProbeResponse(R"({"plugin_id":"ashlander.camp_tasks","action":"install","pending":false,"installed":null,"path":"/var/lib"})", jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageProbeResponse(R"({"plugin_id":"other.plugin","action":"update","pending":false,"installed":)" + package + "}", jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageProbeResponse(R"({"plugin_id":"ashlander.camp_tasks","action":"install","pending":false,"installed":null})", {}));
+    CHECK(lorkhan::parsePluginPackageUploadResponse(R"({"upload_id":"00000000-0000-4000-8000-000000000501","next_index":0,"chunk_bytes":1048576,"complete":false})", jsonHeaders, true));
+    CHECK(!lorkhan::parsePluginPackageUploadResponse(R"({"upload_id":"00000000-0000-4000-8000-000000000501","next_index":0,"chunk_bytes":2097152,"complete":false})", jsonHeaders, true));
+    CHECK(!lorkhan::parsePluginPackageUploadResponse(R"({"upload_id":"00000000-0000-4000-8000-000000000501","next_index":1,"chunk_bytes":1048576,"complete":false})", jsonHeaders, true));
+    auto chunk = lorkhan::parsePluginPackageUploadResponse(R"({"upload_id":"00000000-0000-4000-8000-000000000501","next_index":2,"received":2048,"complete":true})", jsonHeaders, false);
+    CHECK(chunk && chunk.value().nextIndex == 2 && chunk.value().received == 2048 && chunk.value().complete);
+    const auto operationJson = [&](const std::string& state, const std::string& error) {
+        return R"({"operation":{"operation_id":"00000000-0000-4000-8000-000000000502","plugin_id":"ashlander.camp_tasks","operation":"update","version":"1.2.0","archive_sha256":")"
+            + sha + R"(","state":")" + state + R"(","error_code":)" + error + R"(,"created_at":"2026-10-02 12:00:00+00","finished_at":null}})";
+    };
+    auto operation = lorkhan::parsePluginPackageOperationResponse(operationJson("failed", "\"package_checksum_mismatch\""), jsonHeaders);
+    CHECK(operation && operation.value().update && operation.value().errorCode == "package_checksum_mismatch");
+    CHECK(lorkhan::parsePluginPackageOperationResponse(operationJson("queued", "null"), jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageOperationResponse(operationJson("failed", "null"), jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageOperationResponse(operationJson("succeeded", "\"package_apply_failed\""), jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageOperationResponse(operationJson("running", "null"), jsonHeaders));
+    const auto errorJson = [](const std::string& code) {
+        return R"({"schema":"lorkhan.error.v1","code":")" + code + R"(","message":"Package request rejected.","correlation_id":"00000000-0000-4000-8000-000000000500","retriable":true})";
+    };
+    auto busy = lorkhan::parsePluginPackageErrorResponse(errorJson("package_storage_busy"), jsonHeaders);
+    CHECK(busy && busy.value().wireCode == "package_storage_busy" && busy.value().code == lorkhan::ErrorCode::provider_unavailable);
+    CHECK(lorkhan::parsePluginPackageErrorResponse(errorJson("rate_limited"), jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageErrorResponse(errorJson("package_anything"), jsonHeaders));
+    CHECK(!lorkhan::parseProtocolErrorResponse(errorJson("package_storage_busy"), jsonHeaders));
+
+    // The sync engine: probe first, upload only when needed, never downgrade or overwrite a conflict.
+    std::string archive(2U * lorkhan::kPluginPackageChunkBytes + 4096U, '\0');
+    for (std::size_t index = 0; index < archive.size(); ++index)
+        archive[index] = static_cast<char>((index * 131U + 7U) & 0xffU);
+    writePackage(rootB, "1.2.0", archive);
+    const std::string archiveSha = lorkhan::sha256Hex(std::as_bytes(std::span(archive.data(), archive.size())));
+    const lorkhan::RequestId syncRequest(FakePackageWire::kSyncRequest);
+    const lorkhan::SessionId syncSession("00000000-0000-4000-8000-000000000007");
+    const lorkhan::PluginPackageSyncRequest sync{{syncRequest, syncSession, lorkhan::Generation(7)}, id, "1.2.0", manifestSha, roots};
+    lorkhan::PluginPackageSyncLimits limits;
+    limits.pendingWait = 30ms;
+    limits.operationWait = 60ms;
+    limits.pollInterval = 2ms;
+    limits.maximumPollInterval = 5ms;
+    limits.maximumRetryAfter = 2ms;
+    const auto installedRow = [&](const std::string& version, const std::string& archiveHash, bool enabled,
+                                  const std::string& manifest) {
+        return lorkhan::PluginPackageInfo{id, version, "installed", enabled, archiveHash, manifest};
+    };
+    const auto probeOf = [&](Action action, bool pending, std::optional<lorkhan::PluginPackageInfo> installed) {
+        return lorkhan::PluginPackageProbe{id, action, pending, std::move(installed)};
+    };
+    const auto run = [&](FakePackageWire& wire, std::stop_token token = {}) {
+        return lorkhan::runPluginPackageSync(sync, syncRequest, wire, token, limits);
+    };
+    {
+        FakePackageWire wire;
+        wire.probes = {probeOf(Action::current, false, installedRow("1.2.0", archiveSha, true, manifestSha))};
+        auto outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::current && outcome.value().enabled == true
+            && wire.declaredSize == 0 && wire.submitted.empty() && wire.probeCalls.size() == 1
+            && wire.probeCalls[0] == id + "|1.2.0|" + archiveSha);
+    }
+    {
+        FakePackageWire wire;
+        wire.probes = {probeOf(Action::current, false, installedRow("1.2.0", archiveSha, true, std::string(64, 'c')))};
+        auto outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::failed && outcome.value().reasonCode == "package_manifest_mismatch");
+    }
+    {
+        FakePackageWire wire;
+        wire.probes = {probeOf(Action::older, false, installedRow("2.0.0", sha, false, manifestSha))};
+        auto outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::newer_installed && outcome.value().installedVersion == "2.0.0"
+            && wire.declaredSize == 0 && wire.submitted.empty());
+        wire.probes = {probeOf(Action::conflict, false, installedRow("1.2.0", sha, false, manifestSha))};
+        outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::conflict && outcome.value().reasonCode == "package_version_conflict"
+            && wire.declaredSize == 0 && wire.submitted.empty());
+    }
+    {
+        FakePackageWire wire;
+        wire.probes = {probeOf(Action::install, false, std::nullopt),
+            probeOf(Action::current, false, installedRow("1.2.0", archiveSha, false, manifestSha))};
+        wire.rateLimitedChunks = 1;
+        auto outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::installed && outcome.value().reasonCode == "package_installed"
+            && outcome.value().enabled == false && outcome.value().uploadedBytes == archive.size());
+        CHECK(wire.uploaded == archive && wire.chunkIndexes == std::vector<std::uint64_t>({0, 1, 2})
+            && wire.chunkAttempts == 4 && wire.declaredSha == archiveSha && wire.declaredSize == archive.size());
+        CHECK(wire.submitted.size() == 1 && wire.submitted[0] == std::string("install|") + FakePackageWire::kSyncRequest + "|" + FakePackageWire::kUpload);
+        CHECK(wire.operationPolls == 1 && wire.probeCalls.size() == 2);
+        CHECK(lorkhan::serializePluginPackageSyncOutcome(outcome.value())
+            == R"({"enabled":false,"installed_version":"1.2.0","plugin_id":"ashlander.camp_tasks","reason_code":"package_installed","status":"installed","uploaded_bytes":2101248,"version":"1.2.0"})");
+    }
+    {
+        FakePackageWire wire;
+        wire.chunkBytes = 1024U * 1024U - 1U;
+        wire.probes = {probeOf(Action::update, false, installedRow("1.1.0", sha, true, std::string(64, 'd'))),
+            probeOf(Action::current, false, installedRow("1.2.0", archiveSha, true, manifestSha))};
+        auto outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::updated && outcome.value().enabled == true
+            && wire.chunkIndexes.size() == 3 && wire.uploaded == archive && wire.submitted[0].starts_with("update|"));
+    }
+    {
+        FakePackageWire wire;
+        wire.probes = {probeOf(Action::update, false, installedRow("1.1.0", sha, true, manifestSha))};
+        wire.states = {FakePackageWire::State::queued, FakePackageWire::State::failed};
+        auto outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::failed && outcome.value().reasonCode == "package_checksum_mismatch"
+            && outcome.value().installedVersion == "1.1.0" && wire.probeCalls.size() == 1);
+        wire = FakePackageWire{};
+        wire.probes = {probeOf(Action::install, false, std::nullopt)};
+        wire.states = {FakePackageWire::State::queued};
+        outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::pending && outcome.value().reasonCode == "package_operation_queued"
+            && wire.operationPolls >= 2);
+    }
+    {
+        FakePackageWire wire;
+        wire.probes = {probeOf(Action::install, true, std::nullopt)};
+        auto outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::pending && outcome.value().reasonCode == "package_operation_pending"
+            && wire.probeCalls.size() >= 2 && wire.declaredSize == 0);
+        wire = FakePackageWire{};
+        wire.probes = {probeOf(Action::install, true, std::nullopt), probeOf(Action::current, false,
+            installedRow("1.2.0", archiveSha, false, manifestSha))};
+        outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::current && wire.declaredSize == 0);
+    }
+    {
+        FakePackageWire wire;
+        wire.probes = {probeOf(Action::install, false, std::nullopt)};
+        wire.startError = lorkhan::makeError(lorkhan::ErrorCode::provider_unavailable, "package_storage_full", false,
+            std::nullopt, std::string(FakePackageWire::kSyncRequest));
+        auto outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::failed && outcome.value().reasonCode == "package_storage_full");
+        wire = FakePackageWire{};
+        wire.probes = {probeOf(Action::install, false, std::nullopt)};
+        wire.submitError = lorkhan::makeError(lorkhan::ErrorCode::duplicate_conflict, "package_operation_pending", false,
+            std::nullopt, std::string(FakePackageWire::kSyncRequest));
+        outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::pending);
+        wire = FakePackageWire{};
+        wire.transportFailure = lorkhan::makeError(lorkhan::ErrorCode::timeout, "socket timed out");
+        outcome = run(wire);
+        CHECK(!outcome && outcome.error().code == lorkhan::ErrorCode::timeout);
+    }
+    {
+        FakePackageWire wire;
+        std::stop_source stop;
+        wire.cancelOnChunk = &stop;
+        wire.probes = {probeOf(Action::install, false, std::nullopt)};
+        auto outcome = run(wire, stop.get_token());
+        CHECK(!outcome && outcome.error().code == lorkhan::ErrorCode::cancelled && wire.submitted.empty());
+    }
+    {
+        FakePackageWire wire;
+        auto missing = sync;
+        missing.version = "3.0.0";
+        auto outcome = lorkhan::runPluginPackageSync(missing, syncRequest, wire, {}, limits);
+        CHECK(outcome && outcome.value().status == Status::missing && wire.probeCalls.empty());
+        auto linked = sync;
+        linked.dataRoots = {linkedRoot.string()};
+        linked.version = "1.0.4";
+        outcome = lorkhan::runPluginPackageSync(linked, syncRequest, wire, {}, limits);
+        CHECK(outcome && outcome.value().status == Status::failed && outcome.value().reasonCode == "package_link_rejected"
+            && wire.probeCalls.empty());
+    }
+
+    // The bridge admits only the typed DTO for this exact request, session and generation.
+    lorkhan::BridgeService bridge(std::make_unique<FakeTransport>(std::make_shared<TransportState>()),
+        std::make_shared<FakeClock>(), lorkhan::Generation(7));
+    const auto syncOutbound = [&](lorkhan::PluginPackageSyncRequest payload) {
+        return lorkhan::OutboundRequest{syncRequest, syncSession, lorkhan::Generation(7),
+            lorkhan::RequestKind::plugin_package_sync, std::move(payload)};
+    };
+    auto relative = sync;
+    relative.dataRoots = {"Data Files"};
+    CHECK(!bridge.enqueue(syncOutbound(relative)));
+    auto badSha = sync;
+    badSha.manifestSha256 = std::string(64, 'G');
+    CHECK(!bridge.enqueue(syncOutbound(badSha)));
+    auto reserved = sync;
+    reserved.pluginId = "openmw.core_scripts";
+    CHECK(!bridge.enqueue(syncOutbound(reserved)));
+    auto stale = sync;
+    stale.correlation.generation = lorkhan::Generation(6);
+    CHECK(!bridge.enqueue(syncOutbound(stale)));
+    auto tooMany = sync;
+    tooMany.dataRoots.assign(lorkhan::kMaxPluginPackageRoots + 1, rootA.string());
+    CHECK(!bridge.enqueue(syncOutbound(tooMany)));
+    auto wrongKind = syncOutbound(sync);
+    wrongKind.kind = lorkhan::RequestKind::plugin_event;
+    CHECK(!bridge.enqueue(std::move(wrongKind)));
+    CHECK(bridge.enqueue(syncOutbound(sync)));
+    fs::remove_all(base, ignored);
+}
+
 int main()
 {
     testClientConfigPath();
@@ -1643,6 +2004,42 @@ int main()
     testProtocolEventResponses(); testQueue(); testLifecycleAndCancellation();
     testEvents(); testActions(); testPairingToken(); testMedia(); testBridgeDialogueDeliveryValidation();
     testBridge(); testBridgeSpeechCancel(); testConcurrency(); testVoiceCapturePrimitives(); testPluginContract();
+    testPluginPackageSync();
+    // A waiting package yields to queued foreground work on the existing worker, then finishes.
+    {
+        struct CooperativeTransport final : lorkhan::ITransport {
+            std::atomic<bool> started{false}, foreground{false};
+            lorkhan::Result<lorkhan::InboundResult> execute(const lorkhan::OutboundRequest& request, std::stop_token) override {
+                foreground = true;
+                return lorkhan::Result<lorkhan::InboundResult>::success({request.id, request.session, request.generation,
+                    lorkhan::ResponseKind::completed, "foreground", std::nullopt});
+            }
+            lorkhan::Result<lorkhan::InboundResult> executeBackground(const lorkhan::OutboundRequest& request,
+                std::stop_token token, const std::function<void()>& yield) override {
+                started = true;
+                const auto deadline = std::chrono::steady_clock::now() + 2s;
+                while (!foreground && !token.stop_requested() && std::chrono::steady_clock::now() < deadline) {
+                    yield(); std::this_thread::sleep_for(1ms);
+                }
+                return lorkhan::Result<lorkhan::InboundResult>::success({request.id, request.session, request.generation,
+                    lorkhan::ResponseKind::completed, "package", std::nullopt});
+            }
+            void interrupt(const lorkhan::RequestId&) noexcept override {}
+        };
+        auto transport = std::make_unique<CooperativeTransport>();
+        auto* observed = transport.get();
+        lorkhan::BridgeService bridge(std::move(transport), std::make_shared<FakeClock>(), lorkhan::Generation(7));
+        const lorkhan::RequestId packageId(uuidFor(950)), foregroundId(uuidFor(951));
+        const lorkhan::SessionId session(kSession);
+        CHECK(bridge.enqueue({packageId, session, lorkhan::Generation(7), lorkhan::RequestKind::plugin_package_sync,
+            lorkhan::PluginPackageSyncRequest{{packageId, session, lorkhan::Generation(7)}, "parity.example", "1.0.0",
+                std::string(64, 'a'), {std::filesystem::temp_directory_path().string()}}}));
+        CHECK(waitUntil([&] { return observed->started.load(); }));
+        CHECK(bridge.enqueue({foregroundId, session, lorkhan::Generation(7), lorkhan::RequestKind::health, lorkhan::HealthRequest{}}));
+        CHECK(waitUntil([&] { return bridge.diagnostics().inbound == 2; }));
+        const auto results = bridge.poll(2);
+        CHECK(results.size() == 2 && results[0].request == foregroundId && results[1].request == packageId);
+    }
     if (failures != 0) {
         std::cerr << failures << " test(s) failed\n";
         return EXIT_FAILURE;

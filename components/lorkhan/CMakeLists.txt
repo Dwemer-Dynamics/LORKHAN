@@ -7,6 +7,7 @@ add_library(lorkhan_core STATIC
     src/json.cpp
     src/lifecycle.cpp
     src/media.cpp
+    src/plugin_package.cpp
     src/protocol_response.cpp
     src/validation.cpp
     src/voice_capture.cpp)
