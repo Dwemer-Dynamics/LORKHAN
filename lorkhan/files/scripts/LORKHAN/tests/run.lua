@@ -3458,5 +3458,62 @@ test('direct profile requests queue bound targets and narrator without opening a
  local controls,ui,_,closed=factory(native,nil)
  controls.requestProfiles('target');eq(ui.ui.visible,true);eq(closed(),0);eq(controls.profileUpdates,nil)
 end)
+test('plugin contract registers active addons and validates only declared bounded intents',function()
+ local plugins=require('scripts.LORKHAN.plugin_contract')
+ local util=require('scripts.LORKHAN.util')
+ local fargoth={cell={grid_x=-2,grid_y=-9,kind='exterior'},content_file='Morrowind.esm',display_name='Fargoth',kind='npc',record_id='fargoth',refnum={content_file=0,index=112}}
+ local player={cell={grid_x=-2,grid_y=-9,kind='exterior'},content_file='Morrowind.esm',display_name='Player',kind='player',record_id='player',refnum={content_file=0,index=0}}
+ local manifest={schema='lorkhan.plugin.manifest.v1',plugin_id='ashlander.camp_tasks',version='1.2.0',api_version=1,
+  display_name='Camp Tasks',description='Typed camp actions.',author='Example Author',default_enabled=true,
+  compatibility={product='lorkhan',game='tes3',min_client_version='0.5.0',min_server_version='0.5.0',lua_api_revision=129},
+  dependencies={{plugin_id='ashlander.camp_core',min_version='1.0.0',max_version_exclusive='2.0.0'}},
+  actions={{name='fetch_water',display_name='Fetch water',description='Fetch water.',tier=1,confirmation='none',executor_kinds={'npc'},
+   target='none',target_kinds={},timeout_seconds=120,cancellable=true,parameters={{name='trips',type='integer',required=true,minimum=1,maximum=3},
+   {name='vessel',type='enum',required=false,values={'bucket','jug'}}}},
+   {name='share_meal',display_name='Share a meal',description='Share a meal.',tier=2,confirmation='required',executor_kinds={'npc'},
+   target='required',target_kinds={'player'},timeout_seconds=60,cancellable=false,parameters={}}},
+  events={{name='meal_shared',description='A meal was shared.',max_per_minute=6,fields={{name='host',type='actor',required=true,actor_kinds={'npc'}},
+   {name='dish',type='text',required=false,max_length=64}}}},prompt_contributions={{slot='scene_notes',max_chars=512}}}
+ truthy(plugins.validateManifest(manifest))
+ for _,mutate in ipairs({function(m)m.plugin_id='lorkhan.camp_tasks'end,function(m)m.actions[2].confirmation='optional'end,
+  function(m)m.actions[1].parameters[1].type='string'end,function(m)m.actions[1].target_kinds={'player'}end,
+  function(m)m.prompt_contributions[1].slot='system'end,function(m)m.actions[1].command='additem'end}) do
+  local copy=util.copy(manifest);mutate(copy);eq(plugins.validateManifest(copy),nil)
+ end
+ local entry=assert(plugins.registrationEntry(manifest,string.rep('ab',32),{fetch_water={fargoth}}))
+ eq(#entry.actions,2);eq(entry.actions[1].actors[1].record_id,'fargoth');eq(entry.actions[2].actors,nil)
+ local legacy=plugins.new({session_id=uuid(7),generation=7,capabilities={'action.ai.follow'}})
+ eq(select(2,plugins.activate(legacy,manifest,entry,'active')),'plugin_contract_unsupported')
+ local state=plugins.new({session_id=uuid(7),generation=7,capabilities={plugins.CAPABILITY}})
+ eq(select(2,plugins.activate(state,manifest,entry,'disabled')),'plugin_not_active')
+ truthy(plugins.activate(state,manifest,entry,'active'))
+ local newer=util.copy(manifest);newer.compatibility.lua_api_revision=130
+ eq(select(2,plugins.activate(plugins.new({session_id=uuid(7),generation=7,capabilities={plugins.CAPABILITY}}),newer,entry,'active')),'plugin_incompatible')
+ local full=plugins.new({session_id=uuid(7),generation=7,capabilities={plugins.CAPABILITY}})
+ for i=1,plugins.MAX_PLUGINS do full.plugins['ashlander.p'..i]={} end
+ eq(select(2,plugins.activate(full,manifest,entry,'active')),'plugin_limit_exceeded')
+ full.plugins['ashlander.p1']=nil;full.plugins[entry.plugin_id]={};truthy(plugins.activate(full,manifest,entry,'active'))
+ local authority={session_id=uuid(7),generation=7,resolve=function()return true end,expired=function()return false end}
+ local intent={schema='lorkhan.plugin.action-intent.v1',action_id=uuid(784),turn_id=uuid(8),session_id=uuid(7),generation=7,
+  plugin_id='ashlander.camp_tasks',plugin_version='1.2.0',action='fetch_water',tier=1,confirmation_required=false,cancellable=true,
+  actor=util.copy(fargoth),parameters={trips=2,vessel='jug'},expires_at='2026-10-02T12:02:00Z'}
+ local mapped=assert(plugins.validateIntent(state,intent,authority));eq(mapped.parameters.trips,2);eq(mapped.target,nil)
+ local other=util.copy(fargoth);other.refnum.index=113
+ for _,case in ipairs({{{parameters={trips=1,vessel='https://x/y.lua'}},'invalid_plugin_parameters'},{{parameters={trips=9}},'invalid_plugin_parameters'},
+  {{parameters={trips=1,path='x'}},'invalid_plugin_parameters'},{{actor=other},'wrong_actor'},{{target=player},'invalid_plugin_target'},
+  {{generation=6},'stale_action'},{{tier=2},'plugin_action_policy_mismatch'},{{action='burn_camp'},'plugin_action_unregistered'},
+  {{plugin_version='1.3.0'},'plugin_not_active'},{{command='player->additem gold_001 1'},'invalid_plugin_intent_fields'}}) do
+  local candidate=util.copy(intent);for key,value in pairs(case[1]) do candidate[key]=value end
+  local ok,reason=plugins.validateIntent(state,candidate,authority);eq(ok,nil);eq(reason,case[2])
+ end
+ local expired=util.copy(authority);expired.expired=function()return true end
+ eq(select(2,plugins.validateIntent(state,intent,expired)),'action_expired')
+ local event=assert(plugins.event(state,{plugin_id='ashlander.camp_tasks',event='meal_shared',message_id=uuid(800),request_id=uuid(801),
+  observed_at='2026-10-02T12:05:00Z',fields={host=fargoth,dish='Scuttle pie'}}))
+ eq(event.schema,'lorkhan.plugin.event.v1');eq(event.generation,7);eq(event.plugin_version,'1.2.0')
+ eq(select(2,plugins.event(state,{plugin_id='ashlander.camp_tasks',event='meal_shared',message_id=uuid(802),request_id=uuid(803),
+  observed_at='2026-10-02T12:05:00Z',fields={dish='Pie'}})),'invalid_plugin_event_fields')
+ plugins.deactivate(state,'ashlander.camp_tasks');eq(select(2,plugins.validateIntent(state,intent,authority)),'plugin_not_active')
+end)
 io.write(string.format('%d tests, %d failures\n',tests,failures))
 if failures>0 then os.exit(1) end
