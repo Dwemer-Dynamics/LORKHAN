@@ -1427,6 +1427,39 @@ void testRecordProvenance()
     record.observe("Final.esp"); CHECK(!record.complete && record.winningFile == "Final.esp");
 }
 
+// actor.identity.dynamic.v1 is additive: placed identities parse unchanged and the sentinel never aliases one.
+void testDynamicActorIdentity()
+{
+    const std::string dynamicActor = R"({"kind":"npc","record_id":"imperial guard","refnum":{"index":0,"content_file":0},"content_file":"lorkhan:dynamic","cell":{"kind":"interior","name":"Office"},"display_name":"Guard","dynamic":{"uuid":"01900000-0000-7000-8000-0000000000d1","runtime_ref":"@0x1f"}})";
+    const auto placed = lorkhan::parseProtocolIdentity(protocolIdentity());
+    CHECK(placed && !placed.value().dynamic && placed.value().refnumIndex == 112);
+    const auto parsed = lorkhan::parseProtocolIdentity(dynamicActor);
+    CHECK(parsed && parsed.value().dynamic && parsed.value().dynamic->uuid == "01900000-0000-7000-8000-0000000000d1"
+        && parsed.value().dynamic->runtimeRef == "@0x1f" && parsed.value().dynamic->runtimeIndex == 0x1fU);
+    const auto maximum = lorkhan::parseProtocolIdentity(std::string(dynamicActor).replace(dynamicActor.find("@0x1f"), 5, "@0xffffffff"));
+    CHECK(maximum && maximum.value().dynamic->runtimeIndex == 0xffffffffU);
+    for (const auto& [from, to] : std::vector<std::pair<std::string, std::string>>{
+             {"@0x1f", "@0x01f"}, {"@0x1f", "@0x0"}, {"@0x1f", "@0x1F"}, {"@0x1f", "0x1f"}, {"@0x1f", "@0x100000000"},
+             {"0000000000d1", "0000000000D1"}, {"01900000-0000-7000-8000-0000000000d1", "00000000-0000-0000-0000-000000000000"},
+             {"\"runtime_ref\"", "\"extra\":1,\"runtime_ref\""},
+             {"\"index\":0", "\"index\":31"}, {"\"lorkhan:dynamic\"", "\"Morrowind.esm\""}, {"\"kind\":\"npc\"", "\"kind\":\"player\""}}) {
+        auto changed = dynamicActor; changed.replace(changed.find(from), from.size(), to);
+        CHECK(!lorkhan::parseProtocolIdentity(changed));
+    }
+    auto sentinel = protocolIdentity(); sentinel.replace(sentinel.find("Morrowind.esm"), 13, "lorkhan:dynamic");
+    CHECK(!lorkhan::parseProtocolIdentity(sentinel));
+    const auto dynamicProfile = std::string("dyn:") + kInstallation + ":" + kPlaythrough + ":01900000-0000-7000-8000-0000000000d1";
+    CHECK(lorkhan::isProfileId(dynamicProfile));
+    CHECK(!lorkhan::isProfileId(dynamicProfile + "0"));
+    // Nil is rejected only as the dynamic actor UUID; generic UUID and dyn scope semantics are unchanged.
+    const std::string nilUuid = "00000000-0000-0000-0000-000000000000";
+    CHECK(!lorkhan::isDynamicActorUuid(nilUuid) && lorkhan::isCanonicalUuid(nilUuid));
+    CHECK(!lorkhan::isProfileId(std::string("dyn:") + kInstallation + ":" + kPlaythrough + ":" + nilUuid));
+    CHECK(lorkhan::isProfileId(std::string("dyn:") + nilUuid + ":" + nilUuid + ":01900000-0000-7000-8000-0000000000d1"));
+    CHECK(!lorkhan::isProfileId(std::string("dyn:") + kInstallation + ":" + kPlaythrough + ":@0x1f"));
+    CHECK(lorkhan::kDynamicActorIdentityCapability == "actor.identity.dynamic.v1");
+}
+
 void testSavedCharacterIdentity()
 {
     unsigned sequence=50;
@@ -2000,7 +2033,7 @@ void testPluginPackageSync()
 int main()
 {
     testClientConfigPath();
-    testSavedCharacterIdentity(); testPlaybackSettings(); testRecordProvenance(); testUtf8(); testUrls(); testHeaders(); testJson(); testProtocolResponses(); testAcceptedProtocolResponses();
+    testSavedCharacterIdentity(); testDynamicActorIdentity(); testPlaybackSettings(); testRecordProvenance(); testUtf8(); testUrls(); testHeaders(); testJson(); testProtocolResponses(); testAcceptedProtocolResponses();
     testProtocolEventResponses(); testQueue(); testLifecycleAndCancellation();
     testEvents(); testActions(); testPairingToken(); testMedia(); testBridgeDialogueDeliveryValidation();
     testBridge(); testBridgeSpeechCancel(); testConcurrency(); testVoiceCapturePrimitives(); testPluginContract();

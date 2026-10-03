@@ -79,10 +79,58 @@ runtime generation values greater than zero.
 }
 ```
 
-For generated/runtime identities, include the OpenMW FormId/RefNum representation supported by the
-pinned API. Record ID, content source/order, cell and runtime reference are jointly authoritative.
-Names and server profile IDs are metadata. A content fingerprint is the SHA-256 of normalized engine
-version/API plus the ordered content list and file identity metadata, never proprietary file bytes.
+Placed references are keyed by content file and RefNum. Record ID, content source/order, cell and
+runtime reference are jointly authoritative. Names and server profile IDs are metadata. A content
+fingerprint is the SHA-256 of normalized engine version/API plus the ordered content list and file
+identity metadata, never proprietary file bytes.
+
+### Runtime-generated actors (`actor.identity.dynamic.v1`)
+
+OpenMW gives spawned actors a generated RefNum (`@0x<hex>`) that is recycled by a new game or an
+older save, so neither that slot nor the record ID or name may identify them. Clients that support
+saved dynamic identities advertise `actor.identity.dynamic.v1` in session runtime capabilities; a
+server that implements this section echoes it in `session.accepted` capabilities. Only then may
+either side send an NPC/creature identity with the optional `dynamic` member:
+
+```json
+{
+  "kind": "npc",
+  "record_id": "imperial guard",
+  "refnum": {"index": 0, "content_file": 0},
+  "content_file": "lorkhan:dynamic",
+  "cell": {"kind": "interior", "name": "Seyda Neen, Census and Excise Office"},
+  "display_name": "Imperial Guard",
+  "dynamic": {"uuid": "00000000-0000-4000-8000-0000000000d1", "runtime_ref": "@0x1f"}
+}
+```
+
+- The zero `refnum` and reserved `lorkhan:dynamic` content file are mandatory sentinels; a placed
+  identity can never use that content file. Placed identities and fixtures are unchanged.
+- `dynamic.uuid` is minted by the client and saved by the CUSTOM `dynamic_actor.lua` script on the
+  actual OpenMW actor, scoped to the installation and playthrough. It is the only durable key;
+  servers key profiles, memories and relationships by it, using the profile key
+  `dyn:<installation_id>:<playthrough_id>:<uuid>`. The actor UUID is canonical lowercase and never
+  the nil UUID `00000000-0000-0000-0000-000000000000`: the shared schema, native parser, Lua
+  validator, saved-binding reconciliation and `dyn:` profile keys all reject it. Only this dynamic
+  actor UUID position is narrowed; every other UUID field keeps the generic UUID contract.
+- `dynamic.runtime_ref` is the exact current generated reference (`@0x` plus lowercase hex of a
+  non-zero 32-bit index). It is a runtime snapshot, never a key. Servers echo the complete identity;
+  the client acts only when UUID, runtime reference, kind and record all match its live binding in
+  the current session generation.
+- Copies of saved script state, duplicate UUIDs on two live actors, bindings from another
+  playthrough and recycled or deleted slots are rejected or rebound client-side. Newer binding
+  formats are preserved unchanged.
+- Only GLOBAL's identity registry proves a binding. Each command GLOBAL sends to an actor or addon
+  script carries the registry-proven rows (UUID, runtime reference, kind, record) for its dynamic
+  actor and target, tagged with the current generation. Actor-local resolution fails closed without
+  such a row, and rows from another generation never authorize. Native transfers, which can check
+  only the slot, kind and record, are queued only after GLOBAL proves every dynamic party.
+- Dynamic identities are valid diary-book targets, profile/control targets and action
+  actors/targets. Diary materialization matches the recipient's exact generated reference.
+  Debug NPC controls act only on a currently active, registry-bound dynamic actor and never load a
+  cell to find one.
+- Without negotiation the client emits no dynamic identity, attaches no script, and rejects
+  inbound dynamic identities as `dynamic_identity_not_negotiated`; placed traffic is unaffected.
 
 ## Endpoints and schemas
 
@@ -528,7 +576,7 @@ work, while committed results cannot be rewritten into cancellation. Player deat
 
 Automated protocol, Lua and server integration checks cover all eight actions, strict approval, frozen candidates, rejected requests and duplicate replay. Server schema 118 is locally deployed. Windows Release build, native bridge and Beast loopback tests passed. The engine and all 32 client data files were deployed locally with matching SHA256 hashes; no in-game execution is claimed.
 
-Record names accept simple plural forms (rat/rats, robe/robes), without fuzzy matching. Ambiguous record names require an exact loaded record ID. Actor spawning creates instances only; dynamically generated actors are not yet addressable for AI profiles or later LORKHAN actions under the existing v1 identity contract. Vanilla game interaction is unaffected.
+Record names accept simple plural forms (rat/rats, robe/robes), without fuzzy matching. Ambiguous record names require an exact loaded record ID. Actor spawning creates instances only. Spawned actors become addressable for AI profiles and later LORKHAN actions only on sessions that negotiate `actor.identity.dynamic.v1` (see TES3/OpenMW identity); otherwise they remain unaddressable. Vanilla game interaction is unaffected.
 
 Client deployment engine SHA256: 923123E3FC9E937B901606E928128911AF5605CF1A46D54FB6A28A13162B70D9. Server tests: 1421 checks plus integration, migrations/jobs and factory restore checks. Lua: 90 tests. Protocol: 42 schemas and 93 fixtures. OpenMW: all 29 declared source hashes and 10 patch fixtures passed.
 

@@ -54,9 +54,57 @@ function M.callback(fn)
     return fn
 end
 
+-- Exact runtime snapshot of negotiated dynamic actor bindings (runtime_ref -> saved UUID, kind, record)
+-- for one generation. GLOBAL publishes it from its registry and mirrors it to PLAYER; actor scripts
+-- receive only registry-proven rows with each command. Without a current binding nothing resolves.
+local dynamicBindings,dynamicGeneration,dynamicCount={},nil,0
+local function bindingRow(row)
+    local actorIdentity=require('scripts.LORKHAN.identity')
+    if type(row)=='table' and actorIdentity.isRuntimeRef(row.runtime_ref) and actorIdentity.isActorUuid(row.uuid)
+        and (row.kind=='npc' or row.kind=='creature') and type(row.record_id)=='string' and row.record_id~='' then
+        return {uuid=row.uuid,kind=row.kind,record_id=row.record_id}
+    end
+end
+function M.setDynamicBindings(rows,generation)
+    dynamicBindings,dynamicGeneration,dynamicCount={},nil,0
+    if type(generation)~='number' then return 0 end
+    dynamicGeneration=generation
+    for _,row in ipairs(type(rows)=='table' and rows or {}) do
+        if dynamicCount>=require('scripts.LORKHAN.identity').MAX_DYNAMIC_BINDINGS then break end
+        local binding=bindingRow(row)
+        if binding and not dynamicBindings[row.runtime_ref] then
+            dynamicBindings[row.runtime_ref]=binding dynamicCount=dynamicCount+1
+        end
+    end
+    return dynamicCount
+end
+-- Actor-local: accept GLOBAL's per-command proof only for the actor's current generation. Rows from
+-- another generation never authorize, and a generation change withdraws everything mirrored before.
+function M.mergeDynamicBindings(proof,generation)
+    if dynamicGeneration~=generation then M.setDynamicBindings(nil,nil) end
+    if type(generation)~='number' or type(proof)~='table' or proof.generation~=generation then return 0 end
+    dynamicGeneration=generation
+    local accepted=0
+    for _,row in ipairs(type(proof.bindings)=='table' and proof.bindings or {}) do
+        local binding=bindingRow(row)
+        if binding then
+            if not dynamicBindings[row.runtime_ref] then
+                if dynamicCount>=require('scripts.LORKHAN.identity').MAX_DYNAMIC_BINDINGS then break end
+                dynamicCount=dynamicCount+1
+            end
+            dynamicBindings[row.runtime_ref]=binding accepted=accepted+1
+        end
+    end
+    return accepted
+end
+local function currentBinding(runtimeRef)
+    return dynamicGeneration~=nil and dynamicBindings[runtimeRef] or nil
+end
+
 -- Convert API-129 objects to the stable identity carried on the LORKHAN wire. OpenMW exposes the
--- unique player as @0x1 rather than a content-file RefNum; all other dynamic objects remain ineligible.
-function M.identity(object, modules)
+-- unique player as @0x1 rather than a content-file RefNum. Other generated objects need a negotiated
+-- actor.identity.dynamic.v1 binding; record ID and the recyclable slot alone never identify them.
+function M.identity(object, modules, binding)
     modules=modules or loaded()
     if not object or not modules.types or not modules.core or type(object.id)~='string' then
         return nil,'object_identity_unavailable'
@@ -68,12 +116,22 @@ function M.identity(object, modules)
     else return nil,'object_not_actor' end
     local hex=object.id:match('^0x([0-9a-fA-F]+)$')
     local formId=hex and tonumber(hex,16) or nil
-    local specialPlayer=kind=='player' and object.id:match('^@0x[0-9a-fA-F]+$')~=nil
-    if not formId and not specialPlayer then return nil,'dynamic_actor_identity_unsupported' end
-    local contentIndex=specialPlayer and 0 or math.floor(formId / 0x1000000)
-    local refnumIndex=specialPlayer and 0 or formId%0x1000000
+    local generated=object.id:match('^@0x[0-9a-fA-F]+$')~=nil
+    local specialPlayer=kind=='player' and generated
+    local dynamic
+    if not formId and not specialPlayer then
+        binding=binding or currentBinding(object.id)
+        if not generated or not binding or (binding.kind~=nil and binding.kind~=kind) or type(object.recordId)~='string'
+            or string.lower(binding.record_id)~=string.lower(object.recordId) then
+            return nil,'dynamic_actor_identity_unsupported'
+        end
+        dynamic={uuid=binding.uuid,runtime_ref=object.id}
+    end
+    local contentIndex=(specialPlayer or dynamic) and 0 or math.floor(formId / 0x1000000)
+    local refnumIndex=(specialPlayer or dynamic) and 0 or formId%0x1000000
     local contentFiles=modules.core.contentFiles and modules.core.contentFiles.list or {}
-    local contentFile=contentFiles[contentIndex+1] or object.contentFile
+    local contentFile=dynamic and require('scripts.LORKHAN.identity').DYNAMIC_CONTENT_FILE
+        or contentFiles[contentIndex+1] or object.contentFile
     if type(contentFile)~='string' or contentFile=='' then return nil,'content_file_unavailable' end
     local cell=object.cell
     if not cell then return nil,'actor_cell_unavailable' end
@@ -94,7 +152,7 @@ function M.identity(object, modules)
         if ok and record and type(record.name)=='string' and record.name~='' then display=record.name end
     end
     return {kind=kind,record_id=object.recordId,refnum={index=refnumIndex,content_file=contentIndex},
-        content_file=contentFile,cell=cellIdentity,display_name=display}
+        content_file=contentFile,cell=cellIdentity,display_name=display,dynamic=dynamic}
 end
 
 -- Convert the player-local OpenMW DialogueResponse event into bounded serializable context.
@@ -273,6 +331,26 @@ function M.resolve(identity, modules)
         local player=modules.nearby.players and modules.nearby.players[1]
         if not player or (player.isValid and not player:isValid()) then return nil,'actor_inactive' end
         return player
+    end
+    if identity.dynamic then
+        -- Fail closed: only a current GLOBAL binding naming this UUID, slot, kind and record authorizes;
+        -- the recyclable slot and record ID alone never identify a generated actor.
+        local binding=currentBinding(identity.dynamic.runtime_ref)
+        if not binding then return nil,'dynamic_binding_unavailable' end
+        if binding.uuid~=identity.dynamic.uuid or binding.kind~=identity.kind
+            or string.lower(binding.record_id)~=string.lower(identity.record_id) then return nil,'actor_identity_mismatch' end
+        for index,object in ipairs(modules.nearby.actors or {}) do
+            if index>256 then break end
+            if object.id==identity.dynamic.runtime_ref then
+                local types=modules.types
+                local kind=types and (types.NPC and types.NPC.objectIsInstance(object) and 'npc'
+                    or types.Creature and types.Creature.objectIsInstance(object) and 'creature') or nil
+                if type(object.recordId)~='string' or string.lower(object.recordId)~=string.lower(identity.record_id)
+                    or kind~=identity.kind or (object.isValid and not object:isValid()) then return nil,'actor_identity_mismatch' end
+                return object
+            end
+        end
+        return nil,'actor_inactive'
     end
     local ok,formId=pcall(modules.core.getFormId,identity.content_file,identity.refnum.index)
     if not ok then return nil,'invalid_form_id' end

@@ -67,6 +67,26 @@
       "sha256": "daa0fdee0b77a09f074d5a860d64ffb8ba3e7cf82dcc46467d2f7ec7f0f641af"
     },
     {
+      "bytes": 1092,
+      "path": "lorkhan/fixtures/v1/invalid/action-intent-dynamic-nil-uuid.json",
+      "sha256": "8f6d1ffa61aba96e2a4cb971e5d80f0ef8ba3322f68d820f633a98a41f178a25"
+    },
+    {
+      "bytes": 1076,
+      "path": "lorkhan/fixtures/v1/invalid/action-intent-dynamic-placed-refnum.json",
+      "sha256": "6af479cd3b9209dd40f0ad8959abfc603c67c9abece05ba0196728fe5870b471"
+    },
+    {
+      "bytes": 993,
+      "path": "lorkhan/fixtures/v1/invalid/action-intent-placed-dynamic-sentinel.json",
+      "sha256": "9ba5b260987fa86027b6b8ccaacca39e4743a7af79389c872237dc5f2a6dbc77"
+    },
+    {
+      "bytes": 1058,
+      "path": "lorkhan/fixtures/v1/invalid/controls-select-dynamic-nil-profile.json",
+      "sha256": "273db97e45dea8dbf31e319e7cdc290e61ff73b9622b5be42c8ae0a44fd2b379"
+    },
+    {
       "bytes": 700,
       "path": "lorkhan/fixtures/v1/invalid/debug-command-browser-extra.json",
       "sha256": "b7ba4079c7fae35be3d72552c83f8d8557fdae272c4d1a546ba81166bc8d5d2c"
@@ -267,6 +287,11 @@
       "sha256": "0f91fc5f635ee8a3ee951d734814f54ddc987bce04800e2c32944006010c06fa"
     },
     {
+      "bytes": 1101,
+      "path": "lorkhan/fixtures/v1/valid/action-intent-dynamic-actor.json",
+      "sha256": "dc343289f24156a618019d9963b55f6dbd276b4f773c6d83b0ecb2c0ac991554"
+    },
+    {
       "bytes": 1238,
       "path": "lorkhan/fixtures/v1/valid/action-intent-gold-create.json",
       "sha256": "09cd791b6291a47f2eb3be85e0703185c160a5500e8fed33cd2fa561e0a16ca2"
@@ -310,6 +335,11 @@
       "bytes": 691,
       "path": "lorkhan/fixtures/v1/valid/controls-query.json",
       "sha256": "e407f3cf4db7fedf875f6362938ea3f5b49f58b0d613d3ccd4225a83af54b48e"
+    },
+    {
+      "bytes": 1051,
+      "path": "lorkhan/fixtures/v1/valid/controls-select-dynamic-profile.json",
+      "sha256": "b243220d84132a3a81061d0522b49d081f1945963d1a52df9b3595aff6bcc0e4"
     },
     {
       "bytes": 802,
@@ -622,9 +652,9 @@
       "sha256": "423ba79244b94576a820517167c1408738a270740b56ca9f3fd9867773d1f59f"
     },
     {
-      "bytes": 5029,
+      "bytes": 7084,
       "path": "lorkhan/schemas/v1/common.schema.json",
-      "sha256": "f9d4e5b2dc6de72c3016b64065e97fe34d1b1b7810d3757d5fd1ff7965acbc93"
+      "sha256": "6526cf44cfdd311ac6542f7cc57e1c45c3f2a059b884a99c872b228decdf634c"
     },
     {
       "bytes": 1038,
@@ -702,9 +732,9 @@
       "sha256": "04ea0d56266d632fa97b90fea55725a8dfaedba81134823bae2d260152d21fc8"
     },
     {
-      "bytes": 41339,
+      "bytes": 41582,
       "path": "lorkhan/schemas/v1/events.schema.json",
-      "sha256": "066a226a2ce85d5825309453656c138f118b91f8452b7018c42d76f55731157c"
+      "sha256": "829b9a3485574753fc6e7595181d61e17a83428d50f176b32b631670a6e98817"
     },
     {
       "bytes": 968,
@@ -712,9 +742,9 @@
       "sha256": "66fb9b333958f5db965e5530e5f26e806947a490cde1e0dc435c2abe25628993"
     },
     {
-      "bytes": 35890,
+      "bytes": 36197,
       "path": "lorkhan/schemas/v1/gamedata.schema.json",
-      "sha256": "6fb3e31c7aa5f8b2923a02cd24b0bcc10b7644319952fe7ff1302e7bc1694ab5"
+      "sha256": "716f449d70e212c3caa027cb39619447ae0f82e251de0e50cbe56d768daf7757"
     },
     {
       "bytes": 295,

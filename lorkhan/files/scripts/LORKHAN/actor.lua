@@ -57,7 +57,12 @@ local function reportDelivery(command,status,reason)
         completed_at=bridge.utcNow()})
     if canonical then bridge.submitDialogueDeliveryResult(canonical) end
 end
+-- GLOBAL's registry proof is the only source of dynamic bindings here, scoped to this generation.
+local function acceptProof(command)
+    if state and type(command)=='table' then adapter.mergeDynamicBindings(command.dynamic_bindings,state.generation) end
+end
 local function authority(command)
+    acceptProof(command)
     local bridge=adapter.bridge()
     return {session_id=command.session_id,resolve=function(actor) return adapter.resolve(actor) end,
         expired=function(timestamp) return not bridge or not bridge.isExpired or bridge.isExpired(timestamp) end}
@@ -71,6 +76,7 @@ local function reportCombatStatus(probeId,force)
         ..':'..tostring(status.conversation_state_proven)
         ..':'..tostring(target and target.content_file)
         ..':'..tostring(target and target.refnum and target.refnum.index)
+        ..(target and type(target.dynamic)=='table' and ':'..tostring(target.dynamic.uuid) or '')
     if not force and signature==lastCombatSignature then return end
     lastCombatSignature=signature
     core.sendGlobalEvent('LORKHAN_ACTOR_COMBAT_STATUS',{actor=state.identity,
@@ -125,6 +131,7 @@ return {
                 ownedAi=state and util.copy(state.ownedAi),ownedCombat=state and util.copy(state.ownedCombat)}
         end,
         onLoad=function(data)
+            adapter.setDynamicBindings(nil,nil)
             waitHere=nil;savedWaitHere=type(data)=='table' and data.waitHere or nil
             -- Restore package ownership so Stop still matches only our saved AI packages.
             if type(data)=='table' and identity.validate(data.actor) then
@@ -173,13 +180,20 @@ return {
                 reportDelivery(executor.stop(state,engine),'interrupted','actor_became_inactive')
                 state.attached=false
             end
+            adapter.setDynamicBindings(nil,nil)
         end},
     eventHandlers={
         LORKHAN_ACTOR_ATTACH=function(command)
             if state and command and state.generation~=command.generation then endWaitHere('session_changed') end
             if not state and command and command.actor then
                 state=executor.new(command.actor,command.generation,command.capabilities)
-            else executor.attach(state,command and command.generation,command and command.capabilities) end
+            else
+                -- GLOBAL re-proved this exact object; a rebound or moved dynamic identity replaces the saved one.
+                if state and command and identity.isDynamic(command.actor) and identity.validate(command.actor)
+                    and not identity.same(command.actor,state.identity) then state.identity=util.copy(command.actor) end
+                executor.attach(state,command and command.generation,command and command.capabilities)
+            end
+            adapter.mergeDynamicBindings(nil,state and state.generation)
             lastCombatSignature=nil reportCombatStatus()
         end,
         LORKHAN_ACTOR_CONVERSATION_STATE_REQUEST=function(command)
@@ -255,6 +269,7 @@ return {
                 clearCombatStatus()
                 state.attached=false
             end
+            adapter.setDynamicBindings(nil,nil)
         end,
         LORKHAN_ACTOR_WAIT_HERE=function(command)
             if not state or state.attached==false or type(command)~='table' or command.generation~=state.generation

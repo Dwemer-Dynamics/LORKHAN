@@ -59,12 +59,14 @@ function M.script(pluginId,handlers,options)
                 -- A redelivered dispatch never runs the handler a second time, pending or already finished.
                 local key=string.format('%.0f',payload.generation)..'|'..payload.action_id
                 if seen[key] or active[payload.action_id] then return end
+                -- A generated actor proves itself only through GLOBAL's registry rows for this generation.
+                adapter.mergeDynamicBindings(payload.dynamic_bindings,payload.generation)
                 -- An intent addressed to another actor never reaches a handler here; GLOBAL's deadline ends it.
                 local actual=actualSelf()
                 if not actual or not identity.same(actual,payload.actor) then return end
                 remember(key)
                 payload=util.copy(payload)
-                payload.self=actual
+                payload.self=actual payload.dynamic_bindings=nil
                 local handler=handlers[payload.action]
                 if type(handler)~='function' then send(payload,{status='failed',reason_code='plugin_handler_unavailable'}) return end
                 active[payload.action_id]=payload
