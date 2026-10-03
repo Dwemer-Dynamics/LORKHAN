@@ -1,0 +1,2 @@
+GLOBAL: scripts/parity_example/global.lua
+CUSTOM: scripts/parity_example/actor.lua
