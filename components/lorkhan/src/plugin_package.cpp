@@ -228,9 +228,9 @@ std::string pluginPackageUploadBody(
         + ",\"version\":" + jsonToken(version) + "}";
 }
 
-std::string pluginPackageSubmitBody(const RequestId& request, std::string_view uploadId)
+std::string pluginPackageSubmitBody(const RequestId& request, std::string_view uploadId, std::string_view expectedManifestSha256)
 {
-    return "{\"request_id\":" + jsonToken(request.value()) + ",\"upload_id\":" + jsonToken(uploadId) + "}";
+    return "{\"request_id\":" + jsonToken(request.value()) + ",\"upload_id\":" + jsonToken(uploadId) + ",\"expected_manifest_sha256\":" + jsonToken(expectedManifestSha256) + "}";
 }
 
 std::string_view pluginPackageSyncStatusName(PluginPackageSyncStatus status)
@@ -368,7 +368,7 @@ Result<PluginPackageSyncOutcome> runPluginPackageSync(const PluginPackageSyncReq
     }
     if (verify.finishHex() != sha256) return finish(Status::failed, "package_changed");
 
-    auto submitted = withRateLimit([&] { return wire.submit(update, request, uploadId); }, cancellation, limits, yield);
+    auto submitted = withRateLimit([&] { return wire.submit(update, request, uploadId, sync.manifestSha256); }, cancellation, limits, yield);
     if (!submitted) {
         if (submitted.error().correlationId && submitted.error().message == "package_operation_pending")
             return finish(Status::pending, "package_operation_pending");
@@ -376,6 +376,7 @@ Result<PluginPackageSyncOutcome> runPluginPackageSync(const PluginPackageSyncReq
     }
     PluginPackageOperation operation = std::move(submitted).value();
     const std::string operationId = operation.operationId;
+    if (operationId != request.value()) return mismatch("package operation request correlation mismatch");
     const auto sameOperation = [&](const PluginPackageOperation& value) {
         return value.operationId == operationId && value.pluginId == sync.pluginId && value.version == sync.version
             && value.archiveSha256 == sha256 && value.update == update;

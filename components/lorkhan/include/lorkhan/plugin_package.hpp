@@ -83,7 +83,7 @@ struct PluginPackageOperation {
     std::string_view pluginId, std::string_view version, std::string_view sha256);
 [[nodiscard]] std::string pluginPackageUploadBody(
     std::string_view pluginId, std::string_view version, std::uint64_t size, std::string_view sha256);
-[[nodiscard]] std::string pluginPackageSubmitBody(const RequestId& request, std::string_view uploadId);
+[[nodiscard]] std::string pluginPackageSubmitBody(const RequestId& request, std::string_view uploadId, std::string_view expectedManifestSha256);
 
 // One typed exchange per server step. Implementations sign each request with the paired request MAC,
 // send X-LORKHAN-Request-Id equal to the sync request and return typed server errors with a
@@ -98,7 +98,7 @@ public:
     virtual Result<PluginPackageUpload> putChunk(
         std::string_view uploadId, std::uint64_t index, std::span<const std::byte> bytes) = 0;
     // Idempotency-Key and body request_id are both the sync request ID.
-    virtual Result<PluginPackageOperation> submit(bool update, const RequestId& request, std::string_view uploadId) = 0;
+    virtual Result<PluginPackageOperation> submit(bool update, const RequestId& request, std::string_view uploadId, std::string_view expectedManifestSha256) = 0;
     virtual Result<PluginPackageOperation> operation(std::string_view operationId) = 0;
 };
 

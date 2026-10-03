@@ -14,6 +14,16 @@ described in `lorkhan/files/docs/LORKHAN/addons.md`.
 The manifest is disabled by default (`default_enabled: false`). Enable it in the server's
 plugin policy.
 
+Build the complete example outside both repositories:
+
+```powershell
+python scripts/package-addon-example.py --server-root D:/wt/LorkhanServer --output D:/build/parity-example
+```
+
+Use the generated `ParityExample` folder as an OpenMW data directory and enable `ParityExample.omwscripts`
+after `LORKHAN.omwscripts`. Startup synchronizes its fixed server package automatically. The server package
+remains disabled until you enable it in Configuration -> Server Plugins.
+
 The LORKHAN Lua suite checks that the canonical JSON encoding of `manifest.lua` equals
 `server/lorkhan-plugin.json` byte for byte. If you edit either file, regenerate the other and
 update `sha256`, which is the SHA-256 of the JSON bytes:

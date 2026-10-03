@@ -250,13 +250,27 @@ end
 -- Register every pending addon whose dependencies are present locally, in one bounded message.
 local function flush(rt,now)
     local ids,entries={},{}
+    local retrySync=false
     for id,addon in pairs(rt.addons) do
         if addon.state=='pending' and not addon.sent then
-            if dependenciesMet(rt,addon,false) then ids[#ids+1]=id
+            -- Only a successfully registered GLOBAL addon can request its fixed packaged server half.
+            if rt.bridge.syncPluginPackage and not addon.packageReady then
+                if not addon.packageRequest and util.count(rt.requests)<MAX_REQUESTS then
+                    addon.packageAttempts=(addon.packageAttempts or 0)+1
+                    local request,reason=rt.bridge.syncPluginPackage(id,addon.manifest.version,addon.entry.manifest_sha256)
+                    if request then
+                        addon.packageRequest=request
+                        addon.packageStatus={status='pending',reason='package_sync_pending'}
+                        rt.requests[request]={operation='package',plugin_id=id}
+                    elseif addon.packageAttempts<MAX_REGISTER_ATTEMPTS then retrySync=true
+                    else addon.packageReady=true addon.packageStatus={status='failed',reason=reason} retrySync=true end
+                elseif not addon.packageRequest then retrySync=true end
+            elseif dependenciesMet(rt,addon,false) then ids[#ids+1]=id
             else addon.reason='dependency_unsatisfied' end
         end
     end
-    rt.dirty=false
+    rt.dirty=retrySync
+    if retrySync then rt.retryAt=now+2 end
     if #ids==0 then return end
     table.sort(ids)
     for _,id in ipairs(ids) do entries[#entries+1]=util.copy(rt.addons[id].entry) end
@@ -275,6 +289,18 @@ end
 local function settle(rt,requestId,receipt,now)
     local request=rt.requests[requestId]
     rt.requests[requestId]=nil
+    if request and request.operation=='package' then
+        local addon=rt.addons[request.plugin_id]
+        if not addon or addon.packageRequest~=requestId then return end
+        addon.packageRequest=nil
+        addon.packageStatus={status=receipt.package_status or 'failed',reason=receipt.reason_code or receipt.reason,
+            enabled=receipt.enabled,installed_version=receipt.installed_version}
+        local retry=receipt.package_status=='pending' or receipt.reason=='rate_limited'
+            or receipt.reason=='timeout' or receipt.reason=='transport_failure'
+        addon.packageReady=not retry or addon.packageAttempts>=MAX_REGISTER_ATTEMPTS
+        rt.dirty=true rt.retryAt=retry and now+2 or nil
+        return
+    end
     if not request or request.operation~='register' then return end
     local rows={}
     if receipt.status=='accepted' then
@@ -322,14 +348,30 @@ function M.session(rt,info)
     local id=type(info)=='table' and info.session_id or nil
     local generation=id and info.generation or nil
     local current=rt.plugins
-    if (current and current.session_id or nil)==id and (current and current.generation or nil)==generation then return false end
+    if (current and current.session_id or nil)==id and (current and current.generation or nil)==generation then
+        local revision=type(info)=='table' and info.plugin_policy_revision
+        if current and current.enabled and revision and revision~=rt.policyRevision then
+            if rt.policyRevision then
+                -- Pause new intents until the server acknowledges the new policy; existing work retains its result.
+                for _,addon in pairs(rt.addons) do
+                    contract.deactivate(current,addon.manifest.plugin_id)
+                    addon.state='pending' addon.reason='package_policy_changed' addon.sent=nil addon.refreshes=nil
+                end
+                rt.dirty=true rt.retryAt=nil rt.attempts=0
+            end
+            rt.policyRevision=revision
+        end
+        return false
+    end
     M.cancel(rt,'session_changed')
     -- Native clears its receipts and fences older generations, so their outbox entries end here.
     rt.plugins=id and contract.new(info) or nil
+    rt.policyRevision=type(info)=='table' and info.plugin_policy_revision or nil
     rt.requests={} rt.rates={} rt.attempts=0 rt.retryAt=nil rt.outbox={} rt.outboxOrder={}
     local enabled=rt.plugins~=nil and rt.plugins.enabled
     for _,addon in pairs(rt.addons) do
         addon.sent=nil addon.refreshes=nil
+        addon.packageReady=nil addon.packageRequest=nil addon.packageAttempts=nil addon.packageStatus=nil
         addon.state=(rt.plugins and not enabled) and 'disabled' or 'pending'
         addon.reason=not rt.plugins and 'awaiting_session' or enabled and 'awaiting_registration' or 'plugin_contract_unsupported'
     end
@@ -434,6 +476,7 @@ function M.status(rt,handle)
     local addon,id=owner(rt,handle)
     if not addon then return nil,'invalid_addon_handle' end
     return {api_version=M.API_VERSION,plugin_id=id,version=addon.manifest.version,state=addon.state,reason=addon.reason,
+        package=util.copy(addon.packageStatus),
         contract=rt.plugins~=nil and rt.plugins.enabled==true}
 end
 

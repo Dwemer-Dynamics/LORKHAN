@@ -1127,7 +1127,7 @@ void testPluginPackageSyncWire()
     namespace fs = std::filesystem;
     const std::string id = "ashlander.camp_tasks";
     const std::string upload = "00000000-0000-4000-8000-000000000501";
-    const std::string operation = "00000000-0000-4000-8000-000000000502";
+    const std::string operation = kRequest;
     const std::string manifestSha(64, 'a');
     const fs::path root = fs::temp_directory_path() / "lorkhan-beast-package-root";
     std::error_code ignored;
@@ -1173,7 +1173,7 @@ void testPluginPackageSyncWire()
                 + archiveSha + R"(","size":)" + std::to_string(archive.size()) + R"(,"version":"1.2.0"})");
             CHECK(seen[2].method == http::verb::put && seen[2].target == base + "/plugin-packages/uploads/" + upload + "/chunks/0"
                 && seen[2].contentType == "application/octet-stream" && seen[2].body == archive);
-            const std::string submitBody = std::string(R"({"request_id":")") + kRequest + R"(","upload_id":")" + upload + R"("})";
+            const std::string submitBody = std::string(R"({"request_id":")") + kRequest + R"(","upload_id":")" + upload + R"(","expected_manifest_sha256":")" + std::string(64, 'a') + R"("})";
             CHECK(seen[3].target == base + "/plugin-packages/install" && seen[3].idempotency == kRequest
                 && seen[3].body == submitBody);
             CHECK(seen[4].method == http::verb::get && seen[4].target == base + "/plugin-packages/operations/" + operation);
@@ -1223,10 +1223,12 @@ int main(int argc, char** argv)
             return EXIT_FAILURE;
         }
         std::filesystem::path controlDirectory;
-        if (argc == 5 && std::string_view(argv[3]) == "--control-dir")
+        std::filesystem::path packageRoot;
+        if (argc == 7 && std::string_view(argv[5]) == "--package-root") packageRoot = argv[6];
+        if ((argc == 5 || argc == 7) && std::string_view(argv[3]) == "--control-dir")
             controlDirectory = argv[4];
         else if (argc != 3) {
-            std::cerr << "usage: --live-url URL [--control-dir DIR]\n";
+            std::cerr << "usage: --live-url URL [--control-dir DIR [--package-root DIR]]\n";
             return EXIT_FAILURE;
         }
         const lorkhan::BaseUrl baseUrl = parsed.value();
@@ -1245,6 +1247,7 @@ int main(int argc, char** argv)
         lorkhan::OutboundRequest initRequest{lorkhan::RequestId(live.sessionMessage), {}, lorkhan::Generation(7),
             lorkhan::RequestKind::init, lorkhan::InitRequest{std::move(initIds), liveRuntime(),
                 "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "2026-07-19T20:00:00Z"}};
+        if (!packageRoot.empty()) std::get<lorkhan::InitRequest>(initRequest.payload).runtime.capabilities.push_back("plugin.contract.v1");
         auto sessionResponse = transport.execute(initRequest, {});
         if (!sessionResponse) {
             std::cerr << "live-server session failed with code " << static_cast<int>(sessionResponse.error().code)
@@ -1254,6 +1257,22 @@ int main(int argc, char** argv)
         if (!require(!sessionResponse.value().session.empty(), "session response omitted session id"))
             return EXIT_FAILURE;
         const lorkhan::SessionId liveSession = sessionResponse.value().session;
+
+        if (!packageRoot.empty()) {
+            lorkhan::OutboundRequest syncRequest{lorkhan::RequestId(liveUuid(3, 1)), liveSession, lorkhan::Generation(7),
+                lorkhan::RequestKind::plugin_package_sync, lorkhan::PluginPackageSyncRequest{{lorkhan::RequestId(liveUuid(3, 1)), liveSession, lorkhan::Generation(7)}, "parity.example", "1.0.0",
+                    "4a44b0af71ffdda44c3a7f68fd70d340b4a0e8fa142b16fdfd2d107ef62e20b0", {packageRoot.string()}}};
+            auto installed = transport.execute(syncRequest, {});
+            if (!require(installed && installed.value().payload.find("\"status\":\"installed\"") != std::string::npos
+                && installed.value().payload.find("\"enabled\":false") != std::string::npos, "package did not install disabled")) return EXIT_FAILURE;
+            syncRequest.id = lorkhan::RequestId(liveUuid(3, 2));
+            std::get<lorkhan::PluginPackageSyncRequest>(syncRequest.payload).correlation.request = syncRequest.id;
+            auto current = transport.execute(syncRequest, {});
+            if (!require(current && current.value().payload.find("\"status\":\"current\"") != std::string::npos
+                && current.value().payload.find("\"uploaded_bytes\":0") != std::string::npos, "package was uploaded again")) return EXIT_FAILURE;
+            std::cout << "live package install and unchanged-package probe passed\n";
+            return EXIT_SUCCESS;
+        }
 
         auto follow = liveTurn(live, liveSession, live.followMessage, live.followRequest, live.followTurn,
             "Please follow me.");

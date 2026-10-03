@@ -1150,6 +1150,11 @@
     },
     "session_id": {
       "$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"
+    },
+    "plugin_policy_revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Opaque installation package policy revision, present only for negotiated addon sessions."
     }
   },
   "required": [

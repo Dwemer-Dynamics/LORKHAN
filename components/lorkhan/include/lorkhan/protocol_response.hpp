@@ -339,6 +339,7 @@ struct EventsResponse {
     std::uint64_t nextAfter{};
     std::vector<ProtocolEvent> events;
     std::vector<AutonomyDirective> autonomy;
+    std::optional<std::string> pluginPolicyRevision;
 };
 
 struct InterruptionAcceptedResponse {

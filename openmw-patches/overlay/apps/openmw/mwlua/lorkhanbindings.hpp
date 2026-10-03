@@ -5,12 +5,16 @@
 #include <optional>
 #include <string>
 #include <cstdint>
+#include <filesystem>
+#include <vector>
 
 namespace MWWorld { class Ptr; }
 
 namespace MWLua
 {
     struct Context;
+    // Engine startup copies only the configured active data roots, in OpenMW override order.
+    void setLorkhanDataRoots(const std::vector<std::filesystem::path>& roots);
     struct LorkhanObservationScope { std::string sessionId; std::uint64_t generation; };
     // Native engine hooks capture the current bridge fence; this is never exposed to Lua.
     std::optional<LorkhanObservationScope> lorkhanObservationScope();
