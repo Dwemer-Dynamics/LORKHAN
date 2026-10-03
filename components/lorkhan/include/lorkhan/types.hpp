@@ -352,7 +352,8 @@ using RequestPayload = std::variant<HealthRequest, InitRequest, TurnRequest, Eve
     InterruptionRequest, ActionResultRequest, SessionEndRequest, SttRequest,
     DialogueDeliveryResultRequest, ControlsQueryRequest, ControlsSelectRequest, DebugCommandQueryRequest,
     DebugCommandResultRequest, DiaryBookQueryRequest, DiaryBookResultRequest, MenuDialogueTtsRequest, PlayerAutochatRequest, BookReadAloudRequest, GameDataRequest,
-    MediaPrepareRequest, MenuDialogueTtsCancelRequest, PluginRegistrationRequest, PluginEventRequest>;
+    MediaPrepareRequest, MenuDialogueTtsCancelRequest, PluginRegistrationRequest, PluginEventRequest,
+    PluginPackageSyncRequest>;
 
 enum class RequestKind {
     health,
@@ -378,6 +379,7 @@ enum class RequestKind {
     media,
     plugin_registration,
     plugin_event,
+    plugin_package_sync,
 };
 
 enum class ResponseKind { accepted, event, completed, failure, cancelled, media_ready, menu_dialogue_ready,

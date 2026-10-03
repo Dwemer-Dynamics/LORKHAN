@@ -1,6 +1,7 @@
 #include "lorkhan/bridge_service.hpp"
 
 #include "lorkhan/media.hpp"
+#include "lorkhan/plugin_package.hpp"
 #include "lorkhan/protocol_response.hpp"
 #include "lorkhan/validation.hpp"
 
@@ -111,7 +112,8 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         || (request.kind == RequestKind::gamedata) != std::holds_alternative<GameDataRequest>(request.payload)
         || (request.kind == RequestKind::media) != std::holds_alternative<MediaPrepareRequest>(request.payload)
         || (request.kind == RequestKind::plugin_registration) != std::holds_alternative<PluginRegistrationRequest>(request.payload)
-        || (request.kind == RequestKind::plugin_event) != std::holds_alternative<PluginEventRequest>(request.payload))
+        || (request.kind == RequestKind::plugin_event) != std::holds_alternative<PluginEventRequest>(request.payload)
+        || (request.kind == RequestKind::plugin_package_sync) != std::holds_alternative<PluginPackageSyncRequest>(request.payload))
         return Result<void>::failure(makeError(ErrorCode::invalid_argument, "request kind does not match typed payload"));
     if (const auto* init = std::get_if<InitRequest>(&request.payload)) {
         if(init->characterId.has_value()!=init->characterBinding.has_value()
@@ -328,6 +330,8 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         if (gamedata->type == GameDataType::inventory)
             return validateInventoryPayload(gamedata->serializedPayload);
     }
+    if (const auto* sync = std::get_if<PluginPackageSyncRequest>(&request.payload))
+        return validatePluginPackageSyncRequest(*sync, request.id, request.session, request.generation);
     const auto* registration = std::get_if<PluginRegistrationRequest>(&request.payload);
     const auto* pluginEvent = std::get_if<PluginEventRequest>(&request.payload);
     if (registration || pluginEvent) {
@@ -539,8 +543,15 @@ void BridgeService::workerLoop()
     }, [](const OutboundRequest& queued) {
         return queued.kind == RequestKind::menu_dialogue_tts;
     })) {
+        processRequest(std::move(*request));
+    }
+}
+
+void BridgeService::processRequest(OutboundRequest value)
+{
+    auto* request = &value;
         if (m_halted.load(std::memory_order_acquire))
-            break;
+            return;
         const auto cancellation = m_cancellations.token(request->id);
         // Internal speech cancels have no engine caller; their outcome is the target's server-side abort.
         const bool internal = request->kind == RequestKind::menu_dialogue_tts_cancel;
@@ -553,11 +564,11 @@ void BridgeService::workerLoop()
             if (publish)
                 publishCancelled(*request);
             m_cancellations.complete(request->id);
-            continue;
+            return;
         }
         if (!m_generation.isCurrent(request->generation)) {
             m_cancellations.complete(request->id);
-            continue;
+            return;
         }
         {
             std::lock_guard lock(m_stateMutex);
@@ -570,7 +581,13 @@ void BridgeService::workerLoop()
         // server, or this check observes the stop before any request bytes are sent.
         auto response = cancellation->stop_requested()
             ? Result<InboundResult>::failure(makeError(ErrorCode::cancelled, "request cancelled"))
-            : m_transport->execute(*request, *cancellation);
+            : request->kind == RequestKind::plugin_package_sync
+                ? m_transport->executeBackground(*request, *cancellation, [this] {
+                    if (auto foreground = m_outbound.tryPopIf([](const OutboundRequest& queued) {
+                        return queued.kind != RequestKind::plugin_package_sync;
+                    })) processRequest(std::move(*foreground));
+                })
+                : m_transport->execute(*request, *cancellation);
         const bool cancelled = cancellation->stop_requested();
         bool cancellationAlreadyPublished = false;
         {
@@ -600,7 +617,6 @@ void BridgeService::workerLoop()
             static_cast<void>(m_inbound.tryPush(std::move(failure)));
         }
         m_cancellations.complete(request->id);
-    }
 }
 
 } // namespace lorkhan

@@ -4,6 +4,7 @@
 #include "lorkhan/types.hpp"
 
 #include <chrono>
+#include <functional>
 #include <stop_token>
 
 namespace lorkhan {
@@ -31,6 +32,13 @@ class ITransport {
 public:
     virtual ~ITransport() = default;
     virtual Result<InboundResult> execute(const OutboundRequest& request, std::stop_token cancellation) = 0;
+    // Background operations yield between bounded steps so the same worker can service foreground requests.
+    virtual Result<InboundResult> executeBackground(const OutboundRequest& request, std::stop_token cancellation,
+        const std::function<void()>& yield)
+    {
+        static_cast<void>(yield);
+        return execute(request, cancellation);
+    }
     // Interrupt only the operation currently owned by request. Implementations must ignore a
     // late interrupt after that request has completed and must not mutate a socket from another thread.
     virtual void interrupt(const RequestId& request) noexcept = 0;
