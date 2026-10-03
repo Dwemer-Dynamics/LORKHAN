@@ -3,3 +3,4 @@ MENU: scripts/LORKHAN/settings_menu.lua
 PLAYER: scripts/LORKHAN/settings.lua
 PLAYER: scripts/LORKHAN/player.lua
 CUSTOM: scripts/LORKHAN/actor.lua
+CUSTOM: scripts/LORKHAN/dynamic_actor.lua

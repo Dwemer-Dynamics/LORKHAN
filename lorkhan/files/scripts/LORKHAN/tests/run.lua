@@ -347,8 +347,8 @@ test('GLOBAL loaded-save handshake waits for the player and submits only calenda
    fenced=false;calls[#calls+1]=calendar or 'unknown';return true
   end}
   package.loaded['scripts.LORKHAN.adapters.openmw']={bridge=function()return native end,
-   event=function()return {} end,identity=function()return nil end}
-  package.loaded['scripts.LORKHAN.orchestrator']={new=function()return {} end,
+   event=function()return {} end,identity=function()return nil end,setDynamicBindings=function()end}
+  package.loaded['scripts.LORKHAN.orchestrator']={new=function()return {registry=identity.Registry()} end,
    load=function()fenced=true end,lifecycle=function()fenced=false end}
   package.loaded['openmw.world']=world
   for _,name in ipairs({'openmw.types','openmw.interfaces','openmw.util'}) do package.loaded[name]={} end
@@ -769,6 +769,217 @@ test('identity registry refuses substitution and ambiguity',function()
  local narrator=support.copy(playerId);narrator.kind='narrator';truthy(identity.key(narrator)~=identity.key(playerId))
  local agents=agentRegistry.new();truthy(agentRegistry.activate(agents,npc,'auto',1))
  truthy(agentRegistry.markSeen(agents,moved,2));eq(agentRegistry.get(agents,npc).identity.cell.name,'Another room')
+end)
+-- actor.identity.dynamic.v1 fixtures: two spawned guards share one base record and display name.
+local dynamicIdentity=require('scripts.LORKHAN.dynamic_identity')
+local DYN={pt='00000000-0000-4000-8000-0000000000a1',other='00000000-0000-4000-8000-0000000000a2'}
+local function dynamicWire(uuid,runtime,record)
+ return {kind='npc',record_id=record or 'imperial guard',refnum={index=0,content_file=0},content_file='lorkhan:dynamic',
+  cell={kind='interior',name='Test'},display_name='Guard',dynamic={uuid=uuid,runtime_ref=runtime}}
+end
+local function dynamicObject(id,record)
+ local object={id=id,recordId=record or 'imperial guard',kind='npc',name='Guard',cell={isExterior=false,name='Test'},valid=true,sent={}}
+ function object:isValid() return self.valid end
+ return object
+end
+test('dynamic identity wire form is exact and placed identities are unchanged',function()
+ local u1='00000000-0000-4000-8000-0000000000b1'
+ local dyn=dynamicWire(u1,'@0x10')
+ truthy(identity.validate(dyn));eq(identity.key(dyn),'dynamic|'..u1);eq(identity.key(npc),'test.esm|1')
+ truthy(identity.validate(npc));eq(npc.dynamic,nil)
+ for _,mutate in ipairs({
+  function(v)v.dynamic.uuid=string.upper(u1)end,function(v)v.dynamic.runtime_ref='@0x010'end,
+  function(v)v.dynamic.runtime_ref='@0x0'end,function(v)v.dynamic.runtime_ref='0x10'end,
+  function(v)v.dynamic.runtime_ref='@0x123456789'end,function(v)v.dynamic.extra=true end,
+  function(v)v.refnum.index=16 end,function(v)v.content_file='Morrowind.esm'end,function(v)v.kind='player'end,
+  function(v)v.dynamic='@0x10'end}) do
+  local wrong=support.copy(dyn);mutate(wrong);eq(identity.validate(wrong),nil)
+ end
+ -- The reserved sentinel can never be reused as a placed content file.
+ local sentinel=support.copy(npc);sentinel.content_file='lorkhan:dynamic';eq(identity.validate(sentinel),nil)
+ -- Same UUID at another runtime slot is a different exact snapshot.
+ local moved=support.copy(dyn);moved.dynamic.runtime_ref='@0x11';eq(identity.key(moved),identity.key(dyn))
+ eq(identity.same(moved,dyn),false);eq(identity.same(dyn,support.copy(dyn)),true)
+ truthy(protocol.isProfileId('dyn:'..UUID.message..':'..DYN.pt..':'..u1))
+ eq(protocol.isProfileId('dyn:'..UUID.message..':'..DYN.pt..':@0x10'),false)
+ eq(protocol.isProfileId('dyn:'..UUID.message..':'..DYN.pt),false)
+ -- The nil UUID never names a dynamic actor, though generic UUID checks still accept it.
+ local nilUuid='00000000-0000-0000-0000-000000000000'
+ truthy(identity.isUuid(nilUuid));truthy(protocol.isUuid(nilUuid));eq(identity.isActorUuid(nilUuid),false)
+ eq(identity.validate(dynamicWire(nilUuid,'@0x10')),nil)
+ eq(protocol.isProfileId('dyn:'..UUID.message..':'..DYN.pt..':'..nilUuid),false)
+ local binding={version=1,uuid=nilUuid,playthrough_id=DYN.pt,runtime_ref='@0x10',record_id='imperial guard'}
+ local action,why=identity.reconcileDynamic(binding,dynamicObject('@0x10'),DYN.pt);eq(action,'rebind');eq(why,'dynamic_binding_invalid')
+ binding.uuid=u1;eq(identity.reconcileDynamic(binding,dynamicObject('@0x10'),DYN.pt),'keep')
+ eq(openmwAdapter.setDynamicBindings({{runtime_ref='@0x10',uuid=nilUuid,kind='npc',record_id='imperial guard'}},5),0)
+ openmwAdapter.setDynamicBindings({})
+end)
+test('dynamic registry isolates same-record copies duplicate UUIDs and recycled runtime slots',function()
+ local u={} for i=1,5 do u[i]='00000000-0000-4000-8000-0000000000c'..i end
+ local r=identity.Registry() local placed={}
+ truthy(r:activate(npc,placed))
+ local a,b=dynamicObject('@0x10'),dynamicObject('@0x11')
+ -- Negotiation fallback: dynamic identities neither register nor resolve; placed traffic still does.
+ local ok,reason=r:activate(dynamicWire(u[1],'@0x10'),a);eq(ok,nil);eq(reason,'dynamic_identity_not_negotiated')
+ ok,reason=r:resolve(dynamicWire(u[1],'@0x10'));eq(ok,nil);eq(reason,'dynamic_identity_not_negotiated');eq(r:resolve(npc),placed)
+ r:setDynamicEnabled(true)
+ truthy(r:activate(dynamicWire(u[1],'@0x10'),a));truthy(r:activate(dynamicWire(u[2],'@0x11'),b))
+ eq(r:resolve(dynamicWire(u[1],'@0x10')),a);eq(r:resolve(dynamicWire(u[2],'@0x11')),b)
+ ok,reason=r:resolve(dynamicWire(u[1],'@0x11'));eq(ok,nil);eq(reason,'actor_identity_mismatch')
+ ok,reason=r:resolve(dynamicWire(u[1],'@0x10','other_record'));eq(ok,nil);eq(reason,'actor_identity_mismatch')
+ ok,reason=r:activate(dynamicWire(u[5],'@0x12'),a);eq(ok,nil);eq(reason,'actor_identity_mismatch')
+ -- A live object cannot be displaced from its slot by another UUID.
+ ok,reason=r:activate(dynamicWire(u[3],'@0x10'),dynamicObject('@0x10'));eq(ok,nil);eq(reason,'ambiguous_active_identity')
+ -- Deleted actor: its slot is recycled by a new spawn with a new UUID; the old UUID never resolves again.
+ a.valid=false
+ ok,reason=r:resolve(dynamicWire(u[1],'@0x10'));eq(ok,nil);eq(reason,'actor_inactive')
+ local recycled=dynamicObject('@0x10')
+ truthy(r:activate(dynamicWire(u[3],'@0x10'),recycled));eq(r:resolve(dynamicWire(u[3],'@0x10')),recycled)
+ eq(r:resolve(dynamicWire(u[1],'@0x10')),nil)
+ -- Stale userdata whose slot no longer matches is evicted on resolve.
+ recycled.id='@0x13';ok,reason=r:resolve(dynamicWire(u[3],'@0x10'));eq(reason,'actor_inactive');recycled.id='@0x10'
+ truthy(r:activate(dynamicWire(u[3],'@0x10'),recycled))
+ -- Duplicate saved UUID on another live object quarantines both copies for the generation.
+ ok,reason=r:activate(dynamicWire(u[2],'@0x12'),dynamicObject('@0x12'));eq(ok,nil);eq(reason,'dynamic_identity_duplicate')
+ ok,reason=r:resolve(dynamicWire(u[2],'@0x11'));eq(ok,nil);eq(reason,'dynamic_identity_duplicate')
+ ok,reason=r:activate(dynamicWire(u[2],'@0x11'),b);eq(ok,nil);eq(reason,'dynamic_identity_duplicate')
+ truthy(r:isQuarantined(u[2]))
+ local rows=r:dynamicBindings();eq(#rows,1);eq(rows[1].uuid,u[3]);eq(rows[1].runtime_ref,'@0x10')
+ -- Losing negotiation withdraws dynamic bindings and keeps placed identities intact.
+ r:setDynamicEnabled(false);eq(r:resolve(npc),placed);eq(#r:dynamicBindings(),0);eq(r:size(),1)
+ r:setDynamicEnabled(true);eq(r:isQuarantined(u[2]),false);r:clear();eq(r:size(),0)
+end)
+test('dynamic coordinator persists actor-local UUIDs and rebinds copies and foreign playthroughs',function()
+ local saved={} local modules={'openmw.core','openmw.self'}
+ for _,name in ipairs(modules) do saved[name]=package.loaded[name] end
+ local ok,err=pcall(function()
+  local reports={} local minted=0
+  -- Each actor gets its own dynamic_actor.lua instance, as OpenMW does for a CUSTOM script.
+  local function attach(object,data)
+   package.loaded['openmw.core']={sendGlobalEvent=function(name,payload)reports[#reports+1]={name=name,payload=payload}end}
+   package.loaded['openmw.self']={object=object}
+   local script=assert(loadfile(root..'/scripts/LORKHAN/dynamic_actor.lua'))()
+   object.script=script;script.engineHandlers.onLoad(data);return script
+  end
+  local function wire(object)
+   function object:hasScript(path) return self.script~=nil and path=='scripts/LORKHAN/dynamic_actor.lua' end
+   function object:addScript(path,data) assert(path=='scripts/LORKHAN/dynamic_actor.lua');attach(self,nil).engineHandlers.onInit(data) end
+   function object:sendEvent(name,payload) self.sent[#self.sent+1]=name;local h=self.script and self.script.eventHandlers[name];if h then h(payload) end end
+   return object
+  end
+  local adapterModules={core={contentFiles={list={'Morrowind.esm'}}},types={
+   Player={objectIsInstance=function()return false end},NPC={objectIsInstance=function(o)return o.kind=='npc' end,record=function(o)return {name=o.name}end},
+   Creature={objectIsInstance=function(o)return o.kind=='creature' end}}}
+  local registry=identity.Registry() local published
+  local coordinator=dynamicIdentity.new({registry=registry,
+   mint=function() minted=minted+1;return string.format('00000000-0000-4000-8000-%012d',minted) end,
+   identify=function(object,binding)return openmwAdapter.identity(object,adapterModules,binding)end,
+   publish=function(rows,generation)published=rows;openmwAdapter.setDynamicBindings(rows,generation)end})
+  local function deliver()
+   local result,reason
+   while #reports>0 do
+    local report=table.remove(reports,1);eq(report.name,'LORKHAN_DYNAMIC_IDENTITY_REPORT')
+    result,reason=dynamicIdentity.report(coordinator,report.payload)
+   end
+   return result,reason
+  end
+  local a,b=wire(dynamicObject('@0x10')),wire(dynamicObject('@0x11'))
+  -- Not negotiated: nothing is attached, minted or emitted for generated actors.
+  dynamicIdentity.configure(coordinator,false,DYN.pt,5)
+  local id,reason=dynamicIdentity.observe(coordinator,a);eq(id,nil);eq(reason,'dynamic_identity_not_negotiated');eq(minted,0);eq(a.script,nil)
+  id,reason=openmwAdapter.identity(a,adapterModules);eq(id,nil);eq(reason,'dynamic_actor_identity_unsupported')
+  eq(dynamicIdentity.configure(coordinator,true,'not-a-uuid',5),true);eq(coordinator.enabled,false)
+  truthy(dynamicIdentity.configure(coordinator,true,DYN.pt,5))
+  local first=assert(dynamicIdentity.observe(coordinator,a));local second=assert(dynamicIdentity.observe(coordinator,b))
+  eq(first.dynamic.runtime_ref,'@0x10');eq(first.content_file,'lorkhan:dynamic');eq(first.display_name,'Guard')
+  truthy(first.dynamic.uuid~=second.dynamic.uuid);eq(first.record_id,second.record_id);eq(#published,2)
+  eq(registry:resolve(first),a);eq(registry:resolve(second),b)
+  -- Emission now names the bound actor exactly; local resolution picks the exact copy.
+  truthy(identity.same(openmwAdapter.identity(a,adapterModules),first))
+  local nearby={core={},types=adapterModules.types,nearby={actors={a,b}}}
+  eq(openmwAdapter.resolve(second,nearby),b);eq(openmwAdapter.resolve(first,nearby),a)
+  local forged=support.copy(first);forged.dynamic.uuid=second.dynamic.uuid
+  id,reason=openmwAdapter.resolve(forged,nearby);eq(id,nil);eq(reason,'actor_identity_mismatch')
+  -- Save/load: the actor-local data restores the same UUID in a new generation of the same playthrough.
+  local savedA=a.script.engineHandlers.onSave();eq(savedA.uuid,first.dynamic.uuid);eq(savedA.playthrough_id,DYN.pt)
+  attach(a,savedA)
+  truthy(dynamicIdentity.configure(coordinator,true,DYN.pt,6));eq(#published,0);eq(registry:resolve(first),nil)
+  id,reason=dynamicIdentity.observe(coordinator,a);eq(id,nil);eq(reason,'dynamic_identity_pending')
+  local restored=assert(deliver());eq(restored.dynamic.uuid,first.dynamic.uuid);eq(minted,2)
+  -- Late or foreign reports are fenced by generation and exact queried object.
+  dynamicIdentity.observe(coordinator,b)
+  local late=table.remove(reports);late.payload.generation=5
+  id,reason=dynamicIdentity.report(coordinator,late.payload);eq(reason,'stale_dynamic_report')
+  late.payload.generation=6;late.payload.object=wire(dynamicObject('@0x11'))
+  id,reason=dynamicIdentity.report(coordinator,late.payload);eq(reason,'unexpected_dynamic_report')
+  -- Copied script state on another object (runtime mismatch) gets a fresh UUID, never the original's.
+  local copy=wire(dynamicObject('@0x12'));attach(copy,savedA)
+  dynamicIdentity.observe(coordinator,copy)
+  local copied=assert(deliver());truthy(copied.dynamic.uuid~=first.dynamic.uuid);eq(copy.sent[#copy.sent],'LORKHAN_DYNAMIC_IDENTITY_ASSIGN')
+  eq(copy.script.engineHandlers.onSave().uuid,copied.dynamic.uuid);eq(registry:resolve(first),a)
+  -- A second live object presenting the same saved UUID at its own slot is quarantined with the original.
+  local clone=wire(dynamicObject('@0x13'));local cloneData=support.copy(savedA);cloneData.runtime_ref='@0x13';attach(clone,cloneData)
+  dynamicIdentity.observe(coordinator,clone)
+  id,reason=deliver();eq(id,nil);eq(reason,'dynamic_identity_duplicate');eq(registry:resolve(first),nil)
+  -- A newer client's binding is preserved verbatim and never overwritten.
+  local future=wire(dynamicObject('@0x14'));attach(future,{version=2,opaque='kept'})
+  dynamicIdentity.observe(coordinator,future)
+  id,reason=deliver();eq(id,nil);eq(reason,'dynamic_identity_future_save');eq(future.script.engineHandlers.onSave().opaque,'kept')
+  -- A save restored under another playthrough is rebound instead of contaminating the new one.
+  truthy(dynamicIdentity.configure(coordinator,true,DYN.other,7))
+  dynamicIdentity.observe(coordinator,a)
+  local rebound=assert(deliver());truthy(rebound.dynamic.uuid~=first.dynamic.uuid)
+  eq(a.script.engineHandlers.onSave().playthrough_id,DYN.other);eq(registry:resolve(rebound),a)
+  -- Disabled/future global saves never mint or attach.
+  local before=minted;dynamicIdentity.configure(coordinator,false,DYN.other,8)
+  eq(dynamicIdentity.observe(coordinator,wire(dynamicObject('@0x15'))),nil);eq(minted,before)
+ end)
+ for _,name in ipairs(modules) do package.loaded[name]=saved[name] end
+ openmwAdapter.setDynamicBindings({})
+ assert(ok,err)
+end)
+test('dynamic resolution needs a current GLOBAL proof and never trusts a recycled slot',function()
+ local old,new='00000000-0000-4000-8000-0000000000e1','00000000-0000-4000-8000-0000000000e2'
+ local spawned='00000000-0000-4000-8000-0000000000e3'
+ local types={NPC={objectIsInstance=function(o)return o.kind=='npc' end},Creature={objectIsInstance=function(o)return o.kind=='creature' end}}
+ -- A same-base guard now occupies the slot the old UUID was bound to.
+ local recycled,other=dynamicObject('@0x10'),dynamicObject('@0x11')
+ local modules={core={},types=types,nearby={actors={recycled,other}}}
+ local function resolve(uuid,runtime) return openmwAdapter.resolve(dynamicWire(uuid,runtime),modules) end
+ -- Empty and withdrawn mirrors reject; the slot plus record alone authorizes nothing.
+ openmwAdapter.setDynamicBindings(nil,nil)
+ local ok,reason=resolve(old,'@0x10');eq(ok,nil);eq(reason,'dynamic_binding_unavailable')
+ openmwAdapter.setDynamicBindings({{runtime_ref='@0x10',uuid=old,kind='npc',record_id='imperial guard'}},5)
+ eq(resolve(old,'@0x10'),recycled)
+ openmwAdapter.mergeDynamicBindings(nil,6);ok,reason=resolve(old,'@0x10');eq(ok,nil);eq(reason,'dynamic_binding_unavailable')
+ -- A proof minted for another generation cannot authorize, even for the exact object.
+ eq(openmwAdapter.mergeDynamicBindings({generation=5,bindings={{runtime_ref='@0x10',uuid=old,kind='npc',record_id='imperial guard'}}},6),0)
+ ok,reason=resolve(old,'@0x10');eq(ok,nil);eq(reason,'dynamic_binding_unavailable')
+ -- GLOBAL proves both dynamic parties of one command from its registry; an unproven party is withheld.
+ local registry=identity.Registry();registry:setDynamicEnabled(true)
+ truthy(registry:activate(dynamicWire(new,'@0x10'),recycled));truthy(registry:activate(dynamicWire(spawned,'@0x11'),other))
+ local coordinator=dynamicIdentity.new({registry=registry});coordinator.enabled=true;coordinator.generation=6
+ local proof,complete=dynamicIdentity.proof(coordinator,dynamicWire(new,'@0x10'),dynamicWire(spawned,'@0x11'),npc)
+ truthy(complete);eq(#proof.bindings,2);eq(proof.generation,6)
+ local _,stale=dynamicIdentity.proof(coordinator,dynamicWire(old,'@0x10'));eq(stale,false)
+ eq(openmwAdapter.mergeDynamicBindings(proof,6),2)
+ eq(resolve(new,'@0x10'),recycled);eq(resolve(spawned,'@0x11'),other)
+ ok,reason=resolve(old,'@0x10');eq(ok,nil);eq(reason,'actor_identity_mismatch')
+ ok,reason=openmwAdapter.resolve(dynamicWire(new,'@0x10','other_record'),modules);eq(ok,nil);eq(reason,'actor_identity_mismatch')
+ local creature=dynamicWire(new,'@0x10');creature.kind='creature'
+ ok,reason=openmwAdapter.resolve(creature,modules);eq(ok,nil);eq(reason,'actor_identity_mismatch')
+ openmwAdapter.setDynamicBindings(nil,nil)
+end)
+test('client advertises dynamic identity only through session negotiation',function()
+ local file=assert(io.open(root..'/../../openmw-patches/overlay/apps/openmw/mwlua/lorkhanbindings.cpp'));local source=file:read('*a');file:close()
+ local session=assert(source:match('static std::vector<std::string> capabilities%(%)(.-)}; }'))
+ truthy(session:find('lorkhan::kDynamicActorIdentityCapability',1,true))
+ local types=assert(io.open(root..'/../../components/lorkhan/include/lorkhan/types.hpp'));local header=types:read('*a');types:close()
+ truthy(header:find('kDynamicActorIdentityCapability = "'..identity.DYNAMIC_CAPABILITY..'"',1,true))
+ local global=assert(io.open(root..'/scripts/LORKHAN/global.lua'));local text=global:read('*a');global:close()
+ truthy(text:find('capability==identity.DYNAMIC_CAPABILITY',1,true))
+ local omw=assert(io.open(root..'/LORKHAN.omwscripts'));local manifest=omw:read('*a');omw:close()
+ truthy(manifest:find('CUSTOM: scripts/LORKHAN/dynamic_actor.lua',1,true))
 end)
 test('conversation stale generation and exact terminal',function()
  local s=conversation.new(1);truthy(conversation.setTarget(s,npc));truthy(conversation.begin(s,UUID.request,UUID.turn,'input'))
@@ -3229,7 +3440,8 @@ test('actor Wait Here rejects stale requests and restores on halt detach and loa
   beginWaitHere=function()started=started+1;return {package={},elapsed=0},'wait_started'end,
   endWaitHere=function()stopped=stopped+1 end,saveWaitHere=function(value)return value and {index=1}end,
   restoreWaitHere=function(value)eq(value.index,1);restored=restored+1 end,combatStatus=function()return nil end,
-  stopSpeech=function()end,stopAi=function(owned)ownedStopped=owned;return true end}
+  stopSpeech=function()end,stopAi=function(owned)ownedStopped=owned;return true end,
+  setDynamicBindings=function()end,mergeDynamicBindings=function()return 0 end}
  package.loaded[moduleName]=mock
  local ok,err=pcall(function()
   local script=assert(loadfile(root..'/scripts/LORKHAN/actor.lua'))()

@@ -19,6 +19,9 @@ end
 function M.isProfileId(value)
     if M.isUuid(value) then return true end
     if type(value)~='string' or #value>300 then return false end
+    -- actor.identity.dynamic.v1 server key: dyn:<installation>:<playthrough>:<saved actor UUID>.
+    local dynInstallation,dynPlaythrough,dynActor=value:match('^dyn:([^:]+):([^:]+):([^:]+)$')
+    if dynInstallation then return M.isUuid(dynInstallation) and M.isUuid(dynPlaythrough) and identity.isActorUuid(dynActor) end
     local installation,playthrough,file,index=value:match('^ref:([^:]+):([^:]+):([^|]+)|(%d+)$')
     return installation~=nil and M.isUuid(installation) and M.isUuid(playthrough)
         and not file:find('[A-Z%c/\\:|]') and index==tostring(tonumber(index))

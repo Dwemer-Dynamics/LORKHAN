@@ -12,9 +12,12 @@ local diaryBooks=require('scripts.LORKHAN.diary_books')
 local disposition=require('scripts.LORKHAN.disposition')
 local transferActions=require('scripts.LORKHAN.transfer_actions')
 local addonRuntime=require('scripts.LORKHAN.addon_runtime')
+local dynamicIdentity=require('scripts.LORKHAN.dynamic_identity')
 local vfsOk,vfs=pcall(require,'openmw.vfs')
 local transfers
-local npcControls=npcManager.new({core=core,world=world,types=types,util=worldUtil})
+local dynamicIdentities
+local npcControls=npcManager.new({core=core,world=world,types=types,util=worldUtil,
+    resolveDynamic=function(actor) return state and state.registry:resolve(actor) end})
 local state
 local pendingPlayerEvents={}
 local bridgeStatus
@@ -50,6 +53,17 @@ local function flushPlayerEvents(player)
     return true
 end
 
+-- Stamp GLOBAL's registry proof for any dynamic actor/target onto a copy of an outbound command, so
+-- the receiving CUSTOM script resolves exact bindings instead of trusting a recyclable runtime slot.
+local function withDynamicProof(payload)
+    if type(payload)~='table' or not dynamicIdentities then return payload,true end
+    local proof,complete=dynamicIdentity.proof(dynamicIdentities,payload.actor,payload.target)
+    if not proof then return payload,complete end
+    local stamped={}
+    for key,value in pairs(payload) do stamped[key]=value end
+    stamped.dynamic_bindings=proof
+    return stamped,complete
+end
 local function sendActor(actor,name,payload)
     if transfers and name=='LORKHAN_ACTOR_REJECT' and transferActions.advanced[payload.name] then
         -- Rejection uses the retained native action so a player executor needs no CUSTOM script.
@@ -58,12 +72,15 @@ local function sendActor(actor,name,payload)
         return transferActions.enqueue(transfers,payload)
     end
     if transfers and name=='LORKHAN_ACTOR_ACTION' and transferActions.names[payload.name] then
+        -- Native resolves only slot, kind and record; the saved UUID of each dynamic party is proven here.
+        local _,complete=withDynamicProof(payload)
+        if not complete then return nil,'actor_identity_mismatch' end
         return transferActions.enqueue(transfers,payload)
     end
     if transfers and name=='LORKHAN_ACTOR_STOP' then transferActions.cancel(transfers,actor) end
     local object=state and state.registry:resolve(actor)
     if not object or not object.sendEvent then return nil,'actor_inactive' end
-    object:sendEvent(name,payload)
+    object:sendEvent(name,(withDynamicProof(payload)))
     return true
 end
 local function manageActor(actor,generation)
@@ -107,7 +124,7 @@ local addons=addonRuntime.new({bridge=bridge,emit=emit,log=print,
         if not ok then return nil,'addon_script_unavailable' end
         return true
     end,
-    send=function(object,name,payload) object:sendEvent(name,payload) end,
+    send=function(object,name,payload) object:sendEvent(name,(withDynamicProof(payload))) end,
     allowed=function()
         if state.disabled or state.hardHalted then return false,'lorkhan_disabled' end
         if state.aiEnabled==false then return false,'ai_disabled' end
@@ -118,6 +135,19 @@ local addons=addonRuntime.new({bridge=bridge,emit=emit,log=print,
         if vfsOk and vfs and type(vfs.fileExists)=='function' then return vfs.fileExists(path)==true end
     end})
 state.onPluginIntent=function(event) addonRuntime.intent(addons,event) end
+-- actor.identity.dynamic.v1: UUIDs come from the existing native v4 generator and are saved by the
+-- CUSTOM dynamic_actor.lua script on the actual actor; PLAYER receives only the exact binding rows.
+local dynamicNegotiated=false
+local pendingDynamicMirror
+dynamicIdentities=dynamicIdentity.new({registry=state.registry,
+    mint=function() return bridge.newMessageId and bridge.newMessageId() end,
+    identify=function(object,binding) return adapter.identity(object,nil,binding) end,
+    isPlayer=function(object) return typesOk and types and types.Player~=nil and types.Player.objectIsInstance(object) end,
+    publish=function(rows,generation)
+        adapter.setDynamicBindings(rows,generation)
+        -- Coalesce the PLAYER mirror to one bounded event per bridge poll.
+        pendingDynamicMirror={generation=generation,bindings=rows}
+    end})
 local configuredSession
 local morrowindMonths={'Morning Star','Sun\'s Dawn','First Seed','Rain\'s Hand','Second Seed','Midyear',
     'Sun\'s Height','Last Seed','Hearthfire','Frostfall','Sun\'s Dusk','Evening Star'}
@@ -196,7 +226,8 @@ end
 
 local function activate(object)
     local actor=adapter.identity(object)
-    if actor then orchestrator.activate(state,actor,object) end
+    if actor then orchestrator.activate(state,actor,object)
+    else dynamicIdentity.observe(dynamicIdentities,object) end
 end
 
 -- Lifecycle loading clears stale object handles, so rebuild the registry from OpenMW's current
@@ -207,6 +238,14 @@ local function activateWorldActors()
     if ok and actors then for _,object in ipairs(actors) do activate(object) end end
     local playersOk,players=pcall(function() return world.players end)
     if playersOk and players then for _,object in ipairs(players) do activate(object) end end
+end
+
+-- Dynamic identities require a negotiated session, a confirmed playthrough and an enabled save.
+local function syncDynamicIdentities()
+    local enabled=dynamicNegotiated and state.sessionId~=nil and not state.disabled and state.characterChoice==nil
+    if dynamicIdentity.configure(dynamicIdentities,enabled,state.playthroughId,state.generation) and enabled then
+        activateWorldActors()
+    end
 end
 
 -- Provide a global fallback when the player-context camera and nearby APIs cannot produce a
@@ -400,6 +439,7 @@ return {
             pendingPlayerEvents={}
             npcManager.load(npcControls,nil)
             orchestrator.lifecycle(state,'new_game')
+            syncDynamicIdentities()
             activateWorldActors()
             flushPlayerEvents()
         end,
@@ -411,6 +451,7 @@ return {
             pendingPlayerEvents={}
             orchestrator.load(state,data)
             npcManager.load(npcControls,type(data)=='table' and type(data.actorStateHints)=='table' and data.actorStateHints.npcReturnPoses or nil)
+            syncDynamicIdentities()
             activateWorldActors()
             flushPlayerEvents()
         end,
@@ -464,10 +505,16 @@ return {
             end
             if session and session.session_id~=configuredSession then
                 configuredSession=session.session_id
+                dynamicNegotiated=false
+                for _,capability in ipairs(type(session.capabilities)=='table' and session.capabilities or {}) do
+                    if capability==identity.DYNAMIC_CAPABILITY then dynamicNegotiated=true end
+                end
                 state.generation=session.generation
                 state.conversation.generation=session.generation
                 orchestrator.configureSession(state,session.session_id)
             end
+            syncDynamicIdentities()
+            if pendingDynamicMirror then emit('LORKHAN_DYNAMIC_IDENTITIES',pendingDynamicMirror) pendingDynamicMirror=nil end
             addonRuntime.session(addons,session)
             if state.events then orchestrator.poll(state,BRIDGE_POLL_INTERVAL) end
             addonRuntime.pump(addons,core and core.getRealTime and core.getRealTime() or 0)
@@ -518,6 +565,10 @@ return {
                 and state.registry:resolve(event.actor) and ({waiting=true,ended=true,rejected=true})[event.status] then
                 emit('LORKHAN_WAIT_HERE_STATUS',{target=event.actor,status=event.status,reason=event.reason})
             end
+        end,
+        LORKHAN_DYNAMIC_IDENTITY_REPORT=function(event)
+            local actor,reason=dynamicIdentity.report(dynamicIdentities,event)
+            if not actor and reason~='stale_dynamic_report' then print('[LORKHAN] dynamic actor identity rejected: '..tostring(reason)) end
         end,
         LORKHAN_DIRECTOR_CONTEXT=function(event) orchestrator.directorContext(state,event) end,
         LORKHAN_RECHAT_CONTEXT=function(event)

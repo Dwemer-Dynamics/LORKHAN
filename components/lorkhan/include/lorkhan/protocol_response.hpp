@@ -120,6 +120,13 @@ struct ProtocolCell {
     std::int64_t gridY{};
 };
 
+// actor.identity.dynamic.v1: saved UUID plus the exact generated RefNum{runtimeIndex,-1} text.
+struct DynamicActorReference {
+    std::string uuid;
+    std::string runtimeRef;
+    std::uint32_t runtimeIndex{};
+};
+
 struct ProtocolIdentity {
     std::string kind;
     std::string recordId;
@@ -128,6 +135,7 @@ struct ProtocolIdentity {
     std::string contentFile;
     ProtocolCell cell;
     std::string displayName;
+    std::optional<DynamicActorReference> dynamic;
 };
 
 enum class ActionIntentKind { ai_follow, ai_stop, conversation_end, ai_approach, ai_wait, ai_travel, ai_escort, ai_face, ai_wander, animation_play,

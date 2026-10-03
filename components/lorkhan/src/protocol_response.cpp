@@ -188,11 +188,44 @@ Result<ProtocolCell> parseCell(const json::Value& value)
     return invalidSchemaValue<ProtocolCell>("unknown identity cell kind");
 }
 
+// OpenMW FormId::toString for a generated RefNum{index,-1}: "@0x" + lowercase hex, non-zero uint32.
+std::optional<std::uint32_t> parseRuntimeRef(std::string_view value)
+{
+    if (value.size() < 4 || value.size() > 11 || !value.starts_with("@0x") || value[3] == '0')
+        return std::nullopt;
+    const auto digits = value.substr(3);
+    if (!std::all_of(digits.begin(), digits.end(), [](const char character) {
+            return (character >= '0' && character <= '9') || (character >= 'a' && character <= 'f');
+        }))
+        return std::nullopt;
+    std::uint32_t parsed{};
+    const auto result = std::from_chars(digits.data(), digits.data() + digits.size(), parsed, 16);
+    if (result.ec != std::errc{} || result.ptr != digits.data() + digits.size())
+        return std::nullopt;
+    return parsed;
+}
+
+Result<DynamicActorReference> parseDynamicReference(const json::Value& value)
+{
+    const auto* object = value.object();
+    if (!object || !hasExactly(*object, {"uuid", "runtime_ref"}))
+        return invalidSchemaValue<DynamicActorReference>("dynamic identity fields mismatch");
+    auto uuid = requireUuid(*object, "uuid");
+    auto runtime = requireString(*object, "runtime_ref", 4, 11);
+    if (!uuid) return invalidSchemaValue<DynamicActorReference>(uuid.error().message);
+    if (!isDynamicActorUuid(uuid.value()))
+        return invalidSchemaValue<DynamicActorReference>("dynamic uuid must not be the nil UUID");
+    if (!runtime) return invalidSchemaValue<DynamicActorReference>(runtime.error().message);
+    const auto index = parseRuntimeRef(runtime.value());
+    if (!index) return invalidSchemaValue<DynamicActorReference>("dynamic runtime_ref is not an exact generated reference");
+    return Result<DynamicActorReference>::success({std::move(uuid).value(), std::move(runtime).value(), *index});
+}
+
 Result<ProtocolIdentity> parseIdentity(const json::Value& value)
 {
     const auto* object = value.object();
     if (!object || !hasExactly(*object,
-            {"kind", "record_id", "refnum", "content_file", "cell", "display_name"}))
+            {"kind", "record_id", "refnum", "content_file", "cell", "display_name"}, {"dynamic"}))
         return invalidSchemaValue<ProtocolIdentity>("identity fields mismatch");
     auto kind = requireString(*object, "kind", 1, 64);
     auto record = requireString(*object, "record_id", 1, kMaximumIdentityTextBytes);
@@ -214,9 +247,26 @@ Result<ProtocolIdentity> parseIdentity(const json::Value& value)
     const auto* cellValue = json::find(*object, "cell");
     auto cell = parseCell(*cellValue);
     if (!cell) return invalidSchemaValue<ProtocolIdentity>(cell.error().message);
-    return Result<ProtocolIdentity>::success({std::move(kind).value(), std::move(record).value(),
-        index.value(), refContent.value(), std::move(content).value(), std::move(cell).value(),
-        std::move(display).value()});
+    ProtocolIdentity identity;
+    identity.kind = std::move(kind).value();
+    identity.recordId = std::move(record).value();
+    identity.refnumIndex = index.value();
+    identity.refnumContentFile = refContent.value();
+    identity.contentFile = std::move(content).value();
+    identity.cell = std::move(cell).value();
+    identity.displayName = std::move(display).value();
+    // The dynamic sentinel is reserved: it must carry an exact reference and never alias a placed key.
+    if (const auto* dynamicValue = json::find(*object, "dynamic")) {
+        auto dynamic = parseDynamicReference(*dynamicValue);
+        if (!dynamic) return invalidSchemaValue<ProtocolIdentity>(dynamic.error().message);
+        if ((identity.kind != "npc" && identity.kind != "creature") || identity.contentFile != kDynamicActorContentFile
+            || identity.refnumIndex != 0 || identity.refnumContentFile != 0)
+            return invalidSchemaValue<ProtocolIdentity>("dynamic identity sentinel mismatch");
+        identity.dynamic = std::move(dynamic).value();
+    } else if (identity.contentFile == kDynamicActorContentFile) {
+        return invalidSchemaValue<ProtocolIdentity>("reserved dynamic content file without dynamic reference");
+    }
+    return Result<ProtocolIdentity>::success(std::move(identity));
 }
 
 bool isLowercaseHash(std::string_view value)
