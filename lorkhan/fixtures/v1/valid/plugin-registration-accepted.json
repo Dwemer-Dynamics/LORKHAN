@@ -1,0 +1,5 @@
+{
+  "description": "Server reports per-plugin effective state after registration",
+  "instance": {"schema": "lorkhan.plugin.registration.accepted.v1", "message_id": "00000000-0000-4000-8000-000000000301", "request_id": "00000000-0000-4000-8000-000000000302", "session_id": "00000000-0000-4000-8000-000000000007", "generation": 7, "plugins": [{"plugin_id": "ashlander.camp_tasks", "version": "1.2.0", "state": "active", "reason_code": "registered"}, {"plugin_id": "ashlander.camp_core", "version": "1.0.0", "state": "disabled", "reason_code": "plugin_disabled"}]},
+  "schema": "https://lorkhan.invalid/schemas/v1/plugin.schema.json"
+}

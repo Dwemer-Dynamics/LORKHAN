@@ -1,0 +1,5 @@
+{
+  "description": "Unregistration names plugins only and cannot carry registrations",
+  "instance": {"schema": "lorkhan.plugin.registration.v1", "message_id": "00000000-0000-4000-8000-000000000301", "request_id": "00000000-0000-4000-8000-000000000302", "session_id": "00000000-0000-4000-8000-000000000007", "generation": 7, "created_at": "2026-10-02T12:00:00Z", "operation": "unregister", "plugins": [{"plugin_id": "ashlander.camp_tasks", "version": "1.2.0", "manifest_sha256": "5f1c1a3b0e8f7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a392817060504", "actions": [{"name": "fetch_water", "tier": 1, "confirmation": "none", "executor_kinds": ["npc"], "actors": [{"cell": {"grid_x": -2, "grid_y": -9, "kind": "exterior"}, "content_file": "Morrowind.esm", "display_name": "Fargoth", "kind": "npc", "record_id": "fargoth", "refnum": {"content_file": 0, "index": 112}}]}, {"name": "share_meal", "tier": 2, "confirmation": "required", "executor_kinds": ["npc"]}], "events": ["meal_shared"], "prompt_slots": ["scene_notes"]}]},
+  "schema": "https://lorkhan.invalid/schemas/v1/plugin.schema.json"
+}

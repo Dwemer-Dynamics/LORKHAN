@@ -12,6 +12,16 @@
       "sha256": "30bdb94283b88ed1d6b150cf64b895495394b16e718d8e05633412e93e1881b3"
     },
     {
+      "bytes": 886,
+      "path": "lorkhan/fixtures/v1/hostile/plugin-action-intent-command-field.json",
+      "sha256": "b886f673d0c22adb9c50513bc0b71f44c0497e302db2105c0c9449a84005263e"
+    },
+    {
+      "bytes": 865,
+      "path": "lorkhan/fixtures/v1/hostile/plugin-action-intent-url-parameter.json",
+      "sha256": "5c3978db017ef039142b0aed1df7b53cff13ab648eb92b7fa426327c42b96e89"
+    },
+    {
       "bytes": 1322,
       "path": "lorkhan/fixtures/v1/hostile/response-path-cache-key.json",
       "sha256": "b61f85d7768444a3b085c90032b359c559ecb65b30222cdbcf8fb61078f4bc89"
@@ -140,6 +150,21 @@
       "bytes": 332,
       "path": "lorkhan/fixtures/v1/invalid/non-utc-time.json",
       "sha256": "e0d0cfd31311b030d9d086ab127685b14014a23b0cc948749ac8478197410823"
+    },
+    {
+      "bytes": 1831,
+      "path": "lorkhan/fixtures/v1/invalid/plugin-manifest-reserved-namespace.json",
+      "sha256": "c6393a65566cb6cff910352b73b10b8bca7e4439de9b2d025084ac7cc2607895"
+    },
+    {
+      "bytes": 1817,
+      "path": "lorkhan/fixtures/v1/invalid/plugin-manifest-tier2-unconfirmed.json",
+      "sha256": "8cd5a0ddac6ba51faa31a398ea56ee710a2ca2a73b8fc00e9f303db22b49fea5"
+    },
+    {
+      "bytes": 1086,
+      "path": "lorkhan/fixtures/v1/invalid/plugin-registration-unregister-actions.json",
+      "sha256": "5b65a7f3ac278ce0e0b56fb673ecd867780ee63b982e49d0d58138e7474a0ea2"
     },
     {
       "bytes": 2944,
@@ -477,6 +502,31 @@
       "sha256": "a811c6dd288e2269146179eb5ba8f1c3c4473854033f020e92e0ff7f72369f5d"
     },
     {
+      "bytes": 854,
+      "path": "lorkhan/fixtures/v1/valid/plugin-action-intent.json",
+      "sha256": "4c6729fa250fb452a07467662c04a33975eb0ba67dda047d1b876400d843ced8"
+    },
+    {
+      "bytes": 749,
+      "path": "lorkhan/fixtures/v1/valid/plugin-event.json",
+      "sha256": "3289d58c4f0bfc6698c13576102033194566b70ca4a170155166654b57ba1ef1"
+    },
+    {
+      "bytes": 1859,
+      "path": "lorkhan/fixtures/v1/valid/plugin-manifest.json",
+      "sha256": "60fb2d4d2a2a1f09887e1052685da0ac0d31443b2837fa859d7223a312255592"
+    },
+    {
+      "bytes": 634,
+      "path": "lorkhan/fixtures/v1/valid/plugin-registration-accepted.json",
+      "sha256": "966057076fdd90349485313f3d61c7a8225fd977b76ba2a590bbe7f8b95ceb2b"
+    },
+    {
+      "bytes": 1096,
+      "path": "lorkhan/fixtures/v1/valid/plugin-registration.json",
+      "sha256": "6466786b926621648fa3a63dfb3ea117ece89962a84dff58a8d856020822451c"
+    },
+    {
       "bytes": 3995,
       "path": "lorkhan/fixtures/v1/valid/response-utf8-and-action.json",
       "sha256": "a6979a77be088efd4bdaf17c9c1e9f2442d8cc285f1d9d81305a6e4f62ef9c2f"
@@ -705,6 +755,11 @@
       "bytes": 1172,
       "path": "lorkhan/schemas/v1/player-autochat.schema.json",
       "sha256": "08b4080325e153fd198ad0f66bf986d2dd4a3198da4b89a66f22abd4c79cfe9b"
+    },
+    {
+      "bytes": 16580,
+      "path": "lorkhan/schemas/v1/plugin.schema.json",
+      "sha256": "301b442c45f831f37ee91e354d54091c7d42422d8ab2f065da9497c43523640a"
     },
     {
       "bytes": 3688,

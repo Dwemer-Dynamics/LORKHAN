@@ -1,0 +1,327 @@
+{
+  "$comment": "Versioned third-party addon contract. Declarative bounded specs only; never code, paths, URLs or free-form commands.",
+  "$defs": {
+    "action_intent": {
+      "additionalProperties": false,
+      "allOf": [
+        {"if": {"properties": {"tier": {"const": 2}}}, "then": {"properties": {"confirmation_required": {"const": true}}}}
+      ],
+      "properties": {
+        "action": {"$ref": "#/$defs/name"},
+        "action_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+        "actor": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"},
+        "cancellable": {"type": "boolean"},
+        "confirmation_required": {"type": "boolean"},
+        "expires_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+        "generation": {"$ref": "#/$defs/generation"},
+        "parameters": {"additionalProperties": {"$ref": "#/$defs/parameter_value"}, "maxProperties": 8, "propertyNames": {"$ref": "#/$defs/name"}, "type": "object"},
+        "plugin_id": {"$ref": "#/$defs/plugin_id"},
+        "plugin_version": {"$ref": "#/$defs/version"},
+        "schema": {"const": "lorkhan.plugin.action-intent.v1", "type": "string"},
+        "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+        "target": {
+          "anyOf": [
+            {"type": "null"},
+            {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"}
+          ]
+        },
+        "tier": {"maximum": 2, "minimum": 0, "type": "integer"},
+        "turn_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+      },
+      "required": ["schema", "action_id", "turn_id", "session_id", "generation", "plugin_id", "plugin_version", "action", "tier", "confirmation_required", "cancellable", "actor", "target", "parameters", "expires_at"],
+      "type": "object"
+    },
+    "action_spec": {
+      "additionalProperties": false,
+      "allOf": [
+        {"if": {"properties": {"tier": {"const": 2}}}, "then": {"properties": {"confirmation": {"const": "required"}}}},
+        {"else": {"properties": {"target_kinds": {"minItems": 1}}}, "if": {"properties": {"target": {"const": "none"}}}, "then": {"properties": {"target_kinds": {"maxItems": 0}}}}
+      ],
+      "properties": {
+        "cancellable": {"type": "boolean"},
+        "confirmation": {"$ref": "#/$defs/confirmation"},
+        "description": {"maxLength": 256, "minLength": 1, "type": "string"},
+        "display_name": {"maxLength": 64, "minLength": 1, "type": "string"},
+        "executor_kinds": {"items": {"$ref": "#/$defs/executor_kind"}, "maxItems": 2, "minItems": 1, "type": "array", "uniqueItems": true},
+        "name": {"$ref": "#/$defs/name"},
+        "parameters": {"items": {"$ref": "#/$defs/parameter_spec"}, "maxItems": 8, "type": "array", "uniqueItems": true},
+        "target": {"enum": ["none", "optional", "required"], "type": "string"},
+        "target_kinds": {"items": {"$ref": "#/$defs/actor_kind"}, "maxItems": 3, "type": "array", "uniqueItems": true},
+        "tier": {"maximum": 2, "minimum": 0, "type": "integer"},
+        "timeout_seconds": {"maximum": 300, "minimum": 1, "type": "integer"}
+      },
+      "required": ["name", "display_name", "description", "tier", "confirmation", "executor_kinds", "target", "target_kinds", "timeout_seconds", "cancellable", "parameters"],
+      "type": "object"
+    },
+    "actor_kind": {"enum": ["creature", "npc", "player"], "type": "string"},
+    "confirmation": {"enum": ["none", "optional", "required"], "type": "string"},
+    "dependency": {
+      "additionalProperties": false,
+      "properties": {"max_version_exclusive": {"$ref": "#/$defs/version"}, "min_version": {"$ref": "#/$defs/version"}, "plugin_id": {"$ref": "#/$defs/plugin_id"}},
+      "required": ["plugin_id", "min_version"],
+      "type": "object"
+    },
+    "event": {
+      "additionalProperties": false,
+      "properties": {
+        "event": {"$ref": "#/$defs/name"},
+        "fields": {"additionalProperties": {"$ref": "#/$defs/field_value"}, "maxProperties": 8, "propertyNames": {"$ref": "#/$defs/name"}, "type": "object"},
+        "generation": {"$ref": "#/$defs/generation"},
+        "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+        "observed_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+        "plugin_id": {"$ref": "#/$defs/plugin_id"},
+        "plugin_version": {"$ref": "#/$defs/version"},
+        "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+        "schema": {"const": "lorkhan.plugin.event.v1", "type": "string"},
+        "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+      },
+      "required": ["schema", "message_id", "request_id", "session_id", "generation", "observed_at", "plugin_id", "plugin_version", "event", "fields"],
+      "type": "object"
+    },
+    "executor_kind": {"enum": ["creature", "npc"], "type": "string"},
+    "field_spec": {
+      "oneOf": [
+        {"$ref": "#/$defs/parameter_spec"},
+        {
+          "additionalProperties": false,
+          "properties": {
+            "max_length": {"maximum": 512, "minimum": 1, "type": "integer"},
+            "name": {"$ref": "#/$defs/name"},
+            "required": {"type": "boolean"},
+            "type": {"const": "text", "type": "string"}
+          },
+          "required": ["name", "required", "type", "max_length"],
+          "type": "object"
+        }
+      ]
+    },
+    "field_value": {
+      "anyOf": [
+        {"type": "number"},
+        {"type": "boolean"},
+        {"maxLength": 512, "minLength": 1, "type": "string"},
+        {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"}
+      ]
+    },
+    "generation": {"maximum": 9007199254740991, "minimum": 1, "type": "integer"},
+    "manifest": {
+      "additionalProperties": false,
+      "properties": {
+        "actions": {"items": {"$ref": "#/$defs/action_spec"}, "maxItems": 16, "type": "array", "uniqueItems": true},
+        "api_version": {"const": 1, "type": "integer"},
+        "author": {"maxLength": 64, "minLength": 1, "type": "string"},
+        "compatibility": {
+          "additionalProperties": false,
+          "properties": {
+            "game": {"const": "tes3", "type": "string"},
+            "lua_api_revision": {"maximum": 1000000, "minimum": 129, "type": "integer"},
+            "min_client_version": {"$ref": "#/$defs/version"},
+            "min_server_version": {"$ref": "#/$defs/version"},
+            "product": {"const": "lorkhan", "type": "string"}
+          },
+          "required": ["product", "game", "min_client_version", "min_server_version", "lua_api_revision"],
+          "type": "object"
+        },
+        "default_enabled": {"type": "boolean"},
+        "dependencies": {"items": {"$ref": "#/$defs/dependency"}, "maxItems": 8, "type": "array", "uniqueItems": true},
+        "description": {"maxLength": 256, "minLength": 1, "type": "string"},
+        "display_name": {"maxLength": 64, "minLength": 1, "type": "string"},
+        "events": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "description": {"maxLength": 256, "minLength": 1, "type": "string"},
+              "fields": {"items": {"$ref": "#/$defs/field_spec"}, "maxItems": 8, "type": "array", "uniqueItems": true},
+              "max_per_minute": {"maximum": 120, "minimum": 1, "type": "integer"},
+              "name": {"$ref": "#/$defs/name"}
+            },
+            "required": ["name", "description", "max_per_minute", "fields"],
+            "type": "object"
+          },
+          "maxItems": 16,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "plugin_id": {"$ref": "#/$defs/plugin_id"},
+        "prompt_contributions": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "max_chars": {"maximum": 1024, "minimum": 1, "type": "integer"},
+              "slot": {"$ref": "#/$defs/prompt_slot"}
+            },
+            "required": ["slot", "max_chars"],
+            "type": "object"
+          },
+          "maxItems": 4,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "schema": {"const": "lorkhan.plugin.manifest.v1", "type": "string"},
+        "version": {"$ref": "#/$defs/version"}
+      },
+      "required": ["schema", "plugin_id", "version", "api_version", "display_name", "description", "author", "compatibility", "dependencies", "default_enabled", "actions", "events", "prompt_contributions"],
+      "type": "object"
+    },
+    "name": {"pattern": "^[a-z][a-z0-9_]{0,31}$", "type": "string"},
+    "parameter_spec": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "maximum": {"maximum": 2147483647, "minimum": -2147483647, "type": "integer"},
+            "minimum": {"maximum": 2147483647, "minimum": -2147483647, "type": "integer"},
+            "name": {"$ref": "#/$defs/name"},
+            "required": {"type": "boolean"},
+            "type": {"const": "integer", "type": "string"}
+          },
+          "required": ["name", "required", "type", "minimum", "maximum"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "maximum": {"maximum": 1000000000, "minimum": -1000000000, "type": "number"},
+            "minimum": {"maximum": 1000000000, "minimum": -1000000000, "type": "number"},
+            "name": {"$ref": "#/$defs/name"},
+            "required": {"type": "boolean"},
+            "type": {"const": "number", "type": "string"}
+          },
+          "required": ["name", "required", "type", "minimum", "maximum"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "name": {"$ref": "#/$defs/name"},
+            "required": {"type": "boolean"},
+            "type": {"const": "boolean", "type": "string"}
+          },
+          "required": ["name", "required", "type"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "name": {"$ref": "#/$defs/name"},
+            "required": {"type": "boolean"},
+            "type": {"const": "enum", "type": "string"},
+            "values": {"items": {"$ref": "#/$defs/token"}, "maxItems": 32, "minItems": 1, "type": "array", "uniqueItems": true}
+          },
+          "required": ["name", "required", "type", "values"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "actor_kinds": {"items": {"$ref": "#/$defs/actor_kind"}, "maxItems": 3, "minItems": 1, "type": "array", "uniqueItems": true},
+            "name": {"$ref": "#/$defs/name"},
+            "required": {"type": "boolean"},
+            "type": {"const": "actor", "type": "string"}
+          },
+          "required": ["name", "required", "type", "actor_kinds"],
+          "type": "object"
+        }
+      ]
+    },
+    "parameter_value": {
+      "anyOf": [
+        {"type": "number"},
+        {"type": "boolean"},
+        {"$ref": "#/$defs/token"},
+        {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"}
+      ]
+    },
+    "plugin_id": {"maxLength": 80, "not": {"pattern": "^(builtin|core|lorkhan|morrowind|openmw|tes3)\\."}, "pattern": "^[a-z][a-z0-9_]{1,31}\\.[a-z][a-z0-9_]{1,47}$", "type": "string"},
+    "plugin_ref": {
+      "additionalProperties": false,
+      "properties": {"plugin_id": {"$ref": "#/$defs/plugin_id"}, "version": {"$ref": "#/$defs/version"}},
+      "required": ["plugin_id", "version"],
+      "type": "object"
+    },
+    "prompt_slot": {"enum": ["actor_state", "player_state", "scene_notes", "world_state"], "type": "string"},
+    "reason_code": {"pattern": "^[a-z][a-z0-9_]{0,63}$", "type": "string"},
+    "registered_action": {
+      "additionalProperties": false,
+      "properties": {
+        "actors": {"items": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/identity"}, "maxItems": 12, "minItems": 1, "type": "array", "uniqueItems": true},
+        "confirmation": {"$ref": "#/$defs/confirmation"},
+        "executor_kinds": {"items": {"$ref": "#/$defs/executor_kind"}, "maxItems": 2, "minItems": 1, "type": "array", "uniqueItems": true},
+        "name": {"$ref": "#/$defs/name"},
+        "tier": {"maximum": 2, "minimum": 0, "type": "integer"}
+      },
+      "required": ["name", "tier", "confirmation", "executor_kinds"],
+      "type": "object"
+    },
+    "registered_plugin": {
+      "additionalProperties": false,
+      "properties": {
+        "actions": {"items": {"$ref": "#/$defs/registered_action"}, "maxItems": 16, "type": "array", "uniqueItems": true},
+        "events": {"items": {"$ref": "#/$defs/name"}, "maxItems": 16, "type": "array", "uniqueItems": true},
+        "manifest_sha256": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/sha256"},
+        "plugin_id": {"$ref": "#/$defs/plugin_id"},
+        "prompt_slots": {"items": {"$ref": "#/$defs/prompt_slot"}, "maxItems": 4, "type": "array", "uniqueItems": true},
+        "version": {"$ref": "#/$defs/version"}
+      },
+      "required": ["plugin_id", "version", "manifest_sha256", "actions", "events", "prompt_slots"],
+      "type": "object"
+    },
+    "registration": {
+      "additionalProperties": false,
+      "allOf": [
+        {"else": {"properties": {"plugins": {"items": {"$ref": "#/$defs/plugin_ref"}}}}, "if": {"properties": {"operation": {"const": "register"}}}, "then": {"properties": {"plugins": {"items": {"$ref": "#/$defs/registered_plugin"}}}}}
+      ],
+      "properties": {
+        "created_at": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/timestamp"},
+        "generation": {"$ref": "#/$defs/generation"},
+        "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+        "operation": {"enum": ["register", "unregister"], "type": "string"},
+        "plugins": {"items": {"type": "object"}, "maxItems": 16, "minItems": 1, "type": "array", "uniqueItems": true},
+        "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+        "schema": {"const": "lorkhan.plugin.registration.v1", "type": "string"},
+        "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+      },
+      "required": ["schema", "message_id", "request_id", "session_id", "generation", "created_at", "operation", "plugins"],
+      "type": "object"
+    },
+    "registration_accepted": {
+      "additionalProperties": false,
+      "properties": {
+        "generation": {"$ref": "#/$defs/generation"},
+        "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+        "plugins": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "plugin_id": {"$ref": "#/$defs/plugin_id"},
+              "reason_code": {"$ref": "#/$defs/reason_code"},
+              "state": {"enum": ["active", "disabled", "rejected", "unregistered"], "type": "string"},
+              "version": {"$ref": "#/$defs/version"}
+            },
+            "required": ["plugin_id", "version", "state", "reason_code"],
+            "type": "object"
+          },
+          "maxItems": 32,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+        "schema": {"const": "lorkhan.plugin.registration.accepted.v1", "type": "string"},
+        "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+      },
+      "required": ["schema", "message_id", "request_id", "session_id", "generation", "plugins"],
+      "type": "object"
+    },
+    "token": {"pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$", "type": "string"},
+    "version": {"pattern": "^(0|[1-9][0-9]{0,4})\\.(0|[1-9][0-9]{0,4})\\.(0|[1-9][0-9]{0,4})$", "type": "string"}
+  },
+  "$id": "https://lorkhan.invalid/schemas/v1/plugin.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {"$ref": "#/$defs/manifest"},
+    {"$ref": "#/$defs/registration"},
+    {"$ref": "#/$defs/registration_accepted"},
+    {"$ref": "#/$defs/action_intent"},
+    {"$ref": "#/$defs/event"}
+  ]
+}

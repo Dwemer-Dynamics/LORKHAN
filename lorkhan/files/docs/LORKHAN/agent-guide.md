@@ -66,6 +66,8 @@ and [Lua source examples](https://github.com/Dwemer-Dynamics/LORKHAN/tree/lorkha
 These are implementation examples, not a stable third-party extension SDK. Keep player
 input/UI in PLAYER scripts, authoritative context in GLOBAL scripts and self-only actor
 mutation in CUSTOM scripts. Use the existing typed action registry and terminal results.
+The versioned `lorkhan.plugin.*.v1` addon contract (`plugin_contract.lua`, protocol docs)
+currently validates manifests, registrations, intents and events only; no addon loader exists yet.
 
 Native additions must follow the
 [engine boundary](https://github.com/Dwemer-Dynamics/LORKHAN/blob/lorkhan/docs/ENGINE-INTEGRATION-PLAN.md)
