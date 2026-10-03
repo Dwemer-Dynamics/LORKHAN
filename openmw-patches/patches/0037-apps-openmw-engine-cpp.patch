@@ -1,0 +1,18 @@
+--- a/apps/openmw/engine.cpp
++++ b/apps/openmw/engine.cpp
+@@ -59,6 +59,7 @@
+ #include "mwgui/windowmanagerimp.hpp"
+ 
+ #include "mwlua/luamanagerimp.hpp"
++#include "mwlua/lorkhanbindings.hpp"
+ #include "mwlua/worker.hpp"
+ 
+ #include "mwscript/interpretercontext.hpp"
+@@ -446,6 +447,7 @@
+ void OMW::Engine::setDataDirs(const Files::PathContainer& dataDirs)
+ {
+     mDataDirs = dataDirs;
++    MWLua::setLorkhanDataRoots(dataDirs);
+     mDataDirs.insert(mDataDirs.begin(), mResDir / "vfs");
+     mFileCollections = Files::Collections(mDataDirs);
+ }

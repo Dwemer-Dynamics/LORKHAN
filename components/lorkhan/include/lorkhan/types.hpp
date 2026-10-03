@@ -323,7 +323,7 @@ struct PluginRegistrationRequest : PluginMessageRequest {};
 struct PluginEventRequest : PluginMessageRequest {};
 
 inline constexpr std::size_t kMaxPluginPackageBytes = 64U * 1024U * 1024U;
-inline constexpr std::size_t kMaxPluginPackageRoots = 32U;
+inline constexpr std::size_t kMaxPluginPackageRoots = 2048U;
 inline constexpr std::size_t kMaxPluginPackageRootBytes = 4096U;
 
 // Synchronize one active addon's packaged server half. The engine thread copies the typed identity

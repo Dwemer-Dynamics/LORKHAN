@@ -826,13 +826,13 @@ public:
             200, [](const PackageReply& reply) { return parsePluginPackageUploadResponse(reply.body, reply.headers, false); });
     }
 
-    Result<PluginPackageOperation> submit(bool update, const RequestId& request, std::string_view uploadId) override
+    Result<PluginPackageOperation> submit(bool update, const RequestId& request, std::string_view uploadId, std::string_view expectedManifestSha256) override
     {
         if (!isCanonicalUuid(uploadId) || !isCanonicalUuid(request.value()))
             return Result<PluginPackageOperation>::failure(makeError(ErrorCode::invalid_argument,
                 "package submission is outside the closed contract"));
         return run<PluginPackageOperation>(http::verb::post, update ? "/plugin-packages/update" : "/plugin-packages/install",
-            pluginPackageSubmitBody(request, uploadId), kJsonContentType, true, 202,
+            pluginPackageSubmitBody(request, uploadId, expectedManifestSha256), kJsonContentType, true, 202,
             [](const PackageReply& reply) { return parsePluginPackageOperationResponse(reply.body, reply.headers); });
     }
 

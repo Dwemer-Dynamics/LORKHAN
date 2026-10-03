@@ -3763,5 +3763,40 @@ test('plugin parity example manifest matches packaged bytes and registers throug
  h.objects[identity.key(h.npc)]={scripts={}}
  h.activate(7);runtime.intent(h.rt,h.intent('mark_camp',{mood='alert'}));eq(h.results[1].reason_code,'camp_marked')
 end)
+test('addon startup sync waits for a typed package receipt and rechecks changed server policy without polling packages',function()
+ local h,runtime=addonHarness()
+ local syncs=0
+ h.bridge.syncPluginPackage=function(id,version,sha)
+  eq(id,'parity.example');eq(version,'1.0.0');eq(sha,h.spec.manifest_sha256)
+  syncs=syncs+1;h.receipts['package'..syncs]={status='pending'};return 'package'..syncs
+ end
+ local handle=assert(runtime.register(h.rt,h.spec))
+ local info={session_id=uuid(7),generation=7,capabilities={'plugin.contract.v1'},plugin_policy_revision=string.rep('a',64)}
+ runtime.session(h.rt,info);runtime.pump(h.rt,0)
+ eq(syncs,1);eq(#h.regs,0);eq(runtime.status(h.rt,handle).package.status,'pending')
+ h.receipts.package1={status='accepted',package_status='installed',enabled=false,installed_version='1.0.0',reason_code='package_installed'}
+ runtime.pump(h.rt,0);eq(#h.regs,1)
+ h.receipts[h.regs[1].request_id]={status='accepted',plugins={{plugin_id='parity.example',version='1.0.0',state='disabled',reason_code='plugin_disabled'}}}
+ runtime.pump(h.rt,0);eq(runtime.status(h.rt,handle).state,'disabled')
+ info.plugin_policy_revision=string.rep('b',64)
+ runtime.session(h.rt,info);runtime.pump(h.rt,1);eq(#h.regs,2);eq(syncs,1)
+ h.receipts[h.regs[2].request_id]={status='accepted',plugins={{plugin_id='parity.example',version='1.0.0',state='active',reason_code='registered'}}}
+ runtime.pump(h.rt,1);eq(runtime.status(h.rt,handle).state,'active')
+ for i=2,20 do runtime.session(h.rt,info);runtime.pump(h.rt,i) end
+ eq(syncs,1);eq(#h.regs,2)
+ info.plugin_policy_revision=string.rep('c',64)
+ runtime.session(h.rt,info);runtime.pump(h.rt,21)
+ h.receipts[h.regs[3].request_id]={status='accepted',plugins={{plugin_id='parity.example',version='1.0.0',state='disabled',reason_code='plugin_disabled'}}}
+ runtime.pump(h.rt,21);eq(runtime.status(h.rt,handle).state,'disabled')
+end)
+test('addon registration resumes after bounded package submission failures',function()
+ local h,runtime=addonHarness()
+ local attempts=0
+ h.bridge.syncPluginPackage=function() attempts=attempts+1;return nil,'transport_failure' end
+ local handle=assert(runtime.register(h.rt,h.spec))
+ runtime.session(h.rt,{session_id=uuid(7),generation=7,capabilities={'plugin.contract.v1'}})
+ for now=0,12,2 do runtime.pump(h.rt,now) end
+ eq(attempts,4);eq(#h.regs,1);eq(runtime.status(h.rt,handle).package.status,'failed')
+end)
 io.write(string.format('%d tests, %d failures\n',tests,failures))
 if failures>0 then os.exit(1) end

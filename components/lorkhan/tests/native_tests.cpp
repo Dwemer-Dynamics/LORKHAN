@@ -1675,7 +1675,7 @@ public:
         uploaded.append(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         return lorkhan::Result<Upload>::success({kUpload, index + 1, uploaded.size(), 0, uploaded.size() == declaredSize});
     }
-    lorkhan::Result<Operation> submit(bool update, const lorkhan::RequestId& request, std::string_view uploadId) override
+    lorkhan::Result<Operation> submit(bool update, const lorkhan::RequestId& request, std::string_view uploadId, std::string_view expectedManifestSha256) override
     {
         submitted.push_back(std::string(update ? "update|" : "install|") + request.value() + "|" + std::string(uploadId));
         if (submitError) return lorkhan::Result<Operation>::failure(*submitError);
@@ -1696,7 +1696,7 @@ public:
     }
 
     static constexpr const char* kUpload = "00000000-0000-4000-8000-000000000501";
-    static constexpr const char* kOperation = "00000000-0000-4000-8000-000000000502";
+    static constexpr const char* kOperation = "00000000-0000-4000-8000-000000000500";
     static constexpr const char* kSyncRequest = "00000000-0000-4000-8000-000000000500";
     std::vector<Probe> probes;
     std::vector<State> states{State::queued, State::succeeded};

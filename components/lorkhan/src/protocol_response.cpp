@@ -1692,7 +1692,16 @@ Result<EventsResponse> parseEventsResponse(
 {
     auto object = parseObject(body, headers, "lorkhan.events.v1", limits);
     if (!object) return Result<EventsResponse>::failure(object.error());
-    if (!hasExactly(object.value(), {"schema", "session_id", "generation", "next_after", "events", "autonomy"}))
+    auto fields = object.value();
+    std::optional<std::string> policyRevision;
+    if (const auto* revision = json::find(fields, "plugin_policy_revision")) {
+        if (!revision->string() || revision->string()->size() != 64
+            || revision->string()->find_first_not_of("0123456789abcdef") != std::string::npos)
+            return invalidSchemaValue<EventsResponse>("plugin policy revision must be a SHA-256 token");
+        policyRevision = *revision->string();
+        fields.erase("plugin_policy_revision");
+    }
+    if (!hasExactly(fields, {"schema", "session_id", "generation", "next_after", "events", "autonomy"}))
         return invalidSchemaValue<EventsResponse>("events response fields mismatch");
     auto session = requireUuid(object.value(), "session_id");
     auto generation = requireUnsigned(object.value(), "generation");
@@ -1708,7 +1717,7 @@ Result<EventsResponse> parseEventsResponse(
         return invalidSchemaValue<EventsResponse>("events must be an array of at most 100 items");
     if (!autonomy || autonomy->size() > 3)
         return invalidSchemaValue<EventsResponse>("autonomy must be an array of at most 3 items");
-    EventsResponse parsed{SessionId(std::move(session).value()), Generation(generation.value()), nextAfter.value(), {}, {}};
+    EventsResponse parsed{SessionId(std::move(session).value()), Generation(generation.value()), nextAfter.value(), {}, {}, policyRevision};
     parsed.events.reserve(events->size());
     std::uint64_t previous = 0;
     for (const auto& value : *events) {

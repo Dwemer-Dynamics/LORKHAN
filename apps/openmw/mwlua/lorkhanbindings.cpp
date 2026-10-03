@@ -9,6 +9,7 @@
 #include <lorkhan/playback.hpp>
 #include <lorkhan/session_identity.hpp>
 #include <lorkhan/voice_capture.hpp>
+#include <lorkhan/plugin_package.hpp>
 #include <components/lua/configuration.hpp>
 #include <components/lua/scriptscontainer.hpp>
 #include <components/files/constrainedfilestream.hpp>
@@ -77,6 +78,7 @@ namespace MWLua
     namespace
     {
         using namespace std::chrono_literals;
+        std::vector<std::string> pluginDataRoots;
 
         struct ClientConfig
         {
@@ -682,6 +684,7 @@ namespace MWLua
                 result["session_id"] = m_session->value();
                 result["generation"] = m_service->generation().value();
                 result["config_revision"] = m_configRevision;
+                if (!m_pluginPolicyRevision.empty()) result["plugin_policy_revision"] = m_pluginPolicyRevision;
                 sol::table negotiated(lua, sol::create);
                 for (std::size_t index = 0; index < m_capabilities.size(); ++index) negotiated[index + 1] = m_capabilities[index];
                 result["capabilities"] = negotiated;
@@ -2502,12 +2505,34 @@ namespace MWLua
                 catch (const std::exception&) { return failure(lua, "invalid_plugin_message"); }
             }
 
+            // Only typed identities cross Lua; physical roots are captured by engine startup, never supplied by addons.
+            std::tuple<sol::object, sol::object> syncPluginPackage(sol::state_view lua, const std::string& id,
+                const std::string& version, const std::string& manifest)
+            {
+                if (!ready()) return failure(lua, "bridge_not_ready");
+                if (!pluginContract()) return failure(lua, "plugin_contract_unsupported");
+                if (m_pluginReceipts.size() >= kMaxPluginReceipts
+                    || std::count_if(m_pluginReceipts.begin(), m_pluginReceipts.end(), [](const auto& receipt) {
+                        return receipt.second.status == "pending"; }) >= kMaxPendingPlugins)
+                    return failure(lua, "plugin_queue_full");
+                const lorkhan::RequestCorrelation correlation{lorkhan::RequestId(uuid()), *m_session, m_service->generation()};
+                lorkhan::PluginPackageSyncRequest sync{correlation, id, version, manifest, pluginDataRoots};
+                if (!lorkhan::validatePluginPackageSyncRequest(sync, correlation.request, *m_session, correlation.generation))
+                    return failure(lua, "invalid_package_identity");
+                auto accepted = m_service->enqueue({correlation.request, *m_session, correlation.generation,
+                    lorkhan::RequestKind::plugin_package_sync, std::move(sync)});
+                if (!accepted) return failure(lua, pluginReason(accepted.error()));
+                m_pluginReceipts[correlation.request.value()] = PluginReceipt{false, "pending", {}, {}, true};
+                return success(lua, correlation.request.value());
+            }
+
             bool settlePluginResult(const lorkhan::InboundResult& result)
             {
                 auto found = m_pluginReceipts.find(result.request.value());
                 if (found == m_pluginReceipts.end()) return false;
                 auto& receipt = found->second;
-                if (result.kind == lorkhan::ResponseKind::accepted) { receipt.status = "accepted"; receipt.payload = result.payload; }
+                if (result.kind == lorkhan::ResponseKind::accepted
+                    || (receipt.package && result.kind == lorkhan::ResponseKind::completed)) { receipt.status = "accepted"; receipt.payload = result.payload; }
                 else {
                     receipt.status = result.kind == lorkhan::ResponseKind::cancelled ? "cancelled" : "failed";
                     receipt.reason = result.failure ? pluginReason(*result.failure) : "transport_failure";
@@ -2523,11 +2548,21 @@ namespace MWLua
                 if (found == m_pluginReceipts.end()) { result["status"] = "unknown"; return result; }
                 const auto& receipt = found->second;
                 result["request_id"] = request;
-                result["kind"] = receipt.registration ? "registration" : "event";
+                result["kind"] = receipt.package ? "package" : receipt.registration ? "registration" : "event";
                 result["status"] = receipt.status;
                 if (receipt.status == "pending") return result;
                 if (receipt.status == "accepted") {
-                    if (receipt.registration) {
+                    if (receipt.package) {
+                        auto parsed = lorkhan::json::parse(receipt.payload, {4096, 4, 32, 256});
+                        if (parsed && parsed.value().object()) {
+                            for (const auto& [name, value] : *parsed.value().object()) {
+                                const std::string field = name == "status" ? "package_status" : name;
+                                if (value.string()) result[field] = *value.string();
+                                else if (value.boolean()) result[field] = *value.boolean();
+                                else if (value.integer()) result[field] = *value.integer();
+                            }
+                        } else { result["status"] = "failed"; result["reason"] = "invalid_package_receipt"; }
+                    } else if (receipt.registration) {
                         auto parsed = lorkhan::parsePluginRegistrationAcceptedResponse(receipt.payload, jsonHeaders());
                         sol::table plugins(lua, sol::create);
                         for (std::size_t index = 0; parsed && index < parsed.value().plugins.size(); ++index) {
@@ -2716,6 +2751,8 @@ namespace MWLua
                             if (parsed)
                             {
                                 m_cursor = parsed.value().nextAfter;
+                                if (pluginContract() && parsed.value().pluginPolicyRevision)
+                                    m_pluginPolicyRevision = *parsed.value().pluginPolicyRevision;
                                 for (const auto& event : parsed.value().events) {
                                     // An old or misbehaving server cannot start plugin work this session did not negotiate.
                                     if (event.type == lorkhan::ProtocolEventType::plugin_action_intent && !pluginContract()) {
@@ -2843,7 +2880,7 @@ namespace MWLua
                 if (!result) return false;
                 cancelMenuDialogueTts();
                 cancelPlayerAutochat();
-                m_session.reset(); m_clientSettings.reset(); m_configRevision.clear();
+                m_session.reset(); m_clientSettings.reset(); m_configRevision.clear();m_pluginPolicyRevision.clear();
                 m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();
                 m_diaryRequest.reset();m_diaryReceipt.reset();m_diaryBook.reset();m_diaryReceiptDto.reset();m_diaryPending=false;
                 m_diaryState.clear();m_diaryReason.clear();m_diaryError.clear();m_diaryReceiptOk=false;
@@ -3153,7 +3190,7 @@ namespace MWLua
             std::unique_ptr<lorkhan::BridgeService> m_service;
             std::optional<lorkhan::SessionId> m_session;
             std::optional<lorkhan::ClientSettings> m_clientSettings;
-            std::string m_configRevision;
+            std::string m_configRevision, m_pluginPolicyRevision;
             std::optional<lorkhan::RequestId> m_initRequest;
             std::optional<lorkhan::InitRequest> m_initSnapshot;
             unsigned m_initAttempts=0;
@@ -3183,7 +3220,7 @@ namespace MWLua
             };
             std::map<std::string, CommentRequest> m_commentRequests;
             std::map<std::string, std::string> m_dispositionReceipts;
-            struct PluginReceipt { bool registration{}; std::string status, payload, reason; };
+            struct PluginReceipt { bool registration{}; std::string status, payload, reason; bool package{}; };
             static constexpr std::size_t kMaxPluginReceipts = 64;
             static constexpr std::ptrdiff_t kMaxPendingPlugins = 8;
             std::map<std::string, PluginReceipt> m_pluginReceipts;
@@ -3306,6 +3343,9 @@ namespace MWLua
             api["pumpSessionControls"] = [lua] { return client().pumpSessionControls(lua); };
             api["pumpPlayerAutochat"] = [lua] { return client().pumpPlayerAutochat(lua); };
             if(global){
+                api["syncPluginPackage"]=[lua](const std::string& id, const std::string& version, const std::string& manifest) {
+                    return client().syncPluginPackage(lua,id,version,manifest);
+                };
                 api["submitPluginRegistration"]=[lua](sol::table message){return client().submitPlugin(lua,true,std::move(message));};
                 api["submitPluginEvent"]=[lua](sol::table message){return client().submitPlugin(lua,false,std::move(message));};
                 api["pluginReceipt"]=[lua](const std::string& request){return client().pluginReceipt(lua,request);};
@@ -3417,6 +3457,11 @@ namespace MWLua
     }
 
     bool lorkhanSpellStartAllowed(const MWWorld::Ptr& actor) { return !activeClient||activeClient->spellStartAllowed(actor); }
+    void setLorkhanDataRoots(const std::vector<std::filesystem::path>& roots)
+    {
+        pluginDataRoots.clear();
+        for (const auto& root : roots) pluginDataRoots.push_back(Files::pathToUnicodeString(root));
+    }
     void lorkhanSpellStartResult(const MWWorld::Ptr& actor,bool success) { if(activeClient&&!success)activeClient->spellFinished(actor,false,"resource_check_failed"); }
     int lorkhanSpellTarget(const MWWorld::Ptr& actor,MWWorld::Ptr& target) { return activeClient?activeClient->spellTarget(actor,target):0; }
     void lorkhanSpellFinished(const MWWorld::Ptr& actor,bool success) { if(activeClient)activeClient->spellFinished(actor,success); }
