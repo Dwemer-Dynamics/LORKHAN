@@ -322,6 +322,21 @@ struct PluginMessageRequest {
 struct PluginRegistrationRequest : PluginMessageRequest {};
 struct PluginEventRequest : PluginMessageRequest {};
 
+inline constexpr std::size_t kMaxPluginPackageBytes = 64U * 1024U * 1024U;
+inline constexpr std::size_t kMaxPluginPackageRoots = 32U;
+inline constexpr std::size_t kMaxPluginPackageRootBytes = 4096U;
+
+// Synchronize one active addon's packaged server half. The engine thread copies the typed identity
+// and its OpenMW data roots as plain strings; the worker resolves only the fixed package path below them.
+struct PluginPackageSyncRequest {
+    RequestCorrelation correlation;
+    std::string pluginId;
+    std::string version;
+    std::string manifestSha256;
+    // OpenMW data directories in load order: a later root overrides an earlier one, as in the VFS.
+    std::vector<std::string> dataRoots;
+};
+
 struct MediaPrepareRequest {
     RequestCorrelation correlation;
     MediaDescriptor descriptor;

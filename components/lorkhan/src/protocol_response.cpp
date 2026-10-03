@@ -1,4 +1,5 @@
 #include "lorkhan/voice_capture.hpp"
+#include "lorkhan/plugin_package.hpp"
 #include "lorkhan/protocol_response.hpp"
 
 #include <algorithm>
@@ -1542,8 +1543,35 @@ Result<void> parseHealthResponse(std::string_view body, const Headers& headers, 
     return Result<void>::success();
 }
 
-Result<ProtocolError> parseProtocolErrorResponse(
-    std::string_view body, const Headers& headers, json::ParseLimits limits)
+namespace {
+
+std::optional<ErrorCode> packageCode(std::string_view code)
+{
+    struct Mapping { std::string_view name; ErrorCode code; };
+    static constexpr std::array mappings{
+        Mapping{"package_invalid_request", ErrorCode::invalid_argument},
+        Mapping{"package_upload_not_found", ErrorCode::transport_failure},
+        Mapping{"package_operation_not_found", ErrorCode::transport_failure},
+        Mapping{"package_not_installed", ErrorCode::transport_failure},
+        Mapping{"package_route_not_found", ErrorCode::transport_failure},
+        Mapping{"package_too_large", ErrorCode::payload_too_large},
+        Mapping{"package_storage_full", ErrorCode::provider_unavailable},
+        Mapping{"package_storage_unavailable", ErrorCode::provider_unavailable},
+        Mapping{"package_storage_busy", ErrorCode::provider_unavailable},
+        Mapping{"package_upload_out_of_order", ErrorCode::duplicate_conflict},
+        Mapping{"package_upload_incomplete", ErrorCode::duplicate_conflict},
+        Mapping{"package_operation_pending", ErrorCode::duplicate_conflict},
+        Mapping{"package_already_installed", ErrorCode::duplicate_conflict},
+        Mapping{"package_version_not_newer", ErrorCode::duplicate_conflict},
+        Mapping{"package_hash_mismatch", ErrorCode::invalid_argument},
+    };
+    for (const auto& mapping : mappings)
+        if (mapping.name == code) return mapping.code;
+    return std::nullopt;
+}
+
+Result<ProtocolError> parseErrorObject(
+    std::string_view body, const Headers& headers, json::ParseLimits limits, bool packageCodes)
 {
     auto object = parseObject(body, headers, "lorkhan.error.v1", limits);
     if (!object)
@@ -1560,7 +1588,9 @@ Result<ProtocolError> parseProtocolErrorResponse(
     if (!message) return invalidSchemaValue<ProtocolError>(message.error().message);
     if (!correlation) return invalidSchemaValue<ProtocolError>(correlation.error().message);
     if (!retriable) return invalidSchemaValue<ProtocolError>(retriable.error().message);
-    const auto mappedCode = protocolCode(code.value());
+    auto mappedCode = protocolCode(code.value());
+    if (!mappedCode && packageCodes)
+        mappedCode = packageCode(code.value());
     if (!mappedCode)
         return invalidSchemaValue<ProtocolError>("unknown protocol error code");
 
@@ -1572,6 +1602,19 @@ Result<ProtocolError> parseProtocolErrorResponse(
         parsed.retryAfterMs = retry.value();
     }
     return Result<ProtocolError>::success(std::move(parsed));
+}
+
+} // namespace
+
+Result<ProtocolError> parseProtocolErrorResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits)
+{
+    return parseErrorObject(body, headers, limits, false);
+}
+
+Result<ProtocolError> parsePluginPackageErrorResponse(std::string_view body, const Headers& headers)
+{
+    return parseErrorObject(body, headers, {}, true);
 }
 
 Result<SessionAcceptedResponse> parseSessionAcceptedResponse(
@@ -2687,6 +2730,151 @@ Result<PluginEventAcceptedResponse> parsePluginEventAcceptedResponse(
         return invalidSchemaValue<Response>("plugin event accepted envelope is invalid");
     return Result<Response>::success({MessageId(std::move(message).value()), RequestId(std::move(request).value()),
         SessionId(std::move(session).value()), Generation(generation.value()), duplicate.value()});
+}
+
+// Plugin package lifecycle responses (no schema member; exact keys; never paths).
+namespace {
+
+constexpr json::ParseLimits kPackageLimits{64U * 1024U, 8, 512, 4096};
+
+bool isLowerHex64(std::string_view value)
+{
+    return value.size() == 64 && std::all_of(value.begin(), value.end(),
+        [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); });
+}
+
+Result<json::Object> parsePackageObject(std::string_view body, const Headers& headers)
+{
+    auto valid = validateJsonBody(body, headers, kPackageLimits);
+    if (!valid) return Result<json::Object>::failure(valid.error());
+    auto parsed = json::parse(body, kPackageLimits);
+    if (!parsed) return Result<json::Object>::failure(parsed.error());
+    const auto* object = parsed.value().object();
+    if (!object) return invalidSchemaValue<json::Object>("package response must be an object");
+    return Result<json::Object>::success(*object);
+}
+
+bool optionalBoundedString(const json::Object& object, std::string_view key, std::size_t maximum)
+{
+    const auto* value = json::find(object, key);
+    return value && (value->isNull() || (value->string() && value->string()->size() <= maximum));
+}
+
+Result<PluginPackageInfo> parsePackageInfo(const json::Value& value)
+{
+    const auto* object = value.object();
+    if (!object || !hasExactly(*object, {"plugin_id", "display_name", "version", "state", "enabled", "archive_sha256",
+            "manifest_sha256", "previous_version", "revision", "installed_at", "updated_at"}))
+        return invalidSchemaValue<PluginPackageInfo>("package fields mismatch");
+    auto id = requireString(*object, "plugin_id", 1, 80);
+    auto version = requireString(*object, "version", 1, 17);
+    auto state = requireString(*object, "state");
+    auto enabled = requireBoolean(*object, "enabled");
+    auto archive = requireString(*object, "archive_sha256");
+    auto manifest = requireString(*object, "manifest_sha256");
+    auto revision = requireUnsigned(*object, "revision");
+    const auto* previous = json::find(*object, "previous_version");
+    if (!id || !isPluginId(id.value()) || !version || !isPluginVersion(version.value()) || !state
+        || (state.value() != "installed" && state.value() != "removed") || !enabled || !archive
+        || !isLowerHex64(archive.value()) || !manifest || !isLowerHex64(manifest.value()) || !revision
+        || !optionalBoundedString(*object, "display_name", 512)
+        || !previous || !(previous->isNull() || (previous->string() && isPluginVersion(*previous->string())))
+        || !optionalBoundedString(*object, "installed_at", 64) || !optionalBoundedString(*object, "updated_at", 64))
+        return invalidSchemaValue<PluginPackageInfo>("package is outside the closed contract");
+    return Result<PluginPackageInfo>::success({std::move(id).value(), std::move(version).value(),
+        std::move(state).value(), enabled.value(), std::move(archive).value(), std::move(manifest).value()});
+}
+
+} // namespace
+
+bool isValidPluginId(std::string_view value) { return isPluginId(value); }
+bool isValidPluginVersion(std::string_view value) { return isPluginVersion(value); }
+
+Result<PluginPackageProbe> parsePluginPackageProbeResponse(std::string_view body, const Headers& headers)
+{
+    auto object = parsePackageObject(body, headers);
+    if (!object) return Result<PluginPackageProbe>::failure(object.error());
+    if (!hasExactly(object.value(), {"plugin_id", "action", "pending", "installed"}))
+        return invalidSchemaValue<PluginPackageProbe>("package probe fields mismatch");
+    auto id = requireString(object.value(), "plugin_id", 1, 80);
+    auto action = requireString(object.value(), "action");
+    auto pending = requireBoolean(object.value(), "pending");
+    if (!id || !isPluginId(id.value()) || !action || !pending)
+        return invalidSchemaValue<PluginPackageProbe>("package probe is outside the closed contract");
+    PluginPackageProbe probe{std::move(id).value(), PluginPackageProbeAction::install, pending.value(), std::nullopt};
+    const auto& name = action.value();
+    if (name == "install") probe.action = PluginPackageProbeAction::install;
+    else if (name == "update") probe.action = PluginPackageProbeAction::update;
+    else if (name == "current") probe.action = PluginPackageProbeAction::current;
+    else if (name == "older") probe.action = PluginPackageProbeAction::older;
+    else if (name == "conflict") probe.action = PluginPackageProbeAction::conflict;
+    else return invalidSchemaValue<PluginPackageProbe>("package probe action is unknown");
+    const auto* installed = json::find(object.value(), "installed");
+    if (!installed->isNull()) {
+        auto info = parsePackageInfo(*installed);
+        if (!info) return Result<PluginPackageProbe>::failure(info.error());
+        if (info.value().pluginId != probe.pluginId)
+            return invalidSchemaValue<PluginPackageProbe>("package probe names another plugin");
+        probe.installed = std::move(info).value();
+    }
+    // Only an installed row can make a candidate current, older, conflicting or an update.
+    const bool installedRow = probe.installed && probe.installed->state == "installed";
+    if ((probe.action != PluginPackageProbeAction::install) != installedRow)
+        return invalidSchemaValue<PluginPackageProbe>("package probe action contradicts installed state");
+    return Result<PluginPackageProbe>::success(std::move(probe));
+}
+
+Result<PluginPackageUpload> parsePluginPackageUploadResponse(
+    std::string_view body, const Headers& headers, bool started)
+{
+    auto object = parsePackageObject(body, headers);
+    if (!object) return Result<PluginPackageUpload>::failure(object.error());
+    if (started ? !hasExactly(object.value(), {"upload_id", "next_index", "chunk_bytes", "complete"})
+                : !hasExactly(object.value(), {"upload_id", "next_index", "received", "complete"}))
+        return invalidSchemaValue<PluginPackageUpload>("package upload fields mismatch");
+    auto id = requireUuid(object.value(), "upload_id");
+    auto next = requireUnsigned(object.value(), "next_index", 99999);
+    auto complete = requireBoolean(object.value(), "complete");
+    auto counter = started ? requireUnsigned(object.value(), "chunk_bytes", kPluginPackageChunkBytes, 1)
+                           : requireUnsigned(object.value(), "received", kMaxPluginPackageBytes);
+    if (!id || !next || !complete || !counter)
+        return invalidSchemaValue<PluginPackageUpload>("package upload is outside the closed contract");
+    PluginPackageUpload upload{std::move(id).value(), next.value(), 0, 0, complete.value()};
+    (started ? upload.chunkBytes : upload.received) = counter.value();
+    if (started && (upload.nextIndex != 0 || upload.complete))
+        return invalidSchemaValue<PluginPackageUpload>("new package upload must start empty");
+    return Result<PluginPackageUpload>::success(std::move(upload));
+}
+
+Result<PluginPackageOperation> parsePluginPackageOperationResponse(std::string_view body, const Headers& headers)
+{
+    auto object = parsePackageObject(body, headers);
+    if (!object) return Result<PluginPackageOperation>::failure(object.error());
+    const auto* wrapped = hasExactly(object.value(), {"operation"}) ? json::find(object.value(), "operation")->object() : nullptr;
+    if (!wrapped || !hasExactly(*wrapped, {"operation_id", "plugin_id", "operation", "version", "archive_sha256",
+            "state", "error_code", "created_at", "finished_at"}))
+        return invalidSchemaValue<PluginPackageOperation>("package operation fields mismatch");
+    auto id = requireUuid(*wrapped, "operation_id");
+    auto plugin = requireString(*wrapped, "plugin_id", 1, 80);
+    auto kind = requireString(*wrapped, "operation");
+    auto version = requireString(*wrapped, "version", 1, 17);
+    auto archive = requireString(*wrapped, "archive_sha256");
+    auto state = requireString(*wrapped, "state");
+    const auto* error = json::find(*wrapped, "error_code");
+    if (!id || !plugin || !isPluginId(plugin.value()) || !kind || (kind.value() != "install" && kind.value() != "update")
+        || !version || !isPluginVersion(version.value()) || !archive || !isLowerHex64(archive.value()) || !state
+        || !(error->isNull() || (error->string() && isPluginName(*error->string(), 64)))
+        || !optionalBoundedString(*wrapped, "created_at", 64) || !optionalBoundedString(*wrapped, "finished_at", 64))
+        return invalidSchemaValue<PluginPackageOperation>("package operation is outside the closed contract");
+    PluginPackageOperation operation{std::move(id).value(), std::move(plugin).value(), kind.value() == "update",
+        std::move(version).value(), std::move(archive).value(), PluginPackageOperationState::queued, std::nullopt};
+    if (state.value() == "succeeded") operation.state = PluginPackageOperationState::succeeded;
+    else if (state.value() == "failed") operation.state = PluginPackageOperationState::failed;
+    else if (state.value() != "queued") return invalidSchemaValue<PluginPackageOperation>("package operation state is unknown");
+    if (error->string()) operation.errorCode = *error->string();
+    if ((operation.state == PluginPackageOperationState::failed) != operation.errorCode.has_value())
+        return invalidSchemaValue<PluginPackageOperation>("only a failed package operation carries an error code");
+    return Result<PluginPackageOperation>::success(std::move(operation));
 }
 
 } // namespace lorkhan
