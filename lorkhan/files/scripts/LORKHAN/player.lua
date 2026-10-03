@@ -2572,6 +2572,13 @@ return {
             state.ui.pendingAction=event state.ui.panel='confirmation'
             state.ui.visible=true enterUiMode() render()
         end,
+        -- An expired, cancelled or withdrawn addon action closes its prompt without answering it.
+        LORKHAN_ACTION_CONFIRMATION_CLOSED=function(event)
+            local pending=state.ui.pendingAction
+            if not pending or type(event)~='table' or pending.action_id~=event.action_id then return end
+            state.ui.pendingAction=nil state.ui.visible=false state.ui.panel='conversation'
+            leaveUiMode() render()
+        end,
         LORKHAN_ACTION_STATUS=function(event)
             state.ui.status='action '..tostring(event.name or '')..' '..tostring(event.status or 'unknown')
             state.ui.diagnostics=event.submitted and event.reason or event.submit_reason

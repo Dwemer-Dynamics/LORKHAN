@@ -3519,5 +3519,249 @@ test('plugin contract registers active addons and validates only declared bounde
  polled.payload.generation=6;eq(select(2,require('scripts.LORKHAN.protocol').validatePolledEvent(polled)),'invalid_plugin_intent')
  plugins.deactivate(state,'ashlander.camp_tasks');eq(select(2,plugins.validateIntent(state,intent,authority)),'plugin_not_active')
 end)
+local function addonHarness()
+ local runtime=require('scripts.LORKHAN.addon_runtime')
+ local util=require('scripts.LORKHAN.util')
+ local example=dofile(root..'/../../examples/plugin-parity/client/scripts/parity_example/manifest.lua')
+ local h={results={},regs={},emitted={},sent={},objects={},receipts={},receiptCalls=0,now=0,expired=false,allowed=true,mode='sync',cancels=0,ran=0}
+ local n=4000
+ h.bridge={newMessageId=function() n=n+1 return uuid(n) end,utcNow=function() return '2026-10-02T12:00:00Z' end,
+  isExpired=function() return h.expired end,
+  submitActionResult=function(r) h.results[#h.results+1]=r return 'r'..#h.results end,
+  submitPluginRegistration=function(m) h.regs[#h.regs+1]=m h.receipts[m.request_id]={status='pending'} return m.request_id end,
+  submitPluginEvent=function(m) h.receipts[m.request_id]={status='accepted',duplicate=false} return m.request_id end,
+  pluginReceipt=function(id) h.receiptCalls=h.receiptCalls+1 local r=h.receipts[id] or {status='unknown'}
+   if r.status~='pending' then h.receipts[id]=nil end return r end}
+ h.rt=runtime.new({bridge=h.bridge,now=function() return h.now end,resolve=function(a) return h.objects[identity.key(a)] end,
+  attach=function(o,p) o.scripts[p]=true return true end,send=function(o,name,payload) h.sent[#h.sent+1]={object=o,name=name,payload=payload} end,
+  emit=function(name,payload) h.emitted[#h.emitted+1]={name=name,payload=payload} end,
+  allowed=function() return h.allowed,'ai_disabled' end,scriptExists=function(p) return p~='scripts/parity_example/missing.lua' end})
+ h.handlers={mark_camp={scope='global',run=function(ctx) h.ran=h.ran+1
+   if h.hook then return h.hook(ctx) end
+   if h.mode=='throw' then error('boom') elseif h.mode=='async' then return nil end
+   return {status='succeeded',reason_code='camp_marked',observed={mood=ctx.parameters.mood}} end,
+  cancel=function() h.cancels=h.cancels+1 end},wander_briefly={scope='self',script='scripts/parity_example/actor.lua'}}
+ h.spec={manifest=example.manifest,manifest_sha256=example.sha256,handlers=h.handlers}
+ h.npc={cell={grid_x=-2,grid_y=-9,kind='exterior'},content_file='Morrowind.esm',display_name='Fargoth',kind='npc',record_id='fargoth',refnum={content_file=0,index=112}}
+ function h.activate(generation)
+  runtime.session(h.rt,{session_id=uuid(7),generation=generation or 7,capabilities={'plugin.contract.v1'}})
+  runtime.pump(h.rt,h.now)
+  local reg=h.regs[#h.regs]
+  h.receipts[reg.request_id]={status='accepted',plugins={{plugin_id='parity.example',version='1.0.0',state='active',reason_code='registered'}}}
+  runtime.pump(h.rt,h.now)
+ end
+ local sequence=0
+ function h.intent(action,parameters,changes)
+  sequence=sequence+1
+  local payload={schema='lorkhan.plugin.action-intent.v1',action_id=uuid(5000+sequence),turn_id=uuid(8),session_id=uuid(7),generation=7,
+   plugin_id='parity.example',plugin_version='1.0.0',action=action,tier=action=='mark_camp' and 0 or 2,
+   confirmation_required=action~='mark_camp',cancellable=true,actor=util.copy(h.npc),parameters=parameters,expires_at='2026-10-02T12:02:00Z'}
+  for key,value in pairs(changes or {}) do payload[key]=value end
+  return {type='plugin.action.intent',request_id=uuid(9),payload=payload}
+ end
+ return h,runtime
+end
+test('addon runtime owns registration per generation and withdraws addons the server does not activate',function()
+ local util=require('scripts.LORKHAN.util')
+ local h,runtime=addonHarness()
+ local broken=util.copy(h.spec);broken.handlers={mark_camp=h.handlers.mark_camp}
+ eq(select(2,runtime.register(h.rt,broken)),'addon_handler_missing')
+ broken.handlers={mark_camp=h.handlers.mark_camp,wander_briefly={scope='self',script='scripts/LORKHAN/actor.lua'}}
+ eq(select(2,runtime.register(h.rt,broken)),'invalid_addon_handlers')
+ broken.handlers.wander_briefly.script='scripts/parity_example/missing.lua'
+ eq(select(2,runtime.register(h.rt,broken)),'addon_script_missing')
+ broken=util.copy(h.spec);broken.handlers=h.handlers;broken.manifest_sha256='nothex'
+ eq(select(2,runtime.register(h.rt,broken)),'invalid_plugin_manifest_hash')
+ local handle=assert(runtime.register(h.rt,h.spec))
+ eq(select(2,runtime.register(h.rt,h.spec)),'plugin_already_registered')
+ eq(select(2,runtime.status(h.rt,{})),'invalid_addon_handle');eq(pcall(function() handle.forged=true end),false)
+ eq(runtime.status(h.rt,handle).reason,'awaiting_session');runtime.pump(h.rt,0);eq(#h.regs,0)
+ h.activate(7)
+ eq(#h.regs,1);eq(h.regs[1].operation,'register');eq(h.regs[1].generation,7);eq(h.regs[1].plugins[1].manifest_sha256,h.spec.manifest_sha256)
+ eq(runtime.status(h.rt,handle).state,'active')
+ local calls=h.receiptCalls;runtime.pump(h.rt,1);runtime.pump(h.rt,2);eq(h.receiptCalls,calls) -- idle pumps never poll receipts
+ for _=1,6 do truthy(runtime.emit(h.rt,handle,'camp_marked',{actor=h.npc,mood='calm'}));runtime.pump(h.rt,3) end
+ eq(select(2,runtime.emit(h.rt,handle,'camp_marked',{actor=h.npc,mood='calm'})),'rate_limited')
+ eq(select(2,runtime.emit(h.rt,handle,'camp_left',{})),'plugin_event_unregistered')
+ runtime.session(h.rt,{session_id=uuid(7),generation=8,capabilities={'plugin.contract.v1'}})
+ eq(runtime.status(h.rt,handle).state,'pending');runtime.pump(h.rt,4);eq(#h.regs,2);eq(h.regs[2].generation,8)
+ eq(select(2,runtime.emit(h.rt,handle,'camp_marked',{mood='calm'})),'plugin_not_active')
+ h.receipts[h.regs[2].request_id]={status='accepted',plugins={{plugin_id='parity.example',version='1.0.0',state='disabled',reason_code='plugin_disabled'}}}
+ runtime.pump(h.rt,5);eq(runtime.status(h.rt,handle).state,'disabled');eq(runtime.status(h.rt,handle).reason,'plugin_disabled')
+ runtime.session(h.rt,{session_id=uuid(7),generation=9,capabilities={}})
+ eq(runtime.status(h.rt,handle).reason,'plugin_contract_unsupported');runtime.pump(h.rt,6);eq(#h.regs,2)
+end)
+test('addon runtime gives each plugin intent one terminal result across completion failure timeout and cancel',function()
+ local h,runtime=addonHarness()
+ local handle=assert(runtime.register(h.rt,h.spec));h.activate(7)
+ local object={scripts={}};local key=identity.key(h.npc);h.objects[key]=object
+ local first=h.intent('mark_camp',{mood='calm'})
+ runtime.intent(h.rt,first);runtime.intent(h.rt,first)
+ eq(#h.results,1);eq(h.results[1].status,'succeeded');eq(h.results[1].observed.mood,'calm');eq(h.results[1].request_id,uuid(9))
+ runtime.intent(h.rt,h.intent('mark_camp',{mood='calm'},{generation=6}));eq(#h.results,1);eq(h.ran,1)
+ runtime.intent(h.rt,h.intent('mark_camp',{mood='https://x/y.lua'}));eq(h.results[2].reason_code,'invalid_plugin_parameters');eq(h.ran,1)
+ h.mode='throw';runtime.intent(h.rt,h.intent('mark_camp',{mood='alert'}));eq(h.results[3].status,'failed');eq(h.results[3].reason_code,'addon_handler_error')
+ h.mode='async';local async=h.intent('mark_camp',{mood='alert'});runtime.intent(h.rt,async);eq(#h.results,3)
+ eq(select(2,runtime.completeAction(h.rt,{},async.payload.action_id,{status='succeeded',reason_code='done'})),'invalid_addon_handle')
+ truthy(runtime.completeAction(h.rt,handle,async.payload.action_id,{status='succeeded',reason_code='done'}));eq(h.results[4].reason_code,'done')
+ eq(select(2,runtime.completeAction(h.rt,handle,async.payload.action_id,{status='failed',reason_code='late'})),'action_not_pending');eq(#h.results,4)
+ runtime.intent(h.rt,h.intent('mark_camp',{mood='calm'}));h.now=31;runtime.pump(h.rt,h.now)
+ eq(h.results[5].status,'timed_out');eq(h.results[5].reason_code,'action_timeout');eq(h.cancels,1)
+ h.allowed=false;h.mode='sync';runtime.intent(h.rt,h.intent('mark_camp',{mood='calm'}));eq(h.results[6].status,'cancelled');eq(h.ran,4);h.allowed=true
+ -- Tier 2 waits on the existing confirmation prompt; declining runs nothing and fabricates no follow-up.
+ local wander=h.intent('wander_briefly',{distance=128});runtime.intent(h.rt,wander)
+ eq(h.emitted[#h.emitted].name,'LORKHAN_ACTION_CONFIRMATION');eq(#h.sent,0);eq(#h.results,6)
+ eq(runtime.confirm(h.rt,uuid(1),false),false);truthy(runtime.confirm(h.rt,wander.payload.action_id,false))
+ eq(h.results[7].status,'rejected');eq(h.results[7].reason_code,'user_declined');eq(#h.sent,0)
+ eq(runtime.confirm(h.rt,wander.payload.action_id,true),false);eq(#h.results,7)
+ h.objects[key]=nil;wander=h.intent('wander_briefly',{distance=128});runtime.intent(h.rt,wander);eq(h.results[8].reason_code,'actor_inactive')
+ h.objects[key]=object;wander=h.intent('wander_briefly',{distance=128});runtime.intent(h.rt,wander);h.objects[key]=nil
+ truthy(runtime.confirm(h.rt,wander.payload.action_id,true));eq(h.results[9].reason_code,'actor_unloaded');eq(#h.sent,0)
+ h.objects[key]=object
+ wander=h.intent('wander_briefly',{distance=128});runtime.intent(h.rt,wander);runtime.confirm(h.rt,wander.payload.action_id,true)
+ eq(h.sent[1].name,runtime.SELF_ACTION);truthy(object.scripts['scripts/parity_example/actor.lua']);eq(h.sent[1].payload.parameters.distance,128)
+ eq(select(2,runtime.selfResult(h.rt,{action_id=wander.payload.action_id,nonce=uuid(1),actor=h.npc,status='succeeded',reason_code='x'})),'action_not_pending')
+ eq(h.sent[1].payload.generation,7);eq(select(2,runtime.selfResult(h.rt,{action_id=wander.payload.action_id,nonce=h.sent[1].payload.nonce,
+  actor=h.npc,generation=6,status='succeeded',reason_code='x'})),'action_not_pending')
+ runtime.selfResult(h.rt,{action_id=wander.payload.action_id,nonce=h.sent[1].payload.nonce,actor=h.npc,generation=7,status='succeeded',reason_code='wander_started'})
+ eq(#h.results,10);eq(h.results[10].reason_code,'wander_started')
+ -- A click after the local deadline but before the pump expires it still times out instead of dispatching.
+ wander=h.intent('wander_briefly',{distance=128});runtime.intent(h.rt,wander);h.now=h.now+300
+ truthy(runtime.confirm(h.rt,wander.payload.action_id,true));eq(h.results[11].reason_code,'confirmation_timeout');eq(#h.sent,1)
+ wander=h.intent('wander_briefly',{distance=128});runtime.intent(h.rt,wander);h.now=h.now+60;runtime.pump(h.rt,h.now)
+ eq(h.results[12].reason_code,'confirmation_timeout');eq(h.emitted[#h.emitted].name,runtime.CONFIRMATION_CLOSED)
+ h.mode='async';async=h.intent('mark_camp',{mood='calm'});runtime.intent(h.rt,async)
+ truthy(runtime.unregister(h.rt,handle));eq(h.results[13].status,'cancelled');eq(h.results[13].reason_code,'plugin_withdrawn')
+ eq(h.regs[#h.regs].operation,'unregister');eq(h.regs[#h.regs].plugins[1].plugin_id,'parity.example')
+ eq(select(2,runtime.completeAction(h.rt,handle,async.payload.action_id,{status='succeeded',reason_code='done'})),'invalid_addon_handle')
+ runtime.intent(h.rt,h.intent('mark_camp',{mood='calm'}));eq(h.results[14].reason_code,'plugin_not_active');eq(#h.results,14)
+end)
+test('addon SELF helper completes once, runs each action once and only for its actual self',function()
+ local core=require('openmw.core');core.events={}
+ local npc={cell={grid_x=-2,grid_y=-9,kind='exterior'},content_file='Morrowind.esm',display_name='Fargoth',kind='npc',record_id='fargoth',refnum={content_file=0,index=112}}
+ local other=require('scripts.LORKHAN.util').copy(npc);other.refnum.index=113
+ local savedSelf,savedTypes,savedFiles=package.loaded['openmw.self'],package.loaded['openmw.types'],core.contentFiles
+ package.loaded['openmw.self']={id='0x70',recordId='fargoth',cell={isExterior=true,gridX=-2,gridY=-9}}
+ package.loaded['openmw.types']={Player={objectIsInstance=function() return false end},NPC={objectIsInstance=function() return true end}}
+ core.contentFiles={list={'Morrowind.esm'}}
+ local ok,reason=pcall(function()
+  local finish,runs
+  runs=0
+  local script=require('scripts.LORKHAN.addon_self').script('parity.example',{wander_briefly=function(ctx,api)
+   assert(ctx.nonce==nil and ctx.self==nil);finish=function() return api.complete(ctx.action_id,{status='succeeded',reason_code='done'}) end end,
+   mark_camp=function() error('boom') end,quick=function() runs=runs+1 return {status='succeeded',reason_code='quick'} end})
+  local handlers=script.eventHandlers
+  local function act(action,id,nonce,actor,generation)
+   handlers.LORKHAN_ADDON_SELF_ACTION({plugin_id='parity.example',action=action,action_id=uuid(id),nonce=uuid(nonce),actor=actor or npc,generation=generation or 7})
+  end
+  handlers.LORKHAN_ADDON_SELF_ACTION({plugin_id='other.addon',action='wander_briefly',action_id=uuid(1),nonce=uuid(2),actor=npc,generation=7});eq(#core.events,0)
+  -- Malformed claims and intents for another actor never reach a handler or answer GLOBAL.
+  act('quick',20,21,{});act('quick',20,21,other);eq(runs,0);eq(#core.events,0)
+  act('wander_briefly',1,2);eq(#core.events,0);truthy(finish());eq(core.events[1].payload.nonce,uuid(2))
+  eq(core.events[1].payload.actor.refnum.index,112);eq(finish(),nil);eq(#core.events,1)
+  act('mark_camp',3,4);eq(core.events[2].payload.reason_code,'addon_handler_error')
+  -- A synchronous success leaves nothing pending, yet a redelivery in the same generation still never reruns it.
+  act('quick',20,21);act('quick',20,21);eq(runs,1);eq(#core.events,3)
+  act('quick',20,22,nil,8);eq(runs,2);eq(#core.events,4)
+  act('wander_briefly',5,6)
+  script.engineHandlers.onInactive();eq(core.events[5].payload.reason_code,'actor_unloaded');eq(finish(),nil);eq(#core.events,5)
+  -- Without a resolvable openmw.self nothing runs, even for a matching claim.
+  package.loaded['openmw.self']={id='dynamic'};act('quick',30,31);eq(runs,2);eq(#core.events,5)
+ end)
+ package.loaded['openmw.self'],package.loaded['openmw.types'],core.contentFiles=savedSelf,savedTypes,savedFiles
+ assert(ok,reason)
+end)
+test('addon terminal outbox retries one frozen result in its generation without rerunning handlers',function()
+ local h,runtime=addonHarness()
+ assert(runtime.register(h.rt,h.spec));h.activate(7);h.objects[identity.key(h.npc)]={scripts={}}
+ local fail,receipts,submits='bridge_not_ready',{},{}
+ h.bridge.submitActionResult=function(r) submits[#submits+1]=r if fail then return nil,fail end receipts[r.action_id]='pending' return 'q'..#submits end
+ h.bridge.actionReceiptStatus=function(id) return {status=receipts[id] or 'not_submitted'} end
+ local first=h.intent('mark_camp',{mood='calm'});runtime.intent(h.rt,first);eq(#submits,1)
+ runtime.pump(h.rt,1);eq(#submits,1) -- backoff
+ fail=nil;runtime.pump(h.rt,2);eq(#submits,2);eq(submits[2].message_id,submits[1].message_id)
+ runtime.pump(h.rt,20);eq(#submits,2) -- a pending native receipt is never resubmitted
+ receipts[first.payload.action_id]='failed';runtime.pump(h.rt,20);eq(#submits,3);eq(submits[3].message_id,submits[1].message_id)
+ receipts[first.payload.action_id]='accepted';runtime.pump(h.rt,20);runtime.pump(h.rt,40);eq(#submits,3);eq(h.ran,1)
+ -- A new generation ends older entries; queue failures in the current one stop after a bounded number of attempts.
+ fail='bridge_not_ready';runtime.intent(h.rt,h.intent('mark_camp',{mood='calm'}));local before=#submits
+ h.now=60;h.activate(8);eq(#submits,before)
+ runtime.intent(h.rt,h.intent('mark_camp',{mood='calm'},{generation=8}))
+ for t=60,240 do runtime.pump(h.rt,t) end;eq(#submits,before+6);eq(h.ran,3)
+ fail='stale_action_result';runtime.intent(h.rt,h.intent('mark_camp',{mood='calm'},{generation=8}))
+ local calls=#submits;runtime.pump(h.rt,300);runtime.pump(h.rt,400);eq(#submits,calls)
+end)
+test('addon runtime never cancels committed non-cancellable work and tolerates re-entrant callbacks',function()
+ local util=require('scripts.LORKHAN.util')
+ local h,runtime=addonHarness()
+ local manifest=util.copy(h.spec.manifest)
+ for _,action in ipairs(manifest.actions) do if action.name=='mark_camp' then action.cancellable=false end end
+ local handle=assert(runtime.register(h.rt,{manifest=manifest,manifest_sha256=h.spec.manifest_sha256,handlers=h.handlers}))
+ h.activate(7);h.mode='async';h.objects[identity.key(h.npc)]={scripts={}}
+ local fixed=h.intent('mark_camp',{mood='calm'},{cancellable=false});runtime.intent(h.rt,fixed)
+ runtime.haltActions(h.rt,'halt_ai_actions');runtime.cancel(h.rt,'ai_disabled',true);eq(#h.results,0)
+ h.now=31;runtime.pump(h.rt,h.now);eq(h.results[1].status,'timed_out');eq(h.results[1].reason_code,'action_timeout');eq(h.cancels,0)
+ eq(select(2,runtime.completeAction(h.rt,handle,fixed.payload.action_id,{status='succeeded',reason_code='done'})),'action_not_pending')
+ h.hook=function(ctx)
+  truthy(runtime.completeAction(h.rt,handle,ctx.action_id,{status='succeeded',reason_code='inner'}))
+  return {status='failed',reason_code='outer'}
+ end
+ runtime.intent(h.rt,h.intent('mark_camp',{mood='calm'},{cancellable=false}));eq(#h.results,2);eq(h.results[2].reason_code,'inner')
+ h.hook=function() truthy(runtime.unregister(h.rt,handle));eq(select(2,runtime.unregister(h.rt,handle)),'invalid_addon_handle') end
+ runtime.intent(h.rt,h.intent('mark_camp',{mood='calm'},{cancellable=false}))
+ eq(#h.results,3);eq(h.results[3].status,'timed_out');eq(h.results[3].reason_code,'plugin_withdrawn');eq(h.cancels,0)
+ local unregisters=0;for _,message in ipairs(h.regs) do if message.operation=='unregister' then unregisters=unregisters+1 end end
+ eq(unregisters,1)
+end)
+test('addon refresh re-offers withdrawn addons a bounded number of times and event-only addons need no handlers',function()
+ local util=require('scripts.LORKHAN.util')
+ local h,runtime=addonHarness()
+ local manifest=util.copy(h.spec.manifest);manifest.actions={}
+ local handle=assert(runtime.register(h.rt,{manifest=manifest,manifest_sha256=h.spec.manifest_sha256}))
+ eq(select(2,runtime.refresh(h.rt,handle)),'plugin_contract_unsupported')
+ local function answer(state)
+  h.receipts[h.regs[#h.regs].request_id]={status='accepted',plugins={{plugin_id='parity.example',version='1.0.0',state=state,reason_code=state}}}
+  runtime.pump(h.rt,0)
+ end
+ runtime.session(h.rt,{session_id=uuid(7),generation=7,capabilities={'plugin.contract.v1'}});runtime.pump(h.rt,0)
+ eq(#h.regs[1].plugins[1].actions,0);answer('disabled');eq(runtime.status(h.rt,handle).state,'disabled')
+ local calls=h.receiptCalls;for t=1,30 do runtime.pump(h.rt,t) end;eq(#h.regs,1);eq(h.receiptCalls,calls)
+ eq(select(2,runtime.refresh(h.rt,{})),'invalid_addon_handle')
+ for attempt=1,4 do
+  eq(runtime.refresh(h.rt,handle),1);runtime.pump(h.rt,0);eq(#h.regs,attempt+1);eq(runtime.refresh(h.rt,handle),0);answer('disabled')
+ end
+ eq(runtime.refresh(h.rt,handle),0);eq(runtime.refresh(h.rt),0);eq(#h.regs,5)
+ h.activate(8);eq(runtime.status(h.rt,handle).state,'active')
+end)
+test('plugin parity example manifest matches packaged bytes and registers through the public interface',function()
+ local function encode(value)
+  if type(value)=='string' then return '"'..value:gsub('[%c"\\]',function(c) return string.format('\\u%04x',c:byte()) end)..'"' end
+  if type(value)~='table' then return tostring(value) end
+  local out={}
+  if next(value)==nil or #value>0 then for index,item in ipairs(value) do out[index]=encode(item) end return '['..table.concat(out,',')..']' end
+  local names={};for key in pairs(value) do names[#names+1]=key end;table.sort(names)
+  for index,key in ipairs(names) do out[index]=encode(key)..':'..encode(value[key]) end
+  return '{'..table.concat(out,',')..'}'
+ end
+ local base=root..'/../../examples/plugin-parity/'
+ local file=assert(io.open(base..'server/lorkhan-plugin.json','rb'));local bytes=file:read('*a');file:close()
+ local example=dofile(base..'client/scripts/parity_example/manifest.lua')
+ eq(encode(example.manifest),bytes);truthy(example.sha256:match('^'..string.rep('%x',64)..'$'))
+ local h,runtime=addonHarness()
+ local saved=package.loaded['openmw.interfaces'];local savedPath=package.path
+ local interface=runtime.interface(h.rt)
+ package.loaded['openmw.interfaces']={LORKHAN_Addons=interface,AI={startPackage=function() end,removePackages=function() end}}
+ package.path=base..'client/?.lua;'..package.path
+ local ok,reason=pcall(function()
+  assert(loadfile(base..'client/scripts/parity_example/global.lua'))()
+  local actor=assert(loadfile(base..'client/scripts/parity_example/actor.lua'))()
+  truthy(actor.eventHandlers.LORKHAN_ADDON_SELF_ACTION and actor.engineHandlers.onUpdate)
+ end)
+ package.loaded['openmw.interfaces']=saved;package.path=savedPath
+ assert(ok,reason)
+ eq(interface.version,1);eq(select(2,runtime.register(h.rt,h.spec)),'plugin_already_registered')
+ h.objects[identity.key(h.npc)]={scripts={}}
+ h.activate(7);runtime.intent(h.rt,h.intent('mark_camp',{mood='alert'}));eq(h.results[1].reason_code,'camp_marked')
+end)
 io.write(string.format('%d tests, %d failures\n',tests,failures))
 if failures>0 then os.exit(1) end

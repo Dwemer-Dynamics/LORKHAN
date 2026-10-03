@@ -11,6 +11,8 @@ local npcManager=require('scripts.LORKHAN.npc_manager')
 local diaryBooks=require('scripts.LORKHAN.diary_books')
 local disposition=require('scripts.LORKHAN.disposition')
 local transferActions=require('scripts.LORKHAN.transfer_actions')
+local addonRuntime=require('scripts.LORKHAN.addon_runtime')
+local vfsOk,vfs=pcall(require,'openmw.vfs')
 local transfers
 local npcControls=npcManager.new({core=core,world=world,types=types,util=worldUtil})
 local state
@@ -95,6 +97,27 @@ local dispositionDialogueOpen=true
 state.onDispositionAdjustment=function(event)
     return disposition.receive(dispositions,event,state.sessionId,state.generation)
 end
+-- Public LORKHAN_Addons v1: GLOBAL routes validated plugin intents; addon CUSTOM scripts act on SELF only.
+local addons=addonRuntime.new({bridge=bridge,emit=emit,log=print,
+    now=function() return core and core.getRealTime and core.getRealTime() or 0 end,
+    resolve=function(actor) return state.registry:resolve(actor) end,
+    attach=function(object,path)
+        if not object.hasScript or not object.addScript then return nil,'actor_script_unavailable' end
+        local ok=pcall(function() if not object:hasScript(path) then object:addScript(path) end end)
+        if not ok then return nil,'addon_script_unavailable' end
+        return true
+    end,
+    send=function(object,name,payload) object:sendEvent(name,payload) end,
+    allowed=function()
+        if state.disabled or state.hardHalted then return false,'lorkhan_disabled' end
+        if state.aiEnabled==false then return false,'ai_disabled' end
+        return true
+    end,
+    confirmationBusy=function() return next(state.pendingConfirmations)~=nil end,
+    scriptExists=function(path)
+        if vfsOk and vfs and type(vfs.fileExists)=='function' then return vfs.fileExists(path)==true end
+    end})
+state.onPluginIntent=function(event) addonRuntime.intent(addons,event) end
 local configuredSession
 local morrowindMonths={'Morning Star','Sun\'s Dawn','First Seed','Rain\'s Hand','Second Seed','Midyear',
     'Sun\'s Height','Last Seed','Hearthfire','Frostfall','Sun\'s Dusk','Evening Star'}
@@ -366,8 +389,11 @@ local function handleGlobalDebugCommand(event)
 end
 
 return {
+    interfaceName='LORKHAN_Addons',
+    interface=addonRuntime.interface(addons),
     engineHandlers={
         onNewGame=function()
+            addonRuntime.cancel(addons,'new_game')
             disposition.reset(dispositions)
             diaryBooks.reset(diaries)
             pendingLoadedSave=false
@@ -378,6 +404,7 @@ return {
             flushPlayerEvents()
         end,
         onLoad=function(data)
+            addonRuntime.cancel(addons,'load')
             disposition.reset(dispositions)
             diaryBooks.reset(diaries)
             pendingLoadedSave=type(bridge.finishLoadedSave)=='function'
@@ -441,7 +468,9 @@ return {
                 state.conversation.generation=session.generation
                 orchestrator.configureSession(state,session.session_id)
             end
+            addonRuntime.session(addons,session)
             if state.events then orchestrator.poll(state,BRIDGE_POLL_INTERVAL) end
+            addonRuntime.pump(addons,core and core.getRealTime and core.getRealTime() or 0)
             disposition.pump(dispositions,state.sessionId,state.generation,
                 core and core.getRealTime and core.getRealTime() or 0,dispositionDialogueOpen)
             dispositionElapsed=dispositionElapsed+elapsed
@@ -536,8 +565,14 @@ return {
                 emit('LORKHAN_TURN',{status='failed',reason=reason})
             end
         end,
-        LORKHAN_HALT_REQUEST=function() orchestrator.interrupt(state,'halt_ai_actions') end,
-        LORKHAN_STOP_DIALOGUE_REQUEST=function() orchestrator.stopDialogue(state,'stop_dialogue') end,
+        LORKHAN_HALT_REQUEST=function()
+            addonRuntime.cancel(addons,'halt_ai_actions')
+            orchestrator.interrupt(state,'halt_ai_actions')
+        end,
+        LORKHAN_STOP_DIALOGUE_REQUEST=function()
+            addonRuntime.cancel(addons,'stop_dialogue')
+            orchestrator.stopDialogue(state,'stop_dialogue')
+        end,
         LORKHAN_VOICE_START=function(event)
             print('[LORKHAN] voice capture start event received')
             local started,reason=orchestrator.startVoice(state,event)
@@ -558,11 +593,18 @@ return {
         LORKHAN_OPEN_MIC_STOP=function() orchestrator.disableOpenMic(state) end,
         LORKHAN_OPEN_MIC_MUTE=function() orchestrator.muteOpenMic(state) end,
         LORKHAN_OPEN_MIC_CONTEXT=function(event) orchestrator.runOpenMicContext(state,event) end,
-        LORKHAN_HALT_ACTIONS_REQUEST=function() orchestrator.haltActions(state,'halt_ai_actions') end,
-        LORKHAN_HARD_HALT_REQUEST=function() orchestrator.hardHalt(state) end,
+        LORKHAN_HALT_ACTIONS_REQUEST=function()
+            addonRuntime.haltActions(addons,'halt_ai_actions')
+            orchestrator.haltActions(state,'halt_ai_actions')
+        end,
+        LORKHAN_HARD_HALT_REQUEST=function()
+            addonRuntime.cancel(addons,'hard_halt')
+            orchestrator.hardHalt(state)
+        end,
         LORKHAN_SETTINGS_UPDATE=function(event)
             state.settings=event
             orchestrator.setAiEnabled(state,event.behavior and event.behavior.aiEnabled~=false)
+            if state.aiEnabled==false then addonRuntime.cancel(addons,'ai_disabled',true) end
             for _,entry in ipairs({{'configurePlayback',event.playback},{'configureTransport',event.transport}}) do
                 if entry[2] and bridge[entry[1]] then
                     local ok,result,reason=pcall(bridge[entry[1]],entry[2])
@@ -595,7 +637,13 @@ return {
             end
         end,
         LORKHAN_MODE_CHANGED=function(event) state.dialogueMode=event.mode end,
-        LORKHAN_CONFIRM_ACTION=function(event) orchestrator.confirmAction(state,event.action_id,event.approved==true) end,
+        LORKHAN_CONFIRM_ACTION=function(event)
+            if addonRuntime.confirm(addons,event.action_id,event.approved==true) then return end
+            orchestrator.confirmAction(state,event.action_id,event.approved==true)
+        end,
+        LORKHAN_ADDON_SELF_RESULT=function(event) addonRuntime.selfResult(addons,event) end,
+        -- Sent once when package sync completes or the player enables an addon; re-registration stays bounded.
+        LORKHAN_ADDONS_REFRESH=function() addonRuntime.refresh(addons) end,
         LORKHAN_ACTION_RESULT=function(event)
             local result=event and event.result
             if not result then return end
