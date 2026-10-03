@@ -3513,6 +3513,10 @@ test('plugin contract registers active addons and validates only declared bounde
  eq(event.schema,'lorkhan.plugin.event.v1');eq(event.generation,7);eq(event.plugin_version,'1.2.0')
  eq(select(2,plugins.event(state,{plugin_id='ashlander.camp_tasks',event='meal_shared',message_id=uuid(802),request_id=uuid(803),
   observed_at='2026-10-02T12:05:00Z',fields={dish='Pie'}})),'invalid_plugin_event_fields')
+ local polled={message_id=uuid(811),request_id=uuid(810),turn_id=uuid(8),session_id=uuid(7),generation=7,sequence=4,
+  created_at='2026-10-02T12:00:00Z',type=plugins.INTENT_EVENT_TYPE,payload=util.copy(intent)}
+ truthy(require('scripts.LORKHAN.protocol').validatePolledEvent(polled))
+ polled.payload.generation=6;eq(select(2,require('scripts.LORKHAN.protocol').validatePolledEvent(polled)),'invalid_plugin_intent')
  plugins.deactivate(state,'ashlander.camp_tasks');eq(select(2,plugins.validateIntent(state,intent,authority)),'plugin_not_active')
 end)
 io.write(string.format('%d tests, %d failures\n',tests,failures))

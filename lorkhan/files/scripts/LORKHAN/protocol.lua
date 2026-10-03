@@ -7,7 +7,7 @@ local M = {}
 local knownInternalEvents = {['turn.accepted']=true, ['dialogue.delta']=true, ['dialogue.complete']=true,
     ['speech.ready']=true, ['speech.failed']=true, ['action.intent']=true, ['director.instructions']=true, ['relationship.adjust']=true, ['response.complete']=true, ['turn.complete']=true,
     ['turn.failed']=true, ['turn.cancelled']=true, ['stt.transcript']=true,
-    ['stt.failed']=true}
+    ['stt.failed']=true, ['plugin.action.intent']=true}
 
 function M.isUuid(value)
     if type(value)~='string' then return false end
@@ -515,6 +515,14 @@ function M.validatePolledEvent(event)
         if not responseOk then return nil,responseReason end
     end
     if event.type=='action.intent' and event.payload.schema~='lorkhan.action-intent.v1' then return nil,'invalid_action_intent' end
+    if event.type=='plugin.action.intent' then
+        -- Native decoding already proved the exact wire shape; keep the envelope identity fence in Lua too.
+        local p=event.payload
+        if p.schema~='lorkhan.plugin.action-intent.v1' or p.request_id~=nil or p.session_id~=event.session_id
+            or p.generation~=event.generation or p.turn_id~=event.turn_id or not M.isUuid(p.action_id) then
+            return nil,'invalid_plugin_intent'
+        end
+    end
     return true
 end
 

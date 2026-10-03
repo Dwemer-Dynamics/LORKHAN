@@ -68,6 +68,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
+#include <variant>
 #include <vector>
 
 namespace MWLua
@@ -680,6 +682,9 @@ namespace MWLua
                 result["session_id"] = m_session->value();
                 result["generation"] = m_service->generation().value();
                 result["config_revision"] = m_configRevision;
+                sol::table negotiated(lua, sol::create);
+                for (std::size_t index = 0; index < m_capabilities.size(); ++index) negotiated[index + 1] = m_capabilities[index];
+                result["capabilities"] = negotiated;
                 if (m_clientSettings)
                 {
                     const auto& settings = *m_clientSettings;
@@ -770,6 +775,7 @@ namespace MWLua
                     auto accepted = m_service->enqueue(std::move(request));
                     if (!accepted) return failure(lua, accepted.error().message);
                     m_turnRequests.emplace(requestId,turnId);
+                    m_latestTurn = std::make_pair(turnId, requestId);
                     if (!m_transferSnapshots.contains(turnId)) {
                         if (m_transferSnapshots.size() >= 16) {
                             m_transferSnapshots.erase(m_transferOrder.front());m_transferOrder.pop_front();
@@ -799,6 +805,26 @@ namespace MWLua
                         if (m_dispositionReceipts.size() >= 128)
                             return failure(lua, "disposition_queue_full");
                     }
+                    const bool commentary = type == lorkhan::GameDataType::rpg_event
+                        || type == lorkhan::GameDataType::quest_event || type == lorkhan::GameDataType::bored_event;
+                    const auto now = std::chrono::steady_clock::now();
+                    if (commentary) {
+                        for (auto item = m_commentRequests.begin(); item != m_commentRequests.end();) {
+                            if (now - item->second.created >= 30s) item = m_commentRequests.erase(item);
+                            else ++item;
+                        }
+                        if (m_commentRequests.size() >= 32) return failure(lua, "comment_queue_full");
+                    }
+                    CommentRequest comment;
+                    if (commentary) {
+                        comment.type = type == lorkhan::GameDataType::rpg_event ? "rpg_event"
+                            : type == lorkhan::GameDataType::quest_event ? "quest_event" : "bored_event";
+                        comment.kind = payload.get_or<std::string>("kind", "");
+                        comment.text = payload.get_or<std::string>("text", "");
+                        comment.created = now;
+                        if (comment.kind.size() > 32 || comment.text.size() > 4096)
+                            return failure(lua, "invalid_comment_observation");
+                    }
                     const lorkhan::RequestId request(uuid());
                     const std::string serialized = toJson(sol::make_object(lua, payload));
                     lorkhan::OutboundRequest outbound{request, *m_session, m_service->generation(),
@@ -808,6 +834,7 @@ namespace MWLua
                     auto accepted = m_service->enqueue(std::move(outbound));
                     if (!accepted) return failure(lua, accepted.error().message);
                     if (type == lorkhan::GameDataType::disposition) m_dispositionReceipts[request.value()] = "pending";
+                    if (commentary) m_commentRequests.emplace(request.value(), std::move(comment));
                     return success(lua, request.value());
                 }
                 catch (const std::exception& error) { return failure(lua, error.what()); }
@@ -2193,7 +2220,12 @@ namespace MWLua
 
             bool releaseMedia(const std::string& mediaId)
             {
-                return m_media.erase(mediaId) != 0;
+                const auto found = m_media.find(mediaId);
+                if (found == m_media.end()) return false;
+                if (found->second.request && m_service)
+                    static_cast<void>(m_service->cancel(*found->second.request));
+                m_media.erase(found);
+                return true;
             }
 
             std::tuple<sol::object, sol::object> submitActionResult(sol::state_view lua, sol::table dto)
@@ -2404,6 +2436,117 @@ namespace MWLua
             }
 
             // Keep correlated receipts until Lua consumes them; no network result is mistaken for acceptance.
+            // Plugin traffic exists only when this session negotiated the versioned addon contract.
+            bool pluginContract() const
+            {
+                return ready() && std::find(m_capabilities.begin(), m_capabilities.end(),
+                    std::string(lorkhan::kPluginContractCapability)) != m_capabilities.end();
+            }
+
+            static std::string pluginReason(const lorkhan::Error& error)
+            {
+                switch (error.code) {
+                    case lorkhan::ErrorCode::stale_generation: return "stale_generation";
+                    case lorkhan::ErrorCode::payload_too_large: return "plugin_message_too_large";
+                    case lorkhan::ErrorCode::invalid_schema: case lorkhan::ErrorCode::invalid_argument:
+                    case lorkhan::ErrorCode::invalid_json: case lorkhan::ErrorCode::invalid_utf8: return "invalid_plugin_message";
+                    case lorkhan::ErrorCode::rate_limited: return "rate_limited";
+                    case lorkhan::ErrorCode::duplicate_conflict: return "duplicate_conflict";
+                    case lorkhan::ErrorCode::unauthorized: case lorkhan::ErrorCode::forbidden: return "unauthorized";
+                    case lorkhan::ErrorCode::queue_full: return "queue_full";
+                    case lorkhan::ErrorCode::timeout: return "timeout";
+                    case lorkhan::ErrorCode::cancelled: return "cancelled";
+                    default: return "transport_failure";
+                }
+            }
+
+            // Submit one Lua-built lorkhan.plugin.registration.v1 or .event.v1 message. Native code validates
+            // the exact schema and session generation, signs it, and posts only to its fixed route.
+            std::tuple<sol::object, sol::object> submitPlugin(sol::state_view lua, bool registration, sol::table message)
+            {
+                if (!ready()) return failure(lua, "bridge_not_ready");
+                if (!pluginContract()) return failure(lua, "plugin_contract_unsupported");
+                try
+                {
+                    const auto requestId = message.get<sol::optional<std::string>>("request_id");
+                    const auto messageId = message.get<sol::optional<std::string>>("message_id");
+                    if (!requestId || !messageId) return failure(lua, "invalid_plugin_message");
+                    // Plugins share the bounded outbound queue with dialogue; never let them fill it.
+                    if (std::count_if(m_pluginReceipts.begin(), m_pluginReceipts.end(), [](const auto& receipt) {
+                            return receipt.second.status == "pending"; }) >= kMaxPendingPlugins)
+                        return failure(lua, "plugin_queue_full");
+                    if (m_pluginReceipts.size() >= kMaxPluginReceipts) {
+                        // Reclaim receipts Lua never collected; pending ones still own their request.
+                        for (auto receipt = m_pluginReceipts.begin(); receipt != m_pluginReceipts.end();) {
+                            if (receipt->second.status != "pending") receipt = m_pluginReceipts.erase(receipt);
+                            else ++receipt;
+                        }
+                        if (m_pluginReceipts.size() >= kMaxPluginReceipts) return failure(lua, "plugin_queue_full");
+                    }
+                    const lorkhan::RequestCorrelation correlation{lorkhan::RequestId(*requestId), *m_session, m_service->generation()};
+                    const lorkhan::MessageId id(*messageId);
+                    const std::string raw = toJson(sol::make_object(lua, message));
+                    auto canonical = registration ? lorkhan::canonicalPluginRegistration(raw, correlation, id)
+                                                  : lorkhan::canonicalPluginEvent(raw, correlation, id);
+                    if (!canonical) return failure(lua, pluginReason(canonical.error()));
+                    lorkhan::PluginMessageRequest plugin{id, correlation, std::move(canonical).value()};
+                    lorkhan::OutboundRequest outbound{correlation.request, *m_session, correlation.generation,
+                        registration ? lorkhan::RequestKind::plugin_registration : lorkhan::RequestKind::plugin_event,
+                        registration ? lorkhan::RequestPayload(lorkhan::PluginRegistrationRequest{std::move(plugin)})
+                                     : lorkhan::RequestPayload(lorkhan::PluginEventRequest{std::move(plugin)})};
+                    auto accepted = m_service->enqueue(std::move(outbound));
+                    if (!accepted) return failure(lua, pluginReason(accepted.error()));
+                    m_pluginReceipts[*requestId] = PluginReceipt{registration, "pending", {}, {}};
+                    return success(lua, *requestId);
+                }
+                catch (const std::exception&) { return failure(lua, "invalid_plugin_message"); }
+            }
+
+            bool settlePluginResult(const lorkhan::InboundResult& result)
+            {
+                auto found = m_pluginReceipts.find(result.request.value());
+                if (found == m_pluginReceipts.end()) return false;
+                auto& receipt = found->second;
+                if (result.kind == lorkhan::ResponseKind::accepted) { receipt.status = "accepted"; receipt.payload = result.payload; }
+                else {
+                    receipt.status = result.kind == lorkhan::ResponseKind::cancelled ? "cancelled" : "failed";
+                    receipt.reason = result.failure ? pluginReason(*result.failure) : "transport_failure";
+                }
+                return true;
+            }
+
+            // Typed receipt for one plugin submission; terminal receipts are returned once and released.
+            sol::table pluginReceipt(sol::state_view lua, const std::string& request)
+            {
+                sol::table result(lua, sol::create);
+                auto found = m_pluginReceipts.find(request);
+                if (found == m_pluginReceipts.end()) { result["status"] = "unknown"; return result; }
+                const auto& receipt = found->second;
+                result["request_id"] = request;
+                result["kind"] = receipt.registration ? "registration" : "event";
+                result["status"] = receipt.status;
+                if (receipt.status == "pending") return result;
+                if (receipt.status == "accepted") {
+                    if (receipt.registration) {
+                        auto parsed = lorkhan::parsePluginRegistrationAcceptedResponse(receipt.payload, jsonHeaders());
+                        sol::table plugins(lua, sol::create);
+                        for (std::size_t index = 0; parsed && index < parsed.value().plugins.size(); ++index) {
+                            const auto& plugin = parsed.value().plugins[index];
+                            sol::table row(lua, sol::create);
+                            row["plugin_id"] = plugin.pluginId; row["version"] = plugin.version;
+                            row["state"] = plugin.state; row["reason_code"] = plugin.reasonCode;
+                            plugins[index + 1] = row;
+                        }
+                        result["plugins"] = plugins;
+                    } else {
+                        auto parsed = lorkhan::parsePluginEventAcceptedResponse(receipt.payload, jsonHeaders());
+                        result["duplicate"] = parsed && parsed.value().duplicate;
+                    }
+                } else result["reason"] = receipt.reason;
+                m_pluginReceipts.erase(found);
+                return result;
+            }
+
             bool settleDispositionResult(const lorkhan::InboundResult& result)
             {
                 auto found = m_dispositionReceipts.find(result.request.value());
@@ -2448,9 +2591,34 @@ namespace MWLua
                     if(settleTransferReceipt(result)){++m_resultsSeen;continue;}
                     ++m_resultsSeen;
                     if (settleDispositionResult(result)) continue;
+                    if (settlePluginResult(result)) continue;
                     if (settleDebugResult(result)) continue;
                     if (settleDiaryResult(result)) continue;
                     if (settlePlayerAutochatResult(result)) continue;
+                    const auto comment = m_commentRequests.find(result.request.value());
+                    if (comment != m_commentRequests.end()) {
+                        // Consume once; only a matching live server decision may initiate commentary.
+                        const auto pending = std::move(comment->second);
+                        m_commentRequests.erase(comment);
+                        if (result.kind != lorkhan::ResponseKind::accepted || !m_session
+                            || std::chrono::steady_clock::now() - pending.created >= 30s) continue;
+                        const auto parsed = lorkhan::parseGameDataAcceptedResponse(result.payload, jsonHeaders());
+                        if (!parsed || parsed.value().request != result.request || parsed.value().session != *m_session
+                            || parsed.value().generation != m_service->generation() || parsed.value().type != pending.type
+                            || parsed.value().duplicate) continue;
+                        if (pending.type != "bored_event" && !parsed.value().commentRequested) continue;
+                        sol::table event(lua, sol::create);
+                        event["type"] = pending.type == "bored_event" ? "bored.decision"
+                            : pending.type == "quest_event" ? "quest.comment" : "rpg.comment";
+                        event["request_id"] = result.request.value();
+                        event["session_id"] = parsed.value().session.value();
+                        event["generation"] = parsed.value().generation.value();
+                        event["comment_requested"] = parsed.value().commentRequested;
+                        event["kind"] = pending.kind;
+                        event["text"] = pending.text;
+                        output[outIndex++] = event;
+                        continue;
+                    }
                     if (result.kind == lorkhan::ResponseKind::failure)
                     {
                         if(m_initRequest&&result.request==*m_initRequest){
@@ -2531,6 +2699,7 @@ namespace MWLua
                             m_session = parsed.value().session; m_cursor = parsed.value().eventCursor;
                             m_configRevision = parsed.value().configRevision;
                             m_clientSettings = parsed.value().clientSettings;
+                            m_capabilities = parsed.value().capabilities;
                             m_status = "ready"; m_error.clear(); m_initRequest.reset();
                         }
                         else
@@ -2548,6 +2717,10 @@ namespace MWLua
                             {
                                 m_cursor = parsed.value().nextAfter;
                                 for (const auto& event : parsed.value().events) {
+                                    // An old or misbehaving server cannot start plugin work this session did not negotiate.
+                                    if (event.type == lorkhan::ProtocolEventType::plugin_action_intent && !pluginContract()) {
+                                        m_error = "plugin_contract_unsupported"; continue;
+                                    }
                                     retainTransfer(event);
                                     output[outIndex++] = eventTable(lua, event);
                                 }
@@ -2641,6 +2814,28 @@ namespace MWLua
                 return result;
             }
 
+            // Interrupt only the current conversation; capture, session and lifecycle generation survive.
+            bool cancelTurn(const std::string& turnId)
+            {
+                if (!ready() || !m_latestTurn || m_latestTurn->first != turnId) return false;
+                const lorkhan::RequestId original(m_latestTurn->second);
+                static_cast<void>(m_service->cancel(original));
+                m_turnRequests.erase(original.value());
+                if (m_pollRequest) {
+                    static_cast<void>(m_service->cancel(*m_pollRequest));
+                    m_pollRequest.reset();
+                }
+                const lorkhan::RequestId operation(uuid());
+                lorkhan::OutboundRequest request{operation, *m_session, m_service->generation(),
+                    lorkhan::RequestKind::interruption, lorkhan::InterruptionRequest{
+                        lorkhan::MessageId(uuid()), original, lorkhan::TurnId(turnId), *m_session,
+                        m_service->generation(), utcNow(), "superseded_by_player"}};
+                auto accepted = m_service->enqueue(std::move(request));
+                if (!accepted) { m_error = accepted.error().message; return false; }
+                m_latestTurn.reset();
+                return true;
+            }
+
             bool cancelGeneration(std::uint64_t generation, bool loadedSave = false, bool identityChange = false)
             {
                 if (!m_service) return false;
@@ -2652,7 +2847,7 @@ namespace MWLua
                 m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();
                 m_diaryRequest.reset();m_diaryReceipt.reset();m_diaryBook.reset();m_diaryReceiptDto.reset();m_diaryPending=false;
                 m_diaryState.clear();m_diaryReason.clear();m_diaryError.clear();m_diaryReceiptOk=false;
-                m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_dispositionReceipts.clear();m_turnRequests.clear();m_controlsError.clear();m_debugError.clear();
+                m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_dispositionReceipts.clear();m_pluginReceipts.clear();m_capabilities.clear();m_commentRequests.clear();m_turnRequests.clear();m_latestTurn.reset();m_controlsError.clear();m_debugError.clear();
                 m_initSnapshot.reset();m_initAttempts=0;m_retryInit=false;
                 if(identityChange){m_characterIdentity.clear();m_characterRejected=false;}
                 m_loadedSave=loadedSave;m_waitingLoadedCalendar=loadedSave;m_loadedCalendar.reset();beginSession();
@@ -2681,7 +2876,7 @@ namespace MWLua
             {
                 lorkhan::VoiceCaptureService::instance().halt();
                 if (m_service) m_service->halt();
-                m_turnRequests.clear();
+                m_turnRequests.clear();m_latestTurn.reset();
                 m_status = "halted";
             }
 
@@ -2760,7 +2955,8 @@ namespace MWLua
             { return { "relationship.disposition", "diary.books.v1", "context.item_pickup.v1", "context.barter_trade.v1", "context.spell_cast.v1", "context.actor_resurrected.v1", "context.actor_died.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.item.create", "action.gold.create", "action.actor.spawn", "action.actor.teleport_to_player", "action.player.teleport", "action.actor.restore", "action.actor.resurrect", "action.actor.kill", "action.conversation.end", "action.ai.follow", "action.ai.stop",
                 "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.weapon.sheathe", "action.item.give", "action.item.take", "action.item.pickup", "action.gold.give", "action.gold.take", "action.service.barter", "action.service.training", "action.service.spells", "action.service.travel", "action.service.spellmaking", "action.service.enchanting", "action.service.repair", "action.spell.cast", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
-                "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" }; }
+                "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup",
+                std::string(lorkhan::kPluginContractCapability) }; }
 
             static sol::table eventTable(sol::state_view lua, const lorkhan::ProtocolEvent& event)
             {
@@ -2925,6 +3121,25 @@ namespace MWLua
                     case lorkhan::ProtocolEventType::speech_failed: {
                         result["type"] = "speech.failed"; const auto& item = std::get<lorkhan::SpeechFailedEventPayload>(event.payload);
                         payload["dialogue_message_id"] = item.dialogueMessage.value(); payload["code"] = item.code; break; }
+                    case lorkhan::ProtocolEventType::plugin_action_intent: {
+                        // Natively exact lorkhan.plugin.action-intent.v1; null target is omitted for plugin_contract.validateIntent.
+                        result["type"] = "plugin.action.intent";
+                        const auto& item = std::get<lorkhan::PluginActionIntentEventPayload>(event.payload).intent;
+                        payload["schema"] = "lorkhan.plugin.action-intent.v1"; payload["action_id"] = item.action.value();
+                        payload["turn_id"] = item.turn.value(); payload["session_id"] = item.session.value();
+                        payload["generation"] = item.generation.value(); payload["plugin_id"] = item.pluginId;
+                        payload["plugin_version"] = item.pluginVersion; payload["action"] = item.name; payload["tier"] = item.tier;
+                        payload["confirmation_required"] = item.confirmationRequired; payload["cancellable"] = item.cancellable;
+                        payload["actor"] = identityTable(lua, item.actor);
+                        if (item.target) payload["target"] = identityTable(lua, *item.target);
+                        sol::table parameters(lua, sol::create);
+                        for (const auto& parameter : item.parameters)
+                            std::visit([&](const auto& value) {
+                                if constexpr (std::is_same_v<std::decay_t<decltype(value)>, lorkhan::ProtocolIdentity>)
+                                    parameters[parameter.first] = identityTable(lua, value);
+                                else parameters[parameter.first] = value;
+                            }, parameter.second);
+                        payload["parameters"] = parameters; payload["expires_at"] = item.expiresAt; break; }
                 }
                 result["payload"] = payload;
                 return result;
@@ -2962,9 +3177,20 @@ namespace MWLua
             std::string m_debugError;
             static constexpr std::size_t kControlsPumpBatch = 8;
             static constexpr std::size_t kDeferredResultCapacity = lorkhan::kInboundCapacity;
+            struct CommentRequest {
+                std::string type, kind, text;
+                std::chrono::steady_clock::time_point created;
+            };
+            std::map<std::string, CommentRequest> m_commentRequests;
             std::map<std::string, std::string> m_dispositionReceipts;
+            struct PluginReceipt { bool registration{}; std::string status, payload, reason; };
+            static constexpr std::size_t kMaxPluginReceipts = 64;
+            static constexpr std::ptrdiff_t kMaxPendingPlugins = 8;
+            std::map<std::string, PluginReceipt> m_pluginReceipts;
+            std::vector<std::string> m_capabilities;
             std::vector<lorkhan::InboundResult> m_deferredResults;
             std::map<std::string,std::string> m_turnRequests;
+            std::optional<std::pair<std::string,std::string>> m_latestTurn;
             std::string m_transferSession;
             std::uint64_t m_transferGeneration{};
             std::map<std::string,std::shared_ptr<TransferSnapshot>> m_transferSnapshots;
@@ -3001,7 +3227,7 @@ namespace MWLua
                 "action.item.create", "action.gold.create", "action.actor.spawn", "action.actor.teleport_to_player", "action.player.teleport", "action.actor.restore", "action.actor.resurrect", "action.actor.kill",
                 "action.ai.follow", "action.ai.stop", "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
                 "action.combat.start", "action.combat.stop", "action.weapon.sheathe", "action.item.give", "action.item.take", "action.item.pickup", "action.gold.give", "action.gold.take", "action.service.barter", "action.service.training", "action.service.spells", "action.service.travel", "action.service.spellmaking", "action.service.enchanting", "action.service.repair", "action.spell.cast", "action.animation.play", "action.item.equip", "action.item.unequip",
-                "action.item.use", "action.inspect.report", "action.inventory.inspect", "action.conversation.end", "action.confirmation", "action.result-followup" })
+                "action.item.use", "action.inspect.report", "action.inventory.inspect", "action.conversation.end", "action.confirmation", "action.result-followup", std::string(lorkhan::kPluginContractCapability) })
                     result[index++] = capability;
                 return result;
             };
@@ -3060,6 +3286,15 @@ namespace MWLua
             api["submitActorProfile"] = [lua](sol::table payload) {
                 return client().submitActorProfile(lua, std::move(payload));
             };
+            api["submitRpgEvent"] = [lua](sol::table payload) {
+                return client().submitGameData(lua, lorkhan::GameDataType::rpg_event, std::move(payload));
+            };
+            api["submitQuestEvent"] = [lua](sol::table payload) {
+                return client().submitGameData(lua, lorkhan::GameDataType::quest_event, std::move(payload));
+            };
+            api["submitBoredEvent"] = [lua](sol::table payload) {
+                return client().submitGameData(lua, lorkhan::GameDataType::bored_event, std::move(payload));
+            };
             api["submitAutomaticDiary"] = [lua](sol::table payload) {
                 return client().submitAutomaticDiary(lua, std::move(payload));
             };
@@ -3071,6 +3306,9 @@ namespace MWLua
             api["pumpSessionControls"] = [lua] { return client().pumpSessionControls(lua); };
             api["pumpPlayerAutochat"] = [lua] { return client().pumpPlayerAutochat(lua); };
             if(global){
+                api["submitPluginRegistration"]=[lua](sol::table message){return client().submitPlugin(lua,true,std::move(message));};
+                api["submitPluginEvent"]=[lua](sol::table message){return client().submitPlugin(lua,false,std::move(message));};
+                api["pluginReceipt"]=[lua](const std::string& request){return client().pluginReceipt(lua,request);};
                 api["characterInfo"]=[lua]{return client().characterInfo(lua);};
                 api["configureCharacter"]=[lua](sol::table values){return client().configureCharacter(lua,values);};
                 api["configurePlayback"]=[lua,luaManager](sol::table values){return client().configurePlayback(lua,values,luaManager);};
@@ -3170,6 +3408,7 @@ namespace MWLua
             api["submitDialogueDeliveryResult"] = [lua](sol::table dto) {
                 return client().submitDialogueDeliveryResult(lua, std::move(dto));
             };
+            api["cancelTurn"] = [](const std::string& turnId) { return client().cancelTurn(turnId); };
             api["cancelGeneration"] = [](std::uint64_t generation, sol::optional<bool> loadedSave, sol::optional<bool> identityChange) { return client().cancelGeneration(generation,loadedSave.value_or(false),identityChange.value_or(false)); };
             api["finishLoadedSave"] = [](sol::optional<sol::table> calendar) { return client().finishLoadedSave(calendar); };
             api["halt"] = [] { client().halt(); };

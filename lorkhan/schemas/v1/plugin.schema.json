@@ -78,6 +78,19 @@
       "required": ["schema", "message_id", "request_id", "session_id", "generation", "observed_at", "plugin_id", "plugin_version", "event", "fields"],
       "type": "object"
     },
+    "event_accepted": {
+      "additionalProperties": false,
+      "properties": {
+        "duplicate": {"type": "boolean"},
+        "generation": {"$ref": "#/$defs/generation"},
+        "message_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+        "request_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"},
+        "schema": {"const": "lorkhan.plugin.event.accepted.v1", "type": "string"},
+        "session_id": {"$ref": "https://lorkhan.invalid/schemas/v1/common.schema.json#/$defs/uuid"}
+      },
+      "required": ["schema", "message_id", "request_id", "session_id", "generation", "duplicate"],
+      "type": "object"
+    },
     "executor_kind": {"enum": ["creature", "npc"], "type": "string"},
     "field_spec": {
       "oneOf": [
@@ -322,6 +335,7 @@
     {"$ref": "#/$defs/registration"},
     {"$ref": "#/$defs/registration_accepted"},
     {"$ref": "#/$defs/action_intent"},
-    {"$ref": "#/$defs/event"}
+    {"$ref": "#/$defs/event"},
+    {"$ref": "#/$defs/event_accepted"}
   ]
 }

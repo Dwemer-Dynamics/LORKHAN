@@ -31,6 +31,10 @@ inline constexpr std::size_t kReservedControlCapacity = 4U;
 inline constexpr std::uint32_t kMaxAudienceActors = 12U;
 inline constexpr std::uint32_t kMaxActionsPerTurn = 4U;
 inline constexpr std::uint32_t kMaxActionContinuations = 1U;
+inline constexpr std::size_t kMaxPluginRegistrationBytes = 64U * 1024U;
+inline constexpr std::size_t kMaxPluginEventBytes = 16U * 1024U;
+// Advertised only by builds that carry the typed plugin routes and the plugin.action.intent decoder.
+inline constexpr std::string_view kPluginContractCapability = "plugin.contract.v1";
 
 template <class Tag>
 class StrongId {
@@ -308,6 +312,16 @@ struct MediaDescriptor {
     std::chrono::system_clock::time_point expiresAt;
 };
 
+// One canonical lorkhan.plugin.registration.v1 or lorkhan.plugin.event.v1 message. The bridge
+// validates it for the request's exact session generation; Lua never selects a route or header.
+struct PluginMessageRequest {
+    MessageId message;
+    RequestCorrelation correlation;
+    std::string serializedMessage;
+};
+struct PluginRegistrationRequest : PluginMessageRequest {};
+struct PluginEventRequest : PluginMessageRequest {};
+
 struct MediaPrepareRequest {
     RequestCorrelation correlation;
     MediaDescriptor descriptor;
@@ -323,7 +337,7 @@ using RequestPayload = std::variant<HealthRequest, InitRequest, TurnRequest, Eve
     InterruptionRequest, ActionResultRequest, SessionEndRequest, SttRequest,
     DialogueDeliveryResultRequest, ControlsQueryRequest, ControlsSelectRequest, DebugCommandQueryRequest,
     DebugCommandResultRequest, DiaryBookQueryRequest, DiaryBookResultRequest, MenuDialogueTtsRequest, PlayerAutochatRequest, BookReadAloudRequest, GameDataRequest,
-    MediaPrepareRequest, MenuDialogueTtsCancelRequest>;
+    MediaPrepareRequest, MenuDialogueTtsCancelRequest, PluginRegistrationRequest, PluginEventRequest>;
 
 enum class RequestKind {
     health,
@@ -347,6 +361,8 @@ enum class RequestKind {
     player_autochat,
     gamedata,
     media,
+    plugin_registration,
+    plugin_event,
 };
 
 enum class ResponseKind { accepted, event, completed, failure, cancelled, media_ready, menu_dialogue_ready,

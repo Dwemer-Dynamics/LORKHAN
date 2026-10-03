@@ -68,6 +68,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
+#include <variant>
 #include <vector>
 
 namespace MWLua
@@ -680,6 +682,9 @@ namespace MWLua
                 result["session_id"] = m_session->value();
                 result["generation"] = m_service->generation().value();
                 result["config_revision"] = m_configRevision;
+                sol::table negotiated(lua, sol::create);
+                for (std::size_t index = 0; index < m_capabilities.size(); ++index) negotiated[index + 1] = m_capabilities[index];
+                result["capabilities"] = negotiated;
                 if (m_clientSettings)
                 {
                     const auto& settings = *m_clientSettings;
@@ -2431,6 +2436,117 @@ namespace MWLua
             }
 
             // Keep correlated receipts until Lua consumes them; no network result is mistaken for acceptance.
+            // Plugin traffic exists only when this session negotiated the versioned addon contract.
+            bool pluginContract() const
+            {
+                return ready() && std::find(m_capabilities.begin(), m_capabilities.end(),
+                    std::string(lorkhan::kPluginContractCapability)) != m_capabilities.end();
+            }
+
+            static std::string pluginReason(const lorkhan::Error& error)
+            {
+                switch (error.code) {
+                    case lorkhan::ErrorCode::stale_generation: return "stale_generation";
+                    case lorkhan::ErrorCode::payload_too_large: return "plugin_message_too_large";
+                    case lorkhan::ErrorCode::invalid_schema: case lorkhan::ErrorCode::invalid_argument:
+                    case lorkhan::ErrorCode::invalid_json: case lorkhan::ErrorCode::invalid_utf8: return "invalid_plugin_message";
+                    case lorkhan::ErrorCode::rate_limited: return "rate_limited";
+                    case lorkhan::ErrorCode::duplicate_conflict: return "duplicate_conflict";
+                    case lorkhan::ErrorCode::unauthorized: case lorkhan::ErrorCode::forbidden: return "unauthorized";
+                    case lorkhan::ErrorCode::queue_full: return "queue_full";
+                    case lorkhan::ErrorCode::timeout: return "timeout";
+                    case lorkhan::ErrorCode::cancelled: return "cancelled";
+                    default: return "transport_failure";
+                }
+            }
+
+            // Submit one Lua-built lorkhan.plugin.registration.v1 or .event.v1 message. Native code validates
+            // the exact schema and session generation, signs it, and posts only to its fixed route.
+            std::tuple<sol::object, sol::object> submitPlugin(sol::state_view lua, bool registration, sol::table message)
+            {
+                if (!ready()) return failure(lua, "bridge_not_ready");
+                if (!pluginContract()) return failure(lua, "plugin_contract_unsupported");
+                try
+                {
+                    const auto requestId = message.get<sol::optional<std::string>>("request_id");
+                    const auto messageId = message.get<sol::optional<std::string>>("message_id");
+                    if (!requestId || !messageId) return failure(lua, "invalid_plugin_message");
+                    // Plugins share the bounded outbound queue with dialogue; never let them fill it.
+                    if (std::count_if(m_pluginReceipts.begin(), m_pluginReceipts.end(), [](const auto& receipt) {
+                            return receipt.second.status == "pending"; }) >= kMaxPendingPlugins)
+                        return failure(lua, "plugin_queue_full");
+                    if (m_pluginReceipts.size() >= kMaxPluginReceipts) {
+                        // Reclaim receipts Lua never collected; pending ones still own their request.
+                        for (auto receipt = m_pluginReceipts.begin(); receipt != m_pluginReceipts.end();) {
+                            if (receipt->second.status != "pending") receipt = m_pluginReceipts.erase(receipt);
+                            else ++receipt;
+                        }
+                        if (m_pluginReceipts.size() >= kMaxPluginReceipts) return failure(lua, "plugin_queue_full");
+                    }
+                    const lorkhan::RequestCorrelation correlation{lorkhan::RequestId(*requestId), *m_session, m_service->generation()};
+                    const lorkhan::MessageId id(*messageId);
+                    const std::string raw = toJson(sol::make_object(lua, message));
+                    auto canonical = registration ? lorkhan::canonicalPluginRegistration(raw, correlation, id)
+                                                  : lorkhan::canonicalPluginEvent(raw, correlation, id);
+                    if (!canonical) return failure(lua, pluginReason(canonical.error()));
+                    lorkhan::PluginMessageRequest plugin{id, correlation, std::move(canonical).value()};
+                    lorkhan::OutboundRequest outbound{correlation.request, *m_session, correlation.generation,
+                        registration ? lorkhan::RequestKind::plugin_registration : lorkhan::RequestKind::plugin_event,
+                        registration ? lorkhan::RequestPayload(lorkhan::PluginRegistrationRequest{std::move(plugin)})
+                                     : lorkhan::RequestPayload(lorkhan::PluginEventRequest{std::move(plugin)})};
+                    auto accepted = m_service->enqueue(std::move(outbound));
+                    if (!accepted) return failure(lua, pluginReason(accepted.error()));
+                    m_pluginReceipts[*requestId] = PluginReceipt{registration, "pending", {}, {}};
+                    return success(lua, *requestId);
+                }
+                catch (const std::exception&) { return failure(lua, "invalid_plugin_message"); }
+            }
+
+            bool settlePluginResult(const lorkhan::InboundResult& result)
+            {
+                auto found = m_pluginReceipts.find(result.request.value());
+                if (found == m_pluginReceipts.end()) return false;
+                auto& receipt = found->second;
+                if (result.kind == lorkhan::ResponseKind::accepted) { receipt.status = "accepted"; receipt.payload = result.payload; }
+                else {
+                    receipt.status = result.kind == lorkhan::ResponseKind::cancelled ? "cancelled" : "failed";
+                    receipt.reason = result.failure ? pluginReason(*result.failure) : "transport_failure";
+                }
+                return true;
+            }
+
+            // Typed receipt for one plugin submission; terminal receipts are returned once and released.
+            sol::table pluginReceipt(sol::state_view lua, const std::string& request)
+            {
+                sol::table result(lua, sol::create);
+                auto found = m_pluginReceipts.find(request);
+                if (found == m_pluginReceipts.end()) { result["status"] = "unknown"; return result; }
+                const auto& receipt = found->second;
+                result["request_id"] = request;
+                result["kind"] = receipt.registration ? "registration" : "event";
+                result["status"] = receipt.status;
+                if (receipt.status == "pending") return result;
+                if (receipt.status == "accepted") {
+                    if (receipt.registration) {
+                        auto parsed = lorkhan::parsePluginRegistrationAcceptedResponse(receipt.payload, jsonHeaders());
+                        sol::table plugins(lua, sol::create);
+                        for (std::size_t index = 0; parsed && index < parsed.value().plugins.size(); ++index) {
+                            const auto& plugin = parsed.value().plugins[index];
+                            sol::table row(lua, sol::create);
+                            row["plugin_id"] = plugin.pluginId; row["version"] = plugin.version;
+                            row["state"] = plugin.state; row["reason_code"] = plugin.reasonCode;
+                            plugins[index + 1] = row;
+                        }
+                        result["plugins"] = plugins;
+                    } else {
+                        auto parsed = lorkhan::parsePluginEventAcceptedResponse(receipt.payload, jsonHeaders());
+                        result["duplicate"] = parsed && parsed.value().duplicate;
+                    }
+                } else result["reason"] = receipt.reason;
+                m_pluginReceipts.erase(found);
+                return result;
+            }
+
             bool settleDispositionResult(const lorkhan::InboundResult& result)
             {
                 auto found = m_dispositionReceipts.find(result.request.value());
@@ -2475,6 +2591,7 @@ namespace MWLua
                     if(settleTransferReceipt(result)){++m_resultsSeen;continue;}
                     ++m_resultsSeen;
                     if (settleDispositionResult(result)) continue;
+                    if (settlePluginResult(result)) continue;
                     if (settleDebugResult(result)) continue;
                     if (settleDiaryResult(result)) continue;
                     if (settlePlayerAutochatResult(result)) continue;
@@ -2582,6 +2699,7 @@ namespace MWLua
                             m_session = parsed.value().session; m_cursor = parsed.value().eventCursor;
                             m_configRevision = parsed.value().configRevision;
                             m_clientSettings = parsed.value().clientSettings;
+                            m_capabilities = parsed.value().capabilities;
                             m_status = "ready"; m_error.clear(); m_initRequest.reset();
                         }
                         else
@@ -2599,6 +2717,10 @@ namespace MWLua
                             {
                                 m_cursor = parsed.value().nextAfter;
                                 for (const auto& event : parsed.value().events) {
+                                    // An old or misbehaving server cannot start plugin work this session did not negotiate.
+                                    if (event.type == lorkhan::ProtocolEventType::plugin_action_intent && !pluginContract()) {
+                                        m_error = "plugin_contract_unsupported"; continue;
+                                    }
                                     retainTransfer(event);
                                     output[outIndex++] = eventTable(lua, event);
                                 }
@@ -2725,7 +2847,7 @@ namespace MWLua
                 m_pollRequest.reset(); m_initRequest.reset();m_controlsRequest.reset();m_controls.reset();
                 m_diaryRequest.reset();m_diaryReceipt.reset();m_diaryBook.reset();m_diaryReceiptDto.reset();m_diaryPending=false;
                 m_diaryState.clear();m_diaryReason.clear();m_diaryError.clear();m_diaryReceiptOk=false;
-                m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_dispositionReceipts.clear();m_commentRequests.clear();m_turnRequests.clear();m_latestTurn.reset();m_controlsError.clear();m_debugError.clear();
+                m_debugRequest.reset();m_debugCommand.reset();m_deferredResults.clear();m_dispositionReceipts.clear();m_pluginReceipts.clear();m_capabilities.clear();m_commentRequests.clear();m_turnRequests.clear();m_latestTurn.reset();m_controlsError.clear();m_debugError.clear();
                 m_initSnapshot.reset();m_initAttempts=0;m_retryInit=false;
                 if(identityChange){m_characterIdentity.clear();m_characterRejected=false;}
                 m_loadedSave=loadedSave;m_waitingLoadedCalendar=loadedSave;m_loadedCalendar.reset();beginSession();
@@ -2833,7 +2955,8 @@ namespace MWLua
             { return { "relationship.disposition", "diary.books.v1", "context.item_pickup.v1", "context.barter_trade.v1", "context.spell_cast.v1", "context.actor_resurrected.v1", "context.actor_died.v1", "dialogue.text", "speech.say", "speech.listen", "controls.session", "debug.commands.v1", "debug.npc_manager.v1", "speech.browser.v1", "action.item.create", "action.gold.create", "action.actor.spawn", "action.actor.teleport_to_player", "action.player.teleport", "action.actor.restore", "action.actor.resurrect", "action.actor.kill", "action.conversation.end", "action.ai.follow", "action.ai.stop",
                 "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander", "action.combat.start",
                 "action.combat.stop", "action.weapon.sheathe", "action.item.give", "action.item.take", "action.item.pickup", "action.gold.give", "action.gold.take", "action.service.barter", "action.service.training", "action.service.spells", "action.service.travel", "action.service.spellmaking", "action.service.enchanting", "action.service.repair", "action.spell.cast", "action.animation.play", "action.item.equip", "action.item.unequip", "action.item.use",
-                "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup" }; }
+                "action.inspect.report", "action.inventory.inspect", "action.confirmation", "action.result-followup",
+                std::string(lorkhan::kPluginContractCapability) }; }
 
             static sol::table eventTable(sol::state_view lua, const lorkhan::ProtocolEvent& event)
             {
@@ -2998,6 +3121,25 @@ namespace MWLua
                     case lorkhan::ProtocolEventType::speech_failed: {
                         result["type"] = "speech.failed"; const auto& item = std::get<lorkhan::SpeechFailedEventPayload>(event.payload);
                         payload["dialogue_message_id"] = item.dialogueMessage.value(); payload["code"] = item.code; break; }
+                    case lorkhan::ProtocolEventType::plugin_action_intent: {
+                        // Natively exact lorkhan.plugin.action-intent.v1; null target is omitted for plugin_contract.validateIntent.
+                        result["type"] = "plugin.action.intent";
+                        const auto& item = std::get<lorkhan::PluginActionIntentEventPayload>(event.payload).intent;
+                        payload["schema"] = "lorkhan.plugin.action-intent.v1"; payload["action_id"] = item.action.value();
+                        payload["turn_id"] = item.turn.value(); payload["session_id"] = item.session.value();
+                        payload["generation"] = item.generation.value(); payload["plugin_id"] = item.pluginId;
+                        payload["plugin_version"] = item.pluginVersion; payload["action"] = item.name; payload["tier"] = item.tier;
+                        payload["confirmation_required"] = item.confirmationRequired; payload["cancellable"] = item.cancellable;
+                        payload["actor"] = identityTable(lua, item.actor);
+                        if (item.target) payload["target"] = identityTable(lua, *item.target);
+                        sol::table parameters(lua, sol::create);
+                        for (const auto& parameter : item.parameters)
+                            std::visit([&](const auto& value) {
+                                if constexpr (std::is_same_v<std::decay_t<decltype(value)>, lorkhan::ProtocolIdentity>)
+                                    parameters[parameter.first] = identityTable(lua, value);
+                                else parameters[parameter.first] = value;
+                            }, parameter.second);
+                        payload["parameters"] = parameters; payload["expires_at"] = item.expiresAt; break; }
                 }
                 result["payload"] = payload;
                 return result;
@@ -3041,6 +3183,11 @@ namespace MWLua
             };
             std::map<std::string, CommentRequest> m_commentRequests;
             std::map<std::string, std::string> m_dispositionReceipts;
+            struct PluginReceipt { bool registration{}; std::string status, payload, reason; };
+            static constexpr std::size_t kMaxPluginReceipts = 64;
+            static constexpr std::ptrdiff_t kMaxPendingPlugins = 8;
+            std::map<std::string, PluginReceipt> m_pluginReceipts;
+            std::vector<std::string> m_capabilities;
             std::vector<lorkhan::InboundResult> m_deferredResults;
             std::map<std::string,std::string> m_turnRequests;
             std::optional<std::pair<std::string,std::string>> m_latestTurn;
@@ -3080,7 +3227,7 @@ namespace MWLua
                 "action.item.create", "action.gold.create", "action.actor.spawn", "action.actor.teleport_to_player", "action.player.teleport", "action.actor.restore", "action.actor.resurrect", "action.actor.kill",
                 "action.ai.follow", "action.ai.stop", "action.ai.approach", "action.ai.wait", "action.ai.travel", "action.ai.escort", "action.ai.face", "action.ai.wander",
                 "action.combat.start", "action.combat.stop", "action.weapon.sheathe", "action.item.give", "action.item.take", "action.item.pickup", "action.gold.give", "action.gold.take", "action.service.barter", "action.service.training", "action.service.spells", "action.service.travel", "action.service.spellmaking", "action.service.enchanting", "action.service.repair", "action.spell.cast", "action.animation.play", "action.item.equip", "action.item.unequip",
-                "action.item.use", "action.inspect.report", "action.inventory.inspect", "action.conversation.end", "action.confirmation", "action.result-followup" })
+                "action.item.use", "action.inspect.report", "action.inventory.inspect", "action.conversation.end", "action.confirmation", "action.result-followup", std::string(lorkhan::kPluginContractCapability) })
                     result[index++] = capability;
                 return result;
             };
@@ -3159,6 +3306,9 @@ namespace MWLua
             api["pumpSessionControls"] = [lua] { return client().pumpSessionControls(lua); };
             api["pumpPlayerAutochat"] = [lua] { return client().pumpPlayerAutochat(lua); };
             if(global){
+                api["submitPluginRegistration"]=[lua](sol::table message){return client().submitPlugin(lua,true,std::move(message));};
+                api["submitPluginEvent"]=[lua](sol::table message){return client().submitPlugin(lua,false,std::move(message));};
+                api["pluginReceipt"]=[lua](const std::string& request){return client().pluginReceipt(lua,request);};
                 api["characterInfo"]=[lua]{return client().characterInfo(lua);};
                 api["configureCharacter"]=[lua](sol::table values){return client().configureCharacter(lua,values);};
                 api["configurePlayback"]=[lua,luaManager](sol::table values){return client().configurePlayback(lua,values,luaManager);};

@@ -1579,6 +1579,11 @@ function M.poll(state,elapsed)
             elseif event.type=='relationship.adjust' then
                 if state.onDispositionAdjustment then state.onDispositionAdjustment(event) end
                 accepted=accepted+1
+            elseif event.type=='plugin.action.intent' then
+                -- Addon dispatch owns validateIntent and the terminal result; without it the intent expires server-side.
+                if state.onPluginIntent then state.onPluginIntent(event)
+                else print('[LORKHAN] plugin intent dropped: plugin_dispatch_unavailable '..tostring(event.payload.action_id)) end
+                accepted=accepted+1
             elseif state.aiEnabled==false or (state.rechat and state.rechat.discardTurnId==event.turn_id) then
                 accepted=accepted+1 -- Advance the cursor without dispatching disabled or abandoned output.
             else

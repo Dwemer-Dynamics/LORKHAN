@@ -109,7 +109,9 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
         || (request.kind == RequestKind::menu_dialogue_tts_cancel) != std::holds_alternative<MenuDialogueTtsCancelRequest>(request.payload)
         || (request.kind == RequestKind::player_autochat) != std::holds_alternative<PlayerAutochatRequest>(request.payload)
         || (request.kind == RequestKind::gamedata) != std::holds_alternative<GameDataRequest>(request.payload)
-        || (request.kind == RequestKind::media) != std::holds_alternative<MediaPrepareRequest>(request.payload))
+        || (request.kind == RequestKind::media) != std::holds_alternative<MediaPrepareRequest>(request.payload)
+        || (request.kind == RequestKind::plugin_registration) != std::holds_alternative<PluginRegistrationRequest>(request.payload)
+        || (request.kind == RequestKind::plugin_event) != std::holds_alternative<PluginEventRequest>(request.payload))
         return Result<void>::failure(makeError(ErrorCode::invalid_argument, "request kind does not match typed payload"));
     if (const auto* init = std::get_if<InitRequest>(&request.payload)) {
         if(init->characterId.has_value()!=init->characterBinding.has_value()
@@ -325,6 +327,20 @@ Result<void> BridgeService::validateRequest(const OutboundRequest& request) cons
             return validateSpellCastPayload(gamedata->serializedPayload);
         if (gamedata->type == GameDataType::inventory)
             return validateInventoryPayload(gamedata->serializedPayload);
+    }
+    const auto* registration = std::get_if<PluginRegistrationRequest>(&request.payload);
+    const auto* pluginEvent = std::get_if<PluginEventRequest>(&request.payload);
+    if (registration || pluginEvent) {
+        const PluginMessageRequest& plugin = registration ? static_cast<const PluginMessageRequest&>(*registration) : *pluginEvent;
+        if (plugin.correlation.request != request.id || plugin.correlation.session != request.session
+            || plugin.correlation.generation != request.generation)
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument, "plugin correlation is inconsistent"));
+        auto canonical = registration
+            ? canonicalPluginRegistration(plugin.serializedMessage, plugin.correlation, plugin.message)
+            : canonicalPluginEvent(plugin.serializedMessage, plugin.correlation, plugin.message);
+        if (!canonical) return Result<void>::failure(canonical.error());
+        if (canonical.value() != plugin.serializedMessage)
+            return Result<void>::failure(makeError(ErrorCode::invalid_argument, "plugin message must be canonical"));
     }
     const auto validatePayload = [](std::string_view value, std::size_t limit) -> Result<void> {
         auto valid = requireValidUtf8(value, limit);

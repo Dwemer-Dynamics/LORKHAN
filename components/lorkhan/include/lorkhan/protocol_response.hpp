@@ -276,10 +276,31 @@ struct DirectorInstructionsEventPayload {
     std::vector<Instruction> instructions;
 };
 
+// One server plugin intent, validated for exact envelope identity before Lua receives it. Registration,
+// manifest policy and actor scope are still checked by plugin_contract.validateIntent.
+struct PluginActionIntent {
+    using Value = std::variant<std::int64_t, double, bool, std::string, ProtocolIdentity>;
+    ActionId action;
+    TurnId turn;
+    SessionId session;
+    Generation generation;
+    std::string pluginId;
+    std::string pluginVersion;
+    std::string name;
+    std::uint32_t tier{};
+    bool confirmationRequired{};
+    bool cancellable{};
+    ProtocolIdentity actor;
+    std::optional<ProtocolIdentity> target;
+    std::vector<std::pair<std::string, Value>> parameters;
+    std::string expiresAt;
+};
+struct PluginActionIntentEventPayload { PluginActionIntent intent; };
+
 using ProtocolEventPayload = std::variant<TurnAcceptedEventPayload, DialogueDeltaEventPayload, DialogueCompleteEventPayload,
     ActionIntentEventPayload, RelationshipAdjustEventPayload, DirectorInstructionsEventPayload, ResponseCompleteEventPayload, TurnCompleteEventPayload, TurnCancelledEventPayload,
     TurnFailedEventPayload, SttTranscriptEventPayload, SttFailedEventPayload,
-    SpeechReadyEventPayload, SpeechFailedEventPayload>;
+    SpeechReadyEventPayload, SpeechFailedEventPayload, PluginActionIntentEventPayload>;
 
 enum class ProtocolEventType {
     turn_accepted,
@@ -296,6 +317,7 @@ enum class ProtocolEventType {
     stt_failed,
     speech_ready,
     speech_failed,
+    plugin_action_intent,
 };
 
 struct ProtocolEvent {
@@ -484,6 +506,33 @@ struct DebugCommandResultAcceptedResponse {
     DebugCommandResultStatus status{DebugCommandResultStatus::failed};
     bool duplicate{};
 };
+
+struct PluginRegistrationAcceptedResponse {
+    struct Plugin { std::string pluginId; std::string version; std::string state; std::string reasonCode; };
+    MessageId message;
+    RequestId request;
+    SessionId session;
+    Generation generation;
+    std::vector<Plugin> plugins;
+};
+struct PluginEventAcceptedResponse {
+    MessageId message;
+    RequestId request;
+    SessionId session;
+    Generation generation;
+    bool duplicate{};
+};
+
+// Validate one client-built plugin message for exactly this request, session and generation and return
+// canonical JSON (sorted keys, empty field maps as objects) within the 64 KiB / 16 KiB message caps.
+[[nodiscard]] Result<std::string> canonicalPluginRegistration(
+    std::string_view message, const RequestCorrelation& expected, const MessageId& expectedMessage);
+[[nodiscard]] Result<std::string> canonicalPluginEvent(
+    std::string_view message, const RequestCorrelation& expected, const MessageId& expectedMessage);
+[[nodiscard]] Result<PluginRegistrationAcceptedResponse> parsePluginRegistrationAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<PluginEventAcceptedResponse> parsePluginEventAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 
 [[nodiscard]] Result<void> parseHealthResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
