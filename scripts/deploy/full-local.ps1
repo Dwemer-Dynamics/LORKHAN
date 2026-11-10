@@ -9,7 +9,7 @@ param(
     [ValidateRange(1024, 65535)]
     [int]$ServerPort = 8090,
     [ValidateRange(1024, 65535)]
-    [int]$ProxyPort = 7514,
+    [int]$ProxyPort = 8090,
     [switch]$SkipServer,
     [switch]$SkipBuild,
     [switch]$SkipClient

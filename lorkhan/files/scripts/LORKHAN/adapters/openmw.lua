@@ -189,6 +189,22 @@ function M.resurrectionObservation(event,modules)
     return payload
 end
 
+-- Native reported one counted non-player death; killer and weapon are not engine facts here.
+function M.deathObservation(event,modules)
+    modules=modules or loaded()
+    if type(event)~='table' or not modules.self or not event.actor then return nil,'death_unavailable' end
+    local ok,payload=pcall(function()
+        local victim=M.identity(event.actor,modules)
+        if not victim or not sameSpace(event.actor.cell,modules.self.cell) then return nil end
+        local distance=(event.actor.position-modules.self.position):length()
+        if distance~=distance or distance>2048 then return nil end
+        return require('scripts.LORKHAN.protocol').actorDied({victim=victim,game_time=event.gameTime,
+            calendar=event.calendar,audience=observationWitnesses(event.actor,modules,{victim})})
+    end)
+    if not ok or not payload then return nil,'death_unavailable' end
+    return payload
+end
+
 function M.spellCastObservation(event,modules)
     modules=modules or loaded()
     if type(event)~='table' or not modules.self or not event.caster then return nil,'spell_event_unavailable' end
@@ -223,6 +239,30 @@ function M.itemPickupObservation(event,modules)
             audience=observationWitnesses(event.player,modules,{player})})
     end)
     if not ok or not payload then return nil,'pickup_observation_unavailable' end
+    return payload
+end
+
+-- Native copied the traded lines before transfer; no stale item reference or inventory diff reaches Lua.
+function M.barterTradeObservation(event,modules)
+    modules=modules or loaded()
+    if type(event)~='table' or not event.player or not event.merchant then return nil,'barter_event_unavailable' end
+    local ok,payload=pcall(function()
+        local player=M.identity(event.player,modules)
+        local merchant=M.identity(event.merchant,modules)
+        if not player or player.kind~='player' or not merchant then return nil end
+        local function lines(source)
+            local result={}
+            for index,line in ipairs(type(source)=='table' and source or {}) do
+                result[index]={item_record_id=line.itemRecordId,item_name=line.itemName,count=line.count,unit_value=line.unitValue}
+            end
+            return result
+        end
+        return require('scripts.LORKHAN.protocol').barterTrade({player=player,merchant=merchant,
+            player_received=lines(event.playerReceived),player_gave=lines(event.playerGave),
+            gold_to_player=event.goldToPlayer,game_time=event.gameTime,calendar=event.calendar,
+            audience=observationWitnesses(event.player,modules,{player,merchant})})
+    end)
+    if not ok or not payload then return nil,'barter_observation_unavailable' end
     return payload
 end
 
@@ -851,6 +891,22 @@ function M.actionItems(target, modules, observedActors)
         if visible then append(item,'ground',nil) end
     end
     return rows
+end
+
+-- Read only the player's own sneak and attack-input controls. Unreadable flags stay nil (unknown).
+function M.playerActivity(modules)
+    modules=modules or loaded()
+    local player=modules.self
+    local controls=player and safe(function() return player.controls end)
+    if not controls then return {} end
+    local sneak=safe(function() return controls.sneak end)
+    local use=safe(function() return controls.use end)
+    local noAttack=safe(function() return player.ATTACK_TYPE.NoAttack end)
+    local attacking=nil
+    if use~=nil and noAttack~=nil then attacking=use~=noAttack end
+    local sneaking=nil
+    if type(sneak)=='boolean' then sneaking=sneak end
+    return {sneaking=sneaking,attacking=attacking}
 end
 
 -- Freeze bounded local hearing evidence. Keep this private to Lua rather than the wire context.

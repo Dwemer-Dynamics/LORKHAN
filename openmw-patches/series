@@ -31,3 +31,4 @@ patches/0032-apps-openmw-mwsound-openaloutput-cpp.patch
 patches/0033-components-lua-ui-textedit-cpp.patch
 patches/0034-components-lua-ui-textedit-hpp.patch
 patches/0035-apps-openmw-mwmechanics-security-cpp.patch
+patches/0036-apps-openmw-mwgui-tradewindow-cpp.patch

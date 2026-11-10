@@ -22,6 +22,7 @@
         "invalid_schema",
         "media_unavailable",
         "not_found",
+        "operation_cancelled",
         "payload_too_large",
         "provider_action_not_allowed",
         "provider_invalid_action",

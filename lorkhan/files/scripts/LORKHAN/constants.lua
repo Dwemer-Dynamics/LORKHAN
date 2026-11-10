@@ -2,7 +2,7 @@ return {
     LUA_API_REVISION = 129,
     OPENMW_VERSION = '0.51.0',
     OPENMW_COMMIT = 'f4bec41444214a7903bebd178389ca22ca13f646',
-    CLIENT_VERSION = '0.5.0',
+    CLIENT_VERSION = '0.5.1',
     SAVE_SCHEMA_VERSION = 3,
     MAX_AUDIENCE = 12,
     MAX_INVENTORY_ROWS = 48,
@@ -17,4 +17,6 @@ return {
     MAX_CONTINUATIONS_PER_ACTION = 1,
     MAX_INBOUND_RESULTS = 128,
     MAX_OUTBOUND_REQUESTS = 32,
+    -- Documented provider hard deadline; a terminal turn's missing speech is unavailable after it.
+    SPEECH_MEDIA_WAIT_SECONDS = 120,
 }

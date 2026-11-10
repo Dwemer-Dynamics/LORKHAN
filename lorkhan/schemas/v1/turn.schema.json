@@ -291,7 +291,8 @@
             "director",
             "cheat",
             "injection_log",
-            "injection_chat"
+            "injection_chat",
+            "hypnosis"
           ]
         },
         "director_instruction_id": {

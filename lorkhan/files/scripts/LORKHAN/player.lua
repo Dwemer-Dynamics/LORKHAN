@@ -9,6 +9,8 @@ local selector=require('scripts.LORKHAN.ui.selector')
 local actorTools=require('scripts.LORKHAN.ui.actor_tools')
 local settingsMenu=require('scripts.LORKHAN.ui.settings')
 local support=require('scripts.LORKHAN.util')
+local speechPrefetch=require('scripts.LORKHAN.speech_prefetch')
+local prefetchedSpeech=speechPrefetch.new()
 local core=adapter.event()
 local inputOk,input=pcall(require,'openmw.input')
 local uiOk,openmwUi=pcall(require,'openmw.ui')
@@ -51,6 +53,7 @@ local restDiaryState
 local observedPlayerLevel,observedRpgSession
 local ownsUiMode=false
 local controlsSignature
+local playerActivitySignature
 local responseQueueSnapshot={}
 local MODES=uiState.MODES
 local EQUIPMENT_SLOTS={'helmet','cuirass','greaves','left_pauldron','right_pauldron','left_gauntlet',
@@ -94,7 +97,7 @@ local currentNarratorSettings={}
 local SETTINGS_REFRESH_INTERVAL=0.5
 local AIM_SCAN_INTERVAL=0.25
 local AUTO_SCAN_INTERVAL=1.0
-local DEBUG_POLL_INTERVAL=0.25
+local DEBUG_POLL_INTERVAL=2
 local GLOBAL_DEBUG_COMMANDS={
     ['npc.status']=true,['npc.visit']=true,['npc.teleport']=true,['npc.return']=true,
     ['player.inventory.add']=true,['player.inventory.remove']=true,
@@ -148,7 +151,7 @@ local function voicePayload(uiSource)
     local snapshot=conversationContext(state.ui.target);snapshot.dialogueMode=state.ui.mode
     return {speaker=adapter.identity(self),target=state.ui.target,context=snapshot,language='en-US',capabilities=CAPABILITIES,
         recent_action_results={},ui_source=uiSource,dialogueMode=state.ui.mode,mood=uiState.moodSelection(state.ui),
-        execution_mode=(uiSource=='lorkhan_open_mic' and (state.ui.executionMode=='injection_log' or state.ui.executionMode=='injection_chat'))
+        execution_mode=(state.ui.executionMode=='hypnosis' or (uiSource=='lorkhan_open_mic' and (state.ui.executionMode=='injection_log' or state.ui.executionMode=='injection_chat')))
             and 'standard' or state.ui.executionMode,selectedTargetPresent=true,selectedTarget=state.ui.target,
         vad_sensitivity=tonumber(behaviorSettings and behaviorSettings:get('openMicSensitivity')) or 1000,
         end_delay_ms=tonumber(behaviorSettings and behaviorSettings:get('openMicEndDelayMs')) or 1000,
@@ -229,14 +232,20 @@ local function stopPlayerSpeech(continueAfter)
     if continueAfter and current.onComplete then current.onComplete() end
 end
 
-local function startPlayerSpeech(actor,text,onComplete)
+local function startPlayerSpeech(actor,text,onComplete,prefetched)
     stopPlayerSpeech()
     stopNarrator('player_speech_started')
     if not nativeOk or not native or not native.requestMenuDialogueTts then return false end
-    local request,reason=native.requestMenuDialogueTts(actor,text)
+    if not prefetched then speechPrefetch.reset(prefetchedSpeech,native,prefetchedSpeech.signature) end
+    local request,reason=prefetched,nil
+    if not request then request,reason=native.requestMenuDialogueTts(actor,text) end
+    local selectedAt=core.getRealTime()
+    if request then
+        print('[LORKHAN] speech_trace request='..request..' stage=selected cached='..tostring(prefetched~=nil))
+    end
     -- Carry the already-validated typed text so playback shows the player's own subtitle.
     if request then playerSpeech={request_id=request,state='requesting',subtitle=type(text)=='string' and text or '',
-        onComplete=onComplete};return true
+        onComplete=onComplete,selectedAt=selectedAt};return true
     elseif reason~='provider_unavailable' then print('[LORKHAN] player TTS rejected: '..tostring(reason)) end
     return false
 end
@@ -258,13 +267,22 @@ local function updatePlayerSpeech()
         stopPlayerSpeech(true)
         return
     end
+    if current.state~=status.state then
+        local stage=status.state=='preparing' and 'synthesis_ready' or (status.state=='ready' and 'media_ready' or status.state)
+        print('[LORKHAN] speech_trace request='..current.request_id..' stage='..stage..
+            ' elapsed_ms='..math.floor((core.getRealTime()-current.selectedAt)*1000))
+    end
     current.state=status.state
     if status.state=='ready' and status.media_id then
         local volume=tonumber(soundSettings and soundSettings:get('ttsVolumeBoost')) or 3
         -- Vanilla dialogue already displays the selected topic; playback must not append it again.
         local subtitle=current.menuDialogue and '' or (current.subtitle or '')
         local ok,reason=adapter.playSpeech(status.media_id,subtitle,volume)
-        if ok then current.state='playing';print('[LORKHAN] player TTS playback started: '..tostring(current.request_id))
+        if ok then
+            current.state='playing'
+            print('[LORKHAN] player TTS playback started: '..tostring(current.request_id))
+            print('[LORKHAN] speech_trace request='..current.request_id..' stage=playback_started elapsed_ms='..
+                math.floor((core.getRealTime()-current.selectedAt)*1000))
         else print('[LORKHAN] player TTS playback failed: '..tostring(reason or 'playback_failed'));stopPlayerSpeech(true) end
     end
 end
@@ -377,7 +395,9 @@ local function startMenuDialogueSpeech(response)
     if #queued>0 then
         menuDialogueSpeech={actor=response.actor,sentences=queued,index=1,
             dialogueSeenOpen=dialogueMenuOpen()==true}
-        submitMenuDialogueSentence(menuDialogueSpeech,queued[1])
+        if not (playerSpeech and playerSpeech.menuDialogue and playerSpeech.state~='playing') then
+            submitMenuDialogueSentence(menuDialogueSpeech,queued[1])
+        end
     end
 end
 
@@ -497,8 +517,15 @@ local function flushActorProfiles(dt)
     end
 end
 
+-- Native reads the engine calendar at this instant; delayed captures pass their own calendar instead.
+local function observationCalendar()
+    if not nativeOk or type(native.observationCalendar)~='function' then return nil end
+    local ok,calendar=pcall(native.observationCalendar)
+    return ok and type(calendar)=='table' and calendar or nil
+end
+
 -- Persist the observation and freeze the eligible responder before the server makes its profile policy decision.
-local function submitRpgEvent(kind,text,capturedTime)
+local function submitRpgEvent(kind,text,capturedTime,capturedCalendar)
     if not aiEnabled then return end
     if not nativeOk or not native.submitRpgEvent or not native.sessionInfo then return end
     local session=native.sessionInfo()
@@ -506,7 +533,9 @@ local function submitRpgEvent(kind,text,capturedTime)
     local responder=state.ui.target
     local distance=responder and adapter.actorDistance(responder)
     if turnActive or nearbyCombat or speechActive() or state.ui.visible or not distance or distance>2048 then responder=nil end
-    local payload=protocol.rpgEvent({kind=kind,player=adapter.identity(self),game_time=capturedTime or adapter.gameTime(),text=text,responder=responder})
+    local gameTime,calendar=capturedTime,capturedCalendar
+    if gameTime==nil then gameTime=adapter.gameTime();calendar=observationCalendar() end
+    local payload=protocol.rpgEvent({kind=kind,player=adapter.identity(self),game_time=gameTime,calendar=calendar,text=text,responder=responder})
     if not payload then return end
     local request,reason=native.submitRpgEvent(payload)
     if request and responder then
@@ -520,7 +549,7 @@ local function submitQuestEvent(entries,session)
     local responder=state.ui.target
     local distance=responder and adapter.actorDistance(responder)
     if turnActive or nearbyCombat or speechActive() or state.ui.visible or not distance or distance>2048 then return end
-    local payload=protocol.questEvent({entries=entries,responder=responder,game_time=adapter.gameTime()})
+    local payload=protocol.questEvent({entries=entries,responder=responder,game_time=adapter.gameTime(),calendar=observationCalendar()})
     if not payload then return end
     local request=native.submitQuestEvent(payload)
     if request then player.rememberRpgComment(state,request,responder,session,core.getRealTime()) end
@@ -576,6 +605,10 @@ local function updateMenuDialogueSpeech()
     elseif menuOpen==false and menuDialogueSpeech.dialogueSeenOpen then stopMenuDialogueSpeech() return end
     if soundSettings and soundSettings:get('menuDialogueTts')==false then stopMenuDialogueSpeech() return end
     if not nativeOk or not native or not native.menuDialogueTtsStatus then stopMenuDialogueSpeech() return end
+    -- Finish the player's download and start playback before any NPC synthesis can occupy HTTP.
+    if playerSpeech and playerSpeech.menuDialogue and playerSpeech.state~='playing' then return end
+    local first=menuDialogueSpeech.sentences[menuDialogueSpeech.index]
+    if first and first.state=='pending' then submitMenuDialogueSentence(menuDialogueSpeech,first) end
     for _,sentence in ipairs(menuDialogueSpeech.sentences) do
         if sentence.state=='requesting' or sentence.state=='preparing' then
             local status=native.menuDialogueTtsStatus(sentence.request_id)
@@ -587,8 +620,7 @@ local function updateMenuDialogueSpeech()
     for index=1,#menuDialogueSpeech.sentences-1 do
         local sentence=menuDialogueSpeech.sentences[index]
         local following=menuDialogueSpeech.sentences[index+1]
-        if following.state=='pending' and (sentence.state=='preparing' or sentence.state=='ready'
-            or sentence.state=='failed' or sentence.dispatched) then
+        if following.state=='pending' and (sentence.state=='failed' or sentence.dispatched) then
             submitMenuDialogueSentence(menuDialogueSpeech,following)
             break
         end
@@ -635,7 +667,7 @@ local function queueTypedTurn(args,speechAlreadyPlayed)
     if args.execution_mode=='director' then pendingDirectorInput={text=args.text} end
     args.player_speech_played=speechAlreadyPlayed==true
     send('LORKHAN_SUBMIT_TEXT',args)
-    pendingHistory=(args.execution_mode~='injection_log' and args.execution_mode~='injection_chat') and {speaker=args.speaker,text=args.text} or nil
+    pendingHistory=(args.execution_mode~='hypnosis' and args.execution_mode~='injection_log' and args.execution_mode~='injection_chat') and {speaker=args.speaker,text=args.text} or nil
     awaitingTextQueue=true
     state.ui.status='submitting'
     print('[LORKHAN] text message submitted for '..displayName(state.ui.target))
@@ -701,6 +733,7 @@ local function submitText()
         mood=uiState.moodSelection(state.ui),
         context=context,capabilities=CAPABILITIES,
         recent_action_results={},ui_source='lorkhan_text'}
+    if selected.execution=='hypnosis' then args.mood=nil end
     if selected.autoChat then
         if not nativeOk or not native or not native.requestPlayerAutochat then
             state.ui.status='Auto Chat unavailable' render() return false
@@ -2014,7 +2047,7 @@ return {
                 if observed and nativeOk and native.submitDisposition then native.submitDisposition(observed) end
             end
             if not controlsAllowed() then settingsControls.syncOpenMic() end
-            if nativeOk and native.pumpMenuDialogueTts and (bookSpeech or playerSpeech or menuDialogueSpeech) then native.pumpMenuDialogueTts() end
+            if nativeOk and native.pumpMenuDialogueTts and (bookSpeech or playerSpeech or menuDialogueSpeech or next(prefetchedSpeech.entries)) then native.pumpMenuDialogueTts() end
             updateBookSpeech()
             pumpDebugCommands()
             if pendingAutochat and nativeOk and native.pumpPlayerAutochat then pcall(native.pumpPlayerAutochat) end
@@ -2022,6 +2055,16 @@ return {
             if playerSpeech and playerSpeech.menuDialogue and dispositionOpen==false then stopPlayerSpeech() end
             updatePlayerSpeech()
             updateMenuDialogueSpeech()
+            if nativeOk and native and native.sessionInfo then
+                local session=native.sessionInfo()
+                local actor=state.dispositionDialogueActor
+                local signature=dispositionOpen and session and actor and
+                    (session.session_id..':'..tostring(session.generation)..':'..tostring(actor.record_id)..':'..
+                        tostring(actor.content_file)..':'..tostring(actor.refnum and actor.refnum.index)) or nil
+                if soundSettings and soundSettings:get('menuDialogueTts')==false then signature=nil end
+                local busy=playerSpeech or bookSpeech or turnActive or menuDialogueSpeech or awaitingTextQueue
+                speechPrefetch.update(prefetchedSpeech,native,adapter.identity(self),signature,core.getRealTime(),busy)
+            end
             if settingsControls.profileUpdates then
                 local ok,done,message=pcall(require('scripts.LORKHAN.ui.profile_requests').pump,
                     settingsControls.profileUpdates,native,core.getRealTime())
@@ -2065,6 +2108,13 @@ return {
             render()
         end,
         onUpdate=function(dt)
+            -- Sample every frame so one-frame spell casts are seen; send only on change.
+            local activity=adapter.playerActivity({self=self})
+            local activitySignature=tostring(activity.sneaking)..':'..tostring(activity.attacking)
+            if activitySignature~=playerActivitySignature then
+                playerActivitySignature=activitySignature
+                send('LORKHAN_PLAYER_ACTIVITY',{sneaking=activity.sneaking,attacking=activity.attacking})
+            end
             settingsControls.syncOpenMic()
             if narratorSpeech and not adapter.isSpeechActive() then reportNarrator('played','playback_completed') end
             updatePlayerAutochat()
@@ -2074,11 +2124,17 @@ return {
             if nativeOk and native.submitItemPickup and native.sessionInfo then
                 player.flushItemPickups(state,native.sessionInfo(),native.submitItemPickup,core.getRealTime())
             end
+            if nativeOk and native.submitBarterTrade and native.sessionInfo then
+                player.flushBarterTrades(state,native.sessionInfo(),native.submitBarterTrade,core.getRealTime())
+            end
             if nativeOk and native.submitSpellCast and native.sessionInfo then
                 player.flushSpellCasts(state,native.sessionInfo(),native.submitSpellCast,core.getRealTime())
             end
             if nativeOk and native.submitActorResurrected and native.sessionInfo then
                 player.flushResurrections(state,native.sessionInfo(),native.submitActorResurrected,core.getRealTime())
+            end
+            if nativeOk and native.submitActorDied and native.sessionInfo then
+                player.flushDeaths(state,native.sessionInfo(),native.submitActorDied,core.getRealTime())
             end
             flushActorProfiles(dt)
             flushAutomaticDiaries(dt)
@@ -2196,15 +2252,23 @@ return {
             local session=native.sessionInfo()
             if not session or event.sessionId~=session.session_id or event.generation~=session.generation then return end
             if type(event.gameTime)~='number' or event.gameTime~=event.gameTime or event.gameTime<0 then return end
-            submitRpgEvent('lockpick','The player successfully picked a lock.',event.gameTime)
+            submitRpgEvent('lockpick','The player successfully picked a lock.',event.gameTime,event.calendar)
         end,
         LorkhanItemPickup=function(event)
             if not nativeOk or not native.submitItemPickup or not native.sessionInfo then return end
             player.captureItemPickup(state,event,native.sessionInfo(),adapter.itemPickupObservation,native.submitItemPickup,core.getRealTime())
         end,
+        LorkhanBarterTrade=function(event)
+            if not nativeOk or not native.submitBarterTrade or not native.sessionInfo then return end
+            player.captureBarterTrade(state,event,native.sessionInfo(),adapter.barterTradeObservation,native.submitBarterTrade,core.getRealTime())
+        end,
         LorkhanActorResurrected=function(event)
             if not nativeOk or not native.submitActorResurrected or not native.sessionInfo then return end
             player.captureResurrection(state,event,native.sessionInfo(),adapter.resurrectionObservation,native.submitActorResurrected,core.getRealTime())
+        end,
+        LorkhanActorDied=function(event)
+            if not nativeOk or not native.submitActorDied or not native.sessionInfo then return end
+            player.captureDeath(state,event,native.sessionInfo(),adapter.deathObservation,native.submitActorDied,core.getRealTime())
         end,
         LorkhanSpellCast=function(event)
             if not nativeOk or not native.submitSpellCast or not native.sessionInfo then return end
@@ -2213,10 +2277,12 @@ return {
         -- The server's player connector owns the enabled switch; never fall back to an NPC voice.
         LorkhanDialogueChoice=function(event)
             stopMenuDialogueSpeech()
+            if not nativeOk or not native or not native.menuDialogueTtsStatus then return end
             if soundSettings and soundSettings:get('menuDialogueTts')==false then return end
             if not event or type(event.text)~='string' or not event.text:find('%S') then return end
             local speaker=adapter.identity(self)
-            if speaker and startPlayerSpeech(speaker,event.text) then playerSpeech.menuDialogue=true end
+            local prefetched=speechPrefetch.take(prefetchedSpeech,native,event.text,core.getRealTime())
+            if speaker and startPlayerSpeech(speaker,event.text,nil,prefetched) then playerSpeech.menuDialogue=true end
         end,
         DialogueResponse=function(event)
             local response=adapter.dialogueResponse(event)
@@ -2402,8 +2468,9 @@ return {
                 if event.execution_mode=='director' and pendingDirectorInput then pendingDirectorInput.request_id=event.request_id end
                 if pendingHistory then player.queued(state,pendingHistory.speaker,pendingHistory.text,event) end
                 pendingHistory=nil
+                if event.execution_mode=='hypnosis' then uiState.selectChatMode(state.ui,'standard') end
                 state.ui.input=''
-                state.ui.status='queued'
+                state.ui.status=event.execution_mode=='hypnosis' and 'Hypnosis submitted' or 'queued'
                 state.ui.visible=false
                 turnActive=true
                 leaveUiMode()
@@ -2504,6 +2571,13 @@ return {
         LORKHAN_ACTION_CONFIRMATION=function(event)
             state.ui.pendingAction=event state.ui.panel='confirmation'
             state.ui.visible=true enterUiMode() render()
+        end,
+        -- An expired, cancelled or withdrawn addon action closes its prompt without answering it.
+        LORKHAN_ACTION_CONFIRMATION_CLOSED=function(event)
+            local pending=state.ui.pendingAction
+            if not pending or type(event)~='table' or pending.action_id~=event.action_id then return end
+            state.ui.pendingAction=nil state.ui.visible=false state.ui.panel='conversation'
+            leaveUiMode() render()
         end,
         LORKHAN_ACTION_STATUS=function(event)
             state.ui.status='action '..tostring(event.name or '')..' '..tostring(event.status or 'unknown')

@@ -15,7 +15,8 @@ function M.execute(state, command, adapter, authority)
     if state.actions.results[command.action_id] then return nil,'terminal_result_exists' end
     authority.actor=state.identity authority.generation=state.generation
     local accepted, reason=actions.validate(state.actions,command,authority)
-    if not accepted then return actions.result(state.actions,command.action_id,'rejected',reason,{}) end
+    if not accepted then return actions.result(state.actions,command.action_id,
+        reason=='action_expired' and 'timed_out' or 'rejected',reason,{}) end
     if accepted.name=='inspect.report' or accepted.name=='inventory.inspect' then
         local method=accepted.name=='inventory.inspect' and 'inventoryReport' or 'inspectReport'
         if type(adapter[method])~='function' then return actions.result(state.actions,accepted.action_id,'failed','inspect_unavailable',{}) end
@@ -116,9 +117,11 @@ function M.cancelFace(state, adapter, reason)
     return actions.result(state.actions,pending.actionId,'cancelled',reason or 'face_cancelled',{}),pending.command
 end
 
-function M.reject(state, command, reason)
+function M.reject(state, command, reason, authority)
     if not state or not command or type(command.action_id)~='string' then return nil end
-    return actions.result(state.actions,command.action_id,'rejected',reason or 'user_declined',{})
+    local expired=authority and authority.expired and authority.expired(command.expires_at)
+    return actions.result(state.actions,command.action_id,expired and 'timed_out' or 'rejected',
+        expired and 'action_expired' or reason or 'user_declined',{})
 end
 
 function M.speak(state, command, adapter, authority)
@@ -171,9 +174,13 @@ end
 
 function M.attach(state, generation, capabilities)
     if not state then return nil,'actor_state_uninitialized' end
+    local changed=generation and generation~=state.generation
     state.generation=generation or state.generation
     state.attached=true
-    if capabilities then state.actions=actions.new(capabilities) end
+    if capabilities then
+        if changed then state.actions=actions.new(capabilities)
+        else state.actions.enabled=actions.new(capabilities).enabled end
+    end
     return true
 end
 

@@ -5,9 +5,9 @@ local util = require('scripts.LORKHAN.util')
 
 local M = {}
 local knownInternalEvents = {['turn.accepted']=true, ['dialogue.delta']=true, ['dialogue.complete']=true,
-    ['speech.ready']=true, ['action.intent']=true, ['director.instructions']=true, ['relationship.adjust']=true, ['response.complete']=true, ['turn.complete']=true,
+    ['speech.ready']=true, ['speech.failed']=true, ['action.intent']=true, ['director.instructions']=true, ['relationship.adjust']=true, ['response.complete']=true, ['turn.complete']=true,
     ['turn.failed']=true, ['turn.cancelled']=true, ['stt.transcript']=true,
-    ['stt.failed']=true}
+    ['stt.failed']=true, ['plugin.action.intent']=true}
 
 function M.isUuid(value)
     if type(value)~='string' then return false end
@@ -147,7 +147,9 @@ function M.turn(args)
         recent_action_results=util.arrayCopy(args.recent_action_results or {}), ui_source=args.ui_source}
     if args.execution_mode~=nil then
         if args.execution_mode~='standard' and args.execution_mode~='narrator' and args.execution_mode~='injection_log' and args.execution_mode~='injection_chat'
-            and args.execution_mode~='director' and args.execution_mode~='cheat' then return nil,'invalid_execution_mode' end
+            and args.execution_mode~='hypnosis' and args.execution_mode~='director' and args.execution_mode~='cheat' then return nil,'invalid_execution_mode' end
+        if args.execution_mode=='hypnosis' and (inputKind~='text' or args.ui_source~='lorkhan_text'
+            or args.speaker.kind~='player' or args.target.kind~='npc' or args.action_request) then return nil,'invalid_hypnosis_target' end
         payload.execution_mode=args.execution_mode
         if (args.execution_mode=='injection_log' or args.execution_mode=='injection_chat')
             and (inputKind~='text' or args.ui_source~='lorkhan_text' or args.speaker.kind~='player') then
@@ -237,6 +239,23 @@ function M.actorResurrected(args)
         calendar=args.calendar and util.copy(args.calendar) or nil}
 end
 
+-- One counted non-player death names only its victim; no killer or weapon is inferred.
+function M.actorDied(args)
+    if type(args)~='table' or not identity.validate(args.victim) or (args.victim.kind~='npc' and args.victim.kind~='creature')
+        or not validObservationCalendar(args.calendar) then return nil,'invalid_death_victim' end
+    if type(args.game_time)~='number' or args.game_time~=args.game_time or args.game_time<0
+        or args.game_time>9007199254740991 then return nil,'invalid_death_time' end
+    local audience={};local seen={[identity.key(args.victim)]=true}
+    if type(args.audience or {})~='table' or #(args.audience or {})>12 then return nil,'invalid_death_audience' end
+    for _,actor in ipairs(args.audience or {}) do
+        if not identity.validate(actor) or (actor.kind~='npc' and actor.kind~='creature')
+            or seen[identity.key(actor)] then return nil,'invalid_death_audience' end
+        seen[identity.key(actor)]=true;audience[#audience+1]=util.copy(actor)
+    end
+    return {victim=util.copy(args.victim),audience=audience,game_time=args.game_time,
+        calendar=args.calendar and util.copy(args.calendar) or nil}
+end
+
 function M.spellCast(args)
     if type(args)=='table' and not validObservationCalendar(args.calendar) then return nil,'invalid_spell_calendar' end
     if type(args)~='table' or not identity.validate(args.caster)
@@ -303,6 +322,51 @@ function M.itemPickup(args)
         source=source,audience=audience,calendar=args.calendar and util.copy(args.calendar) or nil}
 end
 
+local function barterLines(lines)
+    if type(lines)~='table' or #lines>32 then return nil end
+    local result={}
+    for index,line in ipairs(lines) do
+        if type(line)~='table' then return nil end
+        for _,field in ipairs({'item_record_id','item_name'}) do
+            if type(line[field])~='string' or #line[field]<1 or #line[field]>256 then return nil end
+        end
+        if type(line.count)~='number' or line.count%1~=0 or line.count<1 or line.count>2147483647
+            or type(line.unit_value)~='number' or line.unit_value%1~=0 or line.unit_value<0
+            or line.unit_value>2147483647 then return nil end
+        result[index]={item_record_id=line.item_record_id,item_name=line.item_name,count=line.count,unit_value=line.unit_value}
+    end
+    return result
+end
+
+-- Only a committed native barter supplies these lines; inventory differences are not trade evidence.
+function M.barterTrade(args)
+    if type(args)=='table' and not validObservationCalendar(args.calendar) then return nil,'invalid_barter_calendar' end
+    if type(args)~='table' or not identity.validate(args.player) or args.player.kind~='player'
+        or not identity.validate(args.merchant) or not ({npc=true,creature=true})[args.merchant.kind] then
+        return nil,'invalid_barter_actor'
+    end
+    local received,gave=barterLines(args.player_received),barterLines(args.player_gave)
+    if not received or not gave or #received+#gave==0 then return nil,'invalid_barter_items' end
+    if type(args.gold_to_player)~='number' or args.gold_to_player%1~=0
+        or args.gold_to_player<-2147483647 or args.gold_to_player>2147483647
+        or type(args.game_time)~='number' or args.game_time~=args.game_time or args.game_time<0
+        or args.game_time>9007199254740991 then return nil,'invalid_barter_observation' end
+    local audience
+    if args.audience~=nil then
+        if type(args.audience)~='table' or #args.audience>12 then return nil,'invalid_barter_audience' end
+        audience={};local seen={[identity.key(args.player)]=true,[identity.key(args.merchant)]=true}
+        for _,actor in ipairs(args.audience) do
+            if not identity.validate(actor) or (actor.kind~='npc' and actor.kind~='creature') then return nil,'invalid_barter_audience' end
+            local key=identity.key(actor)
+            if seen[key] then return nil,'duplicate_barter_audience' end
+            seen[key]=true;audience[#audience+1]=util.copy(actor)
+        end
+    end
+    return {player=util.copy(args.player),merchant=util.copy(args.merchant),player_received=received,player_gave=gave,
+        gold_to_player=args.gold_to_player,game_time=args.game_time,audience=audience,
+        calendar=args.calendar and util.copy(args.calendar) or nil}
+end
+
 -- Validate the actor snapshot that materializes a profile after successful automatic activation.
 function M.actorProfile(args)
     if type(args)~='table' or not identity.validate(args.actor)
@@ -337,7 +401,9 @@ function M.rpgEvent(args)
     if not identity.validate(args.player) or args.player.kind~='player' then return nil,'invalid_rpg_player' end
     if type(args.game_time)~='number' or args.game_time~=args.game_time or args.game_time<0 or args.game_time>9007199254740991 then return nil,'invalid_game_time' end
     if type(args.text)~='string' or #args.text<1 or #args.text>1024 then return nil,'invalid_rpg_text' end
-    local payload={kind=args.kind,player=util.copy(args.player),game_time=args.game_time,text=args.text}
+    if not validObservationCalendar(args.calendar) then return nil,'invalid_rpg_calendar' end
+    local payload={kind=args.kind,player=util.copy(args.player),game_time=args.game_time,text=args.text,
+        calendar=args.calendar and util.copy(args.calendar) or nil}
     if args.responder~=nil then
         if not identity.validate(args.responder) or (args.responder.kind~='npc' and args.responder.kind~='creature') then
             return nil,'invalid_rpg_responder'
@@ -369,9 +435,11 @@ function M.questEvent(args)
     if type(args)~='table' or not identity.validate(args.responder) or args.responder.kind~='npc'
         or type(args.game_time)~='number' or args.game_time~=args.game_time or args.game_time<0
         or args.game_time>9007199254740991 then return nil,'invalid_quest_event' end
+    if not validObservationCalendar(args.calendar) then return nil,'invalid_quest_calendar' end
     local text,reason=M.questText(args.entries)
     if not text then return nil,reason end
-    return {responder=util.copy(args.responder),game_time=args.game_time,text=text}
+    return {responder=util.copy(args.responder),game_time=args.game_time,text=text,
+        calendar=args.calendar and util.copy(args.calendar) or nil}
 end
 
 -- Validate one bounded automatic diary candidate before it reaches the native bridge.
@@ -424,6 +492,15 @@ function M.validatePolledEvent(event)
         if type(event.payload.retriable)~='boolean' then return nil,'invalid_stt_retriable' end
         if event.payload.retry_after_ms~=nil and (type(event.payload.retry_after_ms)~='number' or event.payload.retry_after_ms%1~=0 or event.payload.retry_after_ms<0) then return nil,'invalid_stt_retry_after' end
     end
+    if event.type=='speech.failed' then
+        -- A terminal no-audio notice names only its line and code; it never carries media.
+        for key in pairs(event.payload) do
+            if key~='dialogue_message_id' and key~='code' then return nil,'invalid_speech_failure_field' end
+        end
+        if not M.isUuid(event.payload.dialogue_message_id) then return nil,'invalid_speech_dialogue_message_id' end
+        local code=event.payload.code
+        if code~='provider_unconfigured' and code~='provider_timeout' and code~='provider_unavailable' then return nil,'invalid_speech_failure_code' end
+    end
     if event.type=='speech.ready' then
         if not M.isUuid(event.payload.media_id) then return nil,'invalid_speech_media_id' end
         if not M.isUuid(event.payload.dialogue_message_id) then return nil,'invalid_speech_dialogue_message_id' end
@@ -438,6 +515,14 @@ function M.validatePolledEvent(event)
         if not responseOk then return nil,responseReason end
     end
     if event.type=='action.intent' and event.payload.schema~='lorkhan.action-intent.v1' then return nil,'invalid_action_intent' end
+    if event.type=='plugin.action.intent' then
+        -- Native decoding already proved the exact wire shape; keep the envelope identity fence in Lua too.
+        local p=event.payload
+        if p.schema~='lorkhan.plugin.action-intent.v1' or p.request_id~=nil or p.session_id~=event.session_id
+            or p.generation~=event.generation or p.turn_id~=event.turn_id or not M.isUuid(p.action_id) then
+            return nil,'invalid_plugin_intent'
+        end
+    end
     return true
 end
 

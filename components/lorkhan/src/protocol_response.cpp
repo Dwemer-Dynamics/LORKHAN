@@ -1,9 +1,12 @@
 #include "lorkhan/voice_capture.hpp"
+#include "lorkhan/plugin_package.hpp"
 #include "lorkhan/protocol_response.hpp"
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <cmath>
+#include <functional>
 #include <initializer_list>
 #include <limits>
 #include <set>
@@ -1025,6 +1028,7 @@ std::optional<ErrorCode> protocolCode(std::string_view code)
         Mapping{"invalid_schema", ErrorCode::invalid_schema},
         Mapping{"media_unavailable", ErrorCode::media_rejected},
         Mapping{"not_found", ErrorCode::transport_failure},
+        Mapping{"operation_cancelled", ErrorCode::cancelled},
         Mapping{"payload_too_large", ErrorCode::payload_too_large},
         Mapping{"provider_action_not_allowed", ErrorCode::action_disabled},
         Mapping{"provider_invalid_action", ErrorCode::provider_unavailable},
@@ -1054,6 +1058,259 @@ std::optional<ErrorCode> protocolCode(std::string_view code)
             return mapping.code;
     }
     return std::nullopt;
+}
+
+// Plugin contract (lorkhan.plugin.*.v1): closed names, typed values and canonical re-serialization.
+bool isPluginName(std::string_view value, std::size_t maximum = 32)
+{
+    return !value.empty() && value.size() <= maximum && value.front() >= 'a' && value.front() <= 'z'
+        && std::all_of(value.begin(), value.end(), [](char c) {
+               return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'; });
+}
+
+bool isPluginId(std::string_view value)
+{
+    const auto dot = value.find('.');
+    if (dot == std::string_view::npos) return false;
+    const auto author = value.substr(0, dot);
+    const auto name = value.substr(dot + 1);
+    for (const std::string_view reserved : {"builtin", "core", "lorkhan", "morrowind", "openmw", "tes3"})
+        if (author == reserved) return false;
+    return author.size() >= 2 && isPluginName(author) && name.size() >= 2 && isPluginName(name, 48);
+}
+
+bool isPluginVersion(std::string_view value)
+{
+    // Exactly MAJOR.MINOR.PATCH: a fourth or empty trailing component is rejected.
+    for (std::size_t parts = 1;; ++parts) {
+        const auto end = value.find('.');
+        const auto part = value.substr(0, end);
+        if (part.empty() || part.size() > 5 || (part.size() > 1 && part.front() == '0')
+            || !std::all_of(part.begin(), part.end(), [](char c) { return c >= '0' && c <= '9'; }))
+            return false;
+        if (end == std::string_view::npos) return parts == 3;
+        if (parts == 3) return false;
+        value.remove_prefix(end + 1);
+    }
+}
+
+bool isPluginToken(std::string_view value)
+{
+    return !value.empty() && value.size() <= 64 && ((value.front() >= 'a' && value.front() <= 'z')
+        || (value.front() >= '0' && value.front() <= '9'))
+        && std::all_of(value.begin(), value.end(), [](char c) {
+               return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-'; });
+}
+
+// Client-observed event text: 1-512 code points without Unicode Cc controls (C0, DEL, C1 U+0080..U+009F).
+bool isPluginText(std::string_view value)
+{
+    if (!isValidUtf8(value)) return false;
+    std::size_t codePoints = 0;
+    for (std::size_t index = 0; index < value.size(); ++index) {
+        const auto c = static_cast<unsigned char>(value[index]);
+        // In valid UTF-8, C1 controls are exactly the two-byte sequences 0xC2 0x80..0x9F.
+        if (c < 0x20U || c == 0x7fU
+            || (c == 0xc2U && index + 1 < value.size() && static_cast<unsigned char>(value[index + 1]) <= 0x9fU))
+            return false;
+        codePoints += (c & 0xc0U) != 0x80U ? 1U : 0U;
+    }
+    return codePoints >= 1 && codePoints <= 512;
+}
+
+bool isPluginKind(std::string_view kind, bool player)
+{
+    return kind == "npc" || kind == "creature" || (player && kind == "player");
+}
+
+Result<PluginActionIntent::Value> parsePluginValue(const json::Value& value, bool fieldText)
+{
+    using Value = PluginActionIntent::Value;
+    if (const auto* integer = value.integer()) {
+        if (*integer < -2147483647 || *integer > 2147483647)
+            return invalidSchemaValue<Value>("plugin integer is outside the allowed range");
+        return Result<Value>::success(Value(*integer));
+    }
+    if (const auto* number = value.number()) {
+        if (!std::isfinite(*number) || *number < -1e9 || *number > 1e9)
+            return invalidSchemaValue<Value>("plugin number is outside the allowed range");
+        return Result<Value>::success(Value(*number));
+    }
+    if (const auto* boolean = value.boolean()) return Result<Value>::success(Value(*boolean));
+    if (const auto* text = value.string()) {
+        if (fieldText ? !isPluginText(*text) : !isPluginToken(*text))
+            return invalidSchemaValue<Value>(fieldText ? "plugin field text is invalid" : "plugin parameter must be an enum token");
+        return Result<Value>::success(Value(*text));
+    }
+    auto identity = parseIdentity(value);
+    if (!identity || !isPluginKind(identity.value().kind, true))
+        return invalidSchemaValue<Value>("plugin actor value must be an exact actor identity");
+    return Result<Value>::success(Value(std::move(identity).value()));
+}
+
+// At most eight declared-name keys; Lua cannot distinguish an empty object from an empty array.
+Result<std::vector<std::pair<std::string, PluginActionIntent::Value>>> parsePluginValues(
+    const json::Value* value, bool fieldText)
+{
+    using Values = std::vector<std::pair<std::string, PluginActionIntent::Value>>;
+    Values parsed;
+    if (value && value->array() && value->array()->empty()) return Result<Values>::success(std::move(parsed));
+    const auto* object = value ? value->object() : nullptr;
+    if (!object || object->size() > 8) return invalidSchemaValue<Values>("plugin values must be an object of at most 8 names");
+    for (const auto& [key, item] : *object) {
+        auto typed = parsePluginValue(item, fieldText);
+        if (!isPluginName(key) || !typed) return invalidSchemaValue<Values>("plugin value is outside the closed contract");
+        parsed.emplace_back(key, std::move(typed).value());
+    }
+    return Result<Values>::success(std::move(parsed));
+}
+
+void writeJson(const json::Value& value, std::string& out)
+{
+    if (value.isNull()) out += "null";
+    else if (const auto* boolean = value.boolean()) out += *boolean ? "true" : "false";
+    else if (const auto* integer = value.integer()) out += std::to_string(*integer);
+    else if (const auto* number = value.number()) {
+        std::array<char, 32> buffer{};
+        const auto written = std::to_chars(buffer.data(), buffer.data() + buffer.size(), *number);
+        out.append(buffer.data(), written.ptr);
+    } else if (const auto* text = value.string()) {
+        static constexpr char hex[] = "0123456789abcdef";
+        out.push_back('"');
+        for (const unsigned char c : *text) {
+            if (c == '"' || c == '\\') { out.push_back('\\'); out.push_back(static_cast<char>(c)); }
+            else if (c < 0x20U) { out += "\\u00"; out.push_back(hex[c >> 4U]); out.push_back(hex[c & 0x0fU]); }
+            else out.push_back(static_cast<char>(c));
+        }
+        out.push_back('"');
+    } else if (const auto* array = value.array()) {
+        out.push_back('[');
+        for (std::size_t index = 0; index < array->size(); ++index) {
+            if (index) out.push_back(',');
+            writeJson((*array)[index], out);
+        }
+        out.push_back(']');
+    } else if (const auto* object = value.object()) {
+        out.push_back('{');
+        bool first = true;
+        for (const auto& [key, item] : *object) {
+            if (!first) out.push_back(',');
+            first = false;
+            writeJson(json::Value{key}, out);
+            out.push_back(':');
+            writeJson(item, out);
+        }
+        out.push_back('}');
+    }
+}
+
+// Parse a client-built plugin message and check its envelope against the live session generation.
+Result<json::Object> parsePluginMessage(std::string_view message, std::string_view schema, std::size_t maximumBytes,
+    std::initializer_list<std::string_view> fields, std::string_view timeKey, const RequestCorrelation& expected,
+    const MessageId& expectedMessage)
+{
+    if (message.size() > maximumBytes)
+        return Result<json::Object>::failure(makeError(ErrorCode::payload_too_large, "plugin message exceeds its byte limit"));
+    auto object = json::requireObjectWithSchema(message, schema, {maximumBytes, 16, 4096, maximumBytes});
+    if (!object) return object;
+    if (!hasExactly(object.value(), fields)) return invalidSchemaValue<json::Object>("plugin message fields mismatch");
+    auto messageId = requireUuid(object.value(), "message_id");
+    auto request = requireUuid(object.value(), "request_id");
+    auto sessionId = requireUuid(object.value(), "session_id");
+    auto generationValue = requireUnsigned(object.value(), "generation", kMaximumProtocolInteger, 1);
+    auto time = requireTimestamp(object.value(), timeKey);
+    if (!messageId || !request || !sessionId || !generationValue || !time)
+        return invalidSchemaValue<json::Object>("plugin message envelope is invalid");
+    if (sessionId.value() != expected.session.value() || generationValue.value() != expected.generation.value())
+        return Result<json::Object>::failure(makeError(ErrorCode::stale_generation,
+            "plugin message is not for the current session generation"));
+    if (messageId.value() != expectedMessage.value() || request.value() != expected.request.value())
+        return invalidSchemaValue<json::Object>("plugin message IDs do not match the bridge request");
+    return object;
+}
+
+bool isUniqueList(const json::Value* value, std::size_t minimum, std::size_t maximum,
+    const std::function<bool(const json::Value&)>& valid)
+{
+    const auto* array = value ? value->array() : nullptr;
+    if (!array || array->size() < minimum || array->size() > maximum) return false;
+    std::set<std::string> seen;
+    for (const auto& item : *array) {
+        std::string key;
+        writeJson(item, key);
+        if (!valid(item) || !seen.insert(std::move(key)).second) return false;
+    }
+    return true;
+}
+
+bool isRegisteredPluginAction(const json::Value& value)
+{
+    const auto* action = value.object();
+    if (!action || !hasExactly(*action, {"name", "tier", "confirmation", "executor_kinds"}, {"actors"})) return false;
+    const auto* name = json::find(*action, "name")->string();
+    auto tier = requireUnsigned(*action, "tier", 2, 0);
+    const auto* confirmation = json::find(*action, "confirmation")->string();
+    if (!name || !isPluginName(*name) || !tier || !confirmation
+        || (*confirmation != "none" && *confirmation != "optional" && *confirmation != "required")
+        || (tier.value() == 2 && *confirmation != "required"))
+        return false;
+    const auto kindValid = [](const json::Value& kind) { return kind.string() && isPluginKind(*kind.string(), false); };
+    if (!isUniqueList(json::find(*action, "executor_kinds"), 1, 2, kindValid)) return false;
+    const auto* actors = json::find(*action, "actors");
+    return !actors || isUniqueList(actors, 1, 12, [](const json::Value& actor) {
+        auto identity = parseIdentity(actor);
+        return identity && isPluginKind(identity.value().kind, false);
+    });
+}
+
+Result<PluginActionIntent> parsePluginActionIntent(const json::Value& value, const ResponseCorrelation& envelope)
+{
+    const auto* object = value.object();
+    if (!object || !hasExactly(*object, {"schema", "action_id", "turn_id", "session_id", "generation", "plugin_id",
+            "plugin_version", "action", "tier", "confirmation_required", "cancellable", "actor", "target", "parameters", "expires_at"}))
+        return invalidSchemaValue<PluginActionIntent>("plugin intent fields mismatch");
+    auto schema = requireString(*object, "schema");
+    auto action = requireUuid(*object, "action_id");
+    auto turn = requireUuid(*object, "turn_id");
+    auto session = requireUuid(*object, "session_id");
+    auto generation = requireUnsigned(*object, "generation", kMaximumProtocolInteger, 1);
+    auto pluginId = requireString(*object, "plugin_id", 1, 80);
+    auto version = requireString(*object, "plugin_version", 1, 17);
+    auto name = requireString(*object, "action", 1, 32);
+    auto tier = requireUnsigned(*object, "tier", 2, 0);
+    auto confirmation = requireBoolean(*object, "confirmation_required");
+    auto cancellable = requireBoolean(*object, "cancellable");
+    auto expiresAt = requireTimestamp(*object, "expires_at");
+    if (!schema || schema.value() != "lorkhan.plugin.action-intent.v1")
+        return invalidSchemaValue<PluginActionIntent>("plugin intent schema mismatch");
+    if (!action || !turn || !session || !generation || !tier || !confirmation || !cancellable || !expiresAt)
+        return invalidSchemaValue<PluginActionIntent>("plugin intent fields are invalid");
+    if (turn.value() != envelope.turn.value() || session.value() != envelope.session.value()
+        || generation.value() != envelope.generation.value())
+        return invalidSchemaValue<PluginActionIntent>("plugin intent identity does not match event envelope");
+    if (!pluginId || !isPluginId(pluginId.value()) || !version || !isPluginVersion(version.value())
+        || !name || !isPluginName(name.value()))
+        return invalidSchemaValue<PluginActionIntent>("plugin intent names an invalid plugin or action");
+    if (tier.value() == 2 && !confirmation.value())
+        return invalidSchemaValue<PluginActionIntent>("tier 2 plugin intent requires confirmation");
+    auto actor = parseIdentity(*json::find(*object, "actor"));
+    if (!actor || !isPluginKind(actor.value().kind, false))
+        return invalidSchemaValue<PluginActionIntent>("plugin intent executor must be an exact npc or creature identity");
+    std::optional<ProtocolIdentity> target;
+    if (const auto* targetValue = json::find(*object, "target"); !targetValue->isNull()) {
+        auto parsed = parseIdentity(*targetValue);
+        if (!parsed || !isPluginKind(parsed.value().kind, true))
+            return invalidSchemaValue<PluginActionIntent>("plugin intent target must be null or an exact actor identity");
+        target = std::move(parsed).value();
+    }
+    const auto* parametersValue = json::find(*object, "parameters");
+    if (!parametersValue->object()) return invalidSchemaValue<PluginActionIntent>("plugin intent parameters must be an object");
+    auto parameters = parsePluginValues(parametersValue, false);
+    if (!parameters) return invalidSchemaValue<PluginActionIntent>(parameters.error().message);
+    return Result<PluginActionIntent>::success({ActionId(std::move(action).value()), TurnId(std::move(turn).value()),
+        SessionId(std::move(session).value()), Generation(generation.value()), std::move(pluginId).value(),
+        std::move(version).value(), std::move(name).value(), static_cast<std::uint32_t>(tier.value()), confirmation.value(),
+        cancellable.value(), std::move(actor).value(), std::move(target), std::move(parameters).value(), std::move(expiresAt).value()});
 }
 
 Result<ProtocolEvent> parseEvent(const json::Value& value, const SessionId& responseSession,
@@ -1108,6 +1365,11 @@ Result<ProtocolEvent> parseEvent(const json::Value& value, const SessionId& resp
         if (!intent) return invalidSchemaValue<ProtocolEvent>(intent.error().message);
         event.type = ProtocolEventType::action_intent;
         event.payload = ActionIntentEventPayload{std::move(intent).value()};
+    } else if (type.value() == "plugin.action.intent") {
+        auto intent = parsePluginActionIntent(*payloadValue, correlation.value());
+        if (!intent) return invalidSchemaValue<ProtocolEvent>(intent.error().message);
+        event.type = ProtocolEventType::plugin_action_intent;
+        event.payload = PluginActionIntentEventPayload{std::move(intent).value()};
     } else if (type.value() == "director.instructions") {
         if (!hasExactly(*payload, {"plan_id", "origin_turn_id", "expires_at", "instructions"}))
             return invalidSchemaValue<ProtocolEvent>("director instruction payload fields mismatch");
@@ -1244,6 +1506,17 @@ Result<ProtocolEvent> parseEvent(const json::Value& value, const SessionId& resp
         event.type = ProtocolEventType::speech_ready;
         event.payload = SpeechReadyEventPayload{MediaId(std::move(media).value()), MessageId(std::move(dialogueMessage).value()), std::move(hash).value(),
             bytes.value(), mappedCodec, duration.value(), std::move(expiresAt).value()};
+    } else if (type.value() == "speech.failed") {
+        if (!hasExactly(*payload, {"dialogue_message_id", "code"}))
+            return invalidSchemaValue<ProtocolEvent>("speech failure payload fields mismatch");
+        auto dialogueMessage = requireUuid(*payload, "dialogue_message_id");
+        auto code = requireString(*payload, "code");
+        if (!dialogueMessage) return invalidSchemaValue<ProtocolEvent>(dialogueMessage.error().message);
+        if (!code || (code.value() != "provider_unconfigured" && code.value() != "provider_timeout"
+                && code.value() != "provider_unavailable"))
+            return invalidSchemaValue<ProtocolEvent>("speech failure code mismatch");
+        event.type = ProtocolEventType::speech_failed;
+        event.payload = SpeechFailedEventPayload{MessageId(std::move(dialogueMessage).value()), std::move(code).value()};
     } else {
         return invalidSchemaValue<ProtocolEvent>("unknown event type");
     }
@@ -1270,8 +1543,35 @@ Result<void> parseHealthResponse(std::string_view body, const Headers& headers, 
     return Result<void>::success();
 }
 
-Result<ProtocolError> parseProtocolErrorResponse(
-    std::string_view body, const Headers& headers, json::ParseLimits limits)
+namespace {
+
+std::optional<ErrorCode> packageCode(std::string_view code)
+{
+    struct Mapping { std::string_view name; ErrorCode code; };
+    static constexpr std::array mappings{
+        Mapping{"package_invalid_request", ErrorCode::invalid_argument},
+        Mapping{"package_upload_not_found", ErrorCode::transport_failure},
+        Mapping{"package_operation_not_found", ErrorCode::transport_failure},
+        Mapping{"package_not_installed", ErrorCode::transport_failure},
+        Mapping{"package_route_not_found", ErrorCode::transport_failure},
+        Mapping{"package_too_large", ErrorCode::payload_too_large},
+        Mapping{"package_storage_full", ErrorCode::provider_unavailable},
+        Mapping{"package_storage_unavailable", ErrorCode::provider_unavailable},
+        Mapping{"package_storage_busy", ErrorCode::provider_unavailable},
+        Mapping{"package_upload_out_of_order", ErrorCode::duplicate_conflict},
+        Mapping{"package_upload_incomplete", ErrorCode::duplicate_conflict},
+        Mapping{"package_operation_pending", ErrorCode::duplicate_conflict},
+        Mapping{"package_already_installed", ErrorCode::duplicate_conflict},
+        Mapping{"package_version_not_newer", ErrorCode::duplicate_conflict},
+        Mapping{"package_hash_mismatch", ErrorCode::invalid_argument},
+    };
+    for (const auto& mapping : mappings)
+        if (mapping.name == code) return mapping.code;
+    return std::nullopt;
+}
+
+Result<ProtocolError> parseErrorObject(
+    std::string_view body, const Headers& headers, json::ParseLimits limits, bool packageCodes)
 {
     auto object = parseObject(body, headers, "lorkhan.error.v1", limits);
     if (!object)
@@ -1288,11 +1588,13 @@ Result<ProtocolError> parseProtocolErrorResponse(
     if (!message) return invalidSchemaValue<ProtocolError>(message.error().message);
     if (!correlation) return invalidSchemaValue<ProtocolError>(correlation.error().message);
     if (!retriable) return invalidSchemaValue<ProtocolError>(retriable.error().message);
-    const auto mappedCode = protocolCode(code.value());
+    auto mappedCode = protocolCode(code.value());
+    if (!mappedCode && packageCodes)
+        mappedCode = packageCode(code.value());
     if (!mappedCode)
         return invalidSchemaValue<ProtocolError>("unknown protocol error code");
 
-    ProtocolError parsed{*mappedCode, std::move(correlation).value(), retriable.value(), std::nullopt};
+    ProtocolError parsed{*mappedCode, std::move(correlation).value(), retriable.value(), std::nullopt, code.value()};
     if (json::find(object.value(), "retry_after_ms")) {
         auto retry = requireUnsigned(object.value(), "retry_after_ms",
             static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()));
@@ -1300,6 +1602,19 @@ Result<ProtocolError> parseProtocolErrorResponse(
         parsed.retryAfterMs = retry.value();
     }
     return Result<ProtocolError>::success(std::move(parsed));
+}
+
+} // namespace
+
+Result<ProtocolError> parseProtocolErrorResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits)
+{
+    return parseErrorObject(body, headers, limits, false);
+}
+
+Result<ProtocolError> parsePluginPackageErrorResponse(std::string_view body, const Headers& headers)
+{
+    return parseErrorObject(body, headers, {}, true);
 }
 
 Result<SessionAcceptedResponse> parseSessionAcceptedResponse(
@@ -1377,7 +1692,16 @@ Result<EventsResponse> parseEventsResponse(
 {
     auto object = parseObject(body, headers, "lorkhan.events.v1", limits);
     if (!object) return Result<EventsResponse>::failure(object.error());
-    if (!hasExactly(object.value(), {"schema", "session_id", "generation", "next_after", "events", "autonomy"}))
+    auto fields = object.value();
+    std::optional<std::string> policyRevision;
+    if (const auto* revision = json::find(fields, "plugin_policy_revision")) {
+        if (!revision->string() || revision->string()->size() != 64
+            || revision->string()->find_first_not_of("0123456789abcdef") != std::string::npos)
+            return invalidSchemaValue<EventsResponse>("plugin policy revision must be a SHA-256 token");
+        policyRevision = *revision->string();
+        fields.erase("plugin_policy_revision");
+    }
+    if (!hasExactly(fields, {"schema", "session_id", "generation", "next_after", "events", "autonomy"}))
         return invalidSchemaValue<EventsResponse>("events response fields mismatch");
     auto session = requireUuid(object.value(), "session_id");
     auto generation = requireUnsigned(object.value(), "generation");
@@ -1393,7 +1717,7 @@ Result<EventsResponse> parseEventsResponse(
         return invalidSchemaValue<EventsResponse>("events must be an array of at most 100 items");
     if (!autonomy || autonomy->size() > 3)
         return invalidSchemaValue<EventsResponse>("autonomy must be an array of at most 3 items");
-    EventsResponse parsed{SessionId(std::move(session).value()), Generation(generation.value()), nextAfter.value(), {}, {}};
+    EventsResponse parsed{SessionId(std::move(session).value()), Generation(generation.value()), nextAfter.value(), {}, {}, policyRevision};
     parsed.events.reserve(events->size());
     std::uint64_t previous = 0;
     for (const auto& value : *events) {
@@ -1591,6 +1915,52 @@ Result<void> validateItemPickupPayload(std::string_view body, json::ParseLimits 
     return Result<void>::success();
 }
 
+// Validate one committed barter: copied item lines plus net gold, never a model-supplied transfer.
+Result<void> validateBarterTradePayload(std::string_view body, json::ParseLimits limits)
+{
+    auto parsed = json::parse(body, limits);
+    if (!parsed) return Result<void>::failure(parsed.error());
+    const auto* object = parsed.value().object();
+    if (!object || !hasExactly(*object, {"player", "merchant", "player_received", "player_gave", "gold_to_player", "game_time"}, {"audience", "calendar"}))
+        return invalidSchema("barter trade fields mismatch");
+    if (const auto* calendar = json::find(*object, "calendar"); calendar && !validObservationCalendar(*calendar))
+        return invalidSchema("observation calendar is invalid");
+    auto player = parseIdentity(*json::find(*object, "player"));
+    auto merchant = parseIdentity(*json::find(*object, "merchant"));
+    if (!player || player.value().kind != "player") return invalidSchema("barter trade requires player identity");
+    if (!merchant || (merchant.value().kind != "npc" && merchant.value().kind != "creature"))
+        return invalidSchema("barter merchant must be an NPC or creature");
+    std::size_t lines = 0;
+    for (const char* field : {"player_received", "player_gave"}) {
+        const auto* list = json::find(*object, field)->array();
+        if (!list || list->size() > 32) return invalidSchema("barter item list exceeds bounds");
+        for (const auto& entry : *list) {
+            const auto* line = entry.object();
+            if (!line || !hasExactly(*line, {"item_record_id", "item_name", "count", "unit_value"})
+                || !requireString(*line, "item_record_id", 1, 256) || !requireString(*line, "item_name", 1, 256)
+                || !requireUnsigned(*line, "count", 2147483647, 1) || !requireUnsigned(*line, "unit_value", 2147483647))
+                return invalidSchema("barter item line is invalid");
+        }
+        lines += list->size();
+    }
+    if (lines == 0) return invalidSchema("barter trade requires a traded item");
+    const auto* gold = json::find(*object, "gold_to_player")->integer();
+    if (!gold || *gold < -2147483647 || *gold > 2147483647 || !requireNumber(*object, "game_time", 0, 9007199254740991.0))
+        return invalidSchema("barter trade values exceed bounds");
+    if (const auto* value = json::find(*object, "audience")) {
+        const auto* audience = value->array();
+        if (!audience || audience->size() > 12) return invalidSchema("barter audience exceeds bounds");
+        std::set<std::pair<std::uint64_t, std::uint64_t>> references;
+        for (const auto& entry : *audience) {
+            auto actor = parseIdentity(entry);
+            if (!actor || (actor.value().kind != "player" && actor.value().kind != "npc" && actor.value().kind != "creature")
+                || !references.emplace(actor.value().refnumContentFile, actor.value().refnumIndex).second)
+                return invalidSchema("barter audience identity is invalid or duplicated");
+        }
+    }
+    return Result<void>::success();
+}
+
 // Keep successful-cast observations closed and bounded before enqueueing transport work.
 Result<void> validateSpellCastPayload(std::string_view body, json::ParseLimits limits)
 {
@@ -1627,6 +1997,17 @@ Result<void> validateSpellCastPayload(std::string_view body, json::ParseLimits l
     return Result<void>::success();
 }
 
+// A save rollback compares this calendar with the loaded save, so an invalid date must not be queued.
+Result<void> validateObservationCalendarPayload(std::string_view body, json::ParseLimits limits)
+{
+    auto parsed=json::parse(body,limits);if(!parsed)return Result<void>::failure(parsed.error());
+    const auto* object=parsed.value().object();
+    if(!object)return invalidSchema("observation must be an object");
+    if(const auto* calendar=json::find(*object,"calendar");calendar&&!validObservationCalendar(*calendar))
+        return invalidSchema("observation calendar is invalid");
+    return Result<void>::success();
+}
+
 // Capture only physical resurrection observations with bounded, distinct nearby witnesses.
 Result<void> validateActorResurrectedPayload(std::string_view body, json::ParseLimits limits)
 {
@@ -1645,6 +2026,28 @@ Result<void> validateActorResurrectedPayload(std::string_view body, json::ParseL
         if(!witness||(witness.value().kind!="npc"&&witness.value().kind!="creature")
             ||!references.emplace(witness.value().refnumContentFile,witness.value().refnumIndex).second)
             return invalidSchema("invalid resurrection witness");
+    }
+    return Result<void>::success();
+}
+
+// A completed non-player death names only its victim; killer and weapon are not engine-proven facts.
+Result<void> validateActorDiedPayload(std::string_view body, json::ParseLimits limits)
+{
+    auto parsed=json::parse(body,limits);if(!parsed)return Result<void>::failure(parsed.error());
+    const auto* object=parsed.value().object();
+    if(!object||!hasExactly(*object,{"victim","audience","game_time"},{"calendar"}))return invalidSchema("death fields mismatch");
+    auto victim=parseIdentity(*json::find(*object,"victim"));
+    if(!victim||(victim.value().kind!="npc"&&victim.value().kind!="creature"))return invalidSchema("invalid death victim");
+    if(!requireNumber(*object,"game_time",0,9007199254740991.0))return invalidSchema("invalid death time");
+    if(const auto* calendar=json::find(*object,"calendar");calendar&&!validObservationCalendar(*calendar))return invalidSchema("invalid death calendar");
+    const auto* audience=json::find(*object,"audience")->array();
+    if(!audience||audience->size()>12)return invalidSchema("invalid death audience");
+    std::set<std::pair<std::uint64_t,std::uint64_t>> references{{victim.value().refnumContentFile,victim.value().refnumIndex}};
+    for(const auto& value:*audience){
+        auto witness=parseIdentity(value);
+        if(!witness||(witness.value().kind!="npc"&&witness.value().kind!="creature")
+            ||!references.emplace(witness.value().refnumContentFile,witness.value().refnumIndex).second)
+            return invalidSchema("invalid death witness");
     }
     return Result<void>::success();
 }
@@ -1726,7 +2129,7 @@ Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(
     if (!request) return invalidSchemaValue<GameDataAcceptedResponse>(request.error().message);
     if (!session) return invalidSchemaValue<GameDataAcceptedResponse>(session.error().message);
     if (!generation) return invalidSchemaValue<GameDataAcceptedResponse>(generation.error().message);
-    if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile" && type.value() != "inventory" && type.value() != "spell_cast" && type.value() != "actor_resurrected" && type.value() != "item_pickup"
+    if (!type || (type.value() != "captured_dialogue" && type.value() != "actor_profile" && type.value() != "inventory" && type.value() != "spell_cast" && type.value() != "actor_resurrected" && type.value() != "actor_died" && type.value() != "item_pickup" && type.value() != "barter_trade"
         &&type.value()!="automatic_diary"&&type.value()!="rpg_event"&&type.value()!="bored_event"&&type.value()!="quest_event"&&type.value()!="disposition"))
         return invalidSchemaValue<GameDataAcceptedResponse>("game-data type mismatch");
     if (!duplicate) return invalidSchemaValue<GameDataAcceptedResponse>(duplicate.error().message);
@@ -2148,6 +2551,31 @@ Result<DebugCommandResponse> parseDebugCommandResponse(
     return Result<DebugCommandResponse>::success(std::move(parsed));
 }
 
+Result<MenuDialogueTtsCancelAcceptedResponse> parseMenuDialogueTtsCancelAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits)
+{
+    auto object=parseObject(body,headers,"lorkhan.menu-dialogue-tts.cancel.accepted.v1",limits);
+    if(!object)return Result<MenuDialogueTtsCancelAcceptedResponse>::failure(object.error());
+    if(!hasExactly(object.value(),{"schema","message_id","request_id","session_id","generation","target_message_id","status"}))
+        return invalidSchemaValue<MenuDialogueTtsCancelAcceptedResponse>("menu dialogue TTS cancel fields mismatch");
+    auto message=requireUuid(object.value(),"message_id");auto request=requireUuid(object.value(),"request_id");
+    auto session=requireUuid(object.value(),"session_id");auto target=requireUuid(object.value(),"target_message_id");
+    auto generation=requireUnsigned(object.value(),"generation",kMaximumProtocolInteger,1);
+    auto status=requireString(object.value(),"status",1,16);
+    if(!message)return invalidSchemaValue<MenuDialogueTtsCancelAcceptedResponse>(message.error().message);
+    if(!request)return invalidSchemaValue<MenuDialogueTtsCancelAcceptedResponse>(request.error().message);
+    if(!session)return invalidSchemaValue<MenuDialogueTtsCancelAcceptedResponse>(session.error().message);
+    if(!target)return invalidSchemaValue<MenuDialogueTtsCancelAcceptedResponse>(target.error().message);
+    if(!generation)return invalidSchemaValue<MenuDialogueTtsCancelAcceptedResponse>(generation.error().message);
+    if(!status)return invalidSchemaValue<MenuDialogueTtsCancelAcceptedResponse>(status.error().message);
+    if(status.value()!="cancelled"&&status.value()!="completed")
+        return invalidSchemaValue<MenuDialogueTtsCancelAcceptedResponse>("unknown menu dialogue TTS cancel status");
+    return Result<MenuDialogueTtsCancelAcceptedResponse>::success({MessageId(std::move(message).value()),
+        RequestId(std::move(request).value()),SessionId(std::move(session).value()),Generation(generation.value()),
+        MessageId(std::move(target).value()),status.value()=="completed"?MenuDialogueTtsCancelStatus::completed
+            :MenuDialogueTtsCancelStatus::cancelled});
+}
+
 Result<DebugCommandResultAcceptedResponse> parseDebugCommandResultAcceptedResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits)
 {
@@ -2188,6 +2616,274 @@ Result<void> validateHealthHttpResponse(
         return Result<void>::failure(parsed.error());
     return Result<void>::failure(makeError(parsed.value().code, "server returned a typed protocol error",
         parsed.value().retriable, parsed.value().retryAfterMs));
+}
+
+Result<std::string> canonicalPluginRegistration(
+    std::string_view message, const RequestCorrelation& expected, const MessageId& expectedMessage)
+{
+    auto object = parsePluginMessage(message, "lorkhan.plugin.registration.v1", kMaxPluginRegistrationBytes,
+        {"schema", "message_id", "request_id", "session_id", "generation", "created_at", "operation", "plugins"},
+        "created_at", expected, expectedMessage);
+    if (!object) return Result<std::string>::failure(object.error());
+    const auto* operation = json::find(object.value(), "operation")->string();
+    if (!operation || (*operation != "register" && *operation != "unregister"))
+        return invalidSchemaValue<std::string>("plugin registration operation is invalid");
+    const bool registering = *operation == "register";
+    std::set<std::string> plugins;
+    const bool valid = isUniqueList(json::find(object.value(), "plugins"), 1, 16, [&](const json::Value& value) {
+        const auto* plugin = value.object();
+        if (!plugin || !(registering
+                ? hasExactly(*plugin, {"plugin_id", "version", "manifest_sha256", "actions", "events", "prompt_slots"})
+                : hasExactly(*plugin, {"plugin_id", "version"})))
+            return false;
+        const auto* id = json::find(*plugin, "plugin_id")->string();
+        const auto* version = json::find(*plugin, "version")->string();
+        if (!id || !isPluginId(*id) || !version || !isPluginVersion(*version) || !plugins.insert(*id).second) return false;
+        if (!registering) return true;
+        const auto* hash = json::find(*plugin, "manifest_sha256")->string();
+        std::set<std::string> actions;
+        return hash && isLowercaseHash(*hash)
+            && isUniqueList(json::find(*plugin, "actions"), 0, 16, [&actions](const json::Value& action) {
+                   return isRegisteredPluginAction(action)
+                       && actions.insert(*json::find(*action.object(), "name")->string()).second; })
+            && isUniqueList(json::find(*plugin, "events"), 0, 16,
+                   [](const json::Value& event) { return event.string() && isPluginName(*event.string()); })
+            && isUniqueList(json::find(*plugin, "prompt_slots"), 0, 4, [](const json::Value& slot) {
+                   const auto* name = slot.string();
+                   return name && (*name == "actor_state" || *name == "player_state" || *name == "scene_notes"
+                       || *name == "world_state"); });
+    });
+    if (!valid) return invalidSchemaValue<std::string>("plugin registration entries are outside the closed contract");
+    std::string canonical;
+    writeJson(json::Value{object.value()}, canonical);
+    return Result<std::string>::success(std::move(canonical));
+}
+
+Result<std::string> canonicalPluginEvent(
+    std::string_view message, const RequestCorrelation& expected, const MessageId& expectedMessage)
+{
+    auto object = parsePluginMessage(message, "lorkhan.plugin.event.v1", kMaxPluginEventBytes,
+        {"schema", "message_id", "request_id", "session_id", "generation", "observed_at", "plugin_id",
+            "plugin_version", "event", "fields"},
+        "observed_at", expected, expectedMessage);
+    if (!object) return Result<std::string>::failure(object.error());
+    const auto* id = json::find(object.value(), "plugin_id")->string();
+    const auto* version = json::find(object.value(), "plugin_version")->string();
+    const auto* event = json::find(object.value(), "event")->string();
+    auto fields = parsePluginValues(json::find(object.value(), "fields"), true);
+    if (!id || !isPluginId(*id) || !version || !isPluginVersion(*version) || !event || !isPluginName(*event))
+        return invalidSchemaValue<std::string>("plugin event names an invalid plugin or event");
+    if (!fields) return Result<std::string>::failure(fields.error());
+    auto canonical = std::move(object).value();
+    if (canonical["fields"].array()) canonical["fields"] = json::Value{json::Object{}};
+    std::string out;
+    writeJson(json::Value{std::move(canonical)}, out);
+    if (out.size() > kMaxPluginEventBytes)
+        return Result<std::string>::failure(makeError(ErrorCode::payload_too_large, "plugin message exceeds its byte limit"));
+    return Result<std::string>::success(std::move(out));
+}
+
+Result<PluginRegistrationAcceptedResponse> parsePluginRegistrationAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits)
+{
+    using Response = PluginRegistrationAcceptedResponse;
+    auto object = parseObject(body, headers, "lorkhan.plugin.registration.accepted.v1", limits);
+    if (!object) return Result<Response>::failure(object.error());
+    if (!hasExactly(object.value(), {"schema", "message_id", "request_id", "session_id", "generation", "plugins"}))
+        return invalidSchemaValue<Response>("plugin registration accepted fields mismatch");
+    auto message = requireUuid(object.value(), "message_id");
+    auto request = requireUuid(object.value(), "request_id");
+    auto session = requireUuid(object.value(), "session_id");
+    auto generation = requireUnsigned(object.value(), "generation", kMaximumProtocolInteger, 1);
+    const auto* plugins = json::find(object.value(), "plugins")->array();
+    if (!message || !request || !session || !generation || !plugins || plugins->size() > 32)
+        return invalidSchemaValue<Response>("plugin registration accepted envelope is invalid");
+    Response parsed{MessageId(std::move(message).value()), RequestId(std::move(request).value()),
+        SessionId(std::move(session).value()), Generation(generation.value()), {}};
+    for (const auto& value : *plugins) {
+        const auto* plugin = value.object();
+        if (!plugin || !hasExactly(*plugin, {"plugin_id", "version", "state", "reason_code"}))
+            return invalidSchemaValue<Response>("plugin registration result fields mismatch");
+        auto id = requireString(*plugin, "plugin_id", 1, 80);
+        auto version = requireString(*plugin, "version", 1, 17);
+        auto state = requireString(*plugin, "state");
+        auto reason = requireString(*plugin, "reason_code", 1, 64);
+        if (!id || !isPluginId(id.value()) || !version || !isPluginVersion(version.value()) || !state
+            || (state.value() != "active" && state.value() != "disabled" && state.value() != "rejected"
+                && state.value() != "unregistered")
+            || !reason || !isPluginName(reason.value(), 64))
+            return invalidSchemaValue<Response>("plugin registration result is outside the closed contract");
+        for (const auto& previous : parsed.plugins)
+            if (previous.pluginId == id.value() && previous.version == version.value())
+                return invalidSchemaValue<Response>("plugin registration results must be unique");
+        parsed.plugins.push_back({std::move(id).value(), std::move(version).value(), std::move(state).value(),
+            std::move(reason).value()});
+    }
+    return Result<Response>::success(std::move(parsed));
+}
+
+Result<PluginEventAcceptedResponse> parsePluginEventAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits)
+{
+    using Response = PluginEventAcceptedResponse;
+    auto object = parseObject(body, headers, "lorkhan.plugin.event.accepted.v1", limits);
+    if (!object) return Result<Response>::failure(object.error());
+    if (!hasExactly(object.value(), {"schema", "message_id", "request_id", "session_id", "generation", "duplicate"}))
+        return invalidSchemaValue<Response>("plugin event accepted fields mismatch");
+    auto message = requireUuid(object.value(), "message_id");
+    auto request = requireUuid(object.value(), "request_id");
+    auto session = requireUuid(object.value(), "session_id");
+    auto generation = requireUnsigned(object.value(), "generation", kMaximumProtocolInteger, 1);
+    auto duplicate = requireBoolean(object.value(), "duplicate");
+    if (!message || !request || !session || !generation || !duplicate)
+        return invalidSchemaValue<Response>("plugin event accepted envelope is invalid");
+    return Result<Response>::success({MessageId(std::move(message).value()), RequestId(std::move(request).value()),
+        SessionId(std::move(session).value()), Generation(generation.value()), duplicate.value()});
+}
+
+// Plugin package lifecycle responses (no schema member; exact keys; never paths).
+namespace {
+
+constexpr json::ParseLimits kPackageLimits{64U * 1024U, 8, 512, 4096};
+
+bool isLowerHex64(std::string_view value)
+{
+    return value.size() == 64 && std::all_of(value.begin(), value.end(),
+        [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); });
+}
+
+Result<json::Object> parsePackageObject(std::string_view body, const Headers& headers)
+{
+    auto valid = validateJsonBody(body, headers, kPackageLimits);
+    if (!valid) return Result<json::Object>::failure(valid.error());
+    auto parsed = json::parse(body, kPackageLimits);
+    if (!parsed) return Result<json::Object>::failure(parsed.error());
+    const auto* object = parsed.value().object();
+    if (!object) return invalidSchemaValue<json::Object>("package response must be an object");
+    return Result<json::Object>::success(*object);
+}
+
+bool optionalBoundedString(const json::Object& object, std::string_view key, std::size_t maximum)
+{
+    const auto* value = json::find(object, key);
+    return value && (value->isNull() || (value->string() && value->string()->size() <= maximum));
+}
+
+Result<PluginPackageInfo> parsePackageInfo(const json::Value& value)
+{
+    const auto* object = value.object();
+    if (!object || !hasExactly(*object, {"plugin_id", "display_name", "version", "state", "enabled", "archive_sha256",
+            "manifest_sha256", "previous_version", "revision", "installed_at", "updated_at"}))
+        return invalidSchemaValue<PluginPackageInfo>("package fields mismatch");
+    auto id = requireString(*object, "plugin_id", 1, 80);
+    auto version = requireString(*object, "version", 1, 17);
+    auto state = requireString(*object, "state");
+    auto enabled = requireBoolean(*object, "enabled");
+    auto archive = requireString(*object, "archive_sha256");
+    auto manifest = requireString(*object, "manifest_sha256");
+    auto revision = requireUnsigned(*object, "revision");
+    const auto* previous = json::find(*object, "previous_version");
+    if (!id || !isPluginId(id.value()) || !version || !isPluginVersion(version.value()) || !state
+        || (state.value() != "installed" && state.value() != "removed") || !enabled || !archive
+        || !isLowerHex64(archive.value()) || !manifest || !isLowerHex64(manifest.value()) || !revision
+        || !optionalBoundedString(*object, "display_name", 512)
+        || !previous || !(previous->isNull() || (previous->string() && isPluginVersion(*previous->string())))
+        || !optionalBoundedString(*object, "installed_at", 64) || !optionalBoundedString(*object, "updated_at", 64))
+        return invalidSchemaValue<PluginPackageInfo>("package is outside the closed contract");
+    return Result<PluginPackageInfo>::success({std::move(id).value(), std::move(version).value(),
+        std::move(state).value(), enabled.value(), std::move(archive).value(), std::move(manifest).value()});
+}
+
+} // namespace
+
+bool isValidPluginId(std::string_view value) { return isPluginId(value); }
+bool isValidPluginVersion(std::string_view value) { return isPluginVersion(value); }
+
+Result<PluginPackageProbe> parsePluginPackageProbeResponse(std::string_view body, const Headers& headers)
+{
+    auto object = parsePackageObject(body, headers);
+    if (!object) return Result<PluginPackageProbe>::failure(object.error());
+    if (!hasExactly(object.value(), {"plugin_id", "action", "pending", "installed"}))
+        return invalidSchemaValue<PluginPackageProbe>("package probe fields mismatch");
+    auto id = requireString(object.value(), "plugin_id", 1, 80);
+    auto action = requireString(object.value(), "action");
+    auto pending = requireBoolean(object.value(), "pending");
+    if (!id || !isPluginId(id.value()) || !action || !pending)
+        return invalidSchemaValue<PluginPackageProbe>("package probe is outside the closed contract");
+    PluginPackageProbe probe{std::move(id).value(), PluginPackageProbeAction::install, pending.value(), std::nullopt};
+    const auto& name = action.value();
+    if (name == "install") probe.action = PluginPackageProbeAction::install;
+    else if (name == "update") probe.action = PluginPackageProbeAction::update;
+    else if (name == "current") probe.action = PluginPackageProbeAction::current;
+    else if (name == "older") probe.action = PluginPackageProbeAction::older;
+    else if (name == "conflict") probe.action = PluginPackageProbeAction::conflict;
+    else return invalidSchemaValue<PluginPackageProbe>("package probe action is unknown");
+    const auto* installed = json::find(object.value(), "installed");
+    if (!installed->isNull()) {
+        auto info = parsePackageInfo(*installed);
+        if (!info) return Result<PluginPackageProbe>::failure(info.error());
+        if (info.value().pluginId != probe.pluginId)
+            return invalidSchemaValue<PluginPackageProbe>("package probe names another plugin");
+        probe.installed = std::move(info).value();
+    }
+    // Only an installed row can make a candidate current, older, conflicting or an update.
+    const bool installedRow = probe.installed && probe.installed->state == "installed";
+    if ((probe.action != PluginPackageProbeAction::install) != installedRow)
+        return invalidSchemaValue<PluginPackageProbe>("package probe action contradicts installed state");
+    return Result<PluginPackageProbe>::success(std::move(probe));
+}
+
+Result<PluginPackageUpload> parsePluginPackageUploadResponse(
+    std::string_view body, const Headers& headers, bool started)
+{
+    auto object = parsePackageObject(body, headers);
+    if (!object) return Result<PluginPackageUpload>::failure(object.error());
+    if (started ? !hasExactly(object.value(), {"upload_id", "next_index", "chunk_bytes", "complete"})
+                : !hasExactly(object.value(), {"upload_id", "next_index", "received", "complete"}))
+        return invalidSchemaValue<PluginPackageUpload>("package upload fields mismatch");
+    auto id = requireUuid(object.value(), "upload_id");
+    auto next = requireUnsigned(object.value(), "next_index", 99999);
+    auto complete = requireBoolean(object.value(), "complete");
+    auto counter = started ? requireUnsigned(object.value(), "chunk_bytes", kPluginPackageChunkBytes, 1)
+                           : requireUnsigned(object.value(), "received", kMaxPluginPackageBytes);
+    if (!id || !next || !complete || !counter)
+        return invalidSchemaValue<PluginPackageUpload>("package upload is outside the closed contract");
+    PluginPackageUpload upload{std::move(id).value(), next.value(), 0, 0, complete.value()};
+    (started ? upload.chunkBytes : upload.received) = counter.value();
+    if (started && (upload.nextIndex != 0 || upload.complete))
+        return invalidSchemaValue<PluginPackageUpload>("new package upload must start empty");
+    return Result<PluginPackageUpload>::success(std::move(upload));
+}
+
+Result<PluginPackageOperation> parsePluginPackageOperationResponse(std::string_view body, const Headers& headers)
+{
+    auto object = parsePackageObject(body, headers);
+    if (!object) return Result<PluginPackageOperation>::failure(object.error());
+    const auto* wrapped = hasExactly(object.value(), {"operation"}) ? json::find(object.value(), "operation")->object() : nullptr;
+    if (!wrapped || !hasExactly(*wrapped, {"operation_id", "plugin_id", "operation", "version", "archive_sha256",
+            "state", "error_code", "created_at", "finished_at"}))
+        return invalidSchemaValue<PluginPackageOperation>("package operation fields mismatch");
+    auto id = requireUuid(*wrapped, "operation_id");
+    auto plugin = requireString(*wrapped, "plugin_id", 1, 80);
+    auto kind = requireString(*wrapped, "operation");
+    auto version = requireString(*wrapped, "version", 1, 17);
+    auto archive = requireString(*wrapped, "archive_sha256");
+    auto state = requireString(*wrapped, "state");
+    const auto* error = json::find(*wrapped, "error_code");
+    if (!id || !plugin || !isPluginId(plugin.value()) || !kind || (kind.value() != "install" && kind.value() != "update")
+        || !version || !isPluginVersion(version.value()) || !archive || !isLowerHex64(archive.value()) || !state
+        || !(error->isNull() || (error->string() && isPluginName(*error->string(), 64)))
+        || !optionalBoundedString(*wrapped, "created_at", 64) || !optionalBoundedString(*wrapped, "finished_at", 64))
+        return invalidSchemaValue<PluginPackageOperation>("package operation is outside the closed contract");
+    PluginPackageOperation operation{std::move(id).value(), std::move(plugin).value(), kind.value() == "update",
+        std::move(version).value(), std::move(archive).value(), PluginPackageOperationState::queued, std::nullopt};
+    if (state.value() == "succeeded") operation.state = PluginPackageOperationState::succeeded;
+    else if (state.value() == "failed") operation.state = PluginPackageOperationState::failed;
+    else if (state.value() != "queued") return invalidSchemaValue<PluginPackageOperation>("package operation state is unknown");
+    if (error->string()) operation.errorCode = *error->string();
+    if ((operation.state == PluginPackageOperationState::failed) != operation.errorCode.has_value())
+        return invalidSchemaValue<PluginPackageOperation>("only a failed package operation carries an error code");
+    return Result<PluginPackageOperation>::success(std::move(operation));
 }
 
 } // namespace lorkhan

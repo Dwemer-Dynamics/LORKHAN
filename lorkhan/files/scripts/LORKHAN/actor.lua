@@ -3,6 +3,7 @@ local executor=require('scripts.LORKHAN.actor_executor')
 local actions=require('scripts.LORKHAN.actions')
 local protocol=require('scripts.LORKHAN.protocol')
 local identity=require('scripts.LORKHAN.identity')
+local util=require('scripts.LORKHAN.util')
 local core=adapter.event()
 local state
 local lastCombatSignature
@@ -37,8 +38,8 @@ local engine={
 }
 local function report(result,command)
     local bridge=adapter.bridge()
-    if not result or not bridge or not bridge.utcNow or not core or not core.sendGlobalEvent then return end
-    local canonical=actions.canonicalResult(result,{message_id=command.message_id,request_id=command.request_id,
+    if not result or not bridge or not bridge.utcNow or not bridge.newMessageId or not core or not core.sendGlobalEvent then return end
+    local canonical=actions.canonicalResult(result,{message_id=bridge.newMessageId(),request_id=command.request_id,
         turn_id=command.turn_id,session_id=command.session_id,generation=command.generation},bridge.utcNow())
     if canonical then core.sendGlobalEvent('LORKHAN_ACTION_RESULT',{result=canonical,action_name=command.name}) end
 end
@@ -119,8 +120,18 @@ local function restoreSavedWait()
 end
 return {
     engineHandlers={onInit=function(data) state=executor.new(data.actor,data.generation,data.capabilities) end,
-        onSave=function() return {waitHere=adapter.saveWaitHere(waitHere)} end,
-        onLoad=function(data) waitHere=nil;savedWaitHere=type(data)=='table' and data.waitHere or nil end,
+        onSave=function()
+            return {waitHere=adapter.saveWaitHere(waitHere),actor=state and util.copy(state.identity),
+                ownedAi=state and util.copy(state.ownedAi),ownedCombat=state and util.copy(state.ownedCombat)}
+        end,
+        onLoad=function(data)
+            waitHere=nil;savedWaitHere=type(data)=='table' and data.waitHere or nil
+            -- Restore package ownership so Stop still matches only our saved AI packages.
+            if type(data)=='table' and identity.validate(data.actor) then
+                state=executor.new(data.actor,0,{})
+                state.ownedAi=util.copy(data.ownedAi);state.ownedCombat=util.copy(data.ownedCombat)
+            end
+        end,
         onActive=function()
             restoreSavedWait()
             if state then
@@ -181,7 +192,7 @@ return {
             local result=executor.execute(state,command,engine,authority(command)) report(result,command)
         end,
         LORKHAN_ACTOR_REJECT=function(command)
-            if state then report(executor.reject(state,command,'user_declined'),command) end
+            if state then report(executor.reject(state,command,'user_declined',authority(command)),command) end
         end,
         LORKHAN_ACTOR_SPEAK=function(command)
             if not state then return end

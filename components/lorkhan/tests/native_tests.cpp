@@ -1,3 +1,5 @@
+#include "lorkhan/client_config_path.hpp"
+#include <fstream>
 #include <lorkhan/record_provenance.hpp>
 #include <lorkhan/playback.hpp>
 #include <lorkhan/session_identity.hpp>
@@ -6,6 +8,7 @@
 #include "lorkhan/events.hpp"
 #include "lorkhan/json.hpp"
 #include "lorkhan/media.hpp"
+#include "lorkhan/plugin_package.hpp"
 #include "lorkhan/protocol_response.hpp"
 #include "lorkhan/queues.hpp"
 #include "lorkhan/validation.hpp"
@@ -15,12 +18,16 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <limits>
 #include <mutex>
+#include <span>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <type_traits>
+#include <tuple>
 #include <vector>
 
 using namespace std::chrono_literals;
@@ -49,6 +56,7 @@ public:
 struct TransportState {
     std::atomic<unsigned> executions{0};
     std::atomic<unsigned> interrupts{0};
+    std::atomic<unsigned> pollWaitMs{9999};
     std::atomic<bool> block{false};
 };
 
@@ -58,6 +66,8 @@ public:
     lorkhan::Result<lorkhan::InboundResult> execute(
         const lorkhan::OutboundRequest& request, std::stop_token cancellation) override
     {
+        if (const auto* poll = std::get_if<lorkhan::EventPollRequest>(&request.payload))
+            m_state->pollWaitMs = poll->waitMs;
         ++m_state->executions;
         while (m_state->block.load() && !cancellation.stop_requested())
             std::this_thread::yield();
@@ -261,13 +271,14 @@ void testProtocolResponses()
              std::pair{"action_target_invalid", lorkhan::ErrorCode::invalid_action},
              std::pair{"action_tier_mismatch", lorkhan::ErrorCode::invalid_action},
              std::pair{"invalid_audio", lorkhan::ErrorCode::media_rejected},
+             std::pair{"operation_cancelled", lorkhan::ErrorCode::cancelled},
              std::pair{"rechat_cooldown", lorkhan::ErrorCode::cancelled},
              std::pair{"conversation_cooldown", lorkhan::ErrorCode::cancelled},
              std::pair{"invalid_rechat_context", lorkhan::ErrorCode::invalid_schema}}) {
         const auto response = lorkhan::parseProtocolErrorResponse(
             std::string(R"({"schema":"lorkhan.error.v1","code":")") + code
                 + R"(","message":"Request rejected","correlation_id":"01900000-0000-7000-8000-000000000001","retriable":false})", jsonHeaders);
-        CHECK(response && response.value().code == expected);
+        CHECK(response && response.value().code == expected && response.value().wireCode == code);
     }
     CHECK(!lorkhan::parseProtocolErrorResponse(
         R"({"schema":"lorkhan.error.v1","code":"internal_error","message":"","correlation_id":"01900000-0000-7000-8000-000000000001","retriable":false})",
@@ -404,6 +415,32 @@ void testAcceptedProtocolResponses()
     CHECK(!lorkhan::validateItemPickupPayload(pickupPrefix + R"(,"code":"additem"})"));
     CHECK(lorkhan::validateItemPickupPayload(pickupPrefix + ",\"audience\":[" + protocolIdentity() + "]}"));
     CHECK(!lorkhan::validateItemPickupPayload(pickupPrefix + ",\"audience\":[" + protocolIdentity() + "," + protocolIdentity() + "]}"));
+    const std::string barterLine = R"({"item_record_id":"common_shirt_01","item_name":"Common Shirt","count":2,"unit_value":5})";
+    const std::string barterPrefix = "{\"player\":" + pickupPlayer + ",\"merchant\":" + protocolIdentity();
+    const auto barter = [&](const std::string& received, const std::string& gave, const std::string& rest) {
+        return barterPrefix + ",\"player_received\":[" + received + "],\"player_gave\":[" + gave + "]" + rest + "}";
+    };
+    CHECK(lorkhan::validateBarterTradePayload(barter(barterLine, "", R"(,"gold_to_player":-150,"game_time":100)")));
+    CHECK(lorkhan::validateBarterTradePayload(barter("", barterLine, R"(,"gold_to_player":150,"game_time":100,"calendar":{"year":427,"month":8,"day":16,"hour":12.5})")));
+    CHECK(!lorkhan::validateBarterTradePayload(barter("", "", R"(,"gold_to_player":150,"game_time":100)")));
+    CHECK(!lorkhan::validateBarterTradePayload(barter(barterLine, "", R"(,"gold_to_player":1.5,"game_time":100)")));
+    CHECK(!lorkhan::validateBarterTradePayload(barter(barterLine, "", R"(,"gold_to_player":-2147483648,"game_time":100)")));
+    CHECK(!lorkhan::validateBarterTradePayload(barter(barterLine, "", R"(,"gold_to_player":0,"game_time":100,"code":"additem")")));
+    auto zeroBarterLine = barterLine; zeroBarterLine.replace(zeroBarterLine.find("\"count\":2"), 9, "\"count\":0");
+    CHECK(!lorkhan::validateBarterTradePayload(barter(zeroBarterLine, "", R"(,"gold_to_player":0,"game_time":100)")));
+    auto pricedBarterLine = barterLine; pricedBarterLine.insert(pricedBarterLine.size() - 1, R"(,"price":3)");
+    CHECK(!lorkhan::validateBarterTradePayload(barter(pricedBarterLine, "", R"(,"gold_to_player":0,"game_time":100)")));
+    std::string manyBarterLines = barterLine;
+    for (int index = 1; index < 33; ++index) manyBarterLines += "," + barterLine;
+    CHECK(!lorkhan::validateBarterTradePayload(barter(manyBarterLines, "", R"(,"gold_to_player":0,"game_time":100)")));
+    auto playerMerchant = barter(barterLine, "", R"(,"gold_to_player":0,"game_time":100)");
+    playerMerchant.replace(playerMerchant.find("\"merchant\":") + 11, protocolIdentity().size(), pickupPlayer);
+    CHECK(!lorkhan::validateBarterTradePayload(playerMerchant));
+    CHECK(!lorkhan::validateBarterTradePayload(barter(barterLine, "", R"(,"gold_to_player":0,"game_time":100,"audience":[)" + protocolIdentity() + "," + protocolIdentity() + "]")));
+    auto barterAccepted = lorkhan::parseGameDataAcceptedResponse(
+        R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"barter_trade","duplicate":false})",
+        jsonHeaders);
+    CHECK(barterAccepted && barterAccepted.value().type == "barter_trade");
     const std::string castPrefix = "{\"caster\":" + protocolIdentity() + R"(,"spell_id":"firebite","spell_name":"Firebite","game_time":100)";
     CHECK(lorkhan::validateSpellCastPayload(castPrefix + "}"));
     const auto resurrection=std::string("{\"actor\":")+protocolIdentity()+",\"audience\":[],\"game_time\":1}";
@@ -411,6 +448,25 @@ void testAcceptedProtocolResponses()
     auto invalidResurrection=resurrection;invalidResurrection.insert(1,"\"command\":\"resurrect\",");
     CHECK(!lorkhan::validateActorResurrectedPayload(invalidResurrection));
     CHECK(!lorkhan::validateActorResurrectedPayload("{\"actor\":{},\"audience\":[],\"game_time\":1}"));
+    auto witness = protocolIdentity(); witness.replace(witness.find("\"index\":112"), 11, "\"index\":113");
+    const auto death = std::string("{\"victim\":") + protocolIdentity() + ",\"audience\":[" + witness + "],\"game_time\":1";
+    CHECK(lorkhan::validateActorDiedPayload(death + "}"));
+    CHECK(lorkhan::validateActorDiedPayload(death + R"(,"calendar":{"year":427,"month":8,"day":16,"hour":12.5}})"));
+    CHECK(!lorkhan::validateActorDiedPayload(death + R"(,"killer":)" + witness + "}"));
+    CHECK(!lorkhan::validateActorDiedPayload(death + R"(,"weapon":"iron dagger"})"));
+    CHECK(!lorkhan::validateActorDiedPayload(resurrection));
+    CHECK(!lorkhan::validateActorResurrectedPayload(death + "}"));
+    CHECK(!lorkhan::validateActorDiedPayload("{\"victim\":" + pickupPlayer + ",\"audience\":[],\"game_time\":1}"));
+    CHECK(!lorkhan::validateActorDiedPayload("{\"victim\":" + protocolIdentity() + ",\"audience\":[" + protocolIdentity() + "],\"game_time\":1}"));
+    CHECK(!lorkhan::validateActorDiedPayload("{\"victim\":" + protocolIdentity() + ",\"audience\":[],\"game_time\":-1}"));
+    CHECK(!lorkhan::validateActorDiedPayload(death + R"(,"calendar":{"year":427,"month":12,"day":16,"hour":12}})"));
+    auto deathAccepted = lorkhan::parseGameDataAcceptedResponse(
+        R"({"schema":"lorkhan.gamedata.accepted.v1","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"type":"actor_died","duplicate":false})",
+        jsonHeaders);
+    CHECK(deathAccepted && deathAccepted.value().type == "actor_died");
+    static_assert(lorkhan::countsActorDeath(false, false) && lorkhan::countsActorDeath(false, true));
+    static_assert(!lorkhan::countsActorDeath(true, false), "placed corpses replay a death on cell load");
+    static_assert(lorkhan::countsActorDeath(true, true), "persistent corpses die again only after resurrection");
 
     CHECK(lorkhan::validateSpellCastPayload(castPrefix + R"(,"calendar":{"year":427,"month":8,"day":16,"hour":12.5}})"));
     CHECK(lorkhan::validateItemPickupPayload(pickupPrefix + R"(,"calendar":{"year":427,"month":8,"day":16,"hour":12.5}})"));
@@ -420,6 +476,16 @@ void testAcceptedProtocolResponses()
     CHECK(!lorkhan::validateItemPickupPayload(pickupPrefix + R"(,"calendar":{"year":427,"month":1,"day":30,"hour":12}})"));
     CHECK(!lorkhan::validateSpellCastPayload(castPrefix + R"(,"calendar":{"year":427,"month":1,"day":3}})"));
     CHECK(!lorkhan::validateItemPickupPayload(pickupPrefix + R"(,"calendar":{"year":427,"month":1,"day":3}})"));
+    // RPG/quest observations predate calendars, so an omitted date stays valid; a present one must be real.
+    const std::string rpgPrefix = "{\"kind\":\"levelup\",\"player\":" + pickupPlayer + R"(,"game_time":100,"text":"The player reached level 2.")";
+    CHECK(lorkhan::validateObservationCalendarPayload(rpgPrefix + "}"));
+    CHECK(lorkhan::validateObservationCalendarPayload(rpgPrefix + R"(,"calendar":{"year":427,"month":7,"day":15,"hour":11.999}})"));
+    CHECK(!lorkhan::validateObservationCalendarPayload(rpgPrefix + R"(,"calendar":{"year":427,"month":1,"day":29,"hour":12}})"));
+    CHECK(!lorkhan::validateObservationCalendarPayload(rpgPrefix + R"(,"calendar":{"year":427,"month":7,"day":15,"hour":24}})"));
+    CHECK(!lorkhan::validateObservationCalendarPayload(rpgPrefix + R"(,"calendar":{"year":427,"month":7,"day":15}})"));
+    CHECK(!lorkhan::validateObservationCalendarPayload(rpgPrefix + R"(,"calendar":{"year":427,"month":7,"day":15,"hour":12,"days_passed":3}})"));
+    CHECK(!lorkhan::validateObservationCalendarPayload(rpgPrefix + R"(,"calendar":"427-08-15"})"));
+    CHECK(!lorkhan::validateObservationCalendarPayload("[]"));
 
     CHECK(lorkhan::validateSpellCastPayload(castPrefix + ",\"audience\":[" + protocolIdentity() + "]}"));
     CHECK(!lorkhan::validateSpellCastPayload(castPrefix + ",\"audience\":[" + protocolIdentity() + "," + protocolIdentity() + "]}"));
@@ -606,6 +672,19 @@ void testAcceptedProtocolResponses()
         R"({"schema":"lorkhan.menu-dialogue-tts.ready.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"actor":{"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"},"media":{"media_id":"01900000-0000-7000-8000-000000000013","dialogue_message_id":"01900000-0000-7000-8000-000000000006","sha256":"e12e115acf4552b2568b55e93cbd39394c4ef81c82447faed7738adf06e9ba61","bytes":4,"codec":"ogg","duration_ms":100,"expires_at":"2026-07-18T21:00:00Z"},"extra":true})",
         jsonHeaders));
 
+    const std::string menuCancel = R"({"schema":"lorkhan.menu-dialogue-tts.cancel.accepted.v1","message_id":"01900000-0000-7000-8000-000000000011","request_id":"01900000-0000-7000-8000-000000000012","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"target_message_id":"01900000-0000-7000-8000-000000000006","status":"cancelled"})";
+    auto cancelAccepted = lorkhan::parseMenuDialogueTtsCancelAcceptedResponse(menuCancel, jsonHeaders);
+    CHECK(cancelAccepted && cancelAccepted.value().target == lorkhan::MessageId(kMessage)
+        && cancelAccepted.value().session == lorkhan::SessionId(kSession) && cancelAccepted.value().generation == lorkhan::Generation(7)
+        && cancelAccepted.value().status == lorkhan::MenuDialogueTtsCancelStatus::cancelled);
+    auto cancelCompleted = lorkhan::parseMenuDialogueTtsCancelAcceptedResponse(
+        std::string(menuCancel).replace(menuCancel.find("\"cancelled\""), 11, "\"completed\""), jsonHeaders);
+    CHECK(cancelCompleted && cancelCompleted.value().status == lorkhan::MenuDialogueTtsCancelStatus::completed);
+    CHECK(!lorkhan::parseMenuDialogueTtsCancelAcceptedResponse(
+        std::string(menuCancel).replace(menuCancel.find("\"cancelled\""), 11, "\"abandoned\""), jsonHeaders));
+    CHECK(!lorkhan::parseMenuDialogueTtsCancelAcceptedResponse(
+        std::string(menuCancel).insert(menuCancel.size() - 1, ",\"media\":null"), jsonHeaders));
+
     auto playerAutochat = lorkhan::parsePlayerAutochatReadyResponse(
         R"({"schema":"lorkhan.player-autochat.ready.v1","message_id":"01900000-0000-7000-8000-000000000006","request_id":"01900000-0000-7000-8000-000000000001","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"text":"Fargoth, have you found your ring yet?"})",
         jsonHeaders);
@@ -706,6 +785,18 @@ void testProtocolEventResponses()
         + R"({"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-18T20:00:01Z","type":"dialogue.delta","payload":{"text":"Welcome to "}})"
         + suffix, jsonHeaders);
     CHECK(delta && std::get_if<lorkhan::DialogueDeltaEventPayload>(&delta.value().events[0].payload));
+    auto speechFailed = lorkhan::parseEventsResponse(prefix
+        + R"({"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-18T20:00:01Z","type":"speech.failed","payload":{"dialogue_message_id":"01900000-0000-7000-8000-000000000009","code":"provider_unavailable"}})"
+        + suffix, jsonHeaders);
+    const auto* noAudio = speechFailed ? std::get_if<lorkhan::SpeechFailedEventPayload>(&speechFailed.value().events[0].payload) : nullptr;
+    CHECK(noAudio && speechFailed.value().events[0].type == lorkhan::ProtocolEventType::speech_failed
+        && noAudio->dialogueMessage.value() == "01900000-0000-7000-8000-000000000009" && noAudio->code == "provider_unavailable");
+    CHECK(!lorkhan::parseEventsResponse(prefix
+        + R"({"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-18T20:00:01Z","type":"speech.failed","payload":{"dialogue_message_id":"01900000-0000-7000-8000-000000000009","code":"provider_unavailable","media_id":"01900000-0000-7000-8000-00000000000c"}})"
+        + suffix, jsonHeaders));
+    CHECK(!lorkhan::parseEventsResponse(prefix
+        + R"({"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":7,"sequence":1,"created_at":"2026-07-18T20:00:01Z","type":"speech.failed","payload":{"dialogue_message_id":"01900000-0000-7000-8000-000000000009","code":"invalid_audio"}})"
+        + suffix, jsonHeaders));
     CHECK(!lorkhan::parseEventsResponse(prefix
         + R"({"message_id":"01900000-0000-7000-8000-000000000008","request_id":"01900000-0000-7000-8000-000000000001","turn_id":"01900000-0000-7000-8000-000000000005","session_id":"01900000-0000-7000-8000-000000000004","generation":8,"sequence":1,"created_at":"2026-07-18T20:00:01Z","type":"turn.accepted","payload":{"status":"accepted"}})"
         + suffix, jsonHeaders));
@@ -904,8 +995,14 @@ void testQueue()
     CHECK(queue.tryPush(99, true)); CHECK(queue.tryPush(100, true)); CHECK(!queue.tryPush(101, true));
     auto drained = queue.drain(5);
     CHECK(drained.size() == 5 && drained[0] == 100 && drained[1] == 99);
+    CHECK(queue.tryPush(1)); CHECK(queue.tryPush(2)); CHECK(queue.tryPush(3));
+    const auto speech = [](int value) { return value >= 2; };
+    CHECK(queue.waitPop([](int value) { return value == 3; }, speech) == 3);
+    CHECK(queue.waitPop(speech) == 2);
+    CHECK(queue.waitPop(speech) == 1);
     queue.close();
     CHECK(!queue.tryPush(1));
+    CHECK(!queue.waitPop(speech));
 }
 
 void testLifecycleAndCancellation()
@@ -1054,6 +1151,18 @@ void testBridgeDialogueDeliveryValidation()
     invalidInventory.serializedPayload = "{\"owner\":" + protocolIdentity() + ",\"items\":[]}";
     invalidInventory.runtimeGeneration = lorkhan::Generation(generation.value() + 1);
     CHECK(!bridge.enqueue(inventory));
+    const std::string questBody = "{\"responder\":" + protocolIdentity() + R"(,"game_time":100,"text":"Quest a: b.")";
+    for (const auto& [index, type, calendar, accepted] : std::vector<std::tuple<unsigned, lorkhan::GameDataType, std::string, bool>>{
+             {90u, lorkhan::GameDataType::quest_event, "", true},
+             {91u, lorkhan::GameDataType::quest_event, R"(,"calendar":{"year":427,"month":7,"day":15,"hour":12.5})", true},
+             {92u, lorkhan::GameDataType::quest_event, R"(,"calendar":{"year":427,"month":7,"day":32,"hour":12.5})", false},
+             {93u, lorkhan::GameDataType::rpg_event, R"(,"calendar":{"year":0,"month":7,"day":15,"hour":12.5})", false}}) {
+        lorkhan::OutboundRequest observation{lorkhan::RequestId(uuidFor(index)), lorkhan::SessionId(kSession), generation,
+            lorkhan::RequestKind::gamedata,
+            lorkhan::GameDataRequest{lorkhan::InstallationId(kInstallation), lorkhan::PlaythroughId(kPlaythrough),
+                lorkhan::RequestId(uuidFor(index)), generation, "2026-07-19T20:00:02Z", type, questBody + calendar + "}"}};
+        CHECK(static_cast<bool>(bridge.enqueue(std::move(observation))) == accepted);
+    }
 
     lorkhan::EnvelopeIds sttIds{lorkhan::InstallationId(kInstallation), lorkhan::ProfileId(kProfile),
         lorkhan::PlaythroughId(kPlaythrough), lorkhan::SessionId(kSession), lorkhan::RequestId(uuidFor(87)),
@@ -1067,6 +1176,19 @@ void testBridgeDialogueDeliveryValidation()
 
 void testBridge()
 {
+    {
+        auto pollState = std::make_shared<TransportState>();
+        lorkhan::BridgeService pollBridge(std::make_unique<FakeTransport>(pollState), std::make_shared<FakeClock>());
+        const auto generation = pollBridge.generation();
+        CHECK(pollBridge.enqueue({lorkhan::RequestId(uuidFor(700)), lorkhan::SessionId(kSession), generation,
+            lorkhan::RequestKind::event_poll,
+            lorkhan::EventPollRequest{lorkhan::SessionId(kSession), generation, 0, 1000}}));
+        const auto deadline = std::chrono::steady_clock::now() + 2s;
+        while (pollState->executions.load() == 0 && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::yield();
+        CHECK(pollState->executions == 1);
+        CHECK(pollState->pollWaitMs == 0);
+    }
     auto state = std::make_shared<TransportState>();
     auto clock = std::make_shared<FakeClock>();
     lorkhan::BridgeService bridge(std::make_unique<FakeTransport>(state), clock);
@@ -1119,6 +1241,152 @@ void testBridge()
     bridge.halt();
     CHECK(bridge.halted());
     CHECK(!bridge.enqueue(request(uuidFor(20), bridge.generation())));
+}
+
+struct SpeechTransportState {
+    std::mutex mutex;
+    std::vector<lorkhan::OutboundRequest> executed;
+    std::atomic<unsigned> started{0};
+    std::atomic<bool> holdSpeech{true};
+};
+
+// Holds speech until cancelled, like a provider still synthesizing, and fails every cancel acknowledgement.
+class SpeechTransport final : public lorkhan::ITransport {
+public:
+    explicit SpeechTransport(std::shared_ptr<SpeechTransportState> state) : m_state(std::move(state)) {}
+    lorkhan::Result<lorkhan::InboundResult> execute(
+        const lorkhan::OutboundRequest& request, std::stop_token cancellation) override
+    {
+        {
+            std::lock_guard lock(m_state->mutex);
+            m_state->executed.push_back(request);
+        }
+        ++m_state->started;
+        const bool speech = request.kind == lorkhan::RequestKind::menu_dialogue_tts
+            || request.kind == lorkhan::RequestKind::book_read_aloud;
+        while (speech && m_state->holdSpeech.load() && !cancellation.stop_requested())
+            std::this_thread::sleep_for(1ms);
+        if (cancellation.stop_requested())
+            return lorkhan::Result<lorkhan::InboundResult>::failure(lorkhan::makeError(lorkhan::ErrorCode::cancelled, "cancelled"));
+        if (request.kind == lorkhan::RequestKind::menu_dialogue_tts_cancel)
+            return lorkhan::Result<lorkhan::InboundResult>::failure(
+                lorkhan::makeError(lorkhan::ErrorCode::provider_unavailable, "cancel acknowledgement lost"));
+        return lorkhan::Result<lorkhan::InboundResult>::success(
+            {request.id, request.session, request.generation, lorkhan::ResponseKind::completed, "{}", std::nullopt});
+    }
+    void interrupt(const lorkhan::RequestId&) noexcept override {}
+private:
+    std::shared_ptr<SpeechTransportState> m_state;
+};
+
+template <class Predicate>
+bool waitUntil(Predicate predicate)
+{
+    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    while (!predicate()) {
+        if (std::chrono::steady_clock::now() >= deadline)
+            return false;
+        std::this_thread::sleep_for(1ms);
+    }
+    return true;
+}
+
+void testBridgeSpeechCancel()
+{
+    auto state = std::make_shared<SpeechTransportState>();
+    auto clock = std::make_shared<FakeClock>();
+    clock->system = std::chrono::system_clock::time_point(std::chrono::seconds(1784404800));
+    lorkhan::BridgeService bridge(std::make_unique<SpeechTransport>(state), clock);
+    const auto generation = bridge.generation();
+    const auto menu = [&](unsigned request, unsigned message) {
+        return lorkhan::OutboundRequest{lorkhan::RequestId(uuidFor(request)), lorkhan::SessionId(kSession), generation,
+            lorkhan::RequestKind::menu_dialogue_tts, lorkhan::MenuDialogueTtsRequest{lorkhan::MessageId(uuidFor(message)),
+                {lorkhan::RequestId(uuidFor(request)), lorkhan::SessionId(kSession), generation},
+                "2026-07-18T20:00:00Z", protocolIdentity(), "Speculative topic text."}};
+    };
+    const auto executed = [&] {
+        std::lock_guard lock(state->mutex);
+        return state->executed;
+    };
+    const auto cancels = [&] {
+        std::vector<lorkhan::MenuDialogueTtsCancelRequest> found;
+        for (const auto& request : executed())
+            if (const auto* cancel = std::get_if<lorkhan::MenuDialogueTtsCancelRequest>(&request.payload))
+                found.push_back(*cancel);
+        return found;
+    };
+    const auto idle = [&] { const auto d = bridge.diagnostics(); return d.outbound == 0 && d.active == 0; };
+
+    lorkhan::OutboundRequest selfCancel{lorkhan::RequestId(uuidFor(30)), lorkhan::SessionId(kSession), generation,
+        lorkhan::RequestKind::menu_dialogue_tts_cancel, lorkhan::MenuDialogueTtsCancelRequest{lorkhan::MessageId(uuidFor(31)),
+            {lorkhan::RequestId(uuidFor(30)), lorkhan::SessionId(kSession), generation}, "2026-07-18T20:00:00Z",
+            lorkhan::MessageId(uuidFor(31))}};
+    CHECK(!bridge.enqueue(std::move(selfCancel)));
+
+    // In flight: the server is told which message to abandon; only the target's cancellation reaches Lua.
+    CHECK(bridge.enqueue(menu(40, 41)));
+    CHECK(waitUntil([&] { return state->started.load() == 1; }));
+    CHECK(bridge.cancel(lorkhan::RequestId(uuidFor(40))));
+    CHECK(waitUntil([&] { return cancels().size() == 1 && idle(); }));
+    const auto all = executed();
+    CHECK(all.size() == 2 && all[1].kind == lorkhan::RequestKind::menu_dialogue_tts_cancel);
+    if (all.size() == 2) {
+        const auto& sent = std::get<lorkhan::MenuDialogueTtsCancelRequest>(all[1].payload);
+        CHECK(sent.target == lorkhan::MessageId(uuidFor(41)) && sent.message != sent.target
+            && lorkhan::isCanonicalUuid(sent.message.value()) && lorkhan::isCanonicalUuid(all[1].id.value())
+            && all[1].id != lorkhan::RequestId(uuidFor(40)) && sent.correlation.request == all[1].id
+            && all[1].session == lorkhan::SessionId(kSession) && sent.correlation.session == all[1].session
+            && all[1].generation == generation && sent.correlation.generation == generation
+            && sent.createdAt == "2026-07-18T20:00:00Z");
+    }
+    std::vector<lorkhan::InboundResult> results;
+    CHECK(waitUntil([&] { for (auto& item : bridge.poll(16)) results.push_back(std::move(item)); return !results.empty(); }));
+    std::this_thread::sleep_for(20ms);
+    for (auto& item : bridge.poll(16)) results.push_back(std::move(item));
+    CHECK(results.size() == 1 && results[0].request == lorkhan::RequestId(uuidFor(40))
+        && results[0].kind == lorkhan::ResponseKind::cancelled);
+
+    // Queued speech was never sent, so it needs no server cancel; the active one still does.
+    CHECK(bridge.enqueue(menu(42, 43)));
+    CHECK(waitUntil([&] { return state->started.load() == 3; }));
+    CHECK(bridge.enqueue(menu(44, 45)));
+    CHECK(bridge.cancel(lorkhan::RequestId(uuidFor(44))));
+    CHECK(bridge.cancel(lorkhan::RequestId(uuidFor(42))));
+    CHECK(waitUntil([&] { return cancels().size() == 2 && idle(); }));
+    CHECK(cancels().size() == 2 && cancels()[1].target == lorkhan::MessageId(uuidFor(43)));
+    for (const auto& request : executed())
+        CHECK(request.id != lorkhan::RequestId(uuidFor(44)));
+    static_cast<void>(bridge.poll(16));
+
+    // Completed speech already has media and nothing left to stop.
+    state->holdSpeech = false;
+    CHECK(bridge.enqueue(menu(46, 47)));
+    CHECK(waitUntil([&] { return state->started.load() == 5 && idle(); }));
+    std::this_thread::sleep_for(10ms);
+    CHECK(!bridge.cancel(lorkhan::RequestId(uuidFor(46))));
+    std::this_thread::sleep_for(20ms);
+    CHECK(cancels().size() == 2);
+    static_cast<void>(bridge.poll(16));
+
+    // Book read-aloud uses the same server cancel route.
+    state->holdSpeech = true;
+    CHECK(bridge.enqueue({lorkhan::RequestId(uuidFor(48)), lorkhan::SessionId(kSession), generation,
+        lorkhan::RequestKind::book_read_aloud, lorkhan::BookReadAloudRequest{lorkhan::MessageId(uuidFor(49)),
+            {lorkhan::RequestId(uuidFor(48)), lorkhan::SessionId(kSession), generation},
+            "2026-07-18T20:00:00Z", "bk_fixture", "Fixture", "One page."}}));
+    CHECK(waitUntil([&] { return state->started.load() == 6; }));
+    CHECK(bridge.cancel(lorkhan::RequestId(uuidFor(48))));
+    CHECK(waitUntil([&] { return cancels().size() == 3 && idle(); }));
+    CHECK(cancels().size() == 3 && cancels()[2].target == lorkhan::MessageId(uuidFor(49)));
+
+    // A superseded generation is fenced by the server session itself, so no stale cancel is sent.
+    CHECK(bridge.enqueue(menu(50, 51)));
+    CHECK(waitUntil([&] { return state->started.load() == 8; }));
+    CHECK(bridge.cancelGeneration(generation));
+    CHECK(waitUntil(idle));
+    std::this_thread::sleep_for(20ms);
+    CHECK(cancels().size() == 3);
+    bridge.halt();
 }
 
 void testVoiceCapturePrimitives()
@@ -1221,6 +1489,24 @@ void testPlaybackSettings()
     CHECK(!lorkhan::validConnectionTimeout(14) && !lorkhan::validConnectionTimeout(301));
 }
 
+void testClientConfigPath()
+{
+    const auto root = std::filesystem::temp_directory_path() / "lorkhan-config-path-test";
+    std::filesystem::create_directories(root / "OpenMW");
+    std::filesystem::create_directories(root / "Config");
+    std::ofstream(root / "Config" / "lorkhan-client.conf") << "test";
+    CHECK(lorkhan::clientConfigPath("", root / "OpenMW") == root / "Config" / "lorkhan-client.conf");
+    CHECK(lorkhan::clientConfigPath("explicit-missing.conf", root / "OpenMW") == "explicit-missing.conf");
+    std::filesystem::remove(root / "Config" / "lorkhan-client.conf");
+    std::ofstream(root / "OpenMW" / "lorkhan-client.conf") << "test";
+    CHECK(lorkhan::clientConfigPath("", root / "OpenMW") == root / "OpenMW" / "lorkhan-client.conf");
+    std::filesystem::remove(root / "OpenMW" / "lorkhan-client.conf");
+    bool rejected = false;
+    try { (void)lorkhan::clientConfigPath("", root / "OpenMW"); }
+    catch (const std::runtime_error&) { rejected = true; }
+    CHECK(rejected);
+}
+
 void testConcurrency()
 {
     auto state = std::make_shared<TransportState>();
@@ -1245,12 +1531,515 @@ void testConcurrency()
 
 } // namespace
 
+// Plugin messages are canonical and session-bound; plugin.action.intent is exact before Lua sees it.
+void testPluginContract()
+{
+    const lorkhan::Headers jsonHeaders{{"Content-Type", "application/json; charset=utf-8"}};
+    const std::string session = "00000000-0000-4000-8000-000000000007";
+    const std::string actor = R"({"cell":{"grid_x":-2,"grid_y":-9,"kind":"exterior"},"content_file":"Morrowind.esm","display_name":"Fargoth","kind":"npc","record_id":"fargoth","refnum":{"content_file":0,"index":112}})";
+    const lorkhan::RequestCorrelation registrationIds{lorkhan::RequestId("00000000-0000-4000-8000-000000000302"),
+        lorkhan::SessionId(session), lorkhan::Generation(7)};
+    const lorkhan::MessageId registrationMessage("00000000-0000-4000-8000-000000000301");
+    const std::string registration = R"({"actions":[{"actors":[)" + actor + R"(],"confirmation":"none","executor_kinds":["npc"],"name":"fetch_water","tier":1},{"confirmation":"required","executor_kinds":["npc"],"name":"share_meal","tier":2}],"events":["meal_shared"],"manifest_sha256":"5f1c1a3b0e8f7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a392817060504","plugin_id":"ashlander.camp_tasks","prompt_slots":["scene_notes"],"version":"1.2.0"})";
+    const auto registrationMessageJson = [&](const std::string& plugin, const std::string& operation = "register") {
+        return R"({"created_at":"2026-10-02T12:00:00Z","generation":7,"message_id":"00000000-0000-4000-8000-000000000301","operation":")"
+            + operation + R"(","plugins":[)" + plugin + R"(],"request_id":"00000000-0000-4000-8000-000000000302","schema":"lorkhan.plugin.registration.v1","session_id":")"
+            + session + "\"}";
+    };
+    auto canonical = lorkhan::canonicalPluginRegistration(registrationMessageJson(registration), registrationIds, registrationMessage);
+    CHECK(canonical && canonical.value() == registrationMessageJson(registration));
+    const auto rejectsRegistration = [&](const std::string& message) {
+        return !lorkhan::canonicalPluginRegistration(message, registrationIds, registrationMessage);
+    };
+    const auto replaced = [](std::string value, const std::string& from, const std::string& to) {
+        return value.replace(value.find(from), from.size(), to);
+    };
+    CHECK(rejectsRegistration(registrationMessageJson(replaced(registration, "ashlander.", "lorkhan."))));
+    CHECK(rejectsRegistration(registrationMessageJson(replaced(registration, R"("required","executor_kinds":["npc"],"name":"share_meal")", R"("none","executor_kinds":["npc"],"name":"share_meal")"))));
+    CHECK(rejectsRegistration(registrationMessageJson(replaced(registration, R"("events":)", R"("command":"tgm","events":)"))));
+    for (const std::string version : {"1.2.0.4", "1.2.0.", "1.2", "01.2.0"})
+        CHECK(rejectsRegistration(registrationMessageJson(replaced(registration, R"("1.2.0")", "\"" + version + "\""))));
+    CHECK(rejectsRegistration(registrationMessageJson(registration, "unregister")));
+    CHECK(rejectsRegistration(registrationMessageJson(registration + "," + registration)));
+    CHECK(lorkhan::canonicalPluginRegistration(registrationMessageJson(R"({"plugin_id":"ashlander.camp_tasks","version":"1.2.0"})", "unregister"), registrationIds, registrationMessage));
+    auto stale = lorkhan::canonicalPluginRegistration(registrationMessageJson(registration),
+        {registrationIds.request, registrationIds.session, lorkhan::Generation(8)}, registrationMessage);
+    CHECK(!stale && stale.error().code == lorkhan::ErrorCode::stale_generation);
+    CHECK(!lorkhan::canonicalPluginRegistration(registrationMessageJson(registration), registrationIds, lorkhan::MessageId(kMessage)));
+    auto oversized = lorkhan::canonicalPluginRegistration(registrationMessageJson(registration) + std::string(64U * 1024U, ' '),
+        registrationIds, registrationMessage);
+    CHECK(!oversized && oversized.error().code == lorkhan::ErrorCode::payload_too_large);
+
+    const lorkhan::RequestCorrelation eventIds{lorkhan::RequestId("00000000-0000-4000-8000-000000000321"),
+        lorkhan::SessionId(session), lorkhan::Generation(7)};
+    const lorkhan::MessageId eventMessage("00000000-0000-4000-8000-000000000320");
+    const auto eventJson = [&](const std::string& fields) {
+        return R"({"event":"meal_shared","fields":)" + fields + R"(,"generation":7,"message_id":"00000000-0000-4000-8000-000000000320","observed_at":"2026-10-02T12:05:00Z","plugin_id":"ashlander.camp_tasks","plugin_version":"1.2.0","request_id":"00000000-0000-4000-8000-000000000321","schema":"lorkhan.plugin.event.v1","session_id":")"
+            + session + "\"}";
+    };
+    const std::string fields = R"({"dish":"Scuttle pie","host":)" + actor + R"(,"servings":2.5})";
+    auto event = lorkhan::canonicalPluginEvent(eventJson(fields), eventIds, eventMessage);
+    CHECK(event && event.value() == eventJson(fields));
+    auto empty = lorkhan::canonicalPluginEvent(eventJson("[]"), eventIds, eventMessage);
+    CHECK(empty && empty.value() == eventJson("{}"));
+    const auto rejectsEvent = [&](const std::string& eventFields) {
+        return !lorkhan::canonicalPluginEvent(eventJson(eventFields), eventIds, eventMessage);
+    };
+    const std::string controlText = R"({"dish":"Scuttle\npie"})";
+    const std::string longText = R"({"dish":")" + std::string(513, 'x') + R"("})";
+    const std::string oversizedEvent = R"({"dish":")" + std::string(16U * 1024U, 'x') + R"("})";
+    CHECK(rejectsEvent(controlText));
+    // Unicode Cc includes C1 U+0080..U+009F, escaped or raw; U+00A0 is the first allowed code point after it.
+    CHECK(rejectsEvent("{\"dish\":\"Scuttle\\u0085pie\"}"));
+    CHECK(rejectsEvent("{\"dish\":\"Scuttle\xc2\x9fpie\"}"));
+    CHECK(!rejectsEvent("{\"dish\":\"Scuttle\\u00a0pie\"}"));
+    CHECK(rejectsEvent(longText));
+    CHECK(rejectsEvent(R"({"Dish":"pie"})"));
+    CHECK(rejectsEvent(oversizedEvent));
+
+    CHECK(lorkhan::parsePluginRegistrationAcceptedResponse(R"({"schema":"lorkhan.plugin.registration.accepted.v1","message_id":"00000000-0000-4000-8000-000000000301","request_id":"00000000-0000-4000-8000-000000000302","session_id":"00000000-0000-4000-8000-000000000007","generation":7,"plugins":[{"plugin_id":"ashlander.camp_tasks","version":"1.2.0","state":"active","reason_code":"registered"}]})", jsonHeaders));
+    CHECK(!lorkhan::parsePluginRegistrationAcceptedResponse(R"({"schema":"lorkhan.plugin.registration.accepted.v1","message_id":"00000000-0000-4000-8000-000000000301","request_id":"00000000-0000-4000-8000-000000000302","session_id":"00000000-0000-4000-8000-000000000007","generation":7,"plugins":[{"plugin_id":"ashlander.camp_tasks","version":"1.2.0","state":"loaded","reason_code":"registered"}]})", jsonHeaders));
+    auto eventAccepted = lorkhan::parsePluginEventAcceptedResponse(R"({"schema":"lorkhan.plugin.event.accepted.v1","message_id":"00000000-0000-4000-8000-000000000320","request_id":"00000000-0000-4000-8000-000000000321","session_id":"00000000-0000-4000-8000-000000000007","generation":7,"duplicate":true})", jsonHeaders);
+    CHECK(eventAccepted && eventAccepted.value().duplicate);
+
+    const auto intentEvents = [&](const std::string& intent) {
+        return lorkhan::parseEventsResponse(R"({"schema":"lorkhan.events.v1","session_id":")" + session
+            + R"(","generation":7,"next_after":4,"events":[{"message_id":"00000000-0000-4000-8000-000000000311","request_id":"00000000-0000-4000-8000-000000000010","turn_id":"00000000-0000-4000-8000-000000000008","session_id":")"
+            + session + R"(","generation":7,"sequence":4,"created_at":"2026-10-02T12:00:00Z","type":"plugin.action.intent","payload":)"
+            + intent + "}],\"autonomy\":[]}", jsonHeaders);
+    };
+    const std::string intent = R"({"schema":"lorkhan.plugin.action-intent.v1","action_id":"00000000-0000-4000-8000-000000000310","turn_id":"00000000-0000-4000-8000-000000000008","session_id":")"
+        + session + R"(","generation":7,"plugin_id":"ashlander.camp_tasks","plugin_version":"1.2.0","action":"fetch_water","tier":1,"confirmation_required":false,"cancellable":true,"actor":)"
+        + actor + R"(,"target":null,"parameters":{"trips":2,"vessel":"jug"},"expires_at":"2026-10-02T12:02:00Z"})";
+    auto decoded = intentEvents(intent);
+    const auto* plugin = decoded ? std::get_if<lorkhan::PluginActionIntentEventPayload>(&decoded.value().events[0].payload) : nullptr;
+    CHECK(plugin && decoded.value().events[0].type == lorkhan::ProtocolEventType::plugin_action_intent
+        && plugin->intent.pluginId == "ashlander.camp_tasks" && plugin->intent.name == "fetch_water"
+        && !plugin->intent.target && plugin->intent.parameters.size() == 2
+        && std::get<std::int64_t>(plugin->intent.parameters[0].second) == 2
+        && std::get<std::string>(plugin->intent.parameters[1].second) == "jug");
+    CHECK(!intentEvents(replaced(intent, R"("jug")", R"("https://example.invalid/payload.lua")")));
+    CHECK(!intentEvents(replaced(intent, R"("cancellable":true,)", R"("cancellable":true,"command":"tgm",)")));
+    CHECK(!intentEvents(replaced(intent, R"("generation":7,"plugin_id")", R"("generation":6,"plugin_id")")));
+    CHECK(!intentEvents(replaced(intent, R"("tier":1)", R"("tier":2)")));
+    CHECK(!intentEvents(replaced(intent, R"("1.2.0")", R"("1.2.0.4")")));
+    CHECK(!intentEvents(replaced(intent, R"("schema":"lorkhan.plugin.action-intent.v1")", R"("schema":"lorkhan.action-intent.v1")")));
+    CHECK(!intentEvents(replaced(intent, R"("kind":"npc")", R"("kind":"player")")));
+
+    // The bridge accepts only the canonical message whose IDs match the typed request.
+    lorkhan::BridgeService bridge(std::make_unique<FakeTransport>(std::make_shared<TransportState>()),
+        std::make_shared<FakeClock>(), lorkhan::Generation(7));
+    const auto pluginRequest = [&](std::string message) {
+        return lorkhan::OutboundRequest{eventIds.request, eventIds.session, eventIds.generation, lorkhan::RequestKind::plugin_event,
+            lorkhan::PluginEventRequest{{eventMessage, eventIds, std::move(message)}}};
+    };
+    CHECK(!bridge.enqueue(pluginRequest(eventJson("[]"))));
+    auto wrongKind = pluginRequest(eventJson(fields));
+    wrongKind.kind = lorkhan::RequestKind::plugin_registration;
+    CHECK(!bridge.enqueue(std::move(wrongKind)));
+    CHECK(bridge.enqueue(pluginRequest(eventJson(fields))));
+}
+
+// Scripted server half for runPluginPackageSync: no socket, every step recorded.
+class FakePackageWire final : public lorkhan::IPluginPackageWire {
+public:
+    using Probe = lorkhan::PluginPackageProbe;
+    using Upload = lorkhan::PluginPackageUpload;
+    using Operation = lorkhan::PluginPackageOperation;
+    using State = lorkhan::PluginPackageOperationState;
+
+    lorkhan::Result<Probe> probe(std::string_view pluginId, std::string_view version, std::string_view sha256) override
+    {
+        probeCalls.push_back(std::string(pluginId) + "|" + std::string(version) + "|" + std::string(sha256));
+        if (transportFailure) return lorkhan::Result<Probe>::failure(*transportFailure);
+        return lorkhan::Result<Probe>::success(probes[std::min(probeCalls.size(), probes.size()) - 1]);
+    }
+    lorkhan::Result<Upload> startUpload(std::string_view, std::string_view, std::uint64_t size, std::string_view sha) override
+    {
+        declaredSize = size;
+        declaredSha = std::string(sha);
+        if (startError) return lorkhan::Result<Upload>::failure(*startError);
+        return lorkhan::Result<Upload>::success({kUpload, 0, 0, chunkBytes, false});
+    }
+    lorkhan::Result<Upload> putChunk(std::string_view uploadId, std::uint64_t index, std::span<const std::byte> bytes) override
+    {
+        ++chunkAttempts;
+        if (cancelOnChunk && index == 1) cancelOnChunk->request_stop();
+        if (rateLimitedChunks > 0) {
+            --rateLimitedChunks;
+            return lorkhan::Result<Upload>::failure(lorkhan::makeError(lorkhan::ErrorCode::rate_limited, "rate_limited",
+                true, 1, std::string(kSyncRequest)));
+        }
+        CHECK(uploadId == kUpload && index == chunkIndexes.size());
+        chunkIndexes.push_back(index);
+        uploaded.append(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        return lorkhan::Result<Upload>::success({kUpload, index + 1, uploaded.size(), 0, uploaded.size() == declaredSize});
+    }
+    lorkhan::Result<Operation> submit(bool update, const lorkhan::RequestId& request, std::string_view uploadId, std::string_view expectedManifestSha256) override
+    {
+        submitted.push_back(std::string(update ? "update|" : "install|") + request.value() + "|" + std::string(uploadId));
+        if (submitError) return lorkhan::Result<Operation>::failure(*submitError);
+        return lorkhan::Result<Operation>::success(operationAt(0, update));
+    }
+    lorkhan::Result<Operation> operation(std::string_view operationId) override
+    {
+        CHECK(operationId == kOperation);
+        ++operationPolls;
+        return lorkhan::Result<Operation>::success(operationAt(operationPolls, submitted.back().starts_with("update")));
+    }
+
+    Operation operationAt(std::size_t index, bool update) const
+    {
+        const State state = states[std::min(index, states.size() - 1)];
+        return {kOperation, "ashlander.camp_tasks", update, "1.2.0", declaredSha, state,
+            state == State::failed ? std::optional<std::string>("package_checksum_mismatch") : std::nullopt};
+    }
+
+    static constexpr const char* kUpload = "00000000-0000-4000-8000-000000000501";
+    static constexpr const char* kOperation = "00000000-0000-4000-8000-000000000500";
+    static constexpr const char* kSyncRequest = "00000000-0000-4000-8000-000000000500";
+    std::vector<Probe> probes;
+    std::vector<State> states{State::queued, State::succeeded};
+    std::optional<lorkhan::Error> transportFailure;
+    std::optional<lorkhan::Error> startError;
+    std::optional<lorkhan::Error> submitError;
+    std::stop_source* cancelOnChunk{};
+    unsigned rateLimitedChunks{};
+    std::uint64_t chunkBytes{lorkhan::kPluginPackageChunkBytes};
+    std::vector<std::string> probeCalls;
+    std::vector<std::string> submitted;
+    std::vector<std::uint64_t> chunkIndexes;
+    std::string uploaded;
+    std::uint64_t declaredSize{};
+    std::string declaredSha;
+    unsigned chunkAttempts{};
+    std::size_t operationPolls{};
+};
+
+void testPluginPackageSync()
+{
+    namespace fs = std::filesystem;
+    using Action = lorkhan::PluginPackageProbeAction;
+    using Status = lorkhan::PluginPackageSyncStatus;
+    const lorkhan::Headers jsonHeaders{{"Content-Type", "application/json; charset=utf-8"}};
+    const std::string id = "ashlander.camp_tasks";
+    const std::string manifestSha(64, 'a');
+    const fs::path base = fs::temp_directory_path() / "lorkhan-package-sync-tests";
+    std::error_code ignored;
+    fs::remove_all(base, ignored);
+    const fs::path rootA = base / "data-a";
+    const fs::path rootB = base / "data-b";
+    const auto writePackage = [&](const fs::path& root, const std::string& version, const std::string& bytes) {
+        const fs::path directory = root / "lorkhan-packages" / id;
+        fs::create_directories(directory);
+        std::ofstream(directory / (id + "-" + version + ".dwpkg"), std::ios::binary) << bytes;
+        return directory / (id + "-" + version + ".dwpkg");
+    };
+    fs::create_directories(rootA);
+    fs::create_directories(rootB);
+    CHECK(lorkhan::pluginPackageRelativePath(id, "1.2.0") == "lorkhan-packages/ashlander.camp_tasks/ashlander.camp_tasks-1.2.0.dwpkg");
+
+    // Override order follows the VFS: the later data root wins; an absent later file falls back.
+    const std::string bytesA(30, 'A');
+    const std::string bytesB(40, 'B');
+    writePackage(rootA, "1.2.0", bytesA);
+    const fs::path fileB = writePackage(rootB, "1.2.0", bytesB);
+    const std::vector<std::string> roots{rootA.string(), rootB.string()};
+    auto resolved = lorkhan::resolvePluginPackage(roots, id, "1.2.0");
+    CHECK(resolved && resolved.value().bytes == 40 && resolved.value().path == fs::canonical(fileB));
+    resolved = lorkhan::resolvePluginPackage({rootB.string(), rootA.string()}, id, "1.2.0");
+    CHECK(resolved && resolved.value().bytes == 30);
+    resolved = lorkhan::resolvePluginPackage({rootA.string(), (base / "absent").string(), rootB.string()}, id, "1.2.0");
+    CHECK(resolved && resolved.value().bytes == 40);
+    const auto reason = [](const auto& result) { return result ? std::string("ok") : result.error().message; };
+    CHECK(reason(lorkhan::resolvePluginPackage(roots, id, "9.9.9")) == "package_not_found");
+    CHECK(reason(lorkhan::resolvePluginPackage({"relative/data"}, id, "1.2.0")) == "package_roots_invalid");
+    CHECK(reason(lorkhan::resolvePluginPackage({}, id, "1.2.0")) == "package_roots_invalid");
+    for (const std::string hostile : {"lorkhan.core", "../evil.addon", "ashlander.camp_tasks/../x", "Ashlander.camp"})
+        CHECK(reason(lorkhan::resolvePluginPackage(roots, hostile, "1.2.0")) == "package_identity_invalid");
+    CHECK(reason(lorkhan::resolvePluginPackage(roots, id, "1.2.0/../../x")) == "package_identity_invalid");
+    writePackage(rootB, "1.0.1", "tiny");
+    CHECK(reason(lorkhan::resolvePluginPackage(roots, id, "1.0.1")) == "package_archive_invalid");
+    const fs::path huge = writePackage(rootB, "1.0.2", "x");
+    fs::resize_file(huge, lorkhan::kMaxPluginPackageBytes + 1);
+    CHECK(reason(lorkhan::resolvePluginPackage(roots, id, "1.0.2")) == "package_too_large");
+    fs::create_directories(rootB / "lorkhan-packages" / id / (id + "-1.0.3.dwpkg"));
+    CHECK(reason(lorkhan::resolvePluginPackage(roots, id, "1.0.3")) == "package_not_regular");
+    // A link anywhere below the root fails closed instead of falling back to a lower root.
+    const fs::path outside = base / "outside";
+    fs::create_directories(outside / id);
+    std::ofstream(outside / id / (id + "-1.0.4.dwpkg"), std::ios::binary) << std::string(64, 'L');
+    std::ofstream(outside / "target.dwpkg", std::ios::binary) << std::string(64, 'L');
+    writePackage(rootA, "1.0.4", std::string(64, 'a'));
+    std::error_code linkError;
+    fs::create_symlink(outside / "target.dwpkg", rootB / "lorkhan-packages" / id / (id + "-1.0.4.dwpkg"), linkError);
+    if (!linkError)
+        CHECK(reason(lorkhan::resolvePluginPackage(roots, id, "1.0.4")) == "package_link_rejected");
+    else
+        std::cout << "file symlink creation unavailable; junction case still runs\n";
+    const fs::path linkedRoot = base / "data-linked";
+    fs::create_directories(linkedRoot);
+#ifdef _WIN32
+    const std::string junction = "mklink /J \"" + (linkedRoot / "lorkhan-packages").string() + "\" \"" + outside.string()
+        + "\" >NUL 2>&1";
+    const bool linked = std::system(junction.c_str()) == 0;
+#else
+    std::error_code directoryLinkError;
+    fs::create_directory_symlink(outside, linkedRoot / "lorkhan-packages", directoryLinkError);
+    const bool linked = !directoryLinkError;
+#endif
+    CHECK(linked);
+    CHECK(reason(lorkhan::resolvePluginPackage({linkedRoot.string()}, id, "1.0.4")) == "package_link_rejected");
+
+    // Strict package response parsers: closed keys and states, no paths, no contradictions.
+    const std::string sha(64, 'b');
+    const std::string package = R"({"plugin_id":"ashlander.camp_tasks","display_name":"Camp","version":"1.1.0","state":"installed","enabled":false,"archive_sha256":")"
+        + sha + R"(","manifest_sha256":")" + manifestSha + R"(","previous_version":null,"revision":2,"installed_at":"2026-10-02 12:00:00+00","updated_at":"2026-10-02 12:00:00+00"})";
+    auto probe = lorkhan::parsePluginPackageProbeResponse(R"({"plugin_id":"ashlander.camp_tasks","action":"update","pending":false,"installed":)" + package + "}", jsonHeaders);
+    CHECK(probe && probe.value().action == Action::update && probe.value().installed && !probe.value().installed->enabled
+        && probe.value().installed->version == "1.1.0");
+    CHECK(lorkhan::parsePluginPackageProbeResponse(R"({"plugin_id":"ashlander.camp_tasks","action":"install","pending":true,"installed":null})", jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageProbeResponse(R"({"plugin_id":"ashlander.camp_tasks","action":"current","pending":false,"installed":null})", jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageProbeResponse(R"({"plugin_id":"ashlander.camp_tasks","action":"downgrade","pending":false,"installed":null})", jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageProbeResponse(R"({"plugin_id":"ashlander.camp_tasks","action":"install","pending":false,"installed":null,"path":"/var/lib"})", jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageProbeResponse(R"({"plugin_id":"other.plugin","action":"update","pending":false,"installed":)" + package + "}", jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageProbeResponse(R"({"plugin_id":"ashlander.camp_tasks","action":"install","pending":false,"installed":null})", {}));
+    CHECK(lorkhan::parsePluginPackageUploadResponse(R"({"upload_id":"00000000-0000-4000-8000-000000000501","next_index":0,"chunk_bytes":1048576,"complete":false})", jsonHeaders, true));
+    CHECK(!lorkhan::parsePluginPackageUploadResponse(R"({"upload_id":"00000000-0000-4000-8000-000000000501","next_index":0,"chunk_bytes":2097152,"complete":false})", jsonHeaders, true));
+    CHECK(!lorkhan::parsePluginPackageUploadResponse(R"({"upload_id":"00000000-0000-4000-8000-000000000501","next_index":1,"chunk_bytes":1048576,"complete":false})", jsonHeaders, true));
+    auto chunk = lorkhan::parsePluginPackageUploadResponse(R"({"upload_id":"00000000-0000-4000-8000-000000000501","next_index":2,"received":2048,"complete":true})", jsonHeaders, false);
+    CHECK(chunk && chunk.value().nextIndex == 2 && chunk.value().received == 2048 && chunk.value().complete);
+    const auto operationJson = [&](const std::string& state, const std::string& error) {
+        return R"({"operation":{"operation_id":"00000000-0000-4000-8000-000000000502","plugin_id":"ashlander.camp_tasks","operation":"update","version":"1.2.0","archive_sha256":")"
+            + sha + R"(","state":")" + state + R"(","error_code":)" + error + R"(,"created_at":"2026-10-02 12:00:00+00","finished_at":null}})";
+    };
+    auto operation = lorkhan::parsePluginPackageOperationResponse(operationJson("failed", "\"package_checksum_mismatch\""), jsonHeaders);
+    CHECK(operation && operation.value().update && operation.value().errorCode == "package_checksum_mismatch");
+    CHECK(lorkhan::parsePluginPackageOperationResponse(operationJson("queued", "null"), jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageOperationResponse(operationJson("failed", "null"), jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageOperationResponse(operationJson("succeeded", "\"package_apply_failed\""), jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageOperationResponse(operationJson("running", "null"), jsonHeaders));
+    const auto errorJson = [](const std::string& code) {
+        return R"({"schema":"lorkhan.error.v1","code":")" + code + R"(","message":"Package request rejected.","correlation_id":"00000000-0000-4000-8000-000000000500","retriable":true})";
+    };
+    auto busy = lorkhan::parsePluginPackageErrorResponse(errorJson("package_storage_busy"), jsonHeaders);
+    CHECK(busy && busy.value().wireCode == "package_storage_busy" && busy.value().code == lorkhan::ErrorCode::provider_unavailable);
+    CHECK(lorkhan::parsePluginPackageErrorResponse(errorJson("rate_limited"), jsonHeaders));
+    CHECK(!lorkhan::parsePluginPackageErrorResponse(errorJson("package_anything"), jsonHeaders));
+    CHECK(!lorkhan::parseProtocolErrorResponse(errorJson("package_storage_busy"), jsonHeaders));
+
+    // The sync engine: probe first, upload only when needed, never downgrade or overwrite a conflict.
+    std::string archive(2U * lorkhan::kPluginPackageChunkBytes + 4096U, '\0');
+    for (std::size_t index = 0; index < archive.size(); ++index)
+        archive[index] = static_cast<char>((index * 131U + 7U) & 0xffU);
+    writePackage(rootB, "1.2.0", archive);
+    const std::string archiveSha = lorkhan::sha256Hex(std::as_bytes(std::span(archive.data(), archive.size())));
+    const lorkhan::RequestId syncRequest(FakePackageWire::kSyncRequest);
+    const lorkhan::SessionId syncSession("00000000-0000-4000-8000-000000000007");
+    const lorkhan::PluginPackageSyncRequest sync{{syncRequest, syncSession, lorkhan::Generation(7)}, id, "1.2.0", manifestSha, roots};
+    lorkhan::PluginPackageSyncLimits limits;
+    limits.pendingWait = 30ms;
+    limits.operationWait = 60ms;
+    limits.pollInterval = 2ms;
+    limits.maximumPollInterval = 5ms;
+    limits.maximumRetryAfter = 2ms;
+    const auto installedRow = [&](const std::string& version, const std::string& archiveHash, bool enabled,
+                                  const std::string& manifest) {
+        return lorkhan::PluginPackageInfo{id, version, "installed", enabled, archiveHash, manifest};
+    };
+    const auto probeOf = [&](Action action, bool pending, std::optional<lorkhan::PluginPackageInfo> installed) {
+        return lorkhan::PluginPackageProbe{id, action, pending, std::move(installed)};
+    };
+    const auto run = [&](FakePackageWire& wire, std::stop_token token = {}) {
+        return lorkhan::runPluginPackageSync(sync, syncRequest, wire, token, limits);
+    };
+    {
+        FakePackageWire wire;
+        wire.probes = {probeOf(Action::current, false, installedRow("1.2.0", archiveSha, true, manifestSha))};
+        auto outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::current && outcome.value().enabled == true
+            && wire.declaredSize == 0 && wire.submitted.empty() && wire.probeCalls.size() == 1
+            && wire.probeCalls[0] == id + "|1.2.0|" + archiveSha);
+    }
+    {
+        FakePackageWire wire;
+        wire.probes = {probeOf(Action::current, false, installedRow("1.2.0", archiveSha, true, std::string(64, 'c')))};
+        auto outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::failed && outcome.value().reasonCode == "package_manifest_mismatch");
+    }
+    {
+        FakePackageWire wire;
+        wire.probes = {probeOf(Action::older, false, installedRow("2.0.0", sha, false, manifestSha))};
+        auto outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::newer_installed && outcome.value().installedVersion == "2.0.0"
+            && wire.declaredSize == 0 && wire.submitted.empty());
+        wire.probes = {probeOf(Action::conflict, false, installedRow("1.2.0", sha, false, manifestSha))};
+        outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::conflict && outcome.value().reasonCode == "package_version_conflict"
+            && wire.declaredSize == 0 && wire.submitted.empty());
+    }
+    {
+        FakePackageWire wire;
+        wire.probes = {probeOf(Action::install, false, std::nullopt),
+            probeOf(Action::current, false, installedRow("1.2.0", archiveSha, false, manifestSha))};
+        wire.rateLimitedChunks = 1;
+        auto outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::installed && outcome.value().reasonCode == "package_installed"
+            && outcome.value().enabled == false && outcome.value().uploadedBytes == archive.size());
+        CHECK(wire.uploaded == archive && wire.chunkIndexes == std::vector<std::uint64_t>({0, 1, 2})
+            && wire.chunkAttempts == 4 && wire.declaredSha == archiveSha && wire.declaredSize == archive.size());
+        CHECK(wire.submitted.size() == 1 && wire.submitted[0] == std::string("install|") + FakePackageWire::kSyncRequest + "|" + FakePackageWire::kUpload);
+        CHECK(wire.operationPolls == 1 && wire.probeCalls.size() == 2);
+        CHECK(lorkhan::serializePluginPackageSyncOutcome(outcome.value())
+            == R"({"enabled":false,"installed_version":"1.2.0","plugin_id":"ashlander.camp_tasks","reason_code":"package_installed","status":"installed","uploaded_bytes":2101248,"version":"1.2.0"})");
+    }
+    {
+        FakePackageWire wire;
+        wire.chunkBytes = 1024U * 1024U - 1U;
+        wire.probes = {probeOf(Action::update, false, installedRow("1.1.0", sha, true, std::string(64, 'd'))),
+            probeOf(Action::current, false, installedRow("1.2.0", archiveSha, true, manifestSha))};
+        auto outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::updated && outcome.value().enabled == true
+            && wire.chunkIndexes.size() == 3 && wire.uploaded == archive && wire.submitted[0].starts_with("update|"));
+    }
+    {
+        FakePackageWire wire;
+        wire.probes = {probeOf(Action::update, false, installedRow("1.1.0", sha, true, manifestSha))};
+        wire.states = {FakePackageWire::State::queued, FakePackageWire::State::failed};
+        auto outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::failed && outcome.value().reasonCode == "package_checksum_mismatch"
+            && outcome.value().installedVersion == "1.1.0" && wire.probeCalls.size() == 1);
+        wire = FakePackageWire{};
+        wire.probes = {probeOf(Action::install, false, std::nullopt)};
+        wire.states = {FakePackageWire::State::queued};
+        outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::pending && outcome.value().reasonCode == "package_operation_queued"
+            && wire.operationPolls >= 2);
+    }
+    {
+        FakePackageWire wire;
+        wire.probes = {probeOf(Action::install, true, std::nullopt)};
+        auto outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::pending && outcome.value().reasonCode == "package_operation_pending"
+            && wire.probeCalls.size() >= 2 && wire.declaredSize == 0);
+        wire = FakePackageWire{};
+        wire.probes = {probeOf(Action::install, true, std::nullopt), probeOf(Action::current, false,
+            installedRow("1.2.0", archiveSha, false, manifestSha))};
+        outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::current && wire.declaredSize == 0);
+    }
+    {
+        FakePackageWire wire;
+        wire.probes = {probeOf(Action::install, false, std::nullopt)};
+        wire.startError = lorkhan::makeError(lorkhan::ErrorCode::provider_unavailable, "package_storage_full", false,
+            std::nullopt, std::string(FakePackageWire::kSyncRequest));
+        auto outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::failed && outcome.value().reasonCode == "package_storage_full");
+        wire = FakePackageWire{};
+        wire.probes = {probeOf(Action::install, false, std::nullopt)};
+        wire.submitError = lorkhan::makeError(lorkhan::ErrorCode::duplicate_conflict, "package_operation_pending", false,
+            std::nullopt, std::string(FakePackageWire::kSyncRequest));
+        outcome = run(wire);
+        CHECK(outcome && outcome.value().status == Status::pending);
+        wire = FakePackageWire{};
+        wire.transportFailure = lorkhan::makeError(lorkhan::ErrorCode::timeout, "socket timed out");
+        outcome = run(wire);
+        CHECK(!outcome && outcome.error().code == lorkhan::ErrorCode::timeout);
+    }
+    {
+        FakePackageWire wire;
+        std::stop_source stop;
+        wire.cancelOnChunk = &stop;
+        wire.probes = {probeOf(Action::install, false, std::nullopt)};
+        auto outcome = run(wire, stop.get_token());
+        CHECK(!outcome && outcome.error().code == lorkhan::ErrorCode::cancelled && wire.submitted.empty());
+    }
+    {
+        FakePackageWire wire;
+        auto missing = sync;
+        missing.version = "3.0.0";
+        auto outcome = lorkhan::runPluginPackageSync(missing, syncRequest, wire, {}, limits);
+        CHECK(outcome && outcome.value().status == Status::missing && wire.probeCalls.empty());
+        auto linked = sync;
+        linked.dataRoots = {linkedRoot.string()};
+        linked.version = "1.0.4";
+        outcome = lorkhan::runPluginPackageSync(linked, syncRequest, wire, {}, limits);
+        CHECK(outcome && outcome.value().status == Status::failed && outcome.value().reasonCode == "package_link_rejected"
+            && wire.probeCalls.empty());
+    }
+
+    // The bridge admits only the typed DTO for this exact request, session and generation.
+    lorkhan::BridgeService bridge(std::make_unique<FakeTransport>(std::make_shared<TransportState>()),
+        std::make_shared<FakeClock>(), lorkhan::Generation(7));
+    const auto syncOutbound = [&](lorkhan::PluginPackageSyncRequest payload) {
+        return lorkhan::OutboundRequest{syncRequest, syncSession, lorkhan::Generation(7),
+            lorkhan::RequestKind::plugin_package_sync, std::move(payload)};
+    };
+    auto relative = sync;
+    relative.dataRoots = {"Data Files"};
+    CHECK(!bridge.enqueue(syncOutbound(relative)));
+    auto badSha = sync;
+    badSha.manifestSha256 = std::string(64, 'G');
+    CHECK(!bridge.enqueue(syncOutbound(badSha)));
+    auto reserved = sync;
+    reserved.pluginId = "openmw.core_scripts";
+    CHECK(!bridge.enqueue(syncOutbound(reserved)));
+    auto stale = sync;
+    stale.correlation.generation = lorkhan::Generation(6);
+    CHECK(!bridge.enqueue(syncOutbound(stale)));
+    auto tooMany = sync;
+    tooMany.dataRoots.assign(lorkhan::kMaxPluginPackageRoots + 1, rootA.string());
+    CHECK(!bridge.enqueue(syncOutbound(tooMany)));
+    auto wrongKind = syncOutbound(sync);
+    wrongKind.kind = lorkhan::RequestKind::plugin_event;
+    CHECK(!bridge.enqueue(std::move(wrongKind)));
+    CHECK(bridge.enqueue(syncOutbound(sync)));
+    fs::remove_all(base, ignored);
+}
+
 int main()
 {
+    testClientConfigPath();
     testSavedCharacterIdentity(); testPlaybackSettings(); testRecordProvenance(); testUtf8(); testUrls(); testHeaders(); testJson(); testProtocolResponses(); testAcceptedProtocolResponses();
     testProtocolEventResponses(); testQueue(); testLifecycleAndCancellation();
     testEvents(); testActions(); testPairingToken(); testMedia(); testBridgeDialogueDeliveryValidation();
-    testBridge(); testConcurrency(); testVoiceCapturePrimitives();
+    testBridge(); testBridgeSpeechCancel(); testConcurrency(); testVoiceCapturePrimitives(); testPluginContract();
+    testPluginPackageSync();
+    // A waiting package yields to queued foreground work on the existing worker, then finishes.
+    {
+        struct CooperativeTransport final : lorkhan::ITransport {
+            std::atomic<bool> started{false}, foreground{false};
+            lorkhan::Result<lorkhan::InboundResult> execute(const lorkhan::OutboundRequest& request, std::stop_token) override {
+                foreground = true;
+                return lorkhan::Result<lorkhan::InboundResult>::success({request.id, request.session, request.generation,
+                    lorkhan::ResponseKind::completed, "foreground", std::nullopt});
+            }
+            lorkhan::Result<lorkhan::InboundResult> executeBackground(const lorkhan::OutboundRequest& request,
+                std::stop_token token, const std::function<void()>& yield) override {
+                started = true;
+                const auto deadline = std::chrono::steady_clock::now() + 2s;
+                while (!foreground && !token.stop_requested() && std::chrono::steady_clock::now() < deadline) {
+                    yield(); std::this_thread::sleep_for(1ms);
+                }
+                return lorkhan::Result<lorkhan::InboundResult>::success({request.id, request.session, request.generation,
+                    lorkhan::ResponseKind::completed, "package", std::nullopt});
+            }
+            void interrupt(const lorkhan::RequestId&) noexcept override {}
+        };
+        auto transport = std::make_unique<CooperativeTransport>();
+        auto* observed = transport.get();
+        lorkhan::BridgeService bridge(std::move(transport), std::make_shared<FakeClock>(), lorkhan::Generation(7));
+        const lorkhan::RequestId packageId(uuidFor(950)), foregroundId(uuidFor(951));
+        const lorkhan::SessionId session(kSession);
+        CHECK(bridge.enqueue({packageId, session, lorkhan::Generation(7), lorkhan::RequestKind::plugin_package_sync,
+            lorkhan::PluginPackageSyncRequest{{packageId, session, lorkhan::Generation(7)}, "parity.example", "1.0.0",
+                std::string(64, 'a'), {std::filesystem::temp_directory_path().string()}}}));
+        CHECK(waitUntil([&] { return observed->started.load(); }));
+        CHECK(bridge.enqueue({foregroundId, session, lorkhan::Generation(7), lorkhan::RequestKind::health, lorkhan::HealthRequest{}}));
+        CHECK(waitUntil([&] { return bridge.diagnostics().inbound == 2; }));
+        const auto results = bridge.poll(2);
+        CHECK(results.size() == 2 && results[0].request == foregroundId && results[1].request == packageId);
+    }
     if (failures != 0) {
         std::cerr << failures << " test(s) failed\n";
         return EXIT_FAILURE;

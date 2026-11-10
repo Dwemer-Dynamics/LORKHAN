@@ -1,5 +1,10 @@
 #include "lorkhan/beast_transport.hpp"
+#include "lorkhan/bridge_service.hpp"
+#include "lorkhan/json.hpp"
+#include "lorkhan/plugin_package.hpp"
 #include "lorkhan/protocol_response.hpp"
+#include "lorkhan/voice_capture.hpp"
+#include "lorkhan/validation.hpp"
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/core.hpp>
@@ -15,7 +20,9 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
 #include <optional>
+#include <span>
 #include <sstream>
 #include <stop_token>
 #include <string>
@@ -318,6 +325,33 @@ std::string utcNow()
     std::ostringstream stream;
     stream << std::put_time(&value, "%Y-%m-%dT%H:%M:%SZ");
     return stream.str();
+}
+
+void testDiscovery()
+{
+    OneShotServer valid([](const CapturedRequest& request, tcp::socket& socket) {
+        CHECK(request.target == "/discover?game=lorkhan");
+        CHECK(request.authorization.empty() && request.body.empty());
+        sendJson(socket, 200, "127.0.0.1:7514", "text/plain");
+    });
+    auto found = lorkhan::discoverLocalServer({}, valid.port());
+    CHECK(found && found->port == 7514 && found->basePath == "/LorkhanServer/api/v1");
+    for (const auto& body : {"192.168.1.1:7514", "localhost:7514", "127.0.0.1:7514/evil", "bad"}) {
+        OneShotServer invalid([&](const CapturedRequest&, tcp::socket& socket) { sendJson(socket, 200, body); });
+        CHECK(!lorkhan::discoverLocalServer({}, invalid.port()));
+    }
+    OneShotServer redirected([](const CapturedRequest&, tcp::socket& socket) { sendJson(socket, 302, "127.0.0.1:7514"); });
+    CHECK(!lorkhan::discoverLocalServer({}, redirected.port()));
+    OneShotServer oversized([](const CapturedRequest&, tcp::socket& socket) { sendJson(socket, 200, std::string(200, 'x')); });
+    CHECK(!lorkhan::discoverLocalServer({}, oversized.port()));
+    OneShotServer slow([](const CapturedRequest&, tcp::socket& socket) {
+        std::this_thread::sleep_for(1200ms); sendJson(socket, 200, "127.0.0.1:7514");
+    });
+    const auto start = std::chrono::steady_clock::now();
+    CHECK(!lorkhan::discoverLocalServer({}, slow.port()));
+    CHECK(std::chrono::steady_clock::now() - start < 1500ms);
+    std::stop_source stopped; stopped.request_stop();
+    CHECK(!lorkhan::discoverLocalServer(stopped.get_token()));
 }
 
 void testHealthAndWirePolicy()
@@ -699,6 +733,28 @@ void testSttAndDialogueDelivery()
         auto result = transport.execute(request, {});
         CHECK(result && result.value().kind == lorkhan::ResponseKind::accepted);
     }
+    // Plugin routes are fixed, MAC-signed and idempotent by message ID; the accepted body must correlate.
+    const std::string pluginEvent = std::string(R"({"event":"meal_shared","fields":{},"generation":7,"message_id":")")
+        + kMessage + R"(","observed_at":"2026-10-02T12:05:00Z","plugin_id":"ashlander.camp_tasks","plugin_version":"1.2.0","request_id":")"
+        + kRequest + R"(","schema":"lorkhan.plugin.event.v1","session_id":")" + kSession + "\"}";
+    const lorkhan::OutboundRequest pluginRequest{lorkhan::RequestId(kRequest), lorkhan::SessionId(kSession),
+        lorkhan::Generation(7), lorkhan::RequestKind::plugin_event,
+        lorkhan::PluginEventRequest{{lorkhan::MessageId(kMessage),
+            {lorkhan::RequestId(kRequest), lorkhan::SessionId(kSession), lorkhan::Generation(7)}, pluginEvent}}};
+    for (const bool correlated : {true, false}) {
+        OneShotServer server([&pluginEvent, correlated](const CapturedRequest& request, tcp::socket& socket) {
+            CHECK(request.method == http::verb::post);
+            CHECK(request.target == std::string(kBasePath) + "/plugins/events");
+            CHECK(request.idempotency == kMessage);
+            CHECK(request.body == pluginEvent);
+            sendJson(socket, 202, std::string(R"({"schema":"lorkhan.plugin.event.accepted.v1","message_id":")")
+                + (correlated ? kMessage : kAction) + R"(","request_id":")" + kRequest + R"(","session_id":")" + kSession
+                + R"(","generation":7,"duplicate":false})");
+        });
+        lorkhan::BeastTransport transport(url(server.port()), lorkhan::InstallationId(kInstallation), token(), cacheRoot());
+        auto result = transport.execute(pluginRequest, {});
+        CHECK(correlated ? result && result.value().kind == lorkhan::ResponseKind::accepted : !result);
+    }
 }
 
 void testAuthenticatedVerifiedMedia()
@@ -887,10 +943,279 @@ void testDeadlineAndCancellation()
     }
 }
 
+// A slow speech server holds the synthesis connection open. Cancelling must close it and then name the
+// abandoned message on a new authenticated connection, without surfacing the internal cancel to Lua.
+void testSpeculativeSpeechCancel()
+{
+    asio::io_context context;
+    tcp::acceptor acceptor(context, tcp::endpoint(asio::ip::make_address("127.0.0.1"), 0));
+    std::atomic<bool> speechReceived{false};
+    std::atomic<bool> cancelReceived{false};
+    std::chrono::steady_clock::time_point speechClosedAt{};
+    std::string speechTarget;
+    CapturedRequest cancel;
+    std::string cancelSignature;
+    std::string cancelRequestHeader;
+    std::jthread server([&] {
+        boost::system::error_code error;
+        tcp::socket speech(context);
+        acceptor.accept(speech, error);
+        if (error)
+            return;
+        beast::flat_buffer buffer;
+        http::request<http::string_body> request;
+        http::read(speech, buffer, request, error);
+        if (error)
+            return;
+        speechTarget = std::string(request.target());
+        speechReceived = true;
+        char byte{};
+        static_cast<void>(speech.read_some(asio::buffer(&byte, 1), error));
+        speechClosedAt = std::chrono::steady_clock::now();
+        tcp::socket follow(context);
+        acceptor.accept(follow, error);
+        if (error)
+            return;
+        beast::flat_buffer followBuffer;
+        http::request<http::string_body> cancelRequest;
+        http::read(follow, followBuffer, cancelRequest, error);
+        if (error)
+            return;
+        cancel.method = cancelRequest.method();
+        cancel.target = std::string(cancelRequest.target());
+        cancel.idempotency = std::string(cancelRequest["Idempotency-Key"]);
+        cancel.contentType = std::string(cancelRequest[http::field::content_type]);
+        cancel.body = cancelRequest.body();
+        cancelSignature = std::string(cancelRequest["X-LORKHAN-Signature"]);
+        cancelRequestHeader = std::string(cancelRequest["X-LORKHAN-Request-Id"]);
+        cancelReceived = true;
+        auto parsed = lorkhan::json::parse(cancel.body);
+        const auto* object = parsed ? parsed.value().object() : nullptr;
+        const auto field = [&](std::string_view key) {
+            const auto* value = object ? lorkhan::json::find(*object, key) : nullptr;
+            return value && value->string() ? *value->string() : std::string();
+        };
+        sendJson(follow, 200, R"({"schema":"lorkhan.menu-dialogue-tts.cancel.accepted.v1","message_id":")" + field("message_id")
+            + R"(","request_id":")" + field("request_id") + R"(","session_id":")" + field("session_id")
+            + R"(","generation":7,"target_message_id":")" + field("target_message_id") + R"(","status":"cancelled"})");
+    });
+
+    const lorkhan::RequestId speechRequest(kRequest);
+    lorkhan::BridgeService bridge(std::make_unique<lorkhan::BeastTransport>(url(acceptor.local_endpoint().port()),
+        lorkhan::InstallationId(kInstallation), token(), cacheRoot()), std::make_shared<lorkhan::SystemClock>(), lorkhan::Generation(7));
+    CHECK(bridge.enqueue({speechRequest, lorkhan::SessionId(kSession), lorkhan::Generation(7), lorkhan::RequestKind::menu_dialogue_tts,
+        lorkhan::MenuDialogueTtsRequest{lorkhan::MessageId(kMessage), {speechRequest, lorkhan::SessionId(kSession), lorkhan::Generation(7)},
+            "2026-07-19T20:00:00Z", R"({"kind":"npc","record_id":"fargoth","refnum":{"index":112,"content_file":0},"content_file":"Morrowind.esm","cell":{"kind":"exterior","grid_x":-2,"grid_y":-9},"display_name":"Fargoth"})",
+            "Speculative topic text."}}));
+    const auto waitFor = [](const std::atomic<bool>& flag) {
+        const auto deadline = std::chrono::steady_clock::now() + 3s;
+        while (!flag.load() && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(1ms);
+        return flag.load();
+    };
+    CHECK(waitFor(speechReceived));
+    std::this_thread::sleep_for(50ms);
+    const auto cancelledAt = std::chrono::steady_clock::now();
+    CHECK(bridge.cancel(speechRequest));
+    CHECK(waitFor(cancelReceived));
+    if (!cancelReceived.load()) {
+        boost::system::error_code ignored;
+        acceptor.close(ignored);
+        return;
+    }
+    server.join();
+    CHECK(speechTarget == std::string(kBasePath) + "/menu-dialogue-tts");
+    CHECK(speechClosedAt - cancelledAt < 1s);
+    CHECK(cancel.method == http::verb::post && cancel.target == std::string(kBasePath) + "/menu-dialogue-tts/cancel"
+        && cancel.contentType == "application/json; charset=utf-8" && !cancelSignature.empty());
+    auto body = lorkhan::json::parse(cancel.body);
+    const auto* object = body ? body.value().object() : nullptr;
+    CHECK(object && object->size() == 7);
+    if (object) {
+        const auto text = [&](std::string_view key) {
+            const auto* value = lorkhan::json::find(*object, key);
+            return value && value->string() ? *value->string() : std::string();
+        };
+        const auto* generation = lorkhan::json::find(*object, "generation");
+        CHECK(text("schema") == "lorkhan.menu-dialogue-tts.cancel.v1" && text("target_message_id") == kMessage
+            && text("session_id") == kSession && generation && generation->integer() && *generation->integer() == 7
+            && lorkhan::isCanonicalUuid(text("message_id")) && text("message_id") != kMessage
+            && cancel.idempotency == text("message_id") && cancelRequestHeader == text("request_id")
+            && text("request_id") != kRequest && lorkhan::isCanonicalUtcTimestamp(text("created_at")));
+    }
+    std::vector<lorkhan::InboundResult> results;
+    const auto deadline = std::chrono::steady_clock::now() + 200ms;
+    while (std::chrono::steady_clock::now() < deadline) {
+        for (auto& result : bridge.poll(16))
+            results.push_back(std::move(result));
+        std::this_thread::sleep_for(5ms);
+    }
+    CHECK(results.size() == 1 && results[0].request == speechRequest && results[0].kind == lorkhan::ResponseKind::cancelled);
+}
+
 } // namespace
+
+struct PackageExchange {
+    http::verb method{};
+    std::string target;
+    std::string requestId;
+    std::string idempotency;
+    std::string contentType;
+    std::string auth;
+    std::string body;
+};
+
+// Answers one scripted reply per connection, in order, and records each signed request.
+class SequenceServer {
+public:
+    using Reply = std::function<std::pair<unsigned, std::string>(const PackageExchange&)>;
+
+    explicit SequenceServer(std::vector<Reply> replies)
+        : m_acceptor(m_context, tcp::endpoint(asio::ip::make_address("127.0.0.1"), 0))
+        , m_port(m_acceptor.local_endpoint().port())
+        , m_thread([this, replies = std::move(replies)] {
+            for (const auto& reply : replies) {
+                boost::system::error_code error;
+                tcp::socket socket(m_context);
+                m_acceptor.accept(socket, error);
+                if (error) return;
+                beast::flat_buffer buffer;
+                http::request_parser<http::string_body> parser;
+                parser.body_limit(4U * 1024U * 1024U);
+                http::read(socket, buffer, parser, error);
+                if (error) return;
+                const auto& request = parser.get();
+                PackageExchange exchange{request.method(), std::string(request.target()),
+                    std::string(request["X-LORKHAN-Request-Id"]), std::string(request["Idempotency-Key"]),
+                    std::string(request[http::field::content_type]), std::string(request["X-LORKHAN-Auth"]),
+                    request.body()};
+                {
+                    std::lock_guard lock(m_mutex);
+                    m_seen.push_back(exchange);
+                }
+                auto [status, body] = reply(exchange);
+                sendJson(socket, status, std::move(body));
+            }
+        })
+    {
+    }
+
+    ~SequenceServer()
+    {
+        boost::system::error_code ignored;
+        m_acceptor.close(ignored);
+    }
+
+    std::uint16_t port() const noexcept { return m_port; }
+    std::vector<PackageExchange> seen()
+    {
+        std::lock_guard lock(m_mutex);
+        return m_seen;
+    }
+
+private:
+    asio::io_context m_context;
+    tcp::acceptor m_acceptor;
+    std::uint16_t m_port;
+    std::mutex m_mutex;
+    std::vector<PackageExchange> m_seen;
+    std::jthread m_thread;
+};
+
+void testPluginPackageSyncWire()
+{
+    namespace fs = std::filesystem;
+    const std::string id = "ashlander.camp_tasks";
+    const std::string upload = "00000000-0000-4000-8000-000000000501";
+    const std::string operation = kRequest;
+    const std::string manifestSha(64, 'a');
+    const fs::path root = fs::temp_directory_path() / "lorkhan-beast-package-root";
+    std::error_code ignored;
+    fs::remove_all(root, ignored);
+    fs::create_directories(root / "lorkhan-packages" / id);
+    const std::string archive = "PK\x03\x04 parity package bytes for the loopback wire test";
+    std::ofstream(root / "lorkhan-packages" / id / (id + "-1.2.0.dwpkg"), std::ios::binary) << archive;
+    const std::string archiveSha = lorkhan::sha256Hex(std::as_bytes(std::span(archive.data(), archive.size())));
+    const std::string installed = R"({"plugin_id":"ashlander.camp_tasks","display_name":"Camp","version":"1.2.0","state":"installed","enabled":false,"archive_sha256":")"
+        + archiveSha + R"(","manifest_sha256":")" + manifestSha + R"(","previous_version":null,"revision":1,"installed_at":"2026-10-02 12:00:00+00","updated_at":"2026-10-02 12:00:00+00"})";
+    const auto operationJson = [&](const std::string& state) {
+        return R"({"operation":{"operation_id":")" + operation + R"(","plugin_id":"ashlander.camp_tasks","operation":"install","version":"1.2.0","archive_sha256":")"
+            + archiveSha + R"(","state":")" + state + R"(","error_code":null,"created_at":"2026-10-02 12:00:00+00","finished_at":null}})";
+    };
+    const lorkhan::OutboundRequest request{lorkhan::RequestId(kRequest), lorkhan::SessionId(kSession), lorkhan::Generation(7),
+        lorkhan::RequestKind::plugin_package_sync,
+        lorkhan::PluginPackageSyncRequest{{lorkhan::RequestId(kRequest), lorkhan::SessionId(kSession), lorkhan::Generation(7)},
+            id, "1.2.0", manifestSha, {root.string()}}};
+    {
+        SequenceServer server({
+            [](const PackageExchange&) { return std::pair<unsigned, std::string>(200, R"({"plugin_id":"ashlander.camp_tasks","action":"install","pending":false,"installed":null})"); },
+            [&](const PackageExchange&) { return std::pair<unsigned, std::string>(201, R"({"upload_id":")" + upload + R"(","next_index":0,"chunk_bytes":1048576,"complete":false})"); },
+            [&](const PackageExchange& seen) { return std::pair<unsigned, std::string>(200, R"({"upload_id":")" + upload + R"(","next_index":1,"received":)"
+                + std::to_string(seen.body.size()) + R"(,"complete":true})"); },
+            [&](const PackageExchange&) { return std::pair<unsigned, std::string>(202, operationJson("queued")); },
+            [&](const PackageExchange&) { return std::pair<unsigned, std::string>(200, operationJson("succeeded")); },
+            [&](const PackageExchange&) { return std::pair<unsigned, std::string>(200, R"({"plugin_id":"ashlander.camp_tasks","action":"current","pending":false,"installed":)" + installed + "}"); },
+        });
+        lorkhan::BeastTransport transport(url(server.port()), lorkhan::InstallationId(kInstallation), token(), cacheRoot());
+        auto result = transport.execute(request, {});
+        CHECK(result && result.value().kind == lorkhan::ResponseKind::completed && result.value().request.value() == kRequest
+            && result.value().payload == R"({"enabled":false,"installed_version":"1.2.0","plugin_id":"ashlander.camp_tasks","reason_code":"package_installed","status":"installed","uploaded_bytes":)"
+                + std::to_string(archive.size()) + R"(,"version":"1.2.0"})");
+        const auto seen = server.seen();
+        const std::string base(kBasePath);
+        CHECK(seen.size() == 6);
+        if (seen.size() == 6) {
+            for (const auto& exchange : seen)
+                CHECK(exchange.requestId == kRequest && exchange.auth == "hmac-sha256-v1");
+            CHECK(seen[0].method == http::verb::post && seen[0].target == base + "/plugin-packages/probe"
+                && seen[0].body == R"({"plugin_id":"ashlander.camp_tasks","sha256":")" + archiveSha + R"(","version":"1.2.0"})");
+            CHECK(seen[1].target == base + "/plugin-packages/uploads" && seen[1].body == R"({"plugin_id":"ashlander.camp_tasks","sha256":")"
+                + archiveSha + R"(","size":)" + std::to_string(archive.size()) + R"(,"version":"1.2.0"})");
+            CHECK(seen[2].method == http::verb::put && seen[2].target == base + "/plugin-packages/uploads/" + upload + "/chunks/0"
+                && seen[2].contentType == "application/octet-stream" && seen[2].body == archive);
+            const std::string submitBody = std::string(R"({"request_id":")") + kRequest + R"(","upload_id":")" + upload + R"(","expected_manifest_sha256":")" + std::string(64, 'a') + R"("})";
+            CHECK(seen[3].target == base + "/plugin-packages/install" && seen[3].idempotency == kRequest
+                && seen[3].body == submitBody);
+            CHECK(seen[4].method == http::verb::get && seen[4].target == base + "/plugin-packages/operations/" + operation);
+            for (std::size_t index : {0U, 1U, 2U, 4U, 5U})
+                CHECK(seen[index].idempotency.empty());
+        }
+    }
+    {
+        // A typed package refusal correlated to this request is an outcome; another correlation is a fault.
+        const auto busy = [](const char* correlation) {
+            return std::string(R"({"schema":"lorkhan.error.v1","code":"package_storage_busy","message":"Package request rejected.","correlation_id":")")
+                + correlation + R"(","retriable":true})";
+        };
+        SequenceServer server({[&](const PackageExchange&) { return std::pair<unsigned, std::string>(503, busy(kRequest)); },
+            [&](const PackageExchange&) { return std::pair<unsigned, std::string>(503, busy(kEndRequest)); }});
+        lorkhan::BeastTransport transport(url(server.port()), lorkhan::InstallationId(kInstallation), token(), cacheRoot());
+        auto refused = transport.execute(request, {});
+        CHECK(refused && refused.value().payload.find(R"("reason_code":"package_storage_busy","status":"failed")") != std::string::npos);
+        auto mismatched = transport.execute(request, {});
+        CHECK(!mismatched && mismatched.error().code == lorkhan::ErrorCode::transport_failure);
+    }
+    {
+        // A cancelled sync sends nothing.
+        std::stop_source stop;
+        stop.request_stop();
+        SequenceServer server({});
+        lorkhan::BeastTransport transport(url(server.port()), lorkhan::InstallationId(kInstallation), token(), cacheRoot());
+        auto cancelled = transport.execute(request, stop.get_token());
+        CHECK(!cancelled && cancelled.error().code == lorkhan::ErrorCode::cancelled && server.seen().empty());
+    }
+    fs::remove_all(root, ignored);
+}
 
 int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string_view(argv[1]) == "--discover-only") {
+        auto endpoint = lorkhan::discoverLocalServer({});
+        if (!endpoint) return EXIT_FAILURE;
+        std::cout << endpoint->authority() << endpoint->basePath << "\n";
+        return EXIT_SUCCESS;
+    }
+
     if (argc >= 3 && std::string_view(argv[1]) == "--live-url") {
         auto parsed = lorkhan::parseLoopbackBaseUrl(argv[2]);
         if (!parsed) {
@@ -898,10 +1223,12 @@ int main(int argc, char** argv)
             return EXIT_FAILURE;
         }
         std::filesystem::path controlDirectory;
-        if (argc == 5 && std::string_view(argv[3]) == "--control-dir")
+        std::filesystem::path packageRoot;
+        if (argc == 7 && std::string_view(argv[5]) == "--package-root") packageRoot = argv[6];
+        if ((argc == 5 || argc == 7) && std::string_view(argv[3]) == "--control-dir")
             controlDirectory = argv[4];
         else if (argc != 3) {
-            std::cerr << "usage: --live-url URL [--control-dir DIR]\n";
+            std::cerr << "usage: --live-url URL [--control-dir DIR [--package-root DIR]]\n";
             return EXIT_FAILURE;
         }
         const lorkhan::BaseUrl baseUrl = parsed.value();
@@ -920,6 +1247,7 @@ int main(int argc, char** argv)
         lorkhan::OutboundRequest initRequest{lorkhan::RequestId(live.sessionMessage), {}, lorkhan::Generation(7),
             lorkhan::RequestKind::init, lorkhan::InitRequest{std::move(initIds), liveRuntime(),
                 "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "2026-07-19T20:00:00Z"}};
+        if (!packageRoot.empty()) std::get<lorkhan::InitRequest>(initRequest.payload).runtime.capabilities.push_back("plugin.contract.v1");
         auto sessionResponse = transport.execute(initRequest, {});
         if (!sessionResponse) {
             std::cerr << "live-server session failed with code " << static_cast<int>(sessionResponse.error().code)
@@ -929,6 +1257,22 @@ int main(int argc, char** argv)
         if (!require(!sessionResponse.value().session.empty(), "session response omitted session id"))
             return EXIT_FAILURE;
         const lorkhan::SessionId liveSession = sessionResponse.value().session;
+
+        if (!packageRoot.empty()) {
+            lorkhan::OutboundRequest syncRequest{lorkhan::RequestId(liveUuid(3, 1)), liveSession, lorkhan::Generation(7),
+                lorkhan::RequestKind::plugin_package_sync, lorkhan::PluginPackageSyncRequest{{lorkhan::RequestId(liveUuid(3, 1)), liveSession, lorkhan::Generation(7)}, "parity.example", "1.0.0",
+                    "4a44b0af71ffdda44c3a7f68fd70d340b4a0e8fa142b16fdfd2d107ef62e20b0", {packageRoot.string()}}};
+            auto installed = transport.execute(syncRequest, {});
+            if (!require(installed && installed.value().payload.find("\"status\":\"installed\"") != std::string::npos
+                && installed.value().payload.find("\"enabled\":false") != std::string::npos, "package did not install disabled")) return EXIT_FAILURE;
+            syncRequest.id = lorkhan::RequestId(liveUuid(3, 2));
+            std::get<lorkhan::PluginPackageSyncRequest>(syncRequest.payload).correlation.request = syncRequest.id;
+            auto current = transport.execute(syncRequest, {});
+            if (!require(current && current.value().payload.find("\"status\":\"current\"") != std::string::npos
+                && current.value().payload.find("\"uploaded_bytes\":0") != std::string::npos, "package was uploaded again")) return EXIT_FAILURE;
+            std::cout << "live package install and unchanged-package probe passed\n";
+            return EXIT_SUCCESS;
+        }
 
         auto follow = liveTurn(live, liveSession, live.followMessage, live.followRequest, live.followTurn,
             "Please follow me.");
@@ -1103,6 +1447,7 @@ int main(int argc, char** argv)
         return EXIT_SUCCESS;
     }
 
+    testDiscovery();
     testDiaryBookWire();
     testHealthAndWirePolicy();
     testSessionTurnAndCorrelation();
@@ -1111,6 +1456,8 @@ int main(int argc, char** argv)
     testAuthenticatedVerifiedMedia();
     testResponseFailures();
     testDeadlineAndCancellation();
+    testSpeculativeSpeechCancel();
+    testPluginPackageSyncWire();
     if (failures != 0) {
         std::cerr << failures << " Beast transport test(s) failed\n";
         return EXIT_FAILURE;

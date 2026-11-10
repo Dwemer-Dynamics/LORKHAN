@@ -30,7 +30,7 @@ function M.enqueue(state,command)
     local execute=advanced and 'executeAdvanced' or service and 'executeService' or spell and 'executeSpell' or 'executeTransfer'
     local cancel=advanced and 'cancelAdvanced' or service and 'cancelService' or spell and 'cancelSpell' or 'cancelTransfer'
     local receipt=advanced and 'advancedReceiptStatus' or service and 'serviceReceiptStatus' or spell and 'spellReceiptStatus' or 'transferReceiptStatus'
-    for _,method in ipairs({execute,cancel,receipt,'submitActionResult','utcNow'}) do
+    for _,method in ipairs({execute,cancel,receipt,'submitActionResult','utcNow','newMessageId'}) do
         if type(state.bridge[method])~='function' then return nil,'transfer_bridge_unavailable' end
     end
     if state.pending[command.action_id] then return true end
@@ -38,6 +38,19 @@ function M.enqueue(state,command)
     if count>=4 then return nil,'transfer_queue_full' end
     state.pending[command.action_id]={command=util.copy(command),nextReceipt=0,attempts=0,
         execute=execute,cancel=cancel,receipt=receipt}
+    return true
+end
+
+-- Actor results share native receipt retries, without ever redispatching their engine mutation.
+function M.receiveResult(state,event)
+    local result=event and event.result
+    if type(result)~='table' or type(result.action_id)~='string' then return nil,'invalid_action_result' end
+    if state.pending[result.action_id] then return true end
+    if type(state.bridge.actionReceiptStatus)~='function' then return nil,'receipt_bridge_unavailable' end
+    local count=0;for _ in pairs(state.pending) do count=count+1 end
+    if count>=256 then return nil,'action_receipt_queue_full' end
+    state.pending[result.action_id]={command={name=event.action_name,session_id=result.session_id,
+        generation=result.generation},result=util.copy(result),nextReceipt=0,attempts=0,receipt='actionReceiptStatus'}
     return true
 end
 
@@ -79,7 +92,7 @@ end
 function M.cancel(state,actor)
     for id,item in pairs(state.pending) do
         if not actor or identity.same(actor,item.command.actor) then
-            pcall(state.bridge[item.cancel],id)
+            if item.cancel then pcall(state.bridge[item.cancel],id) end
         end
     end
 end
@@ -89,15 +102,15 @@ function M.pump(state,sessionId,generation,now)
     for id,item in pairs(state.pending) do
         local command=item.command
         if command.session_id~=sessionId or command.generation~=generation then
-            pcall(state.bridge[item.cancel],id)
+            if item.cancel then pcall(state.bridge[item.cancel],id) end
             state.pending[id]=nil
         else
             if not item.result then
                 local ok,result=pcall(state.bridge[item.execute],id)
-                if ok and type(result)=='table' and ({succeeded=true,failed=true,cancelled=true})[result.status] then
+                if ok and type(result)=='table' and ({succeeded=true,failed=true,cancelled=true,timed_out=true,rejected=true})[result.status] then
                     local internal={kind='lorkhan.internal.action-terminal',action_id=id,status=result.status,
                         reason=result.reason_code or result.reason,observed=util.copy(result.observed or {})}
-                    item.result=actions.canonicalResult(internal,{message_id=command.message_id,
+                    item.result=actions.canonicalResult(internal,{message_id=state.bridge.newMessageId(),
                         request_id=command.request_id,turn_id=command.turn_id,session_id=command.session_id,
                         generation=command.generation},state.bridge.utcNow())
                 end

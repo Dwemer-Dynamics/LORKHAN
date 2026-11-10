@@ -13,6 +13,7 @@ sources=(
   "$root/components/lorkhan/src/json.cpp"
   "$root/components/lorkhan/src/lifecycle.cpp"
   "$root/components/lorkhan/src/media.cpp"
+  "$root/components/lorkhan/src/plugin_package.cpp"
   "$root/components/lorkhan/src/protocol_response.cpp"
   "$root/components/lorkhan/src/validation.cpp"
   "$root/components/lorkhan/src/voice_capture.cpp"

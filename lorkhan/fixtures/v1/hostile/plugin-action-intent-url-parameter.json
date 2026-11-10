@@ -1,0 +1,5 @@
+{
+  "description": "Plugin parameters reject URLs and paths",
+  "instance": {"schema": "lorkhan.plugin.action-intent.v1", "action_id": "00000000-0000-4000-8000-000000000310", "turn_id": "00000000-0000-4000-8000-000000000008", "session_id": "00000000-0000-4000-8000-000000000007", "generation": 7, "plugin_id": "ashlander.camp_tasks", "plugin_version": "1.2.0", "action": "fetch_water", "tier": 1, "confirmation_required": false, "cancellable": true, "actor": {"cell": {"grid_x": -2, "grid_y": -9, "kind": "exterior"}, "content_file": "Morrowind.esm", "display_name": "Fargoth", "kind": "npc", "record_id": "fargoth", "refnum": {"content_file": 0, "index": 112}}, "target": null, "parameters": {"trips": 1, "vessel": "https://example.invalid/payload.lua"}, "expires_at": "2026-10-02T12:02:00Z"},
+  "schema": "https://lorkhan.invalid/schemas/v1/plugin.schema.json"
+}

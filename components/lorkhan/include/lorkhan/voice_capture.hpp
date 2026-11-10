@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -90,6 +91,20 @@ private:
 [[nodiscard]] std::vector<std::byte> makePcm16MonoWav(
     std::span<const std::byte> pcm, std::uint32_t sampleRate = 16000);
 [[nodiscard]] std::string sha256Hex(std::span<const std::byte> bytes);
+// Incremental form of sha256Hex for bounded file reads on the transport worker.
+class Sha256Stream {
+public:
+    Sha256Stream();
+    ~Sha256Stream();
+    Sha256Stream(const Sha256Stream&) = delete;
+    Sha256Stream& operator=(const Sha256Stream&) = delete;
+    void update(std::span<const std::byte> bytes);
+    [[nodiscard]] std::string finishHex();
+
+private:
+    struct State;
+    std::unique_ptr<State> m_state;
+};
 [[nodiscard]] bool pcm16HasVoice(std::span<const std::byte> pcm, std::uint16_t rmsThreshold = 700);
 
 } // namespace lorkhan

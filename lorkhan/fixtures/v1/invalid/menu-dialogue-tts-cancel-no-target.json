@@ -1,0 +1,12 @@
+{
+  "description": "A speech cancel must name the abandoned message",
+  "instance": {
+    "schema": "lorkhan.menu-dialogue-tts.cancel.v1",
+    "message_id": "10000000-0000-4000-8000-000000000711",
+    "request_id": "10000000-0000-4000-8000-000000000712",
+    "session_id": "10000000-0000-4000-8000-000000000703",
+    "generation": 7,
+    "created_at": "2026-10-01T20:00:00Z"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/menu-dialogue-tts-cancel.schema.json"
+}

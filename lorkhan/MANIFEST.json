@@ -2,6 +2,11 @@
   "cross_repository_byte_parity": "locally-proven",
   "files": [
     {
+      "bytes": 1356,
+      "path": "lorkhan/fixtures/v1/hostile/events-plugin-action-intent-command-field.json",
+      "sha256": "40a5ea0f0fddbe14f569516360dde2df577dd14c873296038a2e3ce8775943eb"
+    },
+    {
       "bytes": 382,
       "path": "lorkhan/fixtures/v1/hostile/oversized-media.json",
       "sha256": "21ec05b15b3447f548a9a9259a8554dc1ab6118e850a36b0928862facea5a3d8"
@@ -10,6 +15,16 @@
       "bytes": 354,
       "path": "lorkhan/fixtures/v1/hostile/path-media-id.json",
       "sha256": "30bdb94283b88ed1d6b150cf64b895495394b16e718d8e05633412e93e1881b3"
+    },
+    {
+      "bytes": 886,
+      "path": "lorkhan/fixtures/v1/hostile/plugin-action-intent-command-field.json",
+      "sha256": "b886f673d0c22adb9c50513bc0b71f44c0497e302db2105c0c9449a84005263e"
+    },
+    {
+      "bytes": 865,
+      "path": "lorkhan/fixtures/v1/hostile/plugin-action-intent-url-parameter.json",
+      "sha256": "5c3978db017ef039142b0aed1df7b53cff13ab648eb92b7fa426327c42b96e89"
     },
     {
       "bytes": 1322,
@@ -82,6 +97,16 @@
       "sha256": "23c218d4c89cfed2eb9459e4c83e83770f76581ef93163540974605ce93b1143"
     },
     {
+      "bytes": 1357,
+      "path": "lorkhan/fixtures/v1/invalid/gamedata-actor-died-killer.json",
+      "sha256": "9169871e867d5a6342647c830f0b8e3be334bf436f28bb551b598a472ae5df7a"
+    },
+    {
+      "bytes": 1454,
+      "path": "lorkhan/fixtures/v1/invalid/gamedata-barter-trade-no-items.json",
+      "sha256": "4db73de8db1df5d67491d5deb8ba0b0de0e84cb77a04f9129d4729bb2b61d6c9"
+    },
+    {
       "bytes": 967,
       "path": "lorkhan/fixtures/v1/invalid/gamedata-bored-player-responder.json",
       "sha256": "d3c75b1552339d2b5fec9419190835fff4aea66850de53d1a294cb36e6aed9a1"
@@ -90,6 +115,11 @@
       "bytes": 1205,
       "path": "lorkhan/fixtures/v1/invalid/gamedata-item-pickup-zero-count.json",
       "sha256": "d63cb1a2afe0e6936e866c179f7593b4618429bcd5812f5597c64791c1514421"
+    },
+    {
+      "bytes": 1181,
+      "path": "lorkhan/fixtures/v1/invalid/gamedata-quest-calendar-leap-day.json",
+      "sha256": "6cc263d5dc4d811d47ed162e2d68a0a9c3ecf6b21c99ba9d1e376064161277e6"
     },
     {
       "bytes": 1345,
@@ -117,9 +147,29 @@
       "sha256": "351cd2bea03e79e0c42cd52c03e5f25996e8bb69b84f9772bf446d3aa20276bc"
     },
     {
+      "bytes": 468,
+      "path": "lorkhan/fixtures/v1/invalid/menu-dialogue-tts-cancel-no-target.json",
+      "sha256": "fadeba8b5145e1f9c8bb5cacf5d7c2955117c24989a47d2f7c430718991e7fd4"
+    },
+    {
       "bytes": 332,
       "path": "lorkhan/fixtures/v1/invalid/non-utc-time.json",
       "sha256": "e0d0cfd31311b030d9d086ab127685b14014a23b0cc948749ac8478197410823"
+    },
+    {
+      "bytes": 1831,
+      "path": "lorkhan/fixtures/v1/invalid/plugin-manifest-reserved-namespace.json",
+      "sha256": "c6393a65566cb6cff910352b73b10b8bca7e4439de9b2d025084ac7cc2607895"
+    },
+    {
+      "bytes": 1817,
+      "path": "lorkhan/fixtures/v1/invalid/plugin-manifest-tier2-unconfirmed.json",
+      "sha256": "8cd5a0ddac6ba51faa31a398ea56ee710a2ca2a73b8fc00e9f303db22b49fea5"
+    },
+    {
+      "bytes": 1086,
+      "path": "lorkhan/fixtures/v1/invalid/plugin-registration-unregister-actions.json",
+      "sha256": "5b65a7f3ac278ce0e0b56fb673ecd867780ee63b982e49d0d58138e7474a0ea2"
     },
     {
       "bytes": 2944,
@@ -155,6 +205,11 @@
       "bytes": 1567,
       "path": "lorkhan/fixtures/v1/invalid/session-loaded-save-leap-day.json",
       "sha256": "cd87df85575d4024cb667edcaaaf03c9f057f8fb68f1d8611aa44db9917a7aff"
+    },
+    {
+      "bytes": 955,
+      "path": "lorkhan/fixtures/v1/invalid/speech-failed-media.json",
+      "sha256": "1e3c73882d810892f63b83772bdb055d3f64032a7dfed0cf22b4fac358c53de4"
     },
     {
       "bytes": 680,
@@ -337,9 +392,14 @@
       "sha256": "fd2128489cbbf47eff86b0bcab1c5cbee233cfc92fb1628a375fb6c8102704d0"
     },
     {
-      "bytes": 7937,
+      "bytes": 1349,
+      "path": "lorkhan/fixtures/v1/valid/events-plugin-action-intent.json",
+      "sha256": "d5c9d72dc388fc7a012a5b703779317f1dfec81120fc470962a2e295f5acbfe1"
+    },
+    {
+      "bytes": 8472,
       "path": "lorkhan/fixtures/v1/valid/events.json",
-      "sha256": "3799d5a716086a8c7edb8565d6b95fa218770af590fa654455bf714b892d952e"
+      "sha256": "a4741859f5dec5f505f290e62edbc1de9dc21bfa2fa4564915a406d3465c5272"
     },
     {
       "bytes": 419,
@@ -347,9 +407,19 @@
       "sha256": "cf27356a6dcaadc76bfa1ab7bb9b400685cfe944e4a446e7d11d74fa453027f4"
     },
     {
+      "bytes": 1515,
+      "path": "lorkhan/fixtures/v1/valid/gamedata-actor-died.json",
+      "sha256": "db3c30f31eb3efa47ca6600ecc5b6251883080b0684e4ea7c7b21c4d1917f92f"
+    },
+    {
       "bytes": 905,
       "path": "lorkhan/fixtures/v1/valid/gamedata-automatic-diary.json",
       "sha256": "138ed195ea59e1c5a490e72175b9a0b2b7b334644e03aea90445f4d04a31f9f1"
+    },
+    {
+      "bytes": 1888,
+      "path": "lorkhan/fixtures/v1/valid/gamedata-barter-trade.json",
+      "sha256": "7b4932cfa423967b3af5f42522b6ba069624abb665be1b13a0936cd6075e1e38"
     },
     {
       "bytes": 968,
@@ -377,9 +447,19 @@
       "sha256": "3a117b195a4b8be68fe46311a095c806f624cfbf60122b46448f684e46f97d9e"
     },
     {
+      "bytes": 1188,
+      "path": "lorkhan/fixtures/v1/valid/gamedata-quest-calendar.json",
+      "sha256": "261134ec633909fe5d54646eb35a177e7a40f6b23577958121d65044a588a062"
+    },
+    {
       "bytes": 1040,
       "path": "lorkhan/fixtures/v1/valid/gamedata-quest-responder.json",
       "sha256": "6464dcfdfae6a8737b37468ed10fe53d99ef267283a284b4db28d0ed0eaca854"
+    },
+    {
+      "bytes": 1177,
+      "path": "lorkhan/fixtures/v1/valid/gamedata-rpg-calendar.json",
+      "sha256": "f3070489e4cbe4f038bc59684269634444140dd06a617313aa342cb06c139126"
     },
     {
       "bytes": 1381,
@@ -412,6 +492,16 @@
       "sha256": "7f8192a739030f383e6881863a18f173d16ff0078a7625285130be9579f1d33c"
     },
     {
+      "bytes": 552,
+      "path": "lorkhan/fixtures/v1/valid/menu-dialogue-tts-cancel-accepted.json",
+      "sha256": "c849d1be498fc251ae5c7cdd9a13a1dec05779cf6f697f6474050a557e881a8f"
+    },
+    {
+      "bytes": 562,
+      "path": "lorkhan/fixtures/v1/valid/menu-dialogue-tts-cancel.json",
+      "sha256": "ced621eeed0794da082a04241b5eda28d4f0236daf6e31075c23892024455042"
+    },
+    {
       "bytes": 504,
       "path": "lorkhan/fixtures/v1/valid/player-autochat-ready.json",
       "sha256": "4db7a7a53892c25dc6a6b3d9f6ba8a4ea05e638d6bf6675717ceaf1de9d7fb6e"
@@ -420,6 +510,36 @@
       "bytes": 1081,
       "path": "lorkhan/fixtures/v1/valid/player-autochat.json",
       "sha256": "a811c6dd288e2269146179eb5ba8f1c3c4473854033f020e92e0ff7f72369f5d"
+    },
+    {
+      "bytes": 854,
+      "path": "lorkhan/fixtures/v1/valid/plugin-action-intent.json",
+      "sha256": "4c6729fa250fb452a07467662c04a33975eb0ba67dda047d1b876400d843ced8"
+    },
+    {
+      "bytes": 412,
+      "path": "lorkhan/fixtures/v1/valid/plugin-event-accepted.json",
+      "sha256": "88bda916d9b6b397fcda1cda6a3af1cc3c6ac63d6edfd80cfca5b33fa9b788e4"
+    },
+    {
+      "bytes": 749,
+      "path": "lorkhan/fixtures/v1/valid/plugin-event.json",
+      "sha256": "3289d58c4f0bfc6698c13576102033194566b70ca4a170155166654b57ba1ef1"
+    },
+    {
+      "bytes": 1859,
+      "path": "lorkhan/fixtures/v1/valid/plugin-manifest.json",
+      "sha256": "60fb2d4d2a2a1f09887e1052685da0ac0d31443b2837fa859d7223a312255592"
+    },
+    {
+      "bytes": 634,
+      "path": "lorkhan/fixtures/v1/valid/plugin-registration-accepted.json",
+      "sha256": "966057076fdd90349485313f3d61c7a8225fd977b76ba2a590bbe7f8b95ceb2b"
+    },
+    {
+      "bytes": 1096,
+      "path": "lorkhan/fixtures/v1/valid/plugin-registration.json",
+      "sha256": "6466786b926621648fa3a63dfb3ea117ece89962a84dff58a8d856020822451c"
     },
     {
       "bytes": 3995,
@@ -572,9 +692,9 @@
       "sha256": "f9f9023764e30b5b32d85cda5bad00e63837c9fc7e2a7234b3145ddae30d33ff"
     },
     {
-      "bytes": 2071,
+      "bytes": 2102,
       "path": "lorkhan/schemas/v1/error.schema.json",
-      "sha256": "75540777ca027f291bc7a0acc46d7f8b73b0deb4b96d9f548ef0e6b1eeb9c00f"
+      "sha256": "2319393bb1272a9c01514a58ad50fe91a1ac29e7fdf3c32bbda6b4d6e9bb08da"
     },
     {
       "bytes": 4900,
@@ -582,9 +702,9 @@
       "sha256": "04ea0d56266d632fa97b90fea55725a8dfaedba81134823bae2d260152d21fc8"
     },
     {
-      "bytes": 37223,
+      "bytes": 41339,
       "path": "lorkhan/schemas/v1/events.schema.json",
-      "sha256": "53df8baa1c2e7c3a850154a87602946e02ae276a0e44f3363e3b44acd8441e30"
+      "sha256": "066a226a2ce85d5825309453656c138f118b91f8452b7018c42d76f55731157c"
     },
     {
       "bytes": 968,
@@ -592,9 +712,9 @@
       "sha256": "66fb9b333958f5db965e5530e5f26e806947a490cde1e0dc435c2abe25628993"
     },
     {
-      "bytes": 31404,
+      "bytes": 35890,
       "path": "lorkhan/schemas/v1/gamedata.schema.json",
-      "sha256": "26352779e79c00663c58e31d209a306353b4bd90faa8367152c856b31c4fc45d"
+      "sha256": "6fb3e31c7aa5f8b2923a02cd24b0bcc10b7644319952fe7ff1302e7bc1694ab5"
     },
     {
       "bytes": 295,
@@ -622,6 +742,16 @@
       "sha256": "d1a9bd58b04fb60880dd862d9fb42d8ab23faf6555be188ac567b25e166fc4c0"
     },
     {
+      "bytes": 1004,
+      "path": "lorkhan/schemas/v1/menu-dialogue-tts-cancel-accepted.schema.json",
+      "sha256": "cfa9888aa935c2111d4a0bbc24c83fd83f3606bce53085a786c99b1b94d27e45"
+    },
+    {
+      "bytes": 1022,
+      "path": "lorkhan/schemas/v1/menu-dialogue-tts-cancel.schema.json",
+      "sha256": "18621520c0adf5e2f79b5e23c3a1d6cdf176a6466cae39c1b07863962aeacb08"
+    },
+    {
       "bytes": 983,
       "path": "lorkhan/schemas/v1/menu-dialogue-tts-ready.schema.json",
       "sha256": "8a31db3b01b8c5f23a7e1a3db4c7539073cbfc40d0aebae5fdee53f401855fdc"
@@ -640,6 +770,11 @@
       "bytes": 1172,
       "path": "lorkhan/schemas/v1/player-autochat.schema.json",
       "sha256": "08b4080325e153fd198ad0f66bf986d2dd4a3198da4b89a66f22abd4c79cfe9b"
+    },
+    {
+      "bytes": 17322,
+      "path": "lorkhan/schemas/v1/plugin.schema.json",
+      "sha256": "396d4656618b733d65978098256e418607adf5cdb18e242c774b17220b9f7201"
     },
     {
       "bytes": 3688,
@@ -682,9 +817,9 @@
       "sha256": "52ca2b7555cd4b11becf70373ce02dda7f58f72fd8780db4ea9f5c3043641c08"
     },
     {
-      "bytes": 10629,
+      "bytes": 10653,
       "path": "lorkhan/schemas/v1/turn.schema.json",
-      "sha256": "a546e34b53abe7569fb947dc3b775be926da1e96c74d9216a90beffcf9f09b9b"
+      "sha256": "98eb44a52616b53ff6ec31e2f659a3e7ee3ed141ca5a46fd09fea64f12976eee"
     }
   ],
   "format": "lorkhan.protocol-manifest.v1",

@@ -1,0 +1,41 @@
+{
+  "description": "A successful lockpick keeps the engine calendar captured with its game time",
+  "instance": {
+    "game": "tes3",
+    "generation": 12,
+    "installation_id": "10000000-0000-4000-8000-000000000001",
+    "observed_at": "2026-08-09T18:00:03Z",
+    "payload": {
+      "kind": "lockpick",
+      "player": {
+        "cell": {
+          "kind": "interior",
+          "name": "Balmora"
+        },
+        "content_file": "Morrowind.esm",
+        "display_name": "Player",
+        "kind": "player",
+        "record_id": "player",
+        "refnum": {
+          "content_file": 0,
+          "index": 1
+        }
+      },
+      "game_time": 43210.5,
+      "text": "The player successfully picked a lock.",
+      "calendar": {
+        "year": 427,
+        "month": 7,
+        "day": 15,
+        "hour": 11.75
+      }
+    },
+    "playthrough_id": "10000000-0000-4000-8000-000000000002",
+    "request_id": "10000000-0000-4000-8000-000000000015",
+    "runtime_generation": 4,
+    "schema": "lorkhan.gamedata.v1",
+    "session_id": "10000000-0000-4000-8000-000000000005",
+    "type": "rpg_event"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json"
+}

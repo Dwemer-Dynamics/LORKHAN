@@ -137,3 +137,40 @@ checklist remains deliberately unclaimed.
 - AUTOMATED: native RPG/Quest/Bored exports and matching live decision delivery wired; requests expire after30seconds, reset on generation change and reject duplicate/stale replies. Diary timer requests removed; sleep/wait remain server-profile-controlled.
 - DEPLOYED: C:/Modlists/LORKHAN engine SHA256 `359E473A3BD9FAE8AED520F5CA1DA6FD6C96257FF0D10BA73755F81A5C665203`; source/deployed player.lua hashes match. Server health/worker verified separately.
 - IN-GAME PROVEN: not yet. No game launch. User must test successful lockpick and RPG/Quest/Bored responses with an eligible nearby NPC and enabled profile chance, then sleep/wait diaries with a Diary connector assigned.
+
+## Committed player barter context (2026-10-01) — AUTOMATED / WINDOWS BUILD PROVEN
+
+- OpenMW `TradeWindow::onOfferButtonClicked` copies traded lines before transfer and emits one
+  fenced `LorkhanBarterTrade` only after item and gold transfer (patch 0036). Offer, cancel,
+  failed haggle and confiscation paths return earlier. Pickups stay a separate path.
+- `gamedata.barter_trade` adds strict schema, fixtures, native, Lua and server validators. The
+  server projects exactly one merchant-targeted `infoaction` row and applies the Infoaction
+  category and the item blacklist.
+- AUTOMATED: native CTest, 125 Lua 5.1 tests, 1682 server checks, PHP lint, disposable PostgreSQL
+  integration and the cross-repository no-game slice (140-file manifest parity) pass.
+- WINDOWS BUILD PROVEN: pinned OpenMW 0.51 Release `openmw` rebuilt from a fresh pinned checkout
+  plus all 36 manifest changes. Existing OpenMW unit tests were not built.
+- IN-GAME PROVEN: not yet; no game was launched. Still to test: buy, sell, mixed trade, haggle
+  failure, cancel, unaffordable offer, stolen-item confiscation, a creature merchant, and that
+  container pickups still fire but never during barter.
+
+## Counted actor death context (2026-10-01) — AUTOMATED / WINDOWS BUILD PROVEN
+
+- OpenMW's existing `LuaManager::actorDied` (called once from `Actors::notifyDied` when a death
+  animation finishes or a corpse is disposed first) now also emits one fenced `LorkhanActorDied`
+  (patches 0013/0015; no new upstream file). The player and non-persistent zero-health record
+  corpses, which replay a death animation on first cell load, are excluded; persistent ones never
+  replay, so their death after a resurrection counts. At most 64 deaths per frame.
+- `gamedata.actor_died` names only the victim (NPC or creature), witnesses, game time and calendar.
+  Killer, weapon and spell are not engine facts at that point, so schema, native, Lua and server
+  validators reject them. The server projects exactly one CHIM-style `death` row (`X died.`);
+  loaded-save rollback retires future and undated copies. Deaths are not memory sources.
+- AUTOMATED: native CTest, 134 Lua 5.1 tests, 1728 server checks, PHP lint, disposable PostgreSQL
+  integration, migrations/jobs and the cross-repository no-game slice pass (147-file manifest
+  parity, 44 schemas, 103 fixtures, 293 responses). Without the rollback entry, integration fails.
+- WINDOWS BUILD PROVEN: pinned OpenMW 0.51 Release `openmw` and `openmw-tests` built from a fresh
+  pinned checkout plus all 36 manifest changes; OpenMW's 490 existing app tests pass.
+- IN-GAME PROVEN: not yet; no game was launched. Still to test: NPC and creature kills in melee and
+  by spell, a corpse looted mid-animation, entering a cell with placed corpses (no event), save and
+  reload after a death (no repeat), a summoned creature death, player death (no event), and a
+  persistent zero-health corpse resurrected then killed (one event).

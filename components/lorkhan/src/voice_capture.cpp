@@ -215,11 +215,22 @@ std::vector<std::byte> makePcm16MonoWav(std::span<const std::byte> pcm, std::uin
     return output;
 }
 
-std::string sha256Hex(std::span<const std::byte> bytes)
-{
+struct Sha256Stream::State {
     Sha256 digest;
-    digest.update(bytes);
-    const auto hash = digest.finish();
+};
+
+Sha256Stream::Sha256Stream() : m_state(std::make_unique<State>()) {}
+Sha256Stream::~Sha256Stream() = default;
+
+void Sha256Stream::update(std::span<const std::byte> bytes)
+{
+    m_state->digest.update(bytes);
+}
+
+std::string Sha256Stream::finishHex()
+{
+    const auto hash = m_state->digest.finish();
+    m_state = std::make_unique<State>();
     static constexpr char alphabet[] = "0123456789abcdef";
     std::string output(64, '0');
     for (std::size_t index = 0; index < hash.size(); ++index) {
@@ -228,6 +239,13 @@ std::string sha256Hex(std::span<const std::byte> bytes)
         output[index * 2 + 1] = alphabet[value & 0x0fU];
     }
     return output;
+}
+
+std::string sha256Hex(std::span<const std::byte> bytes)
+{
+    Sha256Stream digest;
+    digest.update(bytes);
+    return digest.finishHex();
 }
 
 bool pcm16HasVoice(std::span<const std::byte> pcm, std::uint16_t rmsThreshold)

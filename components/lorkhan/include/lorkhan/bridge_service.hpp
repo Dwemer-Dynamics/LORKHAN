@@ -47,7 +47,11 @@ public:
 
 private:
     void workerLoop();
+    // Execute one DTO, including its cancellation and correlated result publication, on the sole worker.
+    void processRequest(OutboundRequest request);
     void publishCancelled(const OutboundRequest& request);
+    // Closing the socket does not stop server-side synthesis; name the abandoned speech message explicitly.
+    void requestSpeechCancel(const OutboundRequest& target);
     [[nodiscard]] Result<void> validateRequest(const OutboundRequest& request) const;
 
     std::unique_ptr<ITransport> m_transport;

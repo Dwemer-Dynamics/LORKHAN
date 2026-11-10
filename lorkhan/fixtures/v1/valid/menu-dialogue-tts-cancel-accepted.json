@@ -1,0 +1,13 @@
+{
+  "description": "Server stops the target synthesis and never publishes its media",
+  "instance": {
+    "schema": "lorkhan.menu-dialogue-tts.cancel.accepted.v1",
+    "message_id": "10000000-0000-4000-8000-000000000711",
+    "request_id": "10000000-0000-4000-8000-000000000712",
+    "session_id": "10000000-0000-4000-8000-000000000703",
+    "generation": 7,
+    "target_message_id": "10000000-0000-4000-8000-000000000710",
+    "status": "cancelled"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/menu-dialogue-tts-cancel-accepted.schema.json"
+}

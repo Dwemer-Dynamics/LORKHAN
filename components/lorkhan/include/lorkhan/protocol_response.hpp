@@ -22,6 +22,7 @@ struct ProtocolError {
     std::string correlationId;
     bool retriable{};
     std::optional<std::uint64_t> retryAfterMs;
+    std::string wireCode;
 };
 
 struct ClientBehaviorSettings {
@@ -176,6 +177,11 @@ struct SttFailedEventPayload {
     bool retriable{};
     std::optional<std::uint64_t> retryAfterMs;
 };
+// Terminal no-audio outcome for one pending line; it never carries media.
+struct SpeechFailedEventPayload {
+    MessageId dialogueMessage;
+    std::string code;
+};
 struct SpeechReadyEventPayload {
     MediaId media;
     MessageId dialogueMessage;
@@ -270,10 +276,31 @@ struct DirectorInstructionsEventPayload {
     std::vector<Instruction> instructions;
 };
 
+// One server plugin intent, validated for exact envelope identity before Lua receives it. Registration,
+// manifest policy and actor scope are still checked by plugin_contract.validateIntent.
+struct PluginActionIntent {
+    using Value = std::variant<std::int64_t, double, bool, std::string, ProtocolIdentity>;
+    ActionId action;
+    TurnId turn;
+    SessionId session;
+    Generation generation;
+    std::string pluginId;
+    std::string pluginVersion;
+    std::string name;
+    std::uint32_t tier{};
+    bool confirmationRequired{};
+    bool cancellable{};
+    ProtocolIdentity actor;
+    std::optional<ProtocolIdentity> target;
+    std::vector<std::pair<std::string, Value>> parameters;
+    std::string expiresAt;
+};
+struct PluginActionIntentEventPayload { PluginActionIntent intent; };
+
 using ProtocolEventPayload = std::variant<TurnAcceptedEventPayload, DialogueDeltaEventPayload, DialogueCompleteEventPayload,
     ActionIntentEventPayload, RelationshipAdjustEventPayload, DirectorInstructionsEventPayload, ResponseCompleteEventPayload, TurnCompleteEventPayload, TurnCancelledEventPayload,
     TurnFailedEventPayload, SttTranscriptEventPayload, SttFailedEventPayload,
-    SpeechReadyEventPayload>;
+    SpeechReadyEventPayload, SpeechFailedEventPayload, PluginActionIntentEventPayload>;
 
 enum class ProtocolEventType {
     turn_accepted,
@@ -289,6 +316,8 @@ enum class ProtocolEventType {
     stt_transcript,
     stt_failed,
     speech_ready,
+    speech_failed,
+    plugin_action_intent,
 };
 
 struct ProtocolEvent {
@@ -310,6 +339,7 @@ struct EventsResponse {
     std::uint64_t nextAfter{};
     std::vector<ProtocolEvent> events;
     std::vector<AutonomyDirective> autonomy;
+    std::optional<std::string> pluginPolicyRevision;
 };
 
 struct InterruptionAcceptedResponse {
@@ -478,6 +508,33 @@ struct DebugCommandResultAcceptedResponse {
     bool duplicate{};
 };
 
+struct PluginRegistrationAcceptedResponse {
+    struct Plugin { std::string pluginId; std::string version; std::string state; std::string reasonCode; };
+    MessageId message;
+    RequestId request;
+    SessionId session;
+    Generation generation;
+    std::vector<Plugin> plugins;
+};
+struct PluginEventAcceptedResponse {
+    MessageId message;
+    RequestId request;
+    SessionId session;
+    Generation generation;
+    bool duplicate{};
+};
+
+// Validate one client-built plugin message for exactly this request, session and generation and return
+// canonical JSON (sorted keys, empty field maps as objects) within the 64 KiB / 16 KiB message caps.
+[[nodiscard]] Result<std::string> canonicalPluginRegistration(
+    std::string_view message, const RequestCorrelation& expected, const MessageId& expectedMessage);
+[[nodiscard]] Result<std::string> canonicalPluginEvent(
+    std::string_view message, const RequestCorrelation& expected, const MessageId& expectedMessage);
+[[nodiscard]] Result<PluginRegistrationAcceptedResponse> parsePluginRegistrationAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+[[nodiscard]] Result<PluginEventAcceptedResponse> parsePluginEventAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+
 [[nodiscard]] Result<void> parseHealthResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 [[nodiscard]] Result<ProtocolError> parseProtocolErrorResponse(
@@ -498,12 +555,28 @@ struct DebugCommandResultAcceptedResponse {
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 [[nodiscard]] Result<MenuDialogueTtsReadyResponse> parseMenuDialogueTtsReadyResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
+// Completed means the target's media was recorded before the cancel; cancelled means none will be.
+enum class MenuDialogueTtsCancelStatus { cancelled, completed };
+struct MenuDialogueTtsCancelAcceptedResponse {
+    MessageId message;
+    RequestId request;
+    SessionId session;
+    Generation generation;
+    MessageId target;
+    MenuDialogueTtsCancelStatus status{MenuDialogueTtsCancelStatus::cancelled};
+};
+[[nodiscard]] Result<MenuDialogueTtsCancelAcceptedResponse> parseMenuDialogueTtsCancelAcceptedResponse(
+    std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 [[nodiscard]] Result<PlayerAutochatReadyResponse> parsePlayerAutochatReadyResponse(
     std::string_view body, const Headers& headers, json::ParseLimits limits = {});
 // Validate the bounded observation before it can enter the native transport queue.
 [[nodiscard]] Result<void> validateItemPickupPayload(std::string_view body, json::ParseLimits limits = {});
+[[nodiscard]] Result<void> validateBarterTradePayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateActorResurrectedPayload(std::string_view body, json::ParseLimits limits = {});
+[[nodiscard]] Result<void> validateActorDiedPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateSpellCastPayload(std::string_view body, json::ParseLimits limits = {});
+// Lua-detected RPG and quest observations: only the optional capture-time calendar is checked natively.
+[[nodiscard]] Result<void> validateObservationCalendarPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateDispositionPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<void> validateInventoryPayload(std::string_view body, json::ParseLimits limits = {});
 [[nodiscard]] Result<GameDataAcceptedResponse> parseGameDataAcceptedResponse(

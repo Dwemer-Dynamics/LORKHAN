@@ -16,7 +16,7 @@ local util=require('scripts.LORKHAN.util')
 local M={}
 
 local function newAutonomyState()
-    return {idleSeconds=0,combatSeconds=0,pending=nil,pendingSeconds=0,greetingQueue={},
+    return {idleSeconds=0,combatSeconds=0,combatActive=false,combatStartPending=false,combatBarkCooldownSeconds=0,pending=nil,pendingSeconds=0,greetingQueue={},
         greeted={},interacted={},rotation=0,narratorRounds=0,rpgCooldownSeconds=0,
         narratorRandomPending=false,narratorQueue={},welcomeAttempted=false,restoreTarget=nil,restoreTargetPresent=false,
         activeTurnTarget=nil,activeTurnSource=nil}
@@ -32,7 +32,7 @@ function M.new(bridge,emit,sendActor,manageActor)
         activeSpeechMediaId=nil,rechat=nil,rechatSeed=nil,pendingVoice=nil,pendingStt={},ignoredOpenMicStt={},ignoredOpenMicSttOrder={},
         openMic=false,openMicMuted=false,openMicRequested=false,
         combatThreats={},combatActors={},combatVerified={},actorStates={},rechatEligibility=nil,
-        autonomy=newAutonomyState(),
+        autonomy=newAutonomyState(),playerActivity={sneaking=false,attacking=false,attackHoldSeconds=0},
         randomPercent=function() return math.random(1,100) end,
         dialogueMode='Standard',disabled=false,hardHalted=false,agentsSignature=nil}
     state.recentVanillaDialogue={}
@@ -87,9 +87,11 @@ end
 local function reportQueuedAction(state,item,status,reason)
     if not item.intent or not state.bridge or not state.bridge.newMessageId or not state.bridge.utcNow
         or not state.bridge.submitActionResult then return false end
+    if state.bridge.isExpired and state.bridge.isExpired(item.intent.expires_at) then status='timed_out';reason='action_expired' end
     local result={schema='lorkhan.action-result.v1',message_id=state.bridge.newMessageId(),request_id=item.requestId,
         action_id=item.intent.action_id,turn_id=item.turnId,session_id=item.sessionId,generation=item.generation,
         status=status,reason_code=reason,observed={},completed_at=state.bridge.utcNow()}
+    if state.queueActionResult then return state.queueActionResult({result=result,action_name=item.intent.name}) end
     return state.bridge.submitActionResult(result)~=nil
 end
 
@@ -103,6 +105,13 @@ local function cancelResponseLane(state,reason,stopSpeech)
     stopDirectorScene(state)
     state.playerSpeechRequest=nil
     state.emit('LORKHAN_PLAYER_SPEECH_STOP',{reason=reason})
+    local active=state.responseQueue.active
+    local cancelled=responseQueue.cancelActions(state.responseQueue,reason,
+        active and active.intent and state.pendingConfirmations[active.intent.action_id]~=nil)
+    for _,item in ipairs(cancelled) do
+        reportQueuedAction(state,item,'cancelled',reason)
+        state.pendingConfirmations[item.intent.action_id]=nil
+    end
     for _,item in ipairs(state.responseQueue.items) do
         local command=item.intent
         if command and nativeActions.advanced[command.name] and state.bridge.cancelAdvanced then
@@ -161,6 +170,9 @@ end
 
 function M.lifecycle(state,kind)
     if state.bridge and state.bridge.cancelVoiceCapture then state.bridge.cancelVoiceCapture() end
+    -- Generation fencing cannot restore a temporary Narrator/Director target, so drop it with the old world.
+    local temporaryTarget=state.modeRestore~=nil or state.directorPlan~=nil
+        or state.conversation.target~=nil and state.conversation.target.kind=='narrator'
     cancelResponseLane(state,kind,true)
     detachAll(state,kind)
     state.generation=conversation.invalidate(state.conversation,kind)
@@ -178,6 +190,8 @@ function M.lifecycle(state,kind)
     state.ignoredOpenMicStt={} state.ignoredOpenMicSttOrder={}
     state.combatThreats={} state.combatActors={} state.combatVerified={} state.actorStates={}
     state.rechatEligibility=nil state.autonomy=newAutonomyState()
+    state.modeRestore=nil
+    if temporaryTarget then conversation.clearTarget(state.conversation) end
     state.recentVanillaDialogue={}
     state.hardHalted=false state.conversation.hardHalted=false
     state.registry:clear()
@@ -377,7 +391,8 @@ function M.actorCombatStatus(state,event)
     local settings=state.settings and state.settings.autoActivate or {}
     if settings.addHostile==true then return false,'hostile_allowed' end
     agentRegistry.remove(state.agents,event.actor)
-    detachAgent(state,event.actor,'auto_hostile_to_player')
+    -- Keep the CUSTOM executor attached so its newly started combat is not halted.
+    -- The actor is excluded from conversational agents until eligible again.
     emitAgents(state)
     return true,'hostile_removed'
 end
@@ -389,6 +404,26 @@ local function autonomyActorEligible(state,actor,combat)
     if not entry or not status or not state.registry:resolve(actor) then return false end
     if combat then return status.activity=='combat' end
     return status.conversationState=='active' and status.hostile~=true
+end
+
+-- OpenMW exposes attack input rather than attack animation state, so hold briefly after a release or one-frame cast.
+local PLAYER_ATTACK_HOLD_SECONDS=2
+
+-- Record the player's own sneak/attack controls. A missing flag is unknown and never suppresses.
+function M.observePlayerActivity(state,event)
+    if type(event)~='table' then return false end
+    local previous=state.playerActivity or {}
+    local attackSeen=event.attacking==true or previous.attacking==true
+    state.playerActivity={sneaking=event.sneaking==true,attacking=event.attacking==true,
+        attackHoldSeconds=attackSeen and PLAYER_ATTACK_HOLD_SECONDS or previous.attackHoldSeconds or 0}
+    return true
+end
+
+-- Like CHIM, boredom waits while the player sneaks, attacks or fights; other autonomy is unaffected.
+local function playerBusyForBoredom(state)
+    local activity=state.playerActivity or {}
+    return activity.sneaking==true or activity.attacking==true or (activity.attackHoldSeconds or 0)>0
+        or next(state.combatActors)~=nil
 end
 
 local function setAutonomyTarget(state,actor)
@@ -404,7 +439,12 @@ local function requestAutonomy(state,kind,actor)
     state.autonomy.pending={kind=kind,actor=util.copy(actor)}
     state.autonomy.pendingSeconds=0
     state.autonomy.idleSeconds=0
-    if kind=='combat_bark' then state.autonomy.combatSeconds=0 end
+    if kind=='combat_bark' then
+        local period=math.max(5,math.min(600,tonumber(state.settings and state.settings.behavior
+            and state.settings.behavior.combatBarkPeriodSeconds) or 30))
+        state.autonomy.combatSeconds=0 state.autonomy.combatStartPending=false
+        state.autonomy.combatBarkCooldownSeconds=period
+    end
     state.emit('LORKHAN_AUTONOMY_CONTEXT_REQUEST',{kind=kind,actor=util.copy(actor),generation=state.generation})
     return true
 end
@@ -528,13 +568,16 @@ local function nextBoredActor(state)
     return candidates[state.autonomy.rotation]
 end
 
+-- Like CHIM, vary the speaker among eligible combatants; sorting keeps injected rolls deterministic.
 local function nextCombatActor(state)
     local candidates={}
     for _,actor in pairs(state.combatActors) do
         if actor.kind=='npc' and autonomyActorEligible(state,actor,true) then candidates[#candidates+1]=actor end
     end
+    if #candidates<2 then return candidates[1] end
     table.sort(candidates,function(left,right)return identity.key(left)<identity.key(right) end)
-    return candidates[1]
+    local roll=math.max(1,math.min(100,math.floor(tonumber(state.randomPercent()) or 1)))
+    return candidates[math.floor((roll-1)*#candidates/100)+1]
 end
 
 -- Refresh at most one managed active actor every two seconds without scheduling any model work.
@@ -567,6 +610,15 @@ function M.runAutonomy(state,elapsed)
     local autonomy=state.autonomy
     autonomy.rpgCooldownSeconds=math.max(0,autonomy.rpgCooldownSeconds-seconds)
     autonomy.playerSpeechSuppressionSeconds=math.max(0,(autonomy.playerSpeechSuppressionSeconds or 0)-seconds)
+    autonomy.combatBarkCooldownSeconds=math.max(0,(autonomy.combatBarkCooldownSeconds or 0)-seconds)
+    if state.playerActivity then
+        state.playerActivity.attackHoldSeconds=math.max(0,(state.playerActivity.attackHoldSeconds or 0)-seconds)
+    end
+    -- CHIM barks once when combat begins; per-actor status refreshes keep the same episode.
+    local inCombat=next(state.combatActors)~=nil
+    if inCombat and not autonomy.combatActive then autonomy.combatStartPending=true
+    elseif not inCombat then autonomy.combatStartPending=false end
+    autonomy.combatActive=inCombat
     if autonomy.boredPending then
         autonomy.boredPending.seconds=autonomy.boredPending.seconds+seconds
         if autonomy.boredPending.seconds>=30 then autonomy.boredPending=nil end
@@ -607,8 +659,11 @@ function M.runAutonomy(state,elapsed)
     if next(state.combatActors)~=nil then autonomy.combatSeconds=autonomy.combatSeconds+seconds
     else autonomy.combatSeconds=0 end
 
-    local combatPeriod=math.max(5,math.min(120,tonumber(behavior.combatBarkPeriodSeconds) or 30))
-    if behavior.allowCombatDialogue~=false and behavior.combatBarks==true and autonomy.combatSeconds>=combatPeriod then
+    local combatPeriod=math.max(5,math.min(600,tonumber(behavior.combatBarkPeriodSeconds) or 30))
+    -- A brief combat flicker waits for the bark cooldown instead of opening a new immediate bark.
+    local combatDue=autonomy.combatSeconds>=combatPeriod
+        or autonomy.combatStartPending and autonomy.combatBarkCooldownSeconds<=0
+    if behavior.allowCombatDialogue~=false and behavior.combatBarks==true and combatDue then
         local actor=nextCombatActor(state)
         if actor then return requestAutonomy(state,'combat_bark',actor) end
     end
@@ -617,7 +672,8 @@ function M.runAutonomy(state,elapsed)
         if actor then return requestAutonomy(state,'greeting',actor) end
     end
     local boredomDelay=math.max(30,math.min(86400,tonumber(behavior.boredomDelaySeconds) or 180))
-    if behavior.boredom==true and not autonomy.boredPending and autonomy.idleSeconds>=boredomDelay then
+    if behavior.boredom==true and not autonomy.boredPending and autonomy.idleSeconds>=boredomDelay
+        and not playerBusyForBoredom(state) then
         local actor=nextBoredActor(state)
         if actor then
             autonomy.idleSeconds=0
@@ -648,7 +704,7 @@ local function acceptBoredDecision(state,event)
         or event.comment_requested~=true or state.disabled or state.hardHalted
         or state.settings.behavior.boredom~=true or not responseQueue.idle(state.responseQueue)
         or (state.conversation.turn and not state.conversation.turn.terminal)
-        or state.pendingVoice~=nil or state.openMic==true
+        or state.pendingVoice~=nil or state.openMic==true or playerBusyForBoredom(state)
         or not autonomyActorEligible(state,pending.actor,false) then return false end
     local narrator=state.settings.narrator or {}
     local chance=math.max(1,math.min(100,tonumber(narrator.bored_chance_percent) or 25))
@@ -698,7 +754,8 @@ function M.startVoice(state,args)
         if syntheticMode then restoreModeTarget(state,selectedTarget) end
         return nil,reason or 'voice_capture_failed'
     end
-    interruptForPlayerInput(state)
+    -- Open mic waits for native voice detection, like CHIM's microphone threshold, so silence keeps speech and rechat.
+    if args.continuous~=true then interruptForPlayerInput(state) end
     state.pendingVoice={speaker=util.copy(args.speaker),target=util.copy(state.conversation.target),
         selectedTarget=selectedTarget and util.copy(selectedTarget) or nil,selectedTargetPresent=true,
         target_key=identity.key(state.conversation.target),session_id=state.sessionId,generation=state.generation,
@@ -777,7 +834,13 @@ end
 
 function M.pollVoice(state)
     if not state.pendingVoice or not state.bridge or not state.bridge.voiceCaptureStatus then return false end
-    local status=state.bridge.voiceCaptureStatus();if not status or status.state=='recording' or status.state=='idle' then return false end
+    local status=state.bridge.voiceCaptureStatus();if not status then return false end
+    local voice=state.pendingVoice
+    if voice.continuous and not voice.interrupted and (status.voice_detected==true or status.state=='ready') then
+        -- Detach the accepted capture so the one deferred interrupt cannot supersede it.
+        voice.interrupted=true;state.pendingVoice=nil;interruptForPlayerInput(state);state.pendingVoice=voice
+    end
+    if status.state=='recording' or status.state=='idle' then return false end
     if status.state=='ready' then
         print('[LORKHAN] captured voice ready: device_id='..tostring(status.device_id)..
             ' device='..tostring(status.device_name)..' wav_bytes='..tostring(status.bytes)..
@@ -859,7 +922,7 @@ function M.submitText(state,args)
     local isContinuation=isRechat or isActionFollowup or isAutonomy or isDirectorChild
     if state.conversation.seenInputs[args.input_key or args.text] then return nil,'duplicate_input' end
     if not isContinuation then
-        -- Voice already interrupted at recording start, like CHIM's Voicerec entrypoint.
+        -- Voice already interrupted at recording start (open mic at voice detection), like CHIM's Voicerec entrypoint.
         if args.input_kind~='stt' then interruptForPlayerInput(state) end
         local targetKey=identity.key(state.conversation.target)
         if targetKey then state.autonomy.interacted[targetKey]=true end
@@ -875,6 +938,12 @@ function M.submitText(state,args)
         and (args.ui_source~='lorkhan_text' or args.input_kind=='stt' or isContinuation) then return nil,'injection_requires_typed_text' end
     local modeTarget=args.target or state.conversation.target
     if args.selectedTargetPresent then modeTarget=args.selectedTarget end
+    if args.execution_mode=='hypnosis' then
+        if args.ui_source~='lorkhan_text' or args.input_kind=='stt' or isContinuation
+            or args.speaker.kind~='player' or args.action_request then return nil,'hypnosis_requires_typed_text' end
+        if not modeTarget or modeTarget.kind~='npc' or not state.registry:resolve(modeTarget) then return nil,'hypnosis_requires_npc' end
+        args.mood=nil
+    end
     local combatKey=identity.key(modeTarget)
     if state.settings and state.settings.behavior and state.settings.behavior.allowCombatDialogue==false
         and combatKey and state.combatActors[combatKey]
@@ -1013,16 +1082,18 @@ function M.submitText(state,args)
     if (args.ui_source=='lorkhan_rpg_event' or args.ui_source=='lorkhan_quest_event') then state.autonomy.rpgCooldownSeconds=60 end
     state.autonomy.activeTurnTarget=util.copy(state.conversation.target)
     state.autonomy.activeTurnSource=args.ui_source
-    if not isContinuation and args.execution_mode~='director' then
+    if not isContinuation and args.execution_mode~='director' and args.execution_mode~='hypnosis' then
         args.dialogueMode=mode
         args.mood=nil
         state.rechatSeed=util.copy(args)
         state.rechat={chainId=state.bridge.newMessageId and state.bridge.newMessageId() or args.request_id,
             originTurnId=args.turn_id,originLine=args.text,depth=0,lastSpeaker=nil,lastAddressee=nil,
-            targetHint=util.copy(state.conversation.target),cancelled=false,requestInFlight=false}
+            targetHint=util.copy(state.conversation.target),audience=util.arrayCopy(audience,constants.MAX_AUDIENCE),
+            cancelled=false,requestInFlight=false}
     elseif isRechat and state.rechat then
+        state.rechat.audience=util.arrayCopy(audience,constants.MAX_AUDIENCE)
         state.rechat.requestInFlight=true
-    elseif isActionFollowup or isDirectorChild or args.execution_mode=='director' then
+    elseif isActionFollowup or isDirectorChild or args.execution_mode=='director' or args.execution_mode=='hypnosis' then
         state.rechat=nil state.rechatEligibility=nil
     elseif isAutonomy then
         state.rechat=nil state.rechatSeed=nil state.rechatEligibility=nil
@@ -1032,7 +1103,7 @@ function M.submitText(state,args)
     if not isContinuation and args.speaker.kind=='player' and not args.player_speech_played
         and (args.ui_source=='lorkhan_text' or args.ui_source=='lorkhan_voice' or args.ui_source=='lorkhan_open_mic'
             or args.ui_source=='lorkhan_browser_speech')
-        and args.execution_mode~='director' and args.execution_mode~='cheat'
+        and args.execution_mode~='hypnosis' and args.execution_mode~='director' and args.execution_mode~='cheat'
         and args.execution_mode~='injection_log' and args.execution_mode~='injection_chat' then
         state.playerSpeechRequest=requestId
         state.emit('LORKHAN_PLAYER_SPEECH',{request_id=requestId,session_id=state.sessionId,
@@ -1322,7 +1393,9 @@ local function startPlaybackRechatProbe(state)
     if not protocol.isUuid(probeId) then chain.cancelled=true return false end
     local participants,expected,seen={},{},{}
     local candidates={chain.lastSpeaker}
-    for _,entry in ipairs(state.conversation.audience or {}) do candidates[#candidates+1]=entry.identity end
+    -- CHIM selects from the conversation's listeners, including automatically heard dialogue.
+    -- The UI selection alone omits nearby listeners sent with the accepted turn.
+    for _,actor in ipairs(chain.audience or {}) do candidates[#candidates+1]=actor end
     candidates[#candidates+1]=chain.lastAddressee
     candidates[#candidates+1]=chain.targetHint
     for _,actor in ipairs(candidates) do
@@ -1427,21 +1500,30 @@ end
 local function applyTransportFailure(state,event)
     local turn=state.conversation.turn
     if not turn or turn.terminal or event.request_id~=turn.requestId then return false end
-    turn.terminal=true turn.status='failed' turn.reason=event.reason or 'transport_failure'
+    local skipped=state.rechat and state.rechat.requestInFlight and
+        ({rechat_complete=true,rechat_cooldown=true,conversation_cooldown=true,rechat_no_responder=true})[event.reason]
+    turn.terminal=true turn.status=skipped and 'cancelled' or 'failed' turn.reason=event.reason or 'transport_failure'
     if state.directorPlan then state.directorPlan.cancelled=true end
     if state.rechat then state.rechat.cancelled=true state.rechat.requestInFlight=false end
-    local failed={type='turn.failed',request_id=turn.requestId,turn_id=turn.turnId,
+    local failed={type=skipped and 'turn.cancelled' or 'turn.failed',request_id=turn.requestId,turn_id=turn.turnId,
         session_id=state.sessionId,generation=state.generation,
-        payload={status='failed',code=turn.reason}}
+        payload={status=turn.status,code=turn.reason}}
     emitInbound(state,'LORKHAN_EVENT',failed)
     restoreTurnTarget(state,turn.turnId)
     finishAutonomyTurn(state,false)
-    print('[LORKHAN] response turn terminal: transport.failure '..tostring(turn.turnId))
+    print('[LORKHAN] response turn terminal: '..(skipped and 'rechat.skipped' or 'transport.failure')..' '..
+        tostring(turn.turnId)..' reason='..tostring(turn.reason))
     return true
 end
 
-function M.poll(state)
+function M.poll(state,elapsed)
     if state.disabled or state.hardHalted then return 0 end
+    -- A confirmation left open must not stall the response lane past its authority deadline.
+    if state.bridge.isExpired then
+        for actionId,command in pairs(state.pendingConfirmations) do
+            if state.bridge.isExpired(command.expires_at) then M.confirmAction(state,actionId,false) end
+        end
+    end
     local results=state.bridge.pollResults(constants.MAX_INBOUND_RESULTS) or {}
     local accepted=0
     for index=1,math.min(#results,constants.MAX_INBOUND_RESULTS) do
@@ -1497,6 +1579,11 @@ function M.poll(state)
             elseif event.type=='relationship.adjust' then
                 if state.onDispositionAdjustment then state.onDispositionAdjustment(event) end
                 accepted=accepted+1
+            elseif event.type=='plugin.action.intent' then
+                -- Addon dispatch owns validateIntent and the terminal result; without it the intent expires server-side.
+                if state.onPluginIntent then state.onPluginIntent(event)
+                else print('[LORKHAN] plugin intent dropped: plugin_dispatch_unavailable '..tostring(event.payload.action_id)) end
+                accepted=accepted+1
             elseif state.aiEnabled==false or (state.rechat and state.rechat.discardTurnId==event.turn_id) then
                 accepted=accepted+1 -- Advance the cursor without dispatching disabled or abandoned output.
             else
@@ -1514,6 +1601,8 @@ function M.poll(state)
                     laneOk,laneReason=responseQueue.enqueueDialogueEvent(state.responseQueue,event,currentRuntimeGeneration(state))
                 elseif event.type=='speech.ready' then
                     laneOk,laneReason=responseQueue.attachMedia(state.responseQueue,event)
+                elseif event.type=='speech.failed' then
+                    laneOk,laneReason=responseQueue.failMedia(state.responseQueue,event)
                 elseif event.type=='action.intent' then
                     laneOk,laneReason=responseQueue.attachAction(state.responseQueue,event)
                 elseif event.type=='director.instructions' then
@@ -1524,7 +1613,7 @@ function M.poll(state)
                 if not laneOk then applied=false applyReason=laneReason
                 else
                     if event.type=='response.complete' or event.type=='dialogue.complete'
-                        or event.type=='speech.ready' or event.type=='action.intent' then emitQueue(state) end
+                        or event.type=='speech.ready' or event.type=='speech.failed' or event.type=='action.intent' then emitQueue(state) end
                     accepted=accepted+1
                     if (event.type=='turn.failed' or event.type=='turn.cancelled') and state.directorPlan then
                         state.directorPlan.cancelled=true
@@ -1556,6 +1645,14 @@ function M.poll(state)
             end
         end
     end
+    -- Only one turn is open at a time, so any queued line from another turn belongs to a finished one.
+    local turn=state.conversation.turn
+    if responseQueue.awaitTerminalMedia(state.responseQueue,math.max(0,math.min(5,tonumber(elapsed) or 0)),
+        function(turnId) return not turn or turnId~=turn.turnId or turn.terminal end,
+        constants.SPEECH_MEDIA_WAIT_SECONDS)>0 then
+        print('[LORKHAN] speech unavailable for terminal turn; presenting subtitles')
+        emitQueue(state)
+    end
     pumpResponseQueue(state)
     local directorRequest=director.next(state.directorPlan,state.bridge,state.sessionId,state.generation,
         state.conversation.turn and state.conversation.turn.terminal and responseQueue.idle(state.responseQueue))
@@ -1578,6 +1675,13 @@ function M.confirmAction(state,actionId,approved)
     local command=state.pendingConfirmations[actionId]
     if not command then return nil,'confirmation_not_found' end
     state.pendingConfirmations[actionId]=nil
+    if state.bridge.isExpired and state.bridge.isExpired(command.expires_at) then
+        local item=responseQueue.head(state.responseQueue)
+        if item and item.intent and item.intent.action_id==actionId then
+            return reportQueuedAction(state,item,'timed_out','action_expired')
+        end
+        return nil,'action_expired'
+    end
     local eventName=approved and 'LORKHAN_ACTOR_ACTION' or 'LORKHAN_ACTOR_REJECT'
     local sent,reason=state.sendActor(command.actor,eventName,command)
     if not sent then

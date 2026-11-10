@@ -17,7 +17,7 @@
 
 namespace lorkhan {
 
-inline constexpr std::string_view kClientVersion = "0.5.0";
+inline constexpr std::string_view kClientVersion = "0.5.1";
 inline constexpr std::string_view kOpenMwVersion = "0.51.0";
 inline constexpr std::string_view kOpenMwCommit = "f4bec41444214a7903bebd178389ca22ca13f646";
 inline constexpr std::uint32_t kLuaApiRevision = 129;
@@ -31,6 +31,10 @@ inline constexpr std::size_t kReservedControlCapacity = 4U;
 inline constexpr std::uint32_t kMaxAudienceActors = 12U;
 inline constexpr std::uint32_t kMaxActionsPerTurn = 4U;
 inline constexpr std::uint32_t kMaxActionContinuations = 1U;
+inline constexpr std::size_t kMaxPluginRegistrationBytes = 64U * 1024U;
+inline constexpr std::size_t kMaxPluginEventBytes = 16U * 1024U;
+// Advertised only by builds that carry the typed plugin routes and the plugin.action.intent decoder.
+inline constexpr std::string_view kPluginContractCapability = "plugin.contract.v1";
 
 template <class Tag>
 class StrongId {
@@ -251,6 +255,14 @@ struct MenuDialogueTtsRequest {
     std::string text;
 };
 
+// Names one abandoned menu dialogue or book speech message so the server stops its synthesis.
+struct MenuDialogueTtsCancelRequest {
+    MessageId message;
+    RequestCorrelation correlation;
+    std::string createdAt;
+    MessageId target;
+};
+
 struct PlayerAutochatRequest {
     MessageId message;
     RequestCorrelation correlation;
@@ -269,7 +281,15 @@ struct BookReadAloudRequest {
     std::string text;
 };
 
-enum class GameDataType { item_pickup, spell_cast, actor_resurrected, inventory, captured_dialogue, actor_profile, automatic_diary, rpg_event, bored_event, quest_event, disposition };
+enum class GameDataType { item_pickup, barter_trade, spell_cast, actor_resurrected, actor_died, inventory, captured_dialogue, actor_profile, automatic_diary, rpg_event, bored_event, quest_event, disposition };
+
+// OpenMW 0.51 creates a dead persistent actor with its death animation already finished, so only a
+// non-persistent record without health replays a death on cell load. A persistent one can only
+// finish a death animation again after CreatureStats::resurrect.
+constexpr bool countsActorDeath(bool noRecordHealth, bool persistentRecord) noexcept
+{
+    return !noRecordHealth || persistentRecord;
+}
 
 struct GameDataRequest {
     InstallationId installation;
@@ -292,6 +312,31 @@ struct MediaDescriptor {
     std::chrono::system_clock::time_point expiresAt;
 };
 
+// One canonical lorkhan.plugin.registration.v1 or lorkhan.plugin.event.v1 message. The bridge
+// validates it for the request's exact session generation; Lua never selects a route or header.
+struct PluginMessageRequest {
+    MessageId message;
+    RequestCorrelation correlation;
+    std::string serializedMessage;
+};
+struct PluginRegistrationRequest : PluginMessageRequest {};
+struct PluginEventRequest : PluginMessageRequest {};
+
+inline constexpr std::size_t kMaxPluginPackageBytes = 64U * 1024U * 1024U;
+inline constexpr std::size_t kMaxPluginPackageRoots = 2048U;
+inline constexpr std::size_t kMaxPluginPackageRootBytes = 4096U;
+
+// Synchronize one active addon's packaged server half. The engine thread copies the typed identity
+// and its OpenMW data roots as plain strings; the worker resolves only the fixed package path below them.
+struct PluginPackageSyncRequest {
+    RequestCorrelation correlation;
+    std::string pluginId;
+    std::string version;
+    std::string manifestSha256;
+    // OpenMW data directories in load order: a later root overrides an earlier one, as in the VFS.
+    std::vector<std::string> dataRoots;
+};
+
 struct MediaPrepareRequest {
     RequestCorrelation correlation;
     MediaDescriptor descriptor;
@@ -307,7 +352,8 @@ using RequestPayload = std::variant<HealthRequest, InitRequest, TurnRequest, Eve
     InterruptionRequest, ActionResultRequest, SessionEndRequest, SttRequest,
     DialogueDeliveryResultRequest, ControlsQueryRequest, ControlsSelectRequest, DebugCommandQueryRequest,
     DebugCommandResultRequest, DiaryBookQueryRequest, DiaryBookResultRequest, MenuDialogueTtsRequest, PlayerAutochatRequest, BookReadAloudRequest, GameDataRequest,
-    MediaPrepareRequest>;
+    MediaPrepareRequest, MenuDialogueTtsCancelRequest, PluginRegistrationRequest, PluginEventRequest,
+    PluginPackageSyncRequest>;
 
 enum class RequestKind {
     health,
@@ -327,9 +373,13 @@ enum class RequestKind {
     debug_command_result,
     menu_dialogue_tts,
     book_read_aloud,
+    menu_dialogue_tts_cancel,
     player_autochat,
     gamedata,
     media,
+    plugin_registration,
+    plugin_event,
+    plugin_package_sync,
 };
 
 enum class ResponseKind { accepted, event, completed, failure, cancelled, media_ready, menu_dialogue_ready,

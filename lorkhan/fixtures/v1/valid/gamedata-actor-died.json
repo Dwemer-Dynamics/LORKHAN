@@ -1,0 +1,57 @@
+{
+  "description": "Actor death names only the victim, nearby witnesses, game time and calendar",
+  "instance": {
+    "game": "tes3",
+    "generation": 12,
+    "installation_id": "10000000-0000-4000-8000-000000000001",
+    "observed_at": "2026-08-09T18:00:03Z",
+    "payload": {
+      "victim": {
+        "cell": {
+          "grid_x": -2,
+          "grid_y": -9,
+          "kind": "exterior"
+        },
+        "content_file": "Morrowind.esm",
+        "display_name": "Mudcrab",
+        "kind": "creature",
+        "record_id": "mudcrab",
+        "refnum": {
+          "content_file": 0,
+          "index": 16402
+        }
+      },
+      "audience": [
+        {
+          "cell": {
+            "grid_x": -2,
+            "grid_y": -9,
+            "kind": "exterior"
+          },
+          "content_file": "Morrowind.esm",
+          "display_name": "Fargoth",
+          "kind": "npc",
+          "record_id": "fargoth",
+          "refnum": {
+            "content_file": 0,
+            "index": 112
+          }
+        }
+      ],
+      "game_time": 43210.5,
+      "calendar": {
+        "year": 427,
+        "month": 7,
+        "day": 16,
+        "hour": 9.5
+      }
+    },
+    "playthrough_id": "10000000-0000-4000-8000-000000000002",
+    "request_id": "10000000-0000-4000-8000-000000000004",
+    "runtime_generation": 4,
+    "schema": "lorkhan.gamedata.v1",
+    "session_id": "10000000-0000-4000-8000-000000000005",
+    "type": "actor_died"
+  },
+  "schema": "https://lorkhan.invalid/schemas/v1/gamedata.schema.json"
+}
